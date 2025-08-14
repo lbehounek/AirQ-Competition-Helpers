@@ -1,7 +1,9 @@
 import React from 'react';
 import { Box, Typography, Paper } from '@mui/material';
-import { Image as ImageIcon } from '@mui/icons-material';
+import { Image as ImageIcon, CloudUpload } from '@mui/icons-material';
+import { useDropzone } from 'react-dropzone';
 import { PhotoEditorApi } from './PhotoEditorApi';
+import { isValidImageFile } from '../utils/imageProcessing';
 
 interface ApiPhoto {
   id: string;
@@ -34,6 +36,7 @@ interface PhotoGridApiProps {
   onPhotoUpdate: (photoId: string, canvasState: any) => void;
   onPhotoRemove: (photoId: string) => void;
   onPhotoClick?: (photo: ApiPhoto) => void;
+  onFilesDropped?: (files: File[]) => void; // For uploading files to empty slots
   labelOffset?: number; // Offset for label sequence (e.g., set2 continues from where set1 left off)
 }
 
@@ -47,6 +50,7 @@ interface GridSlot {
 interface PhotoGridSlotEmptyProps {
   label: string;
   position: number;
+  onFilesDropped?: (files: File[]) => void;
 }
 
 export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
@@ -55,6 +59,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   onPhotoUpdate,
   onPhotoRemove,
   onPhotoClick,
+  onFilesDropped,
   labelOffset = 0
 }) => {
   // Create 9 grid slots (3x3)
@@ -162,6 +167,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
               <PhotoGridSlotEmpty
                 label={slot.label}
                 position={slot.index + 1}
+                onFilesDropped={onFilesDropped}
               />
             )}
           </Paper>
@@ -173,31 +179,100 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
 const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
   label,
-  position
+  position,
+  onFilesDropped
 }) => {
+  const {
+    getRootProps,
+    getInputProps,
+    isDragActive,
+    isDragAccept,
+    isDragReject
+  } = useDropzone({
+    accept: {
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/png': ['.png']
+    },
+    maxFiles: 9, // Allow multiple files for easier bulk upload
+    onDrop: (acceptedFiles) => {
+      if (acceptedFiles.length > 0 && onFilesDropped) {
+        const validFiles = acceptedFiles.filter(file => isValidImageFile(file));
+        if (validFiles.length > 0) {
+          onFilesDropped(validFiles);
+        }
+      }
+    },
+    noClick: false,
+    noKeyboard: false
+  });
+
+  const getBorderColor = () => {
+    if (isDragAccept) return 'success.main';
+    if (isDragReject) return 'error.main';
+    if (isDragActive) return 'primary.main';
+    return 'grey.300';
+  };
+
+  const getBackgroundColor = () => {
+    if (isDragAccept) return 'success.light';
+    if (isDragReject) return 'error.light';
+    if (isDragActive) return 'primary.light';
+    return 'grey.100';
+  };
+
   return (
-    <Box sx={{
-      width: '100%',
-      height: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      bgcolor: 'grey.100',
-      color: 'grey.500'
-    }}>
+    <Box 
+      {...getRootProps()}
+      sx={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        bgcolor: getBackgroundColor(),
+        color: 'grey.500',
+        border: `2px dashed`,
+        borderColor: getBorderColor(),
+        cursor: 'pointer',
+        transition: 'all 0.2s ease-in-out',
+        '&:hover': {
+          bgcolor: isDragActive ? getBackgroundColor() : 'grey.200',
+          borderColor: isDragActive ? getBorderColor() : 'primary.main',
+          color: 'grey.600'
+        }
+      }}
+    >
+      <input {...getInputProps()} />
+      
       {/* Position indicator */}
       <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5, color: 'grey.400' }}>
         {label}
       </Typography>
 
-      {/* Position text */}
-      <Typography variant="caption" sx={{ textAlign: 'center', px: 1, color: 'grey.500' }}>
-        Position {position}
-      </Typography>
+      {isDragActive ? (
+        <>
+          <CloudUpload sx={{ fontSize: 32, color: isDragAccept ? 'success.main' : 'primary.main', mb: 1 }} />
+          <Typography variant="body2" sx={{ textAlign: 'center', px: 1, fontWeight: 500 }}>
+            {isDragAccept ? 'Drop photos here' : 'Invalid file type'}
+          </Typography>
+        </>
+      ) : (
+        <>
+          {/* Position text */}
+          <Typography variant="caption" sx={{ textAlign: 'center', px: 1, color: 'grey.500', mb: 0.5 }}>
+            Position {position}
+          </Typography>
 
-      {/* Placeholder icon */}
-      <ImageIcon sx={{ mt: 1, fontSize: 24, color: 'grey.400', opacity: 0.7 }} />
+          {/* Placeholder icon */}
+          <ImageIcon sx={{ fontSize: 24, color: 'grey.400', opacity: 0.7, mb: 0.5 }} />
+          
+          {/* Upload hint */}
+          <Typography variant="caption" sx={{ textAlign: 'center', px: 1, color: 'grey.500' }}>
+            Click or drag photos
+          </Typography>
+        </>
+      )}
     </Box>
   );
 };

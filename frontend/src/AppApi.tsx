@@ -373,8 +373,8 @@ function AppApi() {
           {/* Set 1 Photo Grid - Dominating Element */}
           {stats.set1Photos > 0 && session && (
             <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="h5" color="primary" sx={{ fontWeight: 600 }}>
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 1 }}>
                   {session.sets.set1.title || 'Set 1'} Preview
                 </Typography>
               </Box>
@@ -386,6 +386,7 @@ function AppApi() {
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
                 onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
+                onFilesDropped={(files) => addPhotosToSet('set1', files)}
               />
             </Paper>
           )}
@@ -434,8 +435,8 @@ function AppApi() {
           {/* Set 2 Photo Grid - Dominating Element */}
           {stats.set2Photos > 0 && session && (
             <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="h5" color="primary" sx={{ fontWeight: 600 }}>
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 1 }}>
                   {session.sets.set2.title || 'Set 2'} Preview
                 </Typography>
               </Box>
@@ -448,6 +449,7 @@ function AppApi() {
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
                 onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
+                onFilesDropped={(files) => addPhotosToSet('set2', files)}
               />
             </Paper>
           )}
