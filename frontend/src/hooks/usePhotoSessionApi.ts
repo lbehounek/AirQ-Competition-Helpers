@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { PhotoSession, Photo, PhotoSet } from '../types';
 import { api, ApiError } from '../services/api';
 
@@ -28,18 +28,30 @@ export const usePhotoSessionApi = () => {
   const [error, setError] = useState<string | null>(null);
   const [backendAvailable, setBackendAvailable] = useState<boolean | null>(null); // null = checking
   const [backendCheckTimeout, setBackendCheckTimeout] = useState<NodeJS.Timeout | null>(null);
+  
+  // Use a ref to ensure we only initialize once
+  const hasInitialized = useRef(false);
 
-  // Check backend availability on mount
+  // Check backend availability on mount (only once)
   useEffect(() => {
+    // Only check if we haven't already initialized
+    if (hasInitialized.current) {
+      return;
+    }
+    hasInitialized.current = true;
+    
     // Show loading state immediately
     setBackendAvailable(null);
     
     // Set a timeout to show error after 3 seconds if backend is still not available
     const timeout = setTimeout(() => {
-      if (backendAvailable === null) {
-        setBackendAvailable(false);
-        setError('Backend server is not responding. Please make sure the backend server is running.');
-      }
+      setBackendAvailable(prev => {
+        if (prev === null) {
+          setError('Backend server is not responding. Please make sure the backend server is running.');
+          return false;
+        }
+        return prev;
+      });
     }, 3000);
     
     setBackendCheckTimeout(timeout);
