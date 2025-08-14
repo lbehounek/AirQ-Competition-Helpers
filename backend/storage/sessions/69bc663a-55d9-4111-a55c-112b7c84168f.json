@@ -1,8 +1,8 @@
 {
   "id": "69bc663a-55d9-4111-a55c-112b7c84168f",
   "createdAt": "2025-08-14T22:22:41.166052",
-  "updatedAt": "2025-08-14T22:25:39.706923",
-  "version": 83,
+  "updatedAt": "2025-08-14T22:26:59.823362",
+  "version": 248,
   "sets": {
     "set1": {
       "title": "",
@@ -87,13 +87,13 @@
           "uploadedAt": "2025-08-14T22:22:47.000262",
           "canvasState": {
             "position": {
-              "x": 0,
-              "y": 0
+              "x": -100,
+              "y": -75
             },
-            "scale": 1.0,
-            "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "scale": 1,
+            "brightness": 8,
+            "contrast": 1.1,
+            "labelPosition": "top-left"
           },
           "url": "/api/photos/69bc663a-55d9-4111-a55c-112b7c84168f/c092e9e4-ee9b-4219-b05e-a7a4283d6ef2"
         },

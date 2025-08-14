@@ -341,6 +341,66 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     setIsDragging(false);
   };
 
+  const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
+    if (size === 'grid') return; // Only allow zoom in modal view
+    if (!loadedImage || !photo?.canvasState) return;
+
+    event.preventDefault(); // Prevent page scrolling
+
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    // Calculate zoom direction and amount
+    const zoomFactor = event.deltaY < 0 ? 1.1 : 0.9; // Zoom in/out by 10%
+    const currentScale = photo.canvasState.scale;
+    const newScale = Math.max(1.0, Math.min(3.0, currentScale * zoomFactor)); // Clamp between 1.0 and 3.0
+
+    if (Math.abs(newScale - currentScale) < 0.01) return; // No significant change
+
+    // Calculate zoom center in base coordinates
+    const scaleRatio = canvas.width / BASE_WIDTH;
+    const baseCenterX = mouseX / scaleRatio;
+    const baseCenterY = mouseY / scaleRatio;
+
+    // Calculate position adjustment to zoom towards mouse cursor
+    const scaleChange = newScale / currentScale;
+    const currentPosition = photo.canvasState.position;
+    
+    const newPosition = {
+      x: baseCenterX + (currentPosition.x - baseCenterX) * scaleChange,
+      y: baseCenterY + (currentPosition.y - baseCenterY) * scaleChange
+    };
+
+    // Apply constraints in base coordinates
+    const croppedImage = cropImageTo43(loadedImage);
+    const minScaleX = BASE_WIDTH / croppedImage.width;
+    const minScaleY = BASE_HEIGHT / croppedImage.height;
+    const minScale = Math.max(minScaleX, minScaleY);
+    const actualScale = Math.max(newScale, minScale);
+    const scaledWidth = croppedImage.width * actualScale;
+    const scaledHeight = croppedImage.height * actualScale;
+
+    // Constrain position
+    if (scaledWidth > BASE_WIDTH) {
+      const maxX = scaledWidth - BASE_WIDTH;
+      newPosition.x = Math.max(-maxX, Math.min(0, newPosition.x));
+    }
+    
+    if (scaledHeight > BASE_HEIGHT) {
+      const maxY = scaledHeight - BASE_HEIGHT;
+      newPosition.y = Math.max(-maxY, Math.min(0, newPosition.y));
+    }
+
+    // Update canvas state
+    onUpdate({
+      ...photo.canvasState,
+      scale: newScale,
+      position: newPosition
+    });
+  };
+
   // Loading/error states
   if (imageError) {
     return (
@@ -395,6 +455,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
       />
 
       {size === 'grid' && (
