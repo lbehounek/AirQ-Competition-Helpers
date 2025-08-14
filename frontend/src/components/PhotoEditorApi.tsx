@@ -756,7 +756,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
           cursor: size === 'grid' ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
           border: '1px solid',
           borderColor: size === 'grid' ? 'transparent' : '#e0e0e0',
-          borderRadius: '4px',
+          borderRadius: size === 'grid' ? 0 : '4px', // Rectangular for grid (PDF preview), rounded for modal
           display: 'block'
         }}
         onMouseDown={handleMouseDown}

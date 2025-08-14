@@ -85,7 +85,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
               bgcolor: slot.photo ? 'background.paper' : 'grey.50',
               border: '1px solid',
               borderColor: slot.photo ? 'primary.main' : 'grey.300',
-              borderRadius: 1.5,
+              borderRadius: 0, // Rectangular to match PDF output
               overflow: 'hidden',
               position: 'relative',
               transition: 'all 0.2s ease-in-out',
