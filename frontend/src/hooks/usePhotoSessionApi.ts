@@ -26,16 +26,33 @@ export const usePhotoSessionApi = () => {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [backendAvailable, setBackendAvailable] = useState<boolean>(false);
+  const [backendAvailable, setBackendAvailable] = useState<boolean | null>(null); // null = checking
+  const [backendCheckTimeout, setBackendCheckTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Check backend availability on mount
   useEffect(() => {
+    // Show loading state immediately
+    setBackendAvailable(null);
+    
+    // Set a timeout to show error after 3 seconds if backend is still not available
+    const timeout = setTimeout(() => {
+      if (backendAvailable === null) {
+        setBackendAvailable(false);
+        setError('Backend server is not responding. Please make sure the backend server is running.');
+      }
+    }, 3000);
+    
+    setBackendCheckTimeout(timeout);
     checkBackendHealth();
+    
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
   }, []);
 
   // Load existing session or create new one
   useEffect(() => {
-    if (backendAvailable) {
+    if (backendAvailable === true) {
       loadOrCreateSession();
     }
   }, [backendAvailable]);
@@ -43,12 +60,24 @@ export const usePhotoSessionApi = () => {
   const checkBackendHealth = async () => {
     try {
       await api.healthCheck();
+      // Clear any timeout if we get a response
+      if (backendCheckTimeout) {
+        clearTimeout(backendCheckTimeout);
+        setBackendCheckTimeout(null);
+      }
       setBackendAvailable(true);
+      setError(null);
       console.log('✅ Backend is available');
     } catch (err) {
-      setBackendAvailable(false);
-      setError('Backend server is not running. Please start the backend server.');
-      console.error('❌ Backend not available:', err);
+      // Only set error if we haven't already timed out
+      if (backendAvailable === null) {
+        // Let the timeout handle the error message
+        console.log('⏳ Waiting for backend...');
+      } else {
+        setBackendAvailable(false);
+        setError('Backend server is not running. Please start the backend server.');
+        console.error('❌ Backend not available:', err);
+      }
     }
   };
 

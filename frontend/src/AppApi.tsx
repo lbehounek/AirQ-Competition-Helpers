@@ -12,7 +12,8 @@ import {
   Divider,
   Modal,
   Backdrop,
-  Fade
+  Fade,
+  CircularProgress
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -104,8 +105,27 @@ function AppApi() {
     }
   };
 
+  // Backend checking (loading state)
+  if (backendAvailable === null) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
+        <Container maxWidth="md" sx={{ pt: 8 }}>
+          <Paper sx={{ p: 4, textAlign: 'center' }}>
+            <CircularProgress size={60} sx={{ mb: 3 }} />
+            <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
+              Connecting to Backend Server
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Please wait while we establish connection...
+            </Typography>
+          </Paper>
+        </Container>
+      </Box>
+    );
+  }
+
   // Backend not available
-  if (!backendAvailable) {
+  if (backendAvailable === false) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
         <Container maxWidth="md" sx={{ pt: 8 }}>
