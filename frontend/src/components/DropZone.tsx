@@ -1,5 +1,20 @@
 import React from 'react';
 import { useDropzone } from 'react-dropzone';
+import { 
+  Box, 
+  Typography, 
+  Paper, 
+  Chip, 
+  CircularProgress,
+  Alert,
+  Stack
+} from '@mui/material';
+import { 
+  CloudUpload, 
+  Image as ImageIcon, 
+  CheckCircle, 
+  Error as ErrorIcon 
+} from '@mui/icons-material';
 import { isValidImageFile } from '../utils/imageProcessing';
 
 interface DropZoneProps {
@@ -55,25 +70,48 @@ export const DropZone: React.FC<DropZoneProps> = ({
 
   // Determine styling based on state
   const getDropZoneStyles = () => {
-    let baseStyles = 'border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 cursor-pointer min-h-[200px] flex flex-col justify-center items-center';
-    
     if (isDisabled) {
-      return `${baseStyles} border-gray-300 bg-gray-50 cursor-not-allowed opacity-50`;
+      return {
+        borderColor: 'grey.300',
+        backgroundColor: 'grey.50',
+        cursor: 'not-allowed',
+        opacity: 0.5
+      };
     }
     
     if (isDragReject) {
-      return `${baseStyles} border-red-400 bg-red-50`;
+      return {
+        borderColor: 'error.main',
+        backgroundColor: 'error.light',
+        color: 'error.dark'
+      };
     }
     
     if (isDragAccept) {
-      return `${baseStyles} border-green-400 bg-green-50`;
+      return {
+        borderColor: 'success.main',
+        backgroundColor: 'success.light',
+        color: 'success.dark'
+      };
     }
     
     if (isDragActive) {
-      return `${baseStyles} border-blue-400 bg-blue-50`;
+      return {
+        borderColor: 'primary.main',
+        backgroundColor: 'primary.light',
+        color: 'primary.dark'
+      };
     }
     
-    return `${baseStyles} border-gray-400 bg-gray-50 hover:border-blue-400 hover:bg-blue-50`;
+    return {
+      borderColor: 'grey.400',
+      backgroundColor: 'grey.50',
+      cursor: 'pointer',
+      '&:hover': {
+        borderColor: 'primary.main',
+        backgroundColor: 'primary.light'
+      }
+    };
   };
 
   const getStatusText = () => {
@@ -105,92 +143,123 @@ export const DropZone: React.FC<DropZoneProps> = ({
       return null;
     }
     
-    return (
-      <p className="text-sm text-gray-500 mt-2">
-        {availableSlots} slot{availableSlots !== 1 ? 's' : ''} available • 
-        JPEG/PNG only • Max 20MB per file
-      </p>
-    );
+    return `${availableSlots} slot${availableSlots !== 1 ? 's' : ''} available • JPEG/PNG only • Max 20MB per file`;
   };
 
   return (
-    <div className="w-full">
+    <Box sx={{ width: '100%' }}>
       {/* Set Title */}
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-700">
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h5" component="h3" sx={{ mb: 2, color: 'text.primary', fontWeight: 600 }}>
           {setName} ({currentPhotoCount}/{maxPhotos})
-        </h3>
+        </Typography>
         {error && (
-          <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-red-700 text-sm">{error}</p>
-          </div>
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
         )}
-      </div>
+      </Box>
 
       {/* Drop Zone */}
-      <div {...getRootProps()} className={getDropZoneStyles()}>
+      <Paper
+        {...getRootProps()}
+        elevation={isDragActive ? 4 : 1}
+        sx={{
+          border: 2,
+          borderStyle: 'dashed',
+          borderRadius: 2,
+          p: 4,
+          textAlign: 'center',
+          minHeight: 200,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          transition: 'all 0.2s ease-in-out',
+          ...getDropZoneStyles()
+        }}
+      >
         <input {...getInputProps()} />
         
         {/* Upload Icon */}
-        <div className="mb-4">
+        <Box sx={{ mb: 3 }}>
           {loading ? (
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            <CircularProgress size={48} color="primary" />
           ) : (
-            <svg 
-              className={`h-12 w-12 ${isDragReject ? 'text-red-400' : isDragAccept ? 'text-green-400' : 'text-gray-400'}`} 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={1.5} 
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" 
-              />
-            </svg>
+            <>
+              {isDragReject ? (
+                <ErrorIcon sx={{ fontSize: 48, color: 'error.main' }} />
+              ) : isDragAccept ? (
+                <CheckCircle sx={{ fontSize: 48, color: 'success.main' }} />
+              ) : (
+                <CloudUpload sx={{ fontSize: 48, color: 'text.secondary' }} />
+              )}
+            </>
           )}
-        </div>
+        </Box>
 
         {/* Status Text */}
-        <p className={`text-base font-medium ${
-          isDragReject ? 'text-red-600' : 
-          isDragAccept ? 'text-green-600' : 
-          'text-gray-600'
-        }`}>
+        <Typography 
+          variant="h6" 
+          component="p" 
+          sx={{ 
+            mb: 1,
+            fontWeight: 500,
+            color: isDragReject ? 'error.main' : isDragAccept ? 'success.main' : 'text.primary'
+          }}
+        >
           {getStatusText()}
-        </p>
+        </Typography>
 
         {/* Subtext */}
-        {getSubText()}
-      </div>
+        {getSubText() && (
+          <Typography variant="body2" color="text.secondary">
+            {getSubText()}
+          </Typography>
+        )}
+      </Paper>
 
       {/* Current Photos Preview */}
       {currentPhotoCount > 0 && (
-        <div className="mt-4">
-          <p className="text-sm text-gray-600 mb-2">
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Current photos in {setName}:
-          </p>
-          <div className="flex flex-wrap gap-2">
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
             {Array.from({ length: currentPhotoCount }, (_, i) => (
-              <div 
-                key={i} 
-                className="w-12 h-12 bg-blue-100 rounded border-2 border-blue-300 flex items-center justify-center text-blue-700 font-semibold text-xs"
-              >
-                {String.fromCharCode(65 + i)} {/* A, B, C, etc. */}
-              </div>
+              <Chip
+                key={i}
+                label={String.fromCharCode(65 + i)}
+                color="primary"
+                variant="filled"
+                icon={<ImageIcon />}
+                sx={{ 
+                  minWidth: 48, 
+                  height: 48,
+                  '& .MuiChip-label': { 
+                    fontWeight: 600, 
+                    fontSize: '0.875rem' 
+                  } 
+                }}
+              />
             ))}
             {Array.from({ length: availableSlots }, (_, i) => (
-              <div 
-                key={`empty-${i}`} 
-                className="w-12 h-12 bg-gray-100 rounded border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs"
-              >
-                ?
-              </div>
+              <Chip
+                key={`empty-${i}`}
+                label="?"
+                variant="outlined"
+                sx={{ 
+                  minWidth: 48, 
+                  height: 48,
+                  borderStyle: 'dashed',
+                  color: 'text.secondary',
+                  borderColor: 'grey.400'
+                }}
+              />
             ))}
-          </div>
-        </div>
+          </Stack>
+        </Box>
       )}
-    </div>
+    </Box>
   );
 };

@@ -1,4 +1,6 @@
 import React from 'react';
+import { TextField, Typography, Box } from '@mui/material';
+import { Title as TitleIcon } from '@mui/icons-material';
 
 interface TitleInputProps {
   value: string;
@@ -14,21 +16,34 @@ export const TitleInput: React.FC<TitleInputProps> = ({
   placeholder = 'Enter title for this set...'
 }) => {
   return (
-    <div className="w-full mb-6">
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        {setName} Title
-      </label>
-      <input
-        type="text"
+    <Box sx={{ mb: 3 }}>
+      <TextField
+        fullWidth
+        label={`${setName} Title`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-        maxLength={100}
+        variant="outlined"
+        inputProps={{ maxLength: 100 }}
+        helperText={`${value.length}/100 characters`}
+        InputProps={{
+          startAdornment: <TitleIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+        }}
+        sx={{
+          '& .MuiOutlinedInput-root': {
+            '&:hover fieldset': {
+              borderColor: 'primary.light',
+            },
+            '&.Mui-focused fieldset': {
+              borderColor: 'primary.main',
+              borderWidth: 2,
+            },
+          },
+          '& .MuiFormLabel-root.Mui-focused': {
+            color: 'primary.main',
+          },
+        }}
       />
-      <p className="text-xs text-gray-500 mt-1">
-        {value.length}/100 characters
-      </p>
-    </div>
+    </Box>
   );
 };

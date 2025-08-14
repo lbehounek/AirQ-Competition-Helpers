@@ -28,6 +28,25 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   onRemove,
   size = 'grid'
 }) => {
+  // Early return if photo data is invalid
+  if (!photo || !photo.canvasState) {
+    return (
+      <div style={{ 
+        width: size === 'large' ? 400 : 240, 
+        height: size === 'large' ? 300 : 180,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f5f5f5',
+        border: '1px solid #ddd',
+        borderRadius: '8px',
+        color: '#666'
+      }}>
+        No photo data
+      </div>
+    );
+  }
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -42,39 +61,48 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
    * Initialize and crop the original image
    */
   useEffect(() => {
-    if (photo.originalImage) {
-      const cropped = autoCropTo43(photo.originalImage);
-      setCroppedImage(cropped);
+    if (photo?.originalImage) {
+      try {
+        const cropped = autoCropTo43(photo.originalImage);
+        setCroppedImage(cropped);
+      } catch (error) {
+        console.error('Error cropping image:', error);
+        setCroppedImage(null);
+      }
     }
-  }, [photo.originalImage]);
+  }, [photo?.originalImage]);
 
   /**
    * Render the canvas when cropped image or canvas state changes
    */
   const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !croppedImage) return;
+    if (!canvas || !croppedImage || !photo?.canvasState) return;
 
-    // Clear and draw the image with current position and scale
-    drawImageOnCanvas(
-      canvas,
-      croppedImage,
-      photo.canvasState.position,
-      photo.canvasState.scale
-    );
+    try {
+      // Clear and draw the image with current position and scale
+      drawImageOnCanvas(
+        canvas,
+        croppedImage,
+        photo.canvasState.position,
+        photo.canvasState.scale
+      );
 
-    // Apply image adjustments
-    if (photo.canvasState.brightness !== 0 || photo.canvasState.contrast !== 1) {
-      applyImageAdjustments(canvas, {
-        brightness: photo.canvasState.brightness,
-        contrast: photo.canvasState.contrast,
-        scale: photo.canvasState.scale
-      });
+      // Apply image adjustments
+      if (photo.canvasState.brightness !== 0 || photo.canvasState.contrast !== 1) {
+        applyImageAdjustments(canvas, {
+          brightness: photo.canvasState.brightness,
+          contrast: photo.canvasState.contrast,
+          scale: photo.canvasState.scale
+        });
+      }
+
+      // Draw the label
+      drawLabel(canvas, label, 'bottom-left');
+    } catch (error) {
+      console.error('Error rendering canvas:', error);
     }
-
-    // Draw the label
-    drawLabel(canvas, label, 'bottom-left');
-  }, [croppedImage, photo.canvasState, label]);
+  }, [croppedImage, photo?.canvasState, label]);
 
   /**
    * Initialize canvas and render when component mounts
@@ -104,7 +132,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
    * Handle mouse down - start dragging
    */
   const handleMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!croppedImage) return;
+    if (!croppedImage || !photo?.canvasState) return;
     
     const canvas = canvasRef.current!;
     const mousePos = getCanvasMousePosition(canvas, event.nativeEvent);
@@ -118,7 +146,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
    * Handle mouse move - update position while dragging
    */
   const handleMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging || !croppedImage) return;
+    if (!isDragging || !croppedImage || !photo?.canvasState) return;
 
     const canvas = canvasRef.current!;
     const mousePos = getCanvasMousePosition(canvas, event.nativeEvent);
@@ -158,7 +186,7 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
    * Handle zoom/scale changes
    */
   const handleScaleChange = (newScale: number) => {
-    if (!croppedImage) return;
+    if (!croppedImage || !photo?.canvasState) return;
 
     const clampedScale = Math.min(3, Math.max(0.1, newScale));
     
