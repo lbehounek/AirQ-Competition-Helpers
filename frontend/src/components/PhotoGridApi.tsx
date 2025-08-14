@@ -34,6 +34,7 @@ interface PhotoGridApiProps {
   onPhotoUpdate: (photoId: string, canvasState: any) => void;
   onPhotoRemove: (photoId: string) => void;
   onPhotoClick?: (photo: ApiPhoto) => void;
+  labelOffset?: number; // Offset for label sequence (e.g., set2 continues from where set1 left off)
 }
 
 interface GridSlot {
@@ -53,11 +54,12 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   setKey,
   onPhotoUpdate,
   onPhotoRemove,
-  onPhotoClick
+  onPhotoClick,
+  labelOffset = 0
 }) => {
   // Create 9 grid slots (3x3)
   const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
-    const label = String.fromCharCode(65 + index); // A, B, C, ..., I
+    const label = String.fromCharCode(65 + labelOffset + index); // A, B, C, ... or continue from previous set
     const photo = photoSet.photos[index] || null;
     
     return {

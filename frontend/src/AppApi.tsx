@@ -133,7 +133,7 @@ function AppApi() {
     }
 
     try {
-      // Add labels to photos
+      // Add labels to photos - Set 2 continues sequence from Set 1
       const set1WithLabels = {
         ...session.sets.set1,
         photos: session.sets.set1.photos.map((photo, index) => ({
@@ -142,11 +142,12 @@ function AppApi() {
         }))
       };
 
+      const set1Count = session.sets.set1.photos.length;
       const set2WithLabels = {
         ...session.sets.set2,
         photos: session.sets.set2.photos.map((photo, index) => ({
           ...photo,
-          label: String.fromCharCode(65 + index) // A, B, C...
+          label: String.fromCharCode(65 + set1Count + index) // Continue from where Set 1 left off
         }))
       };
 
@@ -425,6 +426,7 @@ function AppApi() {
               <PhotoGridApi
                 photoSet={session.sets.set2}
                 setKey="set2"
+                labelOffset={session.sets.set1.photos.length} // Continue sequence from Set 1
                 onPhotoUpdate={(photoId, canvasState) =>
                   handlePhotoUpdate('set2', photoId, canvasState)
                 }
