@@ -111,21 +111,57 @@ const renderPhotoOnCanvas = (
     y = (canvas.height - displayHeight) / 2;
   }
   
-  // Apply adjustments and draw with display dimensions
-  ctx.save();
-  const brightnessValue = 1 + canvasState.brightness / 100;
-  const contrastValue = canvasState.contrast;
-  const filterString = `brightness(${brightnessValue}) contrast(${contrastValue})`;
+  // Create a temporary canvas for image processing
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = Math.ceil(displayWidth);
+  tempCanvas.height = Math.ceil(displayHeight);
+  const tempCtx = tempCanvas.getContext('2d');
+  if (!tempCtx) {
+    // Fallback: just draw without effects
+    ctx.drawImage(croppedImage, x, y, displayWidth, displayHeight);
+    return;
+  }
   
-  console.log('🎨 Applying filters:', { 
-    brightness: canvasState.brightness, 
-    contrast: canvasState.contrast, 
-    filterString 
-  });
+  // Draw the image to temp canvas
+  tempCtx.drawImage(croppedImage, 0, 0, displayWidth, displayHeight);
   
-  ctx.filter = filterString;
-  ctx.drawImage(croppedImage, x, y, displayWidth, displayHeight);
-  ctx.restore();
+  // Apply brightness and contrast adjustments on temp canvas
+  if (canvasState.brightness !== 0 || canvasState.contrast !== 1) {
+    try {
+      const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const data = imageData.data;
+      
+      // Calculate adjustment factors
+      // Brightness: -100 to 100 -> multiply by 2.55 to get -255 to 255
+      const brightnessAdjust = canvasState.brightness * 2.55;
+      // Contrast: 0.5 to 2.0 (where 1 is no change)
+      const contrastFactor = canvasState.contrast;
+      
+      for (let i = 0; i < data.length; i += 4) {
+        // Skip transparent pixels
+        if (data[i + 3] === 0) continue;
+        
+        // Apply contrast first, then brightness
+        // Contrast formula: newValue = (oldValue - 128) * contrast + 128
+        data[i] = (data[i] - 128) * contrastFactor + 128 + brightnessAdjust;     // Red
+        data[i + 1] = (data[i + 1] - 128) * contrastFactor + 128 + brightnessAdjust; // Green
+        data[i + 2] = (data[i + 2] - 128) * contrastFactor + 128 + brightnessAdjust; // Blue
+        
+        // Clamp values to 0-255
+        data[i] = Math.max(0, Math.min(255, data[i]));
+        data[i + 1] = Math.max(0, Math.min(255, data[i + 1]));
+        data[i + 2] = Math.max(0, Math.min(255, data[i + 2]));
+      }
+      
+      tempCtx.putImageData(imageData, 0, 0);
+    } catch (error) {
+      console.error('Error applying brightness/contrast adjustments:', error);
+      // If we can't apply effects (CORS etc), just use the original image
+    }
+  }
+  
+  // Draw the processed image from temp canvas to main canvas
+  ctx.drawImage(tempCanvas, x, y);
   
   // Draw label
   const fontSize = canvas.width > 400 ? 60 : 48;
