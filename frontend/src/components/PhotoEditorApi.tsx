@@ -567,7 +567,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       isFirstInSet,
       setName,
       currentRatio.ratio,
-      canvasSize.height
+      BASE_WIDTH / currentRatio.ratio  // Always use BASE dimensions for consistent cropping
     );
 
     // Atomically update the visible canvas - no distortion flash
