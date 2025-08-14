@@ -64,6 +64,10 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   // Local state for immediate UI feedback
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
 
+  // Provide default values for new properties that might not exist in old sessions
+  const sharpness = photo.canvasState.sharpness || 0;
+  const whiteBalance = photo.canvasState.whiteBalance || { temperature: 0, tint: 0, auto: false };
+
   // Sync with photo state changes
   useEffect(() => {
     setLocalLabelPosition(photo.canvasState.labelPosition);
@@ -127,7 +131,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     onUpdate({
       ...photo.canvasState,
       whiteBalance: {
-        ...(photo.canvasState.whiteBalance || { temperature: 0, tint: 0, auto: false }),
+        ...whiteBalance,
         temperature: newTemperature,
         auto: false // Disable auto when manually adjusting
       }
@@ -138,7 +142,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     onUpdate({
       ...photo.canvasState,
       whiteBalance: {
-        ...(photo.canvasState.whiteBalance || { temperature: 0, tint: 0, auto: false }),
+        ...whiteBalance,
         tint: newTint,
         auto: false // Disable auto when manually adjusting
       }
@@ -393,11 +397,11 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   Sharpness
                 </Typography>
                 <Typography variant="body2" color="primary" fontWeight={600}>
-                  {photo.canvasState.sharpness || 0}
+                  {sharpness}
                 </Typography>
               </Box>
               <Slider
-                value={photo.canvasState.sharpness || 0}
+                value={sharpness}
                 min={0}
                 max={100}
                 step={5}
@@ -420,7 +424,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             {/* Auto White Balance Button */}
             <Box sx={{ mb: 3 }}>
               <Button
-                variant={photo.canvasState.whiteBalance?.auto ? "contained" : "outlined"}
+                variant={whiteBalance.auto ? "contained" : "outlined"}
                 startIcon={<AutoAwesome />}
                 onClick={handleAutoWhiteBalance}
                 fullWidth
@@ -439,18 +443,18 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   Temperature (Blue ↔ Yellow)
                 </Typography>
                 <Typography variant="body2" color="primary" fontWeight={600}>
-                  {photo.canvasState.whiteBalance?.temperature || 0}
+                  {whiteBalance.temperature}
                 </Typography>
               </Box>
               <Slider
-                value={photo.canvasState.whiteBalance?.temperature || 0}
+                value={whiteBalance.temperature}
                 min={-100}
                 max={100}
                 step={5}
                 onChange={(_, value) => handleWhiteBalanceTemperatureChange(value as number)}
                 color="primary"
                 size="small"
-                disabled={photo.canvasState.whiteBalance?.auto}
+                disabled={whiteBalance.auto}
                 sx={{
                   '& .MuiSlider-track': {
                     background: 'linear-gradient(90deg, #4FC3F7 0%, #FFE082 100%)'
@@ -466,18 +470,18 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   Tint (Green ↔ Magenta)
                 </Typography>
                 <Typography variant="body2" color="primary" fontWeight={600}>
-                  {photo.canvasState.whiteBalance?.tint || 0}
+                  {whiteBalance.tint}
                 </Typography>
               </Box>
               <Slider
-                value={photo.canvasState.whiteBalance?.tint || 0}
+                value={whiteBalance.tint}
                 min={-100}
                 max={100}
                 step={5}
                 onChange={(_, value) => handleWhiteBalanceTintChange(value as number)}
                 color="primary"
                 size="small"
-                disabled={photo.canvasState.whiteBalance?.auto}
+                disabled={whiteBalance.auto}
                 sx={{
                   '& .MuiSlider-track': {
                     background: 'linear-gradient(90deg, #81C784 0%, #E91E63 100%)'

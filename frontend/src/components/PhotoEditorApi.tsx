@@ -135,7 +135,7 @@ const renderPhotoOnCanvas = (
         canvasState.whiteBalance?.temperature !== 0 || 
         canvasState.whiteBalance?.tint !== 0) {
       
-      if (canvasState.whiteBalance.auto) {
+      if (canvasState.whiteBalance?.auto) {
         // Auto white balance: Calculate average color and neutralize
         let rSum = 0, gSum = 0, bSum = 0, count = 0;
         
@@ -166,8 +166,8 @@ const renderPhotoOnCanvas = (
         }
       } else {
         // Manual white balance adjustments
-        const temp = canvasState.whiteBalance.temperature || 0;
-        const tint = canvasState.whiteBalance.tint || 0;
+        const temp = canvasState.whiteBalance?.temperature || 0;
+        const tint = canvasState.whiteBalance?.tint || 0;
         
         // Temperature: negative = blue, positive = yellow
         const rTemp = temp > 0 ? temp * 1.5 : 0;
