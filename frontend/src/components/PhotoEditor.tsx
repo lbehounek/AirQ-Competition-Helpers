@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { Box, Tooltip } from '@mui/material';
 import type { Photo } from '../types';
 import { 
   autoCropTo43, 
@@ -244,112 +245,61 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   };
 
   return (
-    <div className="relative group">
+    <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
       {/* Canvas */}
       <canvas
         ref={canvasRef}
-        className={`border border-gray-300 rounded ${
-          isDragging ? 'cursor-grabbing' : 'cursor-grab'
-        } ${size === 'grid' ? 'w-full h-full' : ''}`}
+        style={{
+          width: size === 'grid' ? '100%' : 'auto',
+          height: size === 'grid' ? '100%' : 'auto',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          border: '1px solid',
+          borderColor: size === 'grid' ? 'transparent' : '#e0e0e0',
+          borderRadius: '4px',
+          display: 'block'
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       />
 
-      {/* Control overlay - only show on hover for grid size */}
-      <div className={`absolute inset-0 bg-black bg-opacity-50 transition-opacity ${
-        size === 'grid' 
-          ? 'opacity-0 group-hover:opacity-100' 
-          : 'opacity-0'
-      }`}>
-        <div className="absolute top-2 right-2 flex gap-1">
-          {/* Remove button */}
-          <button
-            onClick={onRemove}
-            className="w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 transition-colors"
-            title="Remove photo"
-          >
-            ×
-          </button>
-        </div>
-      </div>
-
-      {/* Large size controls */}
-      {size === 'large' && (
-        <div className="mt-4 space-y-4">
-          {/* Scale control */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Zoom: {Math.round(photo.canvasState.scale * 100)}%
-            </label>
-            <input
-              type="range"
-              min={0.1}
-              max={3}
-              step={0.1}
-              value={photo.canvasState.scale}
-              onChange={(e) => handleScaleChange(parseFloat(e.target.value))}
-              className="w-full"
-            />
-          </div>
-
-          {/* Brightness control */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Brightness: {photo.canvasState.brightness > 0 ? '+' : ''}{photo.canvasState.brightness}
-            </label>
-            <input
-              type="range"
-              min={-100}
-              max={100}
-              step={1}
-              value={photo.canvasState.brightness}
-              onChange={(e) => handleBrightnessChange(parseInt(e.target.value))}
-              className="w-full"
-            />
-          </div>
-
-          {/* Contrast control */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contrast: {Math.round(photo.canvasState.contrast * 100)}%
-            </label>
-            <input
-              type="range"
-              min={0.5}
-              max={2}
-              step={0.1}
-              value={photo.canvasState.contrast}
-              onChange={(e) => handleContrastChange(parseFloat(e.target.value))}
-              className="w-full"
-            />
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleReset}
-              className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600 transition-colors"
-            >
-              Reset
-            </button>
-            <button
-              onClick={onRemove}
-              className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600 transition-colors"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Photo info overlay for grid */}
+      {/* Grid size hover tooltip */}
       {size === 'grid' && (
-        <div className="absolute bottom-1 left-1 bg-black bg-opacity-75 text-white text-xs px-1 rounded">
-          {label}
-        </div>
+        <Tooltip title={`Photo ${label} - Drag to reposition`} placement="top">
+          <Box sx={{ 
+            position: 'absolute', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            pointerEvents: 'none' 
+          }} />
+        </Tooltip>
       )}
-    </div>
+
+      {/* Controls are now handled by the separate PhotoControls component */}
+
+      {/* Photo label overlay for grid - clean Material UI styling */}
+      {size === 'grid' && (
+        <Box sx={{
+          position: 'absolute',
+          bottom: 4,
+          left: 4,
+          bgcolor: 'rgba(0, 0, 0, 0.7)',
+          color: 'white',
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          px: 1,
+          py: 0.25,
+          borderRadius: 1,
+          pointerEvents: 'none'
+        }}>
+          {label}
+        </Box>
+      )}
+    </Box>
   );
 };

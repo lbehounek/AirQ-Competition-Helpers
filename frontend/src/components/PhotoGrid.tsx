@@ -9,13 +9,15 @@ interface PhotoGridProps {
   setKey: 'set1' | 'set2';
   onPhotoUpdate: (photoId: string, canvasState: any) => void;
   onPhotoRemove: (photoId: string) => void;
+  onPhotoClick?: (photo: any) => void;
 }
 
 export const PhotoGrid: React.FC<PhotoGridProps> = ({
   photoSet,
   setKey,
   onPhotoUpdate,
-  onPhotoRemove
+  onPhotoRemove,
+  onPhotoClick
 }) => {
   // Create array of 9 slots (3x3 grid)
   const gridSlots = Array.from({ length: 9 }, (_, index) => {
@@ -66,13 +68,18 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
             }}
           >
             {slot.photo ? (
-              <PhotoEditor
-                photo={slot.photo}
-                label={slot.label}
-                onUpdate={(canvasState) => onPhotoUpdate(slot.photo!.id, canvasState)}
-                onRemove={() => onPhotoRemove(slot.photo!.id)}
-                size="grid" // Small size for grid view
-              />
+              <Box
+                onClick={() => onPhotoClick && onPhotoClick(slot.photo!)}
+                sx={{ cursor: 'pointer', width: '100%', height: '100%' }}
+              >
+                <PhotoEditor
+                  photo={slot.photo}
+                  label={slot.label}
+                  onUpdate={(canvasState) => onPhotoUpdate(slot.photo!.id, canvasState)}
+                  onRemove={() => onPhotoRemove(slot.photo!.id)}
+                  size="grid" // Small size for grid view
+                />
+              </Box>
             ) : (
               <PhotoGridSlotEmpty 
                 label={slot.label}

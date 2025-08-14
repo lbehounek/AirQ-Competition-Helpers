@@ -186,6 +186,7 @@ function App() {
                   handlePhotoUpdate('set1', photoId, canvasState)
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
+                onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
               />
             </Paper>
           )}
@@ -246,6 +247,7 @@ function App() {
                   handlePhotoUpdate('set2', photoId, canvasState)
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
+                onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
               />
             </Paper>
           )}
