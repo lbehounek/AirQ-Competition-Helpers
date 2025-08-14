@@ -59,6 +59,7 @@ function AppApi() {
     resetSession,
     clearError,
     checkBackendHealth,
+    refreshSession,
     getSessionStats
   } = usePhotoSessionApi();
 
@@ -79,17 +80,18 @@ function AppApi() {
   };
 
   const handlePhotoUpdate = (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
+    // Update the backend first
     updatePhotoState(setKey, photoId, canvasState);
 
-    // Update selected photo if it's the one being edited
-    if (selectedPhoto?.photo.id === photoId && session) {
-      const updatedPhoto = session.sets[setKey].photos.find(p => p.id === photoId);
-      if (updatedPhoto) {
-        setSelectedPhoto({
-          ...selectedPhoto,
-          photo: updatedPhoto as ApiPhoto
-        });
-      }
+    // Optimistically update selected photo immediately for instant UI feedback
+    if (selectedPhoto?.photo.id === photoId) {
+      setSelectedPhoto({
+        ...selectedPhoto,
+        photo: {
+          ...selectedPhoto.photo,
+          canvasState: { ...selectedPhoto.photo.canvasState, ...canvasState }
+        }
+      });
     }
   };
 
@@ -420,7 +422,11 @@ function AppApi() {
       {/* Photo Editor Modal */}
       <Modal
         open={!!selectedPhoto}
-        onClose={() => setSelectedPhoto(null)}
+        onClose={() => {
+          setSelectedPhoto(null);
+          // Immediately refresh session to sync grid with modal changes
+          refreshSession();
+        }}
         closeAfterTransition
         slots={{ backdrop: Backdrop }}
         slotProps={{
@@ -481,14 +487,14 @@ function AppApi() {
                   flex: 1,
                   overflow: 'hidden'
                 }}>
-                  {/* Photo Preview - Left Side */}
+                  {/* Photo Preview - Larger Left Side */}
                   <Box sx={{
-                    flex: '1 1 auto',
-                    p: 3,
+                    flex: { xs: '1 1 auto', lg: '2 1 auto' }, // More space on desktop
+                    p: { xs: 2, lg: 4 },
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    minHeight: { xs: '300px', lg: '500px' },
+                    minHeight: { xs: '400px', lg: '600px' }, // Bigger minimum height
                     bgcolor: 'grey.50'
                   }}>
                     <PhotoEditorApi
@@ -502,16 +508,15 @@ function AppApi() {
                     />
                   </Box>
 
-                  {/* Photo Controls - Right Side */}
+                  {/* Photo Controls - Smaller Right Side */}
                   <Box sx={{
-                    flex: '0 0 auto',
-                    width: { xs: '100%', lg: '380px' },
+                    flex: { xs: '1 1 auto', lg: '0 0 320px' }, // Fixed smaller width on desktop
                     borderLeft: { xs: 'none', lg: '1px solid' },
                     borderTop: { xs: '1px solid', lg: 'none' },
                     borderColor: 'divider',
                     bgcolor: 'background.default',
                     overflow: 'auto',
-                    maxHeight: { xs: '300px', lg: 'none' }
+                    maxHeight: { xs: '250px', lg: 'none' } // Less height on mobile
                   }}>
                     <PhotoControls
                       photo={selectedPhoto.photo as any} // Type compatibility

@@ -49,7 +49,7 @@ export const createPhotoFromFile = (file: File, setIndex: number, photoIndex: nu
     file,
     canvasState: {
       position: { x: 0, y: 0 },
-      scale: 1,
+      scale: 1.0, // 100% scale - fills canvas without white borders
       brightness: 0,
       contrast: 1,
       labelPosition: 'bottom-left' as const,

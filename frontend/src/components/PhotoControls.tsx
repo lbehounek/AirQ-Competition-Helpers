@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -44,10 +44,44 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   onUpdate,
   onRemove
 }) => {
+  // Local state for immediate UI feedback
+  const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
+
+  // Sync with photo state changes
+  useEffect(() => {
+    setLocalLabelPosition(photo.canvasState.labelPosition);
+  }, [photo.canvasState.labelPosition]);
+
   const handleScaleChange = (newScale: number) => {
+    // Ensure scale is at least 1.0 to prevent white borders
+    const clampedScale = Math.max(1.0, newScale);
+    
+    // If scale didn't actually change, don't update
+    if (Math.abs(clampedScale - photo.canvasState.scale) < 0.01) return;
+    
+    // Calculate center-based position adjustment for zoom
+    const oldScale = photo.canvasState.scale;
+    const scaleRatio = clampedScale / oldScale;
+    
+    // Base canvas dimensions for all position calculations
+    const canvasWidth = 300;
+    const canvasHeight = 225;
+    
+    // Calculate the center of the currently visible area
+    const visibleCenterX = -photo.canvasState.position.x + canvasWidth / 2;
+    const visibleCenterY = -photo.canvasState.position.y + canvasHeight / 2;
+    
+    // Calculate new position to keep the same center visible after scaling
+    const newPositionX = -(visibleCenterX * scaleRatio - canvasWidth / 2);
+    const newPositionY = -(visibleCenterY * scaleRatio - canvasHeight / 2);
+    
     onUpdate({
       ...photo.canvasState,
-      scale: newScale
+      scale: clampedScale,
+      position: {
+        x: newPositionX,
+        y: newPositionY
+      }
     });
   };
 
@@ -66,6 +100,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   };
 
   const handleLabelPositionChange = (position: LabelPosition) => {
+    // Update local state immediately for instant UI feedback
+    setLocalLabelPosition(position);
+    // Then update backend
     onUpdate({
       ...photo.canvasState,
       labelPosition: position
@@ -75,7 +112,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   const handleReset = () => {
     onUpdate({
       position: { x: 0, y: 0 },
-      scale: 1,
+      scale: 1.0, // Default 100% scale (fills canvas)
       brightness: 0,
       contrast: 1,
       labelPosition: 'bottom-left'
@@ -83,11 +120,11 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   };
 
   const quickScaleOptions = [
-    { label: '50%', value: 0.5 },
-    { label: '75%', value: 0.75 },
     { label: '100%', value: 1.0 },
+    { label: '125%', value: 1.25 },
     { label: '150%', value: 1.5 },
-    { label: '200%', value: 2.0 }
+    { label: '200%', value: 2.0 },
+    { label: '250%', value: 2.5 }
   ];
 
   return (
@@ -137,7 +174,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             }}>
               {/* Corner buttons */}
               {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as LabelPosition[]).map((position) => {
-                const isSelected = photo.canvasState.labelPosition === position;
+                const isSelected = localLabelPosition === position;
                 const [vertical, horizontal] = position.split('-');
                 
                 return (
@@ -184,7 +221,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
 
             {/* Current selection indicator */}
             <Chip
-              label={`Label: ${photo.canvasState.labelPosition}`}
+              label={`Label: ${localLabelPosition}`}
               color="primary"
               variant="outlined"
               size="small"
@@ -214,11 +251,11 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               </Box>
               
               <Slider
-                value={photo.canvasState.scale}
-                min={0.1}
-                max={3}
-                step={0.1}
+                value={Math.max(1.0, photo.canvasState.scale)}
                 onChange={(_, value) => handleScaleChange(value as number)}
+                min={1.0}
+                max={3}
+                step={0.05}
                 color="primary"
                 size="small"
                 sx={{ mb: 1 }}

@@ -51,11 +51,16 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
   const [imageError, setImageError] = useState(false);
+  
+  // Local state for smooth dragging and immediate label updates
+  const [localPosition, setLocalPosition] = useState(photo.canvasState.position);
+  const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
+  const pendingUpdateRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Canvas dimensions based on size
+  // Canvas dimensions based on size - larger for modal view
   const canvasSize = size === 'large'
-    ? { width: 400, height: 300 }
-    : { width: 300, height: 225 }; // 4:3 aspect ratio
+    ? { width: 600, height: 450 } // Much larger for modal
+    : { width: 300, height: 225 }; // Keep grid size same
 
   /**
    * Load image from URL
@@ -88,6 +93,15 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       img.onerror = null;
     };
   }, [photo.id, photo.sessionId]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+      }
+    };
+  }, []);
 
   /**
    * Auto-crop image to 4:3 aspect ratio
@@ -136,14 +150,17 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     labelText: string,
     position: Photo['canvasState']['labelPosition'] = 'bottom-left'
   ) => {
-    const fontSize = size === 'large' ? 20 : 16;
-    const padding = 8;
+    // 3x bigger font size
+    const fontSize = size === 'large' ? 60 : 48;
+    const padding = 12;
     
     ctx.save();
     ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.lineWidth = 3;
+    
+    // Pure white fill with thin black border
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 2; // Thin black border
     
     const metrics = ctx.measureText(labelText);
     const textWidth = metrics.width;
@@ -171,12 +188,47 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         break;
     }
     
-    // Draw text with outline
+    // Draw black outline first, then white text
     ctx.strokeText(labelText, x, y);
     ctx.fillText(labelText, x, y);
     
     ctx.restore();
   }, [size]);
+
+  // Sync local states when photo changes from external updates
+  useEffect(() => {
+    if (!isDragging) {
+      setLocalPosition(photo.canvasState.position);
+    }
+    setLocalLabelPosition(photo.canvasState.labelPosition);
+  }, [photo.canvasState.position, photo.canvasState.labelPosition, isDragging]);
+
+  // Update local position when scale changes (from zoom)
+  useEffect(() => {
+    if (!isDragging) {
+      setLocalPosition(photo.canvasState.position);
+    }
+  }, [photo.canvasState.scale, isDragging]);
+
+  // Force re-render when component props change (for grid sync after modal close)
+  useEffect(() => {
+    renderCanvas();
+  }, [photo.canvasState]);
+
+  /**
+   * Calculate minimum scale to fill canvas without white borders
+   */
+  const getMinimumScale = useCallback((croppedImage: HTMLCanvasElement) => {
+    if (!croppedImage) return 1;
+    
+    // Scale needed to fill width
+    const scaleForWidth = canvasSize.width / croppedImage.width;
+    // Scale needed to fill height  
+    const scaleForHeight = canvasSize.height / croppedImage.height;
+    
+    // Use the larger scale to ensure no white borders
+    return Math.max(scaleForWidth, scaleForHeight);
+  }, [canvasSize]);
 
   /**
    * Render the canvas
@@ -196,16 +248,37 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       // Auto-crop the loaded image
       const croppedImage = cropImageTo43(loadedImage);
       
-      // Calculate scaled dimensions
-      const scale = photo.canvasState.scale;
-      const scaledWidth = croppedImage.width * scale;
-      const scaledHeight = croppedImage.height * scale;
+      // Calculate minimum scale and ensure current scale is not below it
+      const minScale = getMinimumScale(croppedImage);
+      const actualScale = Math.max(photo.canvasState.scale, minScale);
       
-      // Position with constraints
-      const maxX = Math.max(0, scaledWidth - canvas.width);
-      const maxY = Math.max(0, scaledHeight - canvas.height);
-      const x = Math.max(-maxX, Math.min(0, photo.canvasState.position.x));
-      const y = Math.max(-maxY, Math.min(0, photo.canvasState.position.y));
+      // Calculate scaled dimensions
+      const scaledWidth = croppedImage.width * actualScale;
+      const scaledHeight = croppedImage.height * actualScale;
+      
+      // Use local position for smooth dragging, fallback to photo state
+      const currentPosition = isDragging ? localPosition : photo.canvasState.position;
+      
+      // Simple positioning - scale everything proportionally
+      const scaleRatio = canvas.width / 300; // Scale factor relative to base size
+      
+      let x = currentPosition.x * scaleRatio;
+      let y = currentPosition.y * scaleRatio;
+      
+      // Apply constraints
+      if (scaledWidth > canvas.width) {
+        const maxX = scaledWidth - canvas.width;
+        x = Math.max(-maxX, Math.min(0, x));
+      } else {
+        x = (canvas.width - scaledWidth) / 2;
+      }
+      
+      if (scaledHeight > canvas.height) {
+        const maxY = scaledHeight - canvas.height;
+        y = Math.max(-maxY, Math.min(0, y));
+      } else {
+        y = (canvas.height - scaledHeight) / 2;
+      }
       
       // Apply image adjustments
       ctx.save();
@@ -216,13 +289,13 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       
       ctx.restore();
       
-      // Draw the label
-      drawLabel(ctx, label, photo.canvasState.labelPosition || 'bottom-left');
+      // Draw the label using local state for immediate updates
+      drawLabel(ctx, label, localLabelPosition || 'bottom-left');
       
     } catch (error) {
       console.error('Error rendering canvas:', error);
     }
-  }, [loadedImage, photo?.canvasState, label, canvasSize, cropImageTo43, drawLabel]);
+  }, [loadedImage, photo?.canvasState, label, canvasSize, cropImageTo43, drawLabel, isDragging, localPosition, localLabelPosition, getMinimumScale]);
 
   /**
    * Re-render when dependencies change
@@ -235,6 +308,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
    * Mouse event handlers for dragging
    */
   const handleMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (size === 'grid') return; // No dragging in grid view - static preview only
     if (!loadedImage || !photo?.canvasState) return;
 
     const canvas = canvasRef.current!;
@@ -258,16 +332,54 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     const deltaX = x - dragStart.x;
     const deltaY = y - dragStart.y;
 
-    const newPosition = {
-      x: photo.canvasState.position.x + deltaX,
-      y: photo.canvasState.position.y + deltaY
+    // Scale deltas back to base coordinates
+    const scaleRatio = canvas.width / 300;
+    
+    let newPosition = {
+      x: localPosition.x + (deltaX / scaleRatio),
+      y: localPosition.y + (deltaY / scaleRatio)
     };
 
-    onUpdate({ ...photo.canvasState, position: newPosition });
+    // Apply constraints in base coordinate system
+    const croppedImage = cropImageTo43(loadedImage);
+    const minScale = getMinimumScale(croppedImage);
+    const actualScale = Math.max(photo.canvasState.scale, minScale);
+    const scaledWidth = croppedImage.width * actualScale;
+    const scaledHeight = croppedImage.height * actualScale;
+
+    // Constrain using base canvas size (300x225)
+    if (scaledWidth > 300) {
+      const maxX = scaledWidth - 300;
+      newPosition.x = Math.max(-maxX, Math.min(0, newPosition.x));
+    }
+    
+    if (scaledHeight > 225) {
+      const maxY = scaledHeight - 225;
+      newPosition.y = Math.max(-maxY, Math.min(0, newPosition.y));
+    }
+
+    // Update local state immediately for smooth dragging
+    setLocalPosition(newPosition);
     setDragStart({ x, y });
+    
+    // Debounce API calls during drag
+    if (pendingUpdateRef.current) {
+      clearTimeout(pendingUpdateRef.current);
+    }
+    
+    pendingUpdateRef.current = setTimeout(() => {
+      onUpdate({ ...photo.canvasState, position: newPosition });
+    }, 50); // Update backend every 50ms max during drag
   };
 
   const handleMouseUp = () => {
+    if (isDragging) {
+      // Immediately sync final position to backend
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+      }
+      onUpdate({ ...photo.canvasState, position: localPosition });
+    }
     setIsDragging(false);
   };
 
@@ -316,7 +428,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
           height: size === 'grid' ? '100%' : 'auto',
           maxWidth: '100%',
           maxHeight: '100%',
-          cursor: isDragging ? 'grabbing' : 'grab',
+          cursor: size === 'grid' ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
           border: '1px solid',
           borderColor: size === 'grid' ? 'transparent' : '#e0e0e0',
           borderRadius: '4px',
@@ -330,7 +442,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
       {/* Grid size hover tooltip */}
       {size === 'grid' && (
-        <Tooltip title={`Photo ${label} - Drag to reposition`} placement="top">
+        <Tooltip title={`Photo ${label} - Click to edit`} placement="top">
           <Box sx={{
             position: 'absolute',
             top: 0,
@@ -342,24 +454,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         </Tooltip>
       )}
 
-      {/* Photo label overlay for grid - clean Material UI styling */}
-      {size === 'grid' && (
-        <Box sx={{
-          position: 'absolute',
-          bottom: 4,
-          left: 4,
-          bgcolor: 'rgba(0, 0, 0, 0.7)',
-          color: 'white',
-          fontSize: '0.75rem',
-          fontWeight: 600,
-          px: 1,
-          py: 0.25,
-          borderRadius: 1,
-          pointerEvents: 'none'
-        }}>
-          {label}
-        </Box>
-      )}
+      {/* Remove duplicate label overlay - canvas label is sufficient */}
     </Box>
   );
 };
