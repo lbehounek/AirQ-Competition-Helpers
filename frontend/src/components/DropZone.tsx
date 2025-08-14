@@ -4,14 +4,11 @@ import {
   Box, 
   Typography, 
   Paper, 
-  Chip, 
   CircularProgress,
-  Alert,
-  Stack
+  Alert
 } from '@mui/material';
 import { 
   CloudUpload, 
-  Image as ImageIcon, 
   CheckCircle, 
   Error as ErrorIcon 
 } from '@mui/icons-material';
@@ -219,47 +216,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
         )}
       </Paper>
 
-      {/* Current Photos Preview */}
-      {currentPhotoCount > 0 && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Current photos in {setName}:
-          </Typography>
-          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-            {Array.from({ length: currentPhotoCount }, (_, i) => (
-              <Chip
-                key={i}
-                label={String.fromCharCode(65 + i)}
-                color="primary"
-                variant="filled"
-                icon={<ImageIcon />}
-                sx={{ 
-                  minWidth: 48, 
-                  height: 48,
-                  '& .MuiChip-label': { 
-                    fontWeight: 600, 
-                    fontSize: '0.875rem' 
-                  } 
-                }}
-              />
-            ))}
-            {Array.from({ length: availableSlots }, (_, i) => (
-              <Chip
-                key={`empty-${i}`}
-                label="?"
-                variant="outlined"
-                sx={{ 
-                  minWidth: 48, 
-                  height: 48,
-                  borderStyle: 'dashed',
-                  color: 'text.secondary',
-                  borderColor: 'grey.400'
-                }}
-              />
-            ))}
-          </Stack>
-        </Box>
-      )}
+
     </Box>
   );
 };
