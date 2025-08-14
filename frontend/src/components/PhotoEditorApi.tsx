@@ -786,7 +786,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   }
 
   return (
-    <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+    <Box sx={{ 
+      position: 'relative', 
+      width: size === 'large' ? largeCanvasSize.width : '100%',
+      height: size === 'large' ? largeCanvasSize.height : '100%'
+    }}>
       <canvas
         ref={canvasRef}
         data-photo-id={photo.id}

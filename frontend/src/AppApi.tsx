@@ -616,7 +616,6 @@ function AppApi() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    minHeight: { xs: '400px', lg: '600px' }, // Bigger minimum height
                     bgcolor: 'grey.50'
                   }}>
                     <PhotoEditorApi
