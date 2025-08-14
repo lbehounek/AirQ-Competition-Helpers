@@ -25,6 +25,7 @@ interface PhotoEditorApiProps {
   onUpdate: (canvasState: Photo['canvasState']) => void;
   onRemove: () => void;
   size?: 'grid' | 'large';
+  setKey?: 'set1' | 'set2'; // For PDF generation canvas identification
 }
 
 // UNIFIED RENDERING SYSTEM - Same logic for grid and modal
@@ -350,7 +351,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   label,
   onUpdate,
   onRemove,
-  size = 'grid'
+  size = 'grid',
+  setKey
 }) => {
   if (!photo || !photo.canvasState) {
     return (
@@ -748,6 +750,9 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
       <canvas
         ref={canvasRef}
+        data-photo-id={photo.id}
+        data-set-key={setKey}
+        data-label={label}
         style={{
           width: size === 'grid' ? '100%' : 'auto',
           height: size === 'grid' ? '100%' : 'auto',
