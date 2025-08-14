@@ -2,13 +2,12 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Box, Tooltip } from '@mui/material';
 import type { Photo } from '../types';
 import { 
-  initWebGLContext, 
   applyWebGLEffects, 
   isWebGLSupported,
-  getFragmentShaderForEffects,
   type WebGLContext,
   type ImageAdjustments 
 } from '../utils/webglUtils';
+import { useWebGLContext } from '../utils/webglContextManager';
 import { drawLabel } from '../utils/canvasUtils';
 
 interface ApiPhoto {
@@ -72,7 +71,8 @@ const renderPhotoOnCanvas = (
   localPosition?: { x: number; y: number },
   localLabelPosition?: Photo['canvasState']['labelPosition'],
   isDragging = false,
-  webglContext?: WebGLContext | null
+  webglContext?: WebGLContext | null,
+  webglManager?: { requestContext: () => WebGLContext | null; releaseContext: (ctx: WebGLContext) => void; isAvailable: boolean }
 ) => {
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -146,7 +146,16 @@ const renderPhotoOnCanvas = (
                          whiteBalance.temperature !== 0 || 
                          whiteBalance.tint !== 0;
 
-  if (needsProcessing && webglContext) {
+  // Request WebGL context on-demand only when processing is needed
+  let webglContextToUse = webglContext;
+  let shouldReleaseContext = false;
+  
+  if (needsProcessing && !webglContextToUse && webglManager && webglManager.isAvailable) {
+    webglContextToUse = webglManager.requestContext();
+    shouldReleaseContext = true; // Mark for release after processing
+  }
+
+  if (needsProcessing && webglContextToUse) {
     // Use WebGL acceleration
     try {
       const adjustments: ImageAdjustments = {
@@ -157,7 +166,13 @@ const renderPhotoOnCanvas = (
         tint: whiteBalance.tint
       };
       
-      const processedCanvas = applyWebGLEffects(tempCanvas, adjustments, webglContext);
+      const processedCanvas = applyWebGLEffects(tempCanvas, adjustments, webglContextToUse);
+      
+      // Release context if it was requested on-demand
+      if (shouldReleaseContext && webglManager) {
+        webglManager.releaseContext(webglContextToUse);
+      }
+      
       if (processedCanvas) {
         // Success! Use the WebGL-processed result
         ctx.drawImage(processedCanvas, x, y);
@@ -168,6 +183,10 @@ const renderPhotoOnCanvas = (
       }
     } catch (error) {
       console.warn('WebGL processing failed, falling back to CPU:', error);
+      // Release context if it was requested on-demand (in case of error)
+      if (shouldReleaseContext && webglManager) {
+        webglManager.releaseContext(webglContextToUse);
+      }
     }
   }
 
@@ -355,7 +374,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
   const pendingUpdateRef = useRef<NodeJS.Timeout | null>(null);
   
-  // WebGL context for accelerated image processing
+  // WebGL context management
+  const webglManager = useWebGLContext();
   const webglContextRef = useRef<WebGLContext | null>(null);
   const [webglSupported, setWebglSupported] = useState<boolean>(false);
 
@@ -421,34 +441,30 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       localPosition,
       localLabelPosition,
       isDragging,
-      webglContextRef.current
+      webglContextRef.current,
+      webglManager
     );
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager]);
 
   useEffect(() => {
     renderCanvas();
   }, [renderCanvas]);
 
-  // Initialize WebGL context
+  // Initialize WebGL support detection
   useEffect(() => {
-    const supported = isWebGLSupported();
-    setWebglSupported(supported);
-    
-    if (supported) {
-      // Initialize WebGL context for combined effects
-      const fragmentShader = getFragmentShaderForEffects(true); // Include sharpness
-      const context = initWebGLContext(canvasSize.width, canvasSize.height, fragmentShader);
-      webglContextRef.current = context;
-    }
+    setWebglSupported(isWebGLSupported());
+  }, []);
 
-    // Cleanup on unmount
+  // WebGL context lifecycle management
+  useEffect(() => {
+    // Cleanup on unmount - return context to pool if we have one
     return () => {
       if (webglContextRef.current) {
-        webglContextRef.current.cleanup();
+        webglManager.releaseContext(webglContextRef.current);
         webglContextRef.current = null;
       }
     };
-  }, [canvasSize.width, canvasSize.height]);
+  }, [webglManager]);
 
   // Mouse handlers
   const handleMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
