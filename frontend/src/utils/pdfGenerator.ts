@@ -18,7 +18,6 @@ interface ApiPhoto {
     labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   };
   label: string;
-  sessionId: string;
 }
 
 interface PhotoSet {
@@ -46,8 +45,8 @@ export const generatePDF = async (
     format: 'a4'
   });
 
-  // 3x3 grid layout with margins (0.5cm top/bottom for printer friendliness)
-  const topBottomMargin = 5; // 0.5cm
+  // 3x3 grid layout with printer-friendly margins
+  const topBottomMargin = 5; // 0.5cm for printer friendliness
   const sideMargin = 15;
   const spacing = 8;
   const gridWidth = pageWidth - (2 * sideMargin);
@@ -57,19 +56,16 @@ export const generatePDF = async (
   const cellWidth = (gridWidth - (2 * spacing)) / 3;
   const cellHeight = cellWidth * 0.75; // 4:3 aspect ratio
   
-  // Adjust grid height if needed to center vertically
+  // Center the grid vertically on the page (no title needed - set name is on first photo)
   const totalGridHeight = (3 * cellHeight) + (2 * spacing);
-  const verticalOffset = (gridHeight - totalGridHeight) / 2;
+  const verticalOffset = topBottomMargin + (gridHeight - totalGridHeight) / 2;
 
   const addPhotoSetToPage = (photoSet: PhotoSet, setKey: 'set1' | 'set2', isFirstPage: boolean = true) => {
     if (!isFirstPage) {
       pdf.addPage();
     }
     
-    // Add title
-    pdf.setFontSize(16);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text(photoSet.title || 'Photo Set', pageWidth / 2, topBottomMargin + 5, { align: 'center' });
+    // No title text - set name is shown on first photo
     
     // Create 9 slots (3x3 grid)
     for (let row = 0; row < 3; row++) {
@@ -79,7 +75,7 @@ export const generatePDF = async (
         
         // Calculate position
         const x = sideMargin + col * (cellWidth + spacing);
-        const y = topBottomMargin + 15 + verticalOffset + row * (cellHeight + spacing); // +15 for title offset
+        const y = verticalOffset + row * (cellHeight + spacing);
         
         if (photo) {
           try {
@@ -133,7 +129,6 @@ const findPhotoCanvas = (photoId: string, setKey: 'set1' | 'set2'): HTMLCanvasEl
   }
   
   // Fallback: Look for any canvas that might be related to this photo
-  // This is less reliable but might work if data attributes aren't set
   const allCanvases = document.querySelectorAll('canvas');
   for (const canvas of allCanvases) {
     // Check if canvas is in a container that might be related to this photo
@@ -147,8 +142,6 @@ const findPhotoCanvas = (photoId: string, setKey: 'set1' | 'set2'): HTMLCanvasEl
   console.warn(`Could not find canvas for photo ${photoId} in set ${setKey}`);
   return null;
 };
-
-// Legacy functions removed - now using direct canvas capture
 
 /**
  * Draw placeholder for failed images
@@ -170,5 +163,3 @@ const drawPlaceholder = (
   pdf.setTextColor(100, 100, 100);
   pdf.text(label, x + width/2, y + height/2, { align: 'center' });
 };
-
-// Empty slots are left completely blank - no frames or placeholders needed

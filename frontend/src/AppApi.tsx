@@ -33,6 +33,7 @@ import { TitleInput } from './components/TitleInput';
 import { PhotoEditorApi } from './components/PhotoEditorApi';
 import { PhotoControls } from './components/PhotoControls';
 import { generatePDF } from './utils/pdfGenerator';
+import { generatePDF } from './utils/pdfGenerator';
 
 interface ApiPhoto {
   id: string;
