@@ -23,7 +23,8 @@ import {
   Close,
   CheckCircle,
   CloudOff,
-  Refresh
+  Refresh,
+  PictureAsPdf
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
 import { DropZone } from './components/DropZone';
@@ -31,6 +32,7 @@ import { PhotoGridApi } from './components/PhotoGridApi';
 import { TitleInput } from './components/TitleInput';
 import { PhotoEditorApi } from './components/PhotoEditorApi';
 import { PhotoControls } from './components/PhotoControls';
+import { generatePDF } from './utils/pdfGenerator';
 
 interface ApiPhoto {
   id: string;
@@ -121,6 +123,37 @@ function AppApi() {
     // Close detailed editor if this photo was selected
     if (selectedPhoto?.photo.id === photoId) {
       setSelectedPhoto(null);
+    }
+  };
+
+  const handleGeneratePDF = async () => {
+    if (!session || !sessionId) {
+      console.error('No session available for PDF generation');
+      return;
+    }
+
+    try {
+      // Add labels to photos
+      const set1WithLabels = {
+        ...session.sets.set1,
+        photos: session.sets.set1.photos.map((photo, index) => ({
+          ...photo,
+          label: String.fromCharCode(65 + index) // A, B, C...
+        }))
+      };
+
+      const set2WithLabels = {
+        ...session.sets.set2,
+        photos: session.sets.set2.photos.map((photo, index) => ({
+          ...photo,
+          label: String.fromCharCode(65 + index) // A, B, C...
+        }))
+      };
+
+      await generatePDF(set1WithLabels, set2WithLabels, sessionId);
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      // Could add user notification here
     }
   };
 
@@ -425,8 +458,9 @@ function AppApi() {
             <Button
               variant="contained"
               color="success"
-              startIcon={<FileDownload />}
-              disabled={!stats.isComplete}
+              startIcon={<PictureAsPdf />}
+              onClick={handleGeneratePDF}
+              disabled={stats.totalPhotos === 0}
               size="large"
               sx={{
                 py: 1.5,
@@ -434,11 +468,11 @@ function AppApi() {
                 fontSize: '1.1rem',
                 minWidth: 180,
                 fontWeight: 600,
-                boxShadow: stats.isComplete ? 4 : 1,
+                boxShadow: stats.totalPhotos > 0 ? 4 : 1,
                 '&:hover': { boxShadow: 6 }
               }}
             >
-              Export PDF
+              Generate PDF
             </Button>
           </Box>
         </Paper>
