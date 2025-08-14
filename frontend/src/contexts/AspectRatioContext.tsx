@@ -12,15 +12,6 @@ export interface AspectRatioOption {
 
 export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
   {
-    id: '4:3',
-    name: '4:3 Classic',
-    ratio: 4 / 3,
-    widthRatio: 4,
-    heightRatio: 3,
-    cssRatio: '4/3',
-    description: 'Classic'
-  },
-  {
     id: '3:2',
     name: '3:2 DSLR',
     ratio: 3 / 2,
@@ -28,6 +19,15 @@ export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
     heightRatio: 2,
     cssRatio: '3/2',
     description: 'DSLR'
+  },
+  {
+    id: '4:3',
+    name: '4:3 Classic',
+    ratio: 4 / 3,
+    widthRatio: 4,
+    heightRatio: 3,
+    cssRatio: '4/3',
+    description: 'Classic'
   },
   {
     id: '16:9',
