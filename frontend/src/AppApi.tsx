@@ -80,18 +80,24 @@ function AppApi() {
   };
 
   const handlePhotoUpdate = (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
+    console.log('🔄 handlePhotoUpdate called:', { setKey, photoId, canvasState });
+    console.log('🔄 selectedPhoto ID:', selectedPhoto?.photo.id);
+    
     // Update the backend first
     updatePhotoState(setKey, photoId, canvasState);
 
     // Optimistically update selected photo immediately for instant UI feedback
     if (selectedPhoto?.photo.id === photoId) {
-      setSelectedPhoto({
+      console.log('🔄 Updating selectedPhoto with:', canvasState);
+      const newSelectedPhoto = {
         ...selectedPhoto,
         photo: {
           ...selectedPhoto.photo,
           canvasState: { ...selectedPhoto.photo.canvasState, ...canvasState }
         }
-      });
+      };
+      console.log('🔄 New canvasState:', newSelectedPhoto.photo.canvasState);
+      setSelectedPhoto(newSelectedPhoto);
     }
   };
 
@@ -519,7 +525,7 @@ function AppApi() {
                     maxHeight: { xs: '250px', lg: 'none' } // Less height on mobile
                   }}>
                     <PhotoControls
-                      photo={selectedPhoto.photo as any} // Type compatibility
+                      photo={selectedPhoto.photo}
                       label={selectedPhoto.label}
                       onUpdate={(canvasState) =>
                         handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)

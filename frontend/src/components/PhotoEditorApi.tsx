@@ -113,7 +113,17 @@ const renderPhotoOnCanvas = (
   
   // Apply adjustments and draw with display dimensions
   ctx.save();
-  ctx.filter = `brightness(${1 + canvasState.brightness / 100}) contrast(${canvasState.contrast})`;
+  const brightnessValue = 1 + canvasState.brightness / 100;
+  const contrastValue = canvasState.contrast;
+  const filterString = `brightness(${brightnessValue}) contrast(${contrastValue})`;
+  
+  console.log('🎨 Applying filters:', { 
+    brightness: canvasState.brightness, 
+    contrast: canvasState.contrast, 
+    filterString 
+  });
+  
+  ctx.filter = filterString;
   ctx.drawImage(croppedImage, x, y, displayWidth, displayHeight);
   ctx.restore();
   
@@ -259,7 +269,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       localLabelPosition,
       isDragging
     );
-  }, [loadedImage, photo?.canvasState, label, canvasSize, localPosition, localLabelPosition, isDragging]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging]);
 
   useEffect(() => {
     renderCanvas();

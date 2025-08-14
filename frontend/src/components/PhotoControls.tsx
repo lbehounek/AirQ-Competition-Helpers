@@ -30,7 +30,15 @@ import {
 import type { Photo } from '../types';
 
 interface PhotoControlsProps {
-  photo: Photo;
+  photo: {
+    canvasState: {
+      position: { x: number; y: number };
+      scale: number;
+      brightness: number;
+      contrast: number;
+      labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+    };
+  };
   label: string;
   onUpdate: (canvasState: Photo['canvasState']) => void;
   onRemove: () => void;
