@@ -169,11 +169,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   };
 
   const handleAutoWhiteBalance = () => {
+    // Set auto flag temporarily to trigger calculation
+    // The PhotoEditorApi component will calculate the actual values
     onUpdate({
       ...photo.canvasState,
       whiteBalance: {
-        temperature: 0,
-        tint: 0,
+        ...whiteBalance,
         auto: true
       }
     });
@@ -224,11 +225,15 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Tooltip title="Reset all adjustments">
-            <IconButton onClick={handleReset} color="warning" size="small">
-              <Refresh />
-            </IconButton>
-          </Tooltip>
+          <Button 
+            variant="outlined" 
+            color="warning" 
+            size="small"
+            startIcon={<Refresh />}
+            onClick={handleReset}
+          >
+            Reset All
+          </Button>
           <Tooltip title="Remove photo">
             <IconButton onClick={onRemove} color="error" size="small">
               <RestoreFromTrash />
@@ -331,9 +336,20 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <ZoomIn fontSize="small" />
                   Zoom
                 </Typography>
-                <Typography variant="body2" color="primary" fontWeight={600}>
-                  {Math.round(photo.canvasState.scale * 100)}%
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {Math.round(photo.canvasState.scale * 100)}%
+                  </Typography>
+                  <Tooltip title="Reset zoom">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleScaleChange(1.0)}
+                      sx={{ padding: 0.5 }}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </Box>
               
               <Slider
@@ -371,9 +387,20 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Brightness4 fontSize="small" />
                   Brightness
                 </Typography>
-                <Typography variant="body2" color="primary" fontWeight={600}>
-                  {photo.canvasState.brightness > 0 ? '+' : ''}{photo.canvasState.brightness}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {photo.canvasState.brightness > 0 ? '+' : ''}{photo.canvasState.brightness}
+                  </Typography>
+                  <Tooltip title="Reset brightness">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleBrightnessChange(0)}
+                      sx={{ padding: 0.5 }}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </Box>
               <Slider
                 value={photo.canvasState.brightness}
@@ -393,9 +420,20 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Contrast fontSize="small" />
                   Contrast
                 </Typography>
-                <Typography variant="body2" color="primary" fontWeight={600}>
-                  {Math.round(photo.canvasState.contrast * 100)}%
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {Math.round(photo.canvasState.contrast * 100)}%
+                  </Typography>
+                  <Tooltip title="Reset contrast">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleContrastChange(1)}
+                      sx={{ padding: 0.5 }}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </Box>
               <Slider
                 value={photo.canvasState.contrast}
@@ -415,9 +453,20 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <BlurOn fontSize="small" />
                   Sharpness
                 </Typography>
-                <Typography variant="body2" color="primary" fontWeight={600}>
-                  {sharpness}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {sharpness}
+                  </Typography>
+                  <Tooltip title="Reset sharpness">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleSharpnessChange(0)}
+                      sx={{ padding: 0.5 }}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </Box>
               <Slider
                 value={sharpness}
@@ -461,9 +510,21 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 <Typography variant="body2">
                   Temperature (Blue ↔ Yellow)
                 </Typography>
-                <Typography variant="body2" color="primary" fontWeight={600}>
-                  {whiteBalance.temperature}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {whiteBalance.temperature}
+                  </Typography>
+                  <Tooltip title="Reset temperature">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleWhiteBalanceTemperatureChange(0)}
+                      sx={{ padding: 0.5 }}
+                      disabled={whiteBalance.auto}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </Box>
               <Slider
                 value={whiteBalance.temperature}
@@ -488,9 +549,21 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 <Typography variant="body2">
                   Tint (Green ↔ Magenta)
                 </Typography>
-                <Typography variant="body2" color="primary" fontWeight={600}>
-                  {whiteBalance.tint}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {whiteBalance.tint}
+                  </Typography>
+                  <Tooltip title="Reset tint">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleWhiteBalanceTintChange(0)}
+                      sx={{ padding: 0.5 }}
+                      disabled={whiteBalance.auto}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </Box>
               <Slider
                 value={whiteBalance.tint}

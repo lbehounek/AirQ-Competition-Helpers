@@ -433,6 +433,90 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     }
   }, [photo.canvasState.scale, isDragging]);
 
+  // Handle auto white balance calculation
+  useEffect(() => {
+    if (!photo.canvasState.whiteBalance?.auto || !loadedImage || !canvasRef.current) return;
+
+    // Create a temporary canvas to analyze the image
+    const tempCanvas = document.createElement('canvas');
+    const croppedImage = cropImageTo43(loadedImage);
+    tempCanvas.width = croppedImage.width;
+    tempCanvas.height = croppedImage.height;
+    const tempCtx = getCanvasContext(tempCanvas);
+    
+    if (!tempCtx) return;
+    
+    tempCtx.drawImage(croppedImage, 0, 0);
+    
+    try {
+      const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const data = imageData.data;
+      
+      // Calculate average color values
+      let rSum = 0, gSum = 0, bSum = 0, count = 0;
+      
+      // Sample every 10th pixel for performance
+      for (let i = 0; i < data.length; i += 40) { // Skip 10 pixels (4 bytes per pixel)
+        if (data[i + 3] === 0) continue; // Skip transparent
+        rSum += data[i];
+        gSum += data[i + 1];
+        bSum += data[i + 2];
+        count++;
+      }
+      
+      if (count > 0) {
+        const rAvg = rSum / count;
+        const gAvg = gSum / count;
+        const bAvg = bSum / count;
+        const gray = (rAvg + gAvg + bAvg) / 3;
+        
+        // Calculate color temperature correction
+        // Red/Blue imbalance indicates temperature
+        const rbRatio = rAvg / bAvg;
+        let temperature = 0;
+        if (rbRatio > 1) {
+          // Image is too warm (red), need cooling (negative temperature)
+          temperature = -Math.min(100, (rbRatio - 1) * 50);
+        } else if (rbRatio < 1) {
+          // Image is too cool (blue), need warming (positive temperature)
+          temperature = Math.min(100, (1 - rbRatio) * 50);
+        }
+        
+        // Calculate tint correction
+        // Green imbalance indicates tint
+        const greenBalance = gAvg / gray;
+        let tint = 0;
+        if (greenBalance > 1) {
+          // Too much green, need magenta (positive tint)
+          tint = Math.min(100, (greenBalance - 1) * 50);
+        } else if (greenBalance < 1) {
+          // Too little green, need more green (negative tint)
+          tint = -Math.min(100, (1 - greenBalance) * 50);
+        }
+        
+        // Update with calculated values and turn off auto
+        onUpdate({
+          ...photo.canvasState,
+          whiteBalance: {
+            temperature: Math.round(temperature),
+            tint: Math.round(tint),
+            auto: false // Turn off auto so user can further adjust
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error calculating auto white balance:', error);
+      // Reset auto flag on error
+      onUpdate({
+        ...photo.canvasState,
+        whiteBalance: {
+          ...photo.canvasState.whiteBalance,
+          auto: false
+        }
+      });
+    }
+  }, [photo.canvasState.whiteBalance?.auto, loadedImage, onUpdate]);
+
   // Render canvas
   const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current;
