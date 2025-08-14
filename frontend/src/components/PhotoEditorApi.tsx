@@ -44,22 +44,28 @@ const cropImageToAspectRatio = (image: HTMLImageElement, targetAspect: number, c
   
   const imageAspect = image.width / image.height;
   
+  // Calculate what part of the source image to crop to achieve target aspect ratio
   let sourceWidth = image.width;
   let sourceHeight = image.height;
   let sourceX = 0;
   let sourceY = 0;
   
   if (imageAspect > targetAspect) {
-    sourceWidth = image.height * targetAspect;
-    sourceX = (image.width - sourceWidth) / 2;
+    // Image is wider than target - crop width (keep full height)
+    sourceWidth = Math.round(image.height * targetAspect);
+    sourceX = Math.round((image.width - sourceWidth) / 2);
   } else if (imageAspect < targetAspect) {
-    sourceHeight = image.width / targetAspect;
-    sourceY = (image.height - sourceHeight) / 2;
+    // Image is taller than target - crop height (keep full width)  
+    sourceHeight = Math.round(image.width / targetAspect);
+    sourceY = Math.round((image.height - sourceHeight) / 2);
   }
   
+  // Set canvas to the exact dimensions expected by calling code
   canvas.width = canvasSize.width;
   canvas.height = canvasSize.height;
   
+  // Draw the cropped portion of the source image to fill the canvas
+  // The cropped source portion already has the correct aspect ratio
   ctx.drawImage(
     image,
     sourceX, sourceY, sourceWidth, sourceHeight,
