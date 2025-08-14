@@ -89,6 +89,8 @@ function AppApi() {
     photo: ApiPhoto;
     setKey: 'set1' | 'set2';
     label: string;
+    isFirstInSet: boolean;
+    setName: string;
   } | null>(null);
 
   const stats = getSessionStats();
@@ -96,9 +98,23 @@ function AppApi() {
   const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
     const setPhotos = session?.sets[setKey].photos || [];
     const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
-    const label = String.fromCharCode(65 + photoIndex); // A, B, C, etc.
+    
+    // Calculate label with continuous sequence across sets
+    let label: string;
+    if (setKey === 'set1') {
+      label = String.fromCharCode(65 + photoIndex); // A, B, C, etc.
+    } else {
+      const set1Count = session?.sets.set1.photos.length || 0;
+      label = String.fromCharCode(65 + set1Count + photoIndex); // Continue from set1
+    }
 
-    setSelectedPhoto({ photo, setKey, label });
+    setSelectedPhoto({ 
+      photo, 
+      setKey, 
+      label, 
+      isFirstInSet: photoIndex === 0,
+      setName: session?.sets[setKey].title || (setKey === 'set1' ? 'Set 1' : 'Set 2')
+    });
   };
 
   const handlePhotoUpdate = (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
@@ -529,8 +545,8 @@ function AppApi() {
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: { xs: '95vw', sm: '90vw', md: '85vw', lg: '80vw' },
-            maxWidth: '1200px',
+            width: { xs: '95vw', sm: '90vw', md: '90vw', lg: '85vw' },
+            maxWidth: '1400px',
             maxHeight: '90vh',
             bgcolor: 'background.paper',
             borderRadius: 3,
@@ -592,6 +608,9 @@ function AppApi() {
                       }
                       onRemove={() => handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id)}
                       size="large"
+                      setKey={selectedPhoto.setKey}
+                      setName={selectedPhoto.setName}
+                      isFirstInSet={selectedPhoto.isFirstInSet}
                     />
                   </Box>
 

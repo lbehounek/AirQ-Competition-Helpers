@@ -46,11 +46,12 @@ export const generatePDF = async (
     format: 'a4'
   });
 
-  // 3x3 grid layout with margins
-  const margin = 15;
+  // 3x3 grid layout with margins (0.5cm top/bottom for printer friendliness)
+  const topBottomMargin = 5; // 0.5cm
+  const sideMargin = 15;
   const spacing = 8;
-  const gridWidth = pageWidth - (2 * margin);
-  const gridHeight = pageHeight - (2 * margin);
+  const gridWidth = pageWidth - (2 * sideMargin);
+  const gridHeight = pageHeight - (2 * topBottomMargin);
   
   // Calculate cell dimensions (4:3 aspect ratio)
   const cellWidth = (gridWidth - (2 * spacing)) / 3;
@@ -68,7 +69,7 @@ export const generatePDF = async (
     // Add title
     pdf.setFontSize(16);
     pdf.setFont('helvetica', 'bold');
-    pdf.text(photoSet.title || 'Photo Set', pageWidth / 2, margin / 2, { align: 'center' });
+    pdf.text(photoSet.title || 'Photo Set', pageWidth / 2, topBottomMargin + 5, { align: 'center' });
     
     // Create 9 slots (3x3 grid)
     for (let row = 0; row < 3; row++) {
@@ -77,8 +78,8 @@ export const generatePDF = async (
         const photo = photoSet.photos[index];
         
         // Calculate position
-        const x = margin + col * (cellWidth + spacing);
-        const y = margin + verticalOffset + row * (cellHeight + spacing);
+        const x = sideMargin + col * (cellWidth + spacing);
+        const y = topBottomMargin + 15 + verticalOffset + row * (cellHeight + spacing); // +15 for title offset
         
         if (photo) {
           try {
@@ -98,11 +99,8 @@ export const generatePDF = async (
             console.warn(`Failed to capture canvas for photo ${photo.id}:`, error);
             drawPlaceholder(pdf, x, y, cellWidth, cellHeight, photo.label);
           }
-        } else {
-          // Draw empty slot
-          const label = String.fromCharCode(65 + index); // A, B, C...
-          drawEmptySlot(pdf, x, y, cellWidth, cellHeight, label);
         }
+        // Note: Empty slots are left completely blank - no frame, no placeholder
       }
     }
   };
@@ -173,25 +171,4 @@ const drawPlaceholder = (
   pdf.text(label, x + width/2, y + height/2, { align: 'center' });
 };
 
-/**
- * Draw empty slot
- */
-const drawEmptySlot = (
-  pdf: jsPDF,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  label: string
-): void => {
-  // Draw dashed border
-  pdf.setDrawColor(150, 150, 150);
-  pdf.setLineDashPattern([2, 2], 0);
-  pdf.rect(x, y, width, height);
-  pdf.setLineDashPattern([], 0); // Reset line dash
-  
-  // Draw label
-  pdf.setFontSize(20);
-  pdf.setTextColor(150, 150, 150);
-  pdf.text(label, x + width/2, y + height/2, { align: 'center' });
-};
+// Empty slots are left completely blank - no frames or placeholders needed

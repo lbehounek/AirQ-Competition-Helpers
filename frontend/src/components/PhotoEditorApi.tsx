@@ -8,7 +8,7 @@ import {
   type ImageAdjustments 
 } from '../utils/webglUtils';
 import { useWebGLContext } from '../utils/webglContextManager';
-import { drawLabel, getCanvasContext } from '../utils/canvasUtils';
+import { drawLabel, drawSetName, getCanvasContext } from '../utils/canvasUtils';
 
 interface ApiPhoto {
   id: string;
@@ -26,6 +26,8 @@ interface PhotoEditorApiProps {
   onRemove: () => void;
   size?: 'grid' | 'large';
   setKey?: 'set1' | 'set2'; // For PDF generation canvas identification
+  setName?: string; // Set name to show on first photo
+  isFirstInSet?: boolean; // Whether this is the first photo in the set
 }
 
 // UNIFIED RENDERING SYSTEM - Same logic for grid and modal
@@ -77,7 +79,9 @@ const renderPhotoOnCanvas = (
   localLabelPosition?: Photo['canvasState']['labelPosition'],
   isDragging = false,
   webglContext?: WebGLContext | null,
-  webglManager?: { requestContext: () => WebGLContext | null; releaseContext: (ctx: WebGLContext) => void; isAvailable: boolean }
+  webglManager?: { requestContext: () => WebGLContext | null; releaseContext: (ctx: WebGLContext) => void; isAvailable: boolean },
+  isFirstInSet = false,
+  setName?: string
 ) => {
   const ctx = getCanvasContext(canvas);
   if (!ctx) {
@@ -344,6 +348,11 @@ const renderPhotoOnCanvas = (
   // Draw label on main canvas (for both WebGL and CPU paths)
   const labelPos = isDragging && localLabelPosition ? localLabelPosition : canvasState.labelPosition;
   drawLabel(canvas, label, labelPos);
+  
+  // Draw set name on first photo (bottom-right corner always)
+  if (isFirstInSet && setName) {
+    drawSetName(canvas, setName);
+  }
 };
 
 export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
@@ -352,7 +361,9 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   onUpdate,
   onRemove,
   size = 'grid',
-  setKey
+  setKey,
+  setName,
+  isFirstInSet = false
 }) => {
   if (!photo || !photo.canvasState) {
     return (
@@ -536,9 +547,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       localLabelPosition,
       isDragging,
       webglContextRef.current,
-      webglManager
+      webglManager,
+      isFirstInSet,
+      setName
     );
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, isFirstInSet, setName]);
 
   useEffect(() => {
     renderCanvas();

@@ -89,24 +89,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
           </Paper>
         ))}
       </Box>
-
-      {/* Grid Stats */}
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2 }}>
-        <Chip 
-          icon={<PhotoCamera />}
-          label={`Photos: ${photoSet.photos.length}/9`}
-          color="primary"
-          variant="outlined"
-          size="small"
-        />
-        <Chip 
-          icon={<ImageIcon />}
-          label={`Available: ${9 - photoSet.photos.length}`}
-          color="default"
-          variant="outlined"
-          size="small"
-        />
-      </Box>
     </Box>
   );
 };

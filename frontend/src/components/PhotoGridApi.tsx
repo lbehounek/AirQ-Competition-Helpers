@@ -1,6 +1,6 @@
 import React from 'react';
-import { Box, Typography, Paper, Chip } from '@mui/material';
-import { Image as ImageIcon, PhotoCamera } from '@mui/icons-material';
+import { Box, Typography, Paper } from '@mui/material';
+import { Image as ImageIcon } from '@mui/icons-material';
 import { PhotoEditorApi } from './PhotoEditorApi';
 
 interface ApiPhoto {
@@ -125,6 +125,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                   onRemove={() => onPhotoRemove(slot.photo!.id)}
                   size="grid" // Small size for grid view
                   setKey={setKey} // Pass setKey for PDF generation
+                  setName={photoSet.title}
+                  isFirstInSet={slot.index === 0} // First photo gets set name
                 />
                 {/* Hover overlay */}
                 <Box
@@ -164,24 +166,6 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
             )}
           </Paper>
         ))}
-      </Box>
-      
-      {/* Grid Stats */}
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', gap: 2 }}>
-        <Chip
-          icon={<PhotoCamera />}
-          label={`Photos: ${photoSet.photos.length}/9`}
-          color="primary"
-          variant="outlined"
-          size="small"
-        />
-        <Chip
-          icon={<ImageIcon />}
-          label={`Available: ${9 - photoSet.photos.length}`}
-          color="default"
-          variant="outlined"
-          size="small"
-        />
       </Box>
     </Box>
   );

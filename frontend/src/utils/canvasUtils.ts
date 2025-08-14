@@ -121,6 +121,41 @@ export const drawLabel = (
 };
 
 /**
+ * Draw set name in bottom-right corner of canvas
+ */
+export const drawSetName = (canvas: HTMLCanvasElement, setName: string): void => {
+  if (!isValidCanvas(canvas)) {
+    console.warn('Cannot draw set name on invalid canvas');
+    return;
+  }
+
+  const ctx = getCanvasContext(canvas);
+  if (!ctx) return;
+
+  // Calculate proportional scaling based on canvas size
+  const baseCanvasWidth = 300; // Base width for scaling calculations
+  const scaleFactor = canvas.width / baseCanvasWidth;
+  
+  // Set name styling (smaller and more subtle than photo label)
+  const baseFontSize = 24; // Smaller than photo label (48)
+  const fontSize = Math.round(baseFontSize * scaleFactor);
+  const padding = Math.round(8 * scaleFactor); // Smaller padding
+  
+  ctx.font = `${fontSize}px Arial`; // Not bold, more subtle
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; // Slightly transparent white
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)'; // Slightly transparent black outline
+  ctx.lineWidth = Math.max(1, Math.round(scaleFactor * 0.5));
+  
+  // Position in bottom-right corner (offset slightly from corner)
+  const textMetrics = ctx.measureText(setName);
+  const x = canvas.width - textMetrics.width - padding;
+  const y = canvas.height - fontSize - padding; // Offset by font size to position correctly
+  
+  ctx.strokeText(setName, x, y);
+  ctx.fillText(setName, x, y);
+};
+
+/**
  * Calculate mouse position relative to canvas
  */
 export const getCanvasMousePosition = (
