@@ -548,11 +548,14 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     const canvas = canvasRef.current;
     if (!canvas || !loadedImage || !photo?.canvasState) return;
 
-    canvas.width = canvasSize.width;
-    canvas.height = canvasSize.height;
+    // Create a temporary canvas for atomic rendering to prevent distortion flash
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvasSize.width;
+    tempCanvas.height = canvasSize.height;
 
+    // Render to temporary canvas first
     renderPhotoOnCanvas(
-      canvas,
+      tempCanvas,
       loadedImage,
       photo.canvasState,
       label,
@@ -566,6 +569,14 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       currentRatio.ratio,
       canvasSize.height
     );
+
+    // Atomically update the visible canvas - no distortion flash
+    canvas.width = canvasSize.width;
+    canvas.height = canvasSize.height;
+    const ctx = getCanvasContext(canvas);
+    if (ctx) {
+      ctx.drawImage(tempCanvas, 0, 0);
+    }
   }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, isFirstInSet, setName, currentRatio]);
 
   useEffect(() => {
