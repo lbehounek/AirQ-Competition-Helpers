@@ -275,13 +275,30 @@ export function applyWebGLEffects(
   }
 }
 
-// Check if WebGL is supported
+// Check if WebGL is supported (cached result to avoid creating contexts)
+let webglSupported: boolean | null = null;
+
 export function isWebGLSupported(): boolean {
+  if (webglSupported !== null) {
+    return webglSupported;
+  }
+
   try {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-    return !!gl;
+    webglSupported = !!gl;
+    
+    // Clean up the test context immediately
+    if (gl) {
+      const loseContext = gl.getExtension('WEBGL_lose_context');
+      if (loseContext) {
+        loseContext.loseContext();
+      }
+    }
+    
+    return webglSupported;
   } catch {
+    webglSupported = false;
     return false;
   }
 }

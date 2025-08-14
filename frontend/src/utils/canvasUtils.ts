@@ -1,5 +1,29 @@
 import type { CanvasSettings, DragState } from '../types';
 
+// Validate canvas element to prevent getContext errors
+export const isValidCanvas = (canvas: any): canvas is HTMLCanvasElement => {
+  return canvas && 
+         typeof canvas === 'object' && 
+         canvas.nodeType === Node.ELEMENT_NODE && 
+         canvas.tagName === 'CANVAS' &&
+         typeof canvas.getContext === 'function';
+};
+
+// Safe canvas context getter with validation
+export const getCanvasContext = (canvas: any): CanvasRenderingContext2D | null => {
+  if (!isValidCanvas(canvas)) {
+    console.warn('Invalid canvas element provided:', canvas);
+    return null;
+  }
+  
+  try {
+    return canvas.getContext('2d');
+  } catch (error) {
+    console.warn('Failed to get canvas context:', error);
+    return null;
+  }
+};
+
 /**
  * Standard canvas settings for the photo grid
  */
@@ -18,7 +42,11 @@ export const drawImageOnCanvas = (
   position: { x: number; y: number },
   scale: number = 1
 ): void => {
-  const ctx = canvas.getContext('2d')!;
+  const ctx = getCanvasContext(canvas);
+  if (!ctx) {
+    console.warn('Cannot draw on invalid canvas');
+    return;
+  }
   
   // Clear canvas
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -45,7 +73,11 @@ export const drawLabel = (
   label: string,
   position: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right' = 'bottom-left'
 ): void => {
-  const ctx = canvas.getContext('2d')!;
+  const ctx = getCanvasContext(canvas);
+  if (!ctx) {
+    console.warn('Cannot draw label on invalid canvas');
+    return;
+  }
   
   // Label styling
   ctx.font = '16px Arial';

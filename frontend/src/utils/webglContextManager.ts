@@ -115,8 +115,10 @@ export function getWebGLContextManager(): WebGLContextManager {
   if (!contextManager) {
     contextManager = new WebGLContextPool();
     
-    // Clean up on page unload
+    // Clean up on page unload and make globally available
     if (typeof window !== 'undefined') {
+      (window as any).webglManager = contextManager;
+      
       window.addEventListener('beforeunload', () => {
         contextManager?.cleanup();
       });

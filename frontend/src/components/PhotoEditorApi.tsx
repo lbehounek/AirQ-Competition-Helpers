@@ -8,7 +8,7 @@ import {
   type ImageAdjustments 
 } from '../utils/webglUtils';
 import { useWebGLContext } from '../utils/webglContextManager';
-import { drawLabel } from '../utils/canvasUtils';
+import { drawLabel, getCanvasContext } from '../utils/canvasUtils';
 
 interface ApiPhoto {
   id: string;
@@ -33,7 +33,11 @@ const BASE_HEIGHT = 225;
 
 const cropImageTo43 = (image: HTMLImageElement): HTMLCanvasElement => {
   const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d')!;
+  const ctx = getCanvasContext(canvas);
+  if (!ctx) {
+    console.warn('Cannot crop image: invalid canvas context');
+    return canvas; // Return empty canvas as fallback
+  }
   
   const targetAspect = 4 / 3;
   const imageAspect = image.width / image.height;
@@ -74,7 +78,11 @@ const renderPhotoOnCanvas = (
   webglContext?: WebGLContext | null,
   webglManager?: { requestContext: () => WebGLContext | null; releaseContext: (ctx: WebGLContext) => void; isAvailable: boolean }
 ) => {
-  const ctx = canvas.getContext('2d')!;
+  const ctx = getCanvasContext(canvas);
+  if (!ctx) {
+    console.warn('Cannot render photo on invalid canvas');
+    return;
+  }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
   // Crop to 4:3
