@@ -1,8 +1,8 @@
 {
   "id": "ecb43ba6-f9a7-476d-af71-bd2c3f294121",
   "createdAt": "2025-08-14T21:55:15.588911",
-  "updatedAt": "2025-08-14T22:13:00.968160",
-  "version": 1044,
+  "updatedAt": "2025-08-14T22:22:36.951019",
+  "version": 1138,
   "sets": {
     "set1": {
       "title": "",
@@ -15,10 +15,10 @@
           "uploadedAt": "2025-08-14T21:55:21.126895",
           "canvasState": {
             "position": {
-              "x": 40,
-              "y": -127
+              "x": -117.5,
+              "y": -202.75
             },
-            "scale": 1,
+            "scale": 2.5,
             "brightness": 0,
             "contrast": 1,
             "labelPosition": "top-left"
@@ -33,10 +33,10 @@
           "uploadedAt": "2025-08-14T21:55:21.127905",
           "canvasState": {
             "position": {
-              "x": -26.035714285714334,
-              "y": -35.63571428571433
+              "x": -168.33870967741933,
+              "y": -136.48387096774195
             },
-            "scale": 1.55,
+            "scale": 2.15,
             "brightness": 0,
             "contrast": 1,
             "labelPosition": "top-left"
@@ -51,10 +51,10 @@
           "uploadedAt": "2025-08-14T21:55:21.128419",
           "canvasState": {
             "position": {
-              "x": 5,
-              "y": -0.92315673828125
+              "x": -329.73270440251554,
+              "y": -518.5
             },
-            "scale": 1,
+            "scale": 2.8,
             "brightness": 0,
             "contrast": 1,
             "labelPosition": "top-right"

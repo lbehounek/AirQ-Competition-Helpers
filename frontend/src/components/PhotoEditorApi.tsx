@@ -4,8 +4,8 @@ import type { Photo } from '../types';
 
 interface ApiPhoto {
   id: string;
-  url?: string; // Optional since we'll construct it ourselves
-  sessionId?: string; // Add sessionId for URL construction
+  url?: string;
+  sessionId?: string;
   filename: string;
   canvasState: Photo['canvasState'];
   label: string;
@@ -19,6 +19,146 @@ interface PhotoEditorApiProps {
   size?: 'grid' | 'large';
 }
 
+// UNIFIED RENDERING SYSTEM - Same logic for grid and modal
+const BASE_WIDTH = 300;
+const BASE_HEIGHT = 225;
+
+const cropImageTo43 = (image: HTMLImageElement): HTMLCanvasElement => {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+  
+  const targetAspect = 4 / 3;
+  const imageAspect = image.width / image.height;
+  
+  let sourceWidth = image.width;
+  let sourceHeight = image.height;
+  let sourceX = 0;
+  let sourceY = 0;
+  
+  if (imageAspect > targetAspect) {
+    sourceWidth = image.height * targetAspect;
+    sourceX = (image.width - sourceWidth) / 2;
+  } else if (imageAspect < targetAspect) {
+    sourceHeight = image.width / targetAspect;
+    sourceY = (image.height - sourceHeight) / 2;
+  }
+  
+  canvas.width = 400; // Fixed size for consistency
+  canvas.height = 300;
+  
+  ctx.drawImage(
+    image,
+    sourceX, sourceY, sourceWidth, sourceHeight,
+    0, 0, canvas.width, canvas.height
+  );
+  
+  return canvas;
+};
+
+const renderPhotoOnCanvas = (
+  canvas: HTMLCanvasElement,
+  image: HTMLImageElement,
+  canvasState: Photo['canvasState'],
+  label: string,
+  localPosition?: { x: number; y: number },
+  localLabelPosition?: Photo['canvasState']['labelPosition'],
+  isDragging = false
+) => {
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Crop to 4:3
+  const croppedImage = cropImageTo43(image);
+  
+  // Calculate minimum scale based on BASE dimensions (not current canvas)
+  // This ensures consistent scaling across different canvas sizes
+  const minScaleX = BASE_WIDTH / croppedImage.width;
+  const minScaleY = BASE_HEIGHT / croppedImage.height;
+  const minScale = Math.max(minScaleX, minScaleY);
+  const actualScale = Math.max(canvasState.scale, minScale);
+  
+  // Calculate scaled dimensions IN BASE COORDINATES
+  const scaledWidth = croppedImage.width * actualScale;
+  const scaledHeight = croppedImage.height * actualScale;
+  
+  // Use position (dragging position takes priority)
+  const basePosition = isDragging && localPosition ? localPosition : canvasState.position;
+  
+  // Convert from base coordinates (300x225) to current canvas size
+  // This ensures the same VIEW is shown regardless of canvas size
+  const scaleRatio = canvas.width / BASE_WIDTH;
+  
+  // Scale position for display
+  let x = basePosition.x * scaleRatio;
+  let y = basePosition.y * scaleRatio;
+  
+  // Scale dimensions for display
+  const displayWidth = scaledWidth * scaleRatio;
+  const displayHeight = scaledHeight * scaleRatio;
+  
+  // Apply constraints using display dimensions
+  if (displayWidth > canvas.width) {
+    const maxX = displayWidth - canvas.width;
+    x = Math.max(-maxX, Math.min(0, x));
+  } else {
+    x = (canvas.width - displayWidth) / 2;
+  }
+  
+  if (displayHeight > canvas.height) {
+    const maxY = displayHeight - canvas.height;
+    y = Math.max(-maxY, Math.min(0, y));
+  } else {
+    y = (canvas.height - displayHeight) / 2;
+  }
+  
+  // Apply adjustments and draw with display dimensions
+  ctx.save();
+  ctx.filter = `brightness(${1 + canvasState.brightness / 100}) contrast(${canvasState.contrast})`;
+  ctx.drawImage(croppedImage, x, y, displayWidth, displayHeight);
+  ctx.restore();
+  
+  // Draw label
+  const fontSize = canvas.width > 400 ? 60 : 48;
+  const padding = 12;
+  const position = localLabelPosition || canvasState.labelPosition;
+  
+  ctx.save();
+  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  ctx.fillStyle = 'white';
+  ctx.strokeStyle = 'black';
+  ctx.lineWidth = 2;
+  
+  const metrics = ctx.measureText(label);
+  const textWidth = metrics.width;
+  const textHeight = fontSize;
+  
+  let labelX: number, labelY: number;
+  
+  switch (position) {
+    case 'top-left':
+      labelX = padding;
+      labelY = padding + textHeight;
+      break;
+    case 'top-right':
+      labelX = canvas.width - textWidth - padding;
+      labelY = padding + textHeight;
+      break;
+    case 'bottom-right':
+      labelX = canvas.width - textWidth - padding;
+      labelY = canvas.height - padding;
+      break;
+    case 'bottom-left':
+    default:
+      labelX = padding;
+      labelY = canvas.height - padding;
+      break;
+  }
+  
+  ctx.strokeText(label, labelX, labelY);
+  ctx.fillText(label, labelX, labelY);
+  ctx.restore();
+};
+
 export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   photo,
   label,
@@ -26,7 +166,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   onRemove,
   size = 'grid'
 }) => {
-  // Early return if photo data is invalid
   if (!photo || !photo.canvasState) {
     return (
       <Box sx={{
@@ -52,36 +191,30 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
   const [imageError, setImageError] = useState(false);
   
-  // Local state for smooth dragging and immediate label updates
+  // Local state for smooth dragging
   const [localPosition, setLocalPosition] = useState(photo.canvasState.position);
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
   const pendingUpdateRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Canvas dimensions based on size - larger for modal view
+  // Canvas dimensions
   const canvasSize = size === 'large'
-    ? { width: 600, height: 450 } // Much larger for modal
-    : { width: 300, height: 225 }; // Keep grid size same
+    ? { width: 600, height: 450 } // 2x scale for modal
+    : { width: 300, height: 225 }; // Base size for grid
 
-  /**
-   * Load image from URL
-   */
+  // Load image
   useEffect(() => {
     if (!photo.id) return;
 
-    // Use API client to get proper full URL
     const fullUrl = `http://localhost:8000/api/photos/${photo.sessionId || 'unknown'}/${photo.id}`;
-
     const img = new Image();
-    img.crossOrigin = 'anonymous'; // Handle CORS if needed
+    img.crossOrigin = 'anonymous';
     
     img.onload = () => {
-      console.log('✅ Image loaded:', fullUrl);
       setLoadedImage(img);
       setImageError(false);
     };
     
     img.onerror = () => {
-      console.error('❌ Failed to load image:', fullUrl);
       setImageError(true);
       setLoadedImage(null);
     };
@@ -94,108 +227,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     };
   }, [photo.id, photo.sessionId]);
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (pendingUpdateRef.current) {
-        clearTimeout(pendingUpdateRef.current);
-      }
-    };
-  }, []);
-
-  /**
-   * Auto-crop image to 4:3 aspect ratio
-   */
-  const cropImageTo43 = useCallback((image: HTMLImageElement): HTMLCanvasElement => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-    
-    const targetAspect = 4 / 3;
-    const imageAspect = image.width / image.height;
-    
-    let sourceWidth = image.width;
-    let sourceHeight = image.height;
-    let sourceX = 0;
-    let sourceY = 0;
-    
-    if (imageAspect > targetAspect) {
-      // Image is wider than 4:3, crop horizontally
-      sourceWidth = image.height * targetAspect;
-      sourceX = (image.width - sourceWidth) / 2;
-    } else if (imageAspect < targetAspect) {
-      // Image is taller than 4:3, crop vertically
-      sourceHeight = image.width / targetAspect;
-      sourceY = (image.height - sourceHeight) / 2;
-    }
-    
-    // Set canvas to desired output size
-    canvas.width = Math.min(sourceWidth, 800); // Max width for performance
-    canvas.height = canvas.width / targetAspect;
-    
-    // Draw cropped image
-    ctx.drawImage(
-      image,
-      sourceX, sourceY, sourceWidth, sourceHeight,
-      0, 0, canvas.width, canvas.height
-    );
-    
-    return canvas;
-  }, []);
-
-  /**
-   * Draw label on canvas
-   */
-  const drawLabel = useCallback((
-    ctx: CanvasRenderingContext2D,
-    labelText: string,
-    position: Photo['canvasState']['labelPosition'] = 'bottom-left'
-  ) => {
-    // 3x bigger font size
-    const fontSize = size === 'large' ? 60 : 48;
-    const padding = 12;
-    
-    ctx.save();
-    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-    
-    // Pure white fill with thin black border
-    ctx.fillStyle = 'white';
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 2; // Thin black border
-    
-    const metrics = ctx.measureText(labelText);
-    const textWidth = metrics.width;
-    const textHeight = fontSize;
-    
-    let x: number, y: number;
-    
-    switch (position) {
-      case 'top-left':
-        x = padding;
-        y = padding + textHeight;
-        break;
-      case 'top-right':
-        x = ctx.canvas.width - textWidth - padding;
-        y = padding + textHeight;
-        break;
-      case 'bottom-right':
-        x = ctx.canvas.width - textWidth - padding;
-        y = ctx.canvas.height - padding;
-        break;
-      case 'bottom-left':
-      default:
-        x = padding;
-        y = ctx.canvas.height - padding;
-        break;
-    }
-    
-    // Draw black outline first, then white text
-    ctx.strokeText(labelText, x, y);
-    ctx.fillText(labelText, x, y);
-    
-    ctx.restore();
-  }, [size]);
-
-  // Sync local states when photo changes from external updates
+  // Sync local states when photo changes
   useEffect(() => {
     if (!isDragging) {
       setLocalPosition(photo.canvasState.position);
@@ -203,112 +235,39 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     setLocalLabelPosition(photo.canvasState.labelPosition);
   }, [photo.canvasState.position, photo.canvasState.labelPosition, isDragging]);
 
-  // Update local position when scale changes (from zoom)
+  // Update local position when scale changes
   useEffect(() => {
     if (!isDragging) {
       setLocalPosition(photo.canvasState.position);
     }
   }, [photo.canvasState.scale, isDragging]);
 
-  // Force re-render when component props change (for grid sync after modal close)
-  useEffect(() => {
-    renderCanvas();
-  }, [photo.canvasState]);
-
-  /**
-   * Calculate minimum scale to fill canvas without white borders
-   */
-  const getMinimumScale = useCallback((croppedImage: HTMLCanvasElement) => {
-    if (!croppedImage) return 1;
-    
-    // Scale needed to fill width
-    const scaleForWidth = canvasSize.width / croppedImage.width;
-    // Scale needed to fill height  
-    const scaleForHeight = canvasSize.height / croppedImage.height;
-    
-    // Use the larger scale to ensure no white borders
-    return Math.max(scaleForWidth, scaleForHeight);
-  }, [canvasSize]);
-
-  /**
-   * Render the canvas
-   */
+  // Render canvas
   const renderCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !loadedImage || !photo?.canvasState) return;
 
-    try {
-      // Set canvas size
-      canvas.width = canvasSize.width;
-      canvas.height = canvasSize.height;
-      
-      const ctx = canvas.getContext('2d')!;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Auto-crop the loaded image
-      const croppedImage = cropImageTo43(loadedImage);
-      
-      // Calculate minimum scale and ensure current scale is not below it
-      const minScale = getMinimumScale(croppedImage);
-      const actualScale = Math.max(photo.canvasState.scale, minScale);
-      
-      // Calculate scaled dimensions
-      const scaledWidth = croppedImage.width * actualScale;
-      const scaledHeight = croppedImage.height * actualScale;
-      
-      // Use local position for smooth dragging, fallback to photo state
-      const currentPosition = isDragging ? localPosition : photo.canvasState.position;
-      
-      // Simple positioning - scale everything proportionally
-      const scaleRatio = canvas.width / 300; // Scale factor relative to base size
-      
-      let x = currentPosition.x * scaleRatio;
-      let y = currentPosition.y * scaleRatio;
-      
-      // Apply constraints
-      if (scaledWidth > canvas.width) {
-        const maxX = scaledWidth - canvas.width;
-        x = Math.max(-maxX, Math.min(0, x));
-      } else {
-        x = (canvas.width - scaledWidth) / 2;
-      }
-      
-      if (scaledHeight > canvas.height) {
-        const maxY = scaledHeight - canvas.height;
-        y = Math.max(-maxY, Math.min(0, y));
-      } else {
-        y = (canvas.height - scaledHeight) / 2;
-      }
-      
-      // Apply image adjustments
-      ctx.save();
-      ctx.filter = `brightness(${1 + photo.canvasState.brightness / 100}) contrast(${photo.canvasState.contrast})`;
-      
-      // Draw the image
-      ctx.drawImage(croppedImage, x, y, scaledWidth, scaledHeight);
-      
-      ctx.restore();
-      
-      // Draw the label using local state for immediate updates
-      drawLabel(ctx, label, localLabelPosition || 'bottom-left');
-      
-    } catch (error) {
-      console.error('Error rendering canvas:', error);
-    }
-  }, [loadedImage, photo?.canvasState, label, canvasSize, cropImageTo43, drawLabel, isDragging, localPosition, localLabelPosition, getMinimumScale]);
+    canvas.width = canvasSize.width;
+    canvas.height = canvasSize.height;
 
-  /**
-   * Re-render when dependencies change
-   */
+    renderPhotoOnCanvas(
+      canvas,
+      loadedImage,
+      photo.canvasState,
+      label,
+      localPosition,
+      localLabelPosition,
+      isDragging
+    );
+  }, [loadedImage, photo?.canvasState, label, canvasSize, localPosition, localLabelPosition, isDragging]);
+
   useEffect(() => {
     renderCanvas();
   }, [renderCanvas]);
 
-  /**
-   * Mouse event handlers for dragging
-   */
+  // Mouse handlers
   const handleMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (size === 'grid') return; // No dragging in grid view - static preview only
+    if (size === 'grid') return; // No dragging in grid view
     if (!loadedImage || !photo?.canvasState) return;
 
     const canvas = canvasRef.current!;
@@ -332,49 +291,48 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     const deltaX = x - dragStart.x;
     const deltaY = y - dragStart.y;
 
-    // Scale deltas back to base coordinates
-    const scaleRatio = canvas.width / 300;
-    
-    let newPosition = {
+    // Convert deltas back to base coordinates for storage
+    const scaleRatio = canvas.width / BASE_WIDTH;
+    const newPosition = {
       x: localPosition.x + (deltaX / scaleRatio),
       y: localPosition.y + (deltaY / scaleRatio)
     };
 
     // Apply constraints in base coordinate system
     const croppedImage = cropImageTo43(loadedImage);
-    const minScale = getMinimumScale(croppedImage);
+    const minScaleX = BASE_WIDTH / croppedImage.width;
+    const minScaleY = BASE_HEIGHT / croppedImage.height;
+    const minScale = Math.max(minScaleX, minScaleY);
     const actualScale = Math.max(photo.canvasState.scale, minScale);
     const scaledWidth = croppedImage.width * actualScale;
     const scaledHeight = croppedImage.height * actualScale;
 
-    // Constrain using base canvas size (300x225)
-    if (scaledWidth > 300) {
-      const maxX = scaledWidth - 300;
+    // Constrain in base coordinates (300x225)
+    if (scaledWidth > BASE_WIDTH) {
+      const maxX = scaledWidth - BASE_WIDTH;
       newPosition.x = Math.max(-maxX, Math.min(0, newPosition.x));
     }
     
-    if (scaledHeight > 225) {
-      const maxY = scaledHeight - 225;
+    if (scaledHeight > BASE_HEIGHT) {
+      const maxY = scaledHeight - BASE_HEIGHT;
       newPosition.y = Math.max(-maxY, Math.min(0, newPosition.y));
     }
 
-    // Update local state immediately for smooth dragging
     setLocalPosition(newPosition);
     setDragStart({ x, y });
     
-    // Debounce API calls during drag
+    // Debounce API calls
     if (pendingUpdateRef.current) {
       clearTimeout(pendingUpdateRef.current);
     }
     
     pendingUpdateRef.current = setTimeout(() => {
       onUpdate({ ...photo.canvasState, position: newPosition });
-    }, 50); // Update backend every 50ms max during drag
+    }, 50);
   };
 
   const handleMouseUp = () => {
     if (isDragging) {
-      // Immediately sync final position to backend
       if (pendingUpdateRef.current) {
         clearTimeout(pendingUpdateRef.current);
       }
@@ -383,7 +341,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     setIsDragging(false);
   };
 
-  // Show loading or error state
+  // Loading/error states
   if (imageError) {
     return (
       <Box sx={{
@@ -420,7 +378,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
   return (
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
-      {/* Canvas */}
       <canvas
         ref={canvasRef}
         style={{
@@ -440,7 +397,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         onMouseLeave={handleMouseUp}
       />
 
-      {/* Grid size hover tooltip */}
       {size === 'grid' && (
         <Tooltip title={`Photo ${label} - Click to edit`} placement="top">
           <Box sx={{
@@ -453,8 +409,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
           }} />
         </Tooltip>
       )}
-
-      {/* Remove duplicate label overlay - canvas label is sufficient */}
     </Box>
   );
 };

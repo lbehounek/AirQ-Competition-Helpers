@@ -63,7 +63,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     const oldScale = photo.canvasState.scale;
     const scaleRatio = clampedScale / oldScale;
     
-    // Base canvas dimensions for all position calculations
+    // Base canvas dimensions - same as used in PhotoEditorApi
     const canvasWidth = 300;
     const canvasHeight = 225;
     
