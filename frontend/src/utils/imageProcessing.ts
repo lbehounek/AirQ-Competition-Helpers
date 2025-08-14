@@ -6,7 +6,11 @@ import type { ImageAdjustments } from '../types';
  */
 export const autoCropTo43 = (image: HTMLImageElement): HTMLCanvasElement => {
   const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  
+  if (!ctx) {
+    throw new Error('Unable to get canvas rendering context');
+  }
   
   const targetRatio = 4 / 3;
   const imageRatio = image.width / image.height;
@@ -85,7 +89,11 @@ export const applyImageAdjustments = (
   canvas: HTMLCanvasElement, 
   adjustments: ImageAdjustments
 ): void => {
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  
+  if (!ctx) {
+    throw new Error('Unable to get canvas rendering context');
+  }
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
   
