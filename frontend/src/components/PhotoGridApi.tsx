@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Typography, Paper } from '@mui/material';
 import { Image as ImageIcon, CloudUpload } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
@@ -64,6 +64,16 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   labelOffset = 0
 }) => {
   const { currentRatio } = useAspectRatio();
+  const [displayRatio, setDisplayRatio] = useState(currentRatio);
+  
+  // Delay aspect ratio CSS change to sync with canvas rendering
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDisplayRatio(currentRatio);
+    }, 50); // Small delay to let canvas render first
+    
+    return () => clearTimeout(timer);
+  }, [currentRatio]);
   // Create 9 grid slots (3x3)
   const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
     const label = String.fromCharCode(65 + labelOffset + index); // A, B, C, ... or continue from previous set
@@ -96,7 +106,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
             key={slot.id}
             elevation={slot.photo ? 2 : 0}
             sx={{
-              aspectRatio: currentRatio.cssRatio,
+              aspectRatio: displayRatio.cssRatio,
               bgcolor: slot.photo ? 'background.paper' : 'grey.50',
               border: '1px solid',
               borderColor: slot.photo ? 'primary.main' : 'grey.300',

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Typography, Grid, Paper, Chip } from '@mui/material';
 import { Image as ImageIcon, PhotoCamera } from '@mui/icons-material';
 import type { PhotoSet } from '../types';
@@ -21,6 +21,16 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   onPhotoClick
 }) => {
   const { currentRatio } = useAspectRatio();
+  const [displayRatio, setDisplayRatio] = useState(currentRatio);
+  
+  // Delay aspect ratio CSS change to sync with canvas rendering
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDisplayRatio(currentRatio);
+    }, 50); // Small delay to let canvas render first
+    
+    return () => clearTimeout(timer);
+  }, [currentRatio]);
   // Create array of 9 slots (3x3 grid)
   const gridSlots = Array.from({ length: 9 }, (_, index) => {
     const photo = photoSet.photos[index] || null;
@@ -53,7 +63,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
             key={slot.id}
             elevation={slot.photo ? 2 : 0}
             sx={{
-              aspectRatio: currentRatio.cssRatio,
+              aspectRatio: displayRatio.cssRatio,
               bgcolor: slot.photo ? 'background.paper' : 'grey.50',
               border: '1px solid',
               borderColor: slot.photo ? 'primary.main' : 'grey.300',
