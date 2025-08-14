@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 
 export interface AspectRatioOption {
   id: string;
@@ -42,6 +42,7 @@ export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
 
 interface AspectRatioContextType {
   currentRatio: AspectRatioOption;
+  isTransitioning: boolean;
   setAspectRatio: (ratio: AspectRatioOption) => void;
   getCanvasSize: (baseWidth: number) => { width: number; height: number };
   getPDFCellHeight: (cellWidth: number) => number;
@@ -51,11 +52,39 @@ interface AspectRatioContextType {
 const AspectRatioContext = createContext<AspectRatioContextType | null>(null);
 
 export const AspectRatioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentRatio, setCurrentRatio] = useState<AspectRatioOption>(ASPECT_RATIO_OPTIONS[0]); // Default to 4:3
+  const [currentRatio, setCurrentRatio] = useState<AspectRatioOption>(ASPECT_RATIO_OPTIONS[0]); // Default to 3:2
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const transitionTimeoutRef = useRef<number | null>(null);
 
   const setAspectRatio = (ratio: AspectRatioOption) => {
+    if (ratio.id === currentRatio.id) return; // No change needed
+    
+    // Immediately start transition to hide any visual jump
+    setIsTransitioning(true);
+    
+    // Clear any existing timeout
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+    }
+    
+    // Update the ratio immediately
     setCurrentRatio(ratio);
+    
+    // End transition after canvas has time to re-render
+    transitionTimeoutRef.current = window.setTimeout(() => {
+      setIsTransitioning(false);
+      transitionTimeoutRef.current = null;
+    }, 250);
   };
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const getCanvasSize = (baseWidth: number) => ({
     width: baseWidth,
@@ -74,6 +103,7 @@ export const AspectRatioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   return (
     <AspectRatioContext.Provider value={{
       currentRatio,
+      isTransitioning,
       setAspectRatio,
       getCanvasSize,
       getPDFCellHeight,

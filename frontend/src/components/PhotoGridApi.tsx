@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Typography, Paper } from '@mui/material';
+import React from 'react';
+import { Box, Typography, Paper, CircularProgress } from '@mui/material';
 import { Image as ImageIcon, CloudUpload } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { PhotoEditorApi } from './PhotoEditorApi';
@@ -63,18 +63,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   onFilesDropped,
   labelOffset = 0
 }) => {
-  const { currentRatio } = useAspectRatio();
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  
-  // Handle aspect ratio transitions with loading state
-  useEffect(() => {
-    setIsTransitioning(true);
-    const timer = setTimeout(() => {
-      setIsTransitioning(false);
-    }, 250); // Longer transition to ensure canvas fully renders
-    
-    return () => clearTimeout(timer);
-  }, [currentRatio]);
+  const { currentRatio, isTransitioning } = useAspectRatio();
   // Create 9 grid slots (3x3)
   const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
     const label = String.fromCharCode(65 + labelOffset + index); // A, B, C, ... or continue from previous set
@@ -90,20 +79,39 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
   return (
     <Box sx={{ width: '100%', position: 'relative' }}>
-      {/* 3x3 Photo Grid */}
-      <Box sx={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: 2,
-        p: 2,
-        bgcolor: 'background.paper',
-        borderRadius: 2,
-        border: '2px solid',
-        borderColor: 'primary.light',
-        boxShadow: 1,
-        opacity: isTransitioning ? 0.3 : 1,
-        transition: 'opacity 0.1s ease-in-out'
-      }}>
+      {isTransitioning ? (
+        /* Loading State During Aspect Ratio Transition */
+        <Box sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 400,
+          bgcolor: 'background.paper',
+          borderRadius: 2,
+          border: '2px solid',
+          borderColor: 'primary.light',
+          boxShadow: 1,
+          p: 4
+        }}>
+          <CircularProgress size={48} color="primary" sx={{ mb: 2 }} />
+          <Typography variant="body1" color="text.secondary">
+            Updating aspect ratio...
+          </Typography>
+        </Box>
+      ) : (
+        /* 3x3 Photo Grid */
+        <Box sx={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 2,
+          p: 2,
+          bgcolor: 'background.paper',
+          borderRadius: 2,
+          border: '2px solid',
+          borderColor: 'primary.light',
+          boxShadow: 1
+        }}>
         {gridSlots.map((slot) => (
           <Paper
             key={slot.id}
@@ -187,7 +195,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
             )}
           </Paper>
         ))}
-      </Box>
+        </Box>
+      )}
     </Box>
   );
 };
