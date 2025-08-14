@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, Grid, Paper, Chip } from '@mui/material';
+import { Box, Typography, Paper, Chip } from '@mui/material';
 import { Image as ImageIcon, PhotoCamera } from '@mui/icons-material';
 import { PhotoEditorApi } from './PhotoEditorApi';
 
@@ -12,6 +12,12 @@ interface ApiPhoto {
     scale: number;
     brightness: number;
     contrast: number;
+    sharpness: number;
+    whiteBalance: {
+      temperature: number;
+      tint: number;
+      auto: boolean;
+    };
     labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   };
   label: string;
@@ -91,16 +97,24 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
               transition: 'all 0.2s ease-in-out',
               cursor: slot.photo ? 'pointer' : 'default',
               '&:hover': slot.photo ? {
-                borderColor: 'primary.dark',
-                boxShadow: 3,
-                transform: 'translateY(-2px)'
+                borderColor: 'primary.main',
+                boxShadow: '0 0 12px rgba(33, 150, 243, 0.4)', // Blue glow effect
+                // Remove transform to prevent movement
               } : {}
             }}
           >
             {slot.photo ? (
               <Box
                 onClick={() => onPhotoClick && onPhotoClick(slot.photo!)}
-                sx={{ cursor: 'pointer', width: '100%', height: '100%' }}
+                sx={{ 
+                  cursor: 'pointer', 
+                  width: '100%', 
+                  height: '100%',
+                  position: 'relative',
+                  '&:hover .hover-overlay': {
+                    opacity: 1
+                  }
+                }}
               >
                 <PhotoEditorApi
                   photo={slot.photo}
@@ -109,6 +123,35 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                   onRemove={() => onPhotoRemove(slot.photo!.id)}
                   size="grid" // Small size for grid view
                 />
+                {/* Hover overlay */}
+                <Box
+                  className="hover-overlay"
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    bgcolor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: 0,
+                    transition: 'opacity 0.2s ease-in-out',
+                    pointerEvents: 'none'
+                  }}
+                >
+                  <Typography 
+                    variant="body1" 
+                    sx={{ 
+                      color: 'white', 
+                      fontWeight: 600,
+                      textShadow: '0 2px 4px rgba(0,0,0,0.8)'
+                    }}
+                  >
+                    Click to Edit
+                  </Typography>
+                </Box>
               </Box>
             ) : (
               <PhotoGridSlotEmpty
