@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -120,12 +120,31 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     });
   };
 
-  const handleSharpnessChange = (newSharpness: number) => {
-    onUpdate({
-      ...photo.canvasState,
-      sharpness: newSharpness
-    });
-  };
+  // Debounced sharpness handler to reduce computational load
+  const debouncedSharpnessRef = useRef<NodeJS.Timeout>();
+  const handleSharpnessChange = useCallback((newSharpness: number) => {
+    // Clear previous timeout
+    if (debouncedSharpnessRef.current) {
+      clearTimeout(debouncedSharpnessRef.current);
+    }
+    
+    // Set new timeout for debounced update
+    debouncedSharpnessRef.current = setTimeout(() => {
+      onUpdate({
+        ...photo.canvasState,
+        sharpness: newSharpness
+      });
+    }, 300); // 300ms delay
+  }, [onUpdate, photo.canvasState]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debouncedSharpnessRef.current) {
+        clearTimeout(debouncedSharpnessRef.current);
+      }
+    };
+  }, []);
 
   const handleWhiteBalanceTemperatureChange = (newTemperature: number) => {
     onUpdate({

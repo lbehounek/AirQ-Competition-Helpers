@@ -1,6 +1,15 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Box, Tooltip } from '@mui/material';
 import type { Photo } from '../types';
+import { 
+  initWebGLContext, 
+  applyWebGLEffects, 
+  isWebGLSupported,
+  getFragmentShaderForEffects,
+  type WebGLContext,
+  type ImageAdjustments 
+} from '../utils/webglUtils';
+import { drawLabel } from '../utils/canvasUtils';
 
 interface ApiPhoto {
   id: string;
@@ -62,7 +71,8 @@ const renderPhotoOnCanvas = (
   label: string,
   localPosition?: { x: number; y: number },
   localLabelPosition?: Photo['canvasState']['labelPosition'],
-  isDragging = false
+  isDragging = false,
+  webglContext?: WebGLContext | null
 ) => {
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -125,10 +135,51 @@ const renderPhotoOnCanvas = (
   // Draw the image to temp canvas
   tempCtx.drawImage(croppedImage, 0, 0, displayWidth, displayHeight);
   
-  // Apply all image adjustments on temp canvas
-  try {
-    let imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-    let data = imageData.data;
+  // Try WebGL acceleration first, fallback to CPU processing
+  const sharpness = canvasState.sharpness || 0;
+  const whiteBalance = canvasState.whiteBalance || { temperature: 0, tint: 0, auto: false };
+  
+  const needsProcessing = canvasState.brightness !== 0 || 
+                         canvasState.contrast !== 1 || 
+                         sharpness > 0 || 
+                         whiteBalance.auto || 
+                         whiteBalance.temperature !== 0 || 
+                         whiteBalance.tint !== 0;
+
+  if (needsProcessing && webglContext) {
+    // Use WebGL acceleration
+    try {
+      const adjustments: ImageAdjustments = {
+        brightness: canvasState.brightness,
+        contrast: canvasState.contrast,
+        sharpness: sharpness,
+        temperature: whiteBalance.temperature,
+        tint: whiteBalance.tint
+      };
+      
+      const processedCanvas = applyWebGLEffects(tempCanvas, adjustments, webglContext);
+      if (processedCanvas) {
+        // Success! Use the WebGL-processed result
+        ctx.drawImage(processedCanvas, x, y);
+        // Draw label on main canvas
+        const labelPos = isDragging && localLabelPosition ? localLabelPosition : canvasState.labelPosition;
+        drawLabel(ctx, label, labelPos, canvas.width, canvas.height);
+        return;
+      }
+    } catch (error) {
+      console.warn('WebGL processing failed, falling back to CPU:', error);
+    }
+  }
+
+  // CPU fallback processing
+  if (!needsProcessing) {
+    // No processing needed, just draw
+    ctx.drawImage(tempCanvas, x, y);
+  } else {
+    // Apply CPU-based image processing
+    try {
+      let imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      let data = imageData.data;
     
     // Apply white balance first (if needed)
     if (canvasState.whiteBalance?.auto || 
@@ -258,49 +309,13 @@ const renderPhotoOnCanvas = (
     // If we can't apply effects (CORS etc), just use the original image
   }
   
-  // Draw the processed image from temp canvas to main canvas
-  ctx.drawImage(tempCanvas, x, y);
-  
-  // Draw label
-  const fontSize = canvas.width > 400 ? 60 : 48;
-  const padding = 12;
-  const position = localLabelPosition || canvasState.labelPosition;
-  
-  ctx.save();
-  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-  ctx.fillStyle = 'white';
-  ctx.strokeStyle = 'black';
-  ctx.lineWidth = 2;
-  
-  const metrics = ctx.measureText(label);
-  const textWidth = metrics.width;
-  const textHeight = fontSize;
-  
-  let labelX: number, labelY: number;
-  
-  switch (position) {
-    case 'top-left':
-      labelX = padding;
-      labelY = padding + textHeight;
-      break;
-    case 'top-right':
-      labelX = canvas.width - textWidth - padding;
-      labelY = padding + textHeight;
-      break;
-    case 'bottom-right':
-      labelX = canvas.width - textWidth - padding;
-      labelY = canvas.height - padding;
-      break;
-    case 'bottom-left':
-    default:
-      labelX = padding;
-      labelY = canvas.height - padding;
-      break;
+    // Draw the processed image from temp canvas to main canvas
+    ctx.drawImage(tempCanvas, x, y);
   }
   
-  ctx.strokeText(label, labelX, labelY);
-  ctx.fillText(label, labelX, labelY);
-  ctx.restore();
+  // Draw label on main canvas (for both WebGL and CPU paths)
+  const labelPos = isDragging && localLabelPosition ? localLabelPosition : canvasState.labelPosition;
+  drawLabel(ctx, label, labelPos, canvas.width, canvas.height);
 };
 
 export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
@@ -339,6 +354,10 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [localPosition, setLocalPosition] = useState(photo.canvasState.position);
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
   const pendingUpdateRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // WebGL context for accelerated image processing
+  const webglContextRef = useRef<WebGLContext | null>(null);
+  const [webglSupported, setWebglSupported] = useState<boolean>(false);
 
   // Canvas dimensions
   const canvasSize = size === 'large'
@@ -401,13 +420,35 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       label,
       localPosition,
       localLabelPosition,
-      isDragging
+      isDragging,
+      webglContextRef.current
     );
   }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging]);
 
   useEffect(() => {
     renderCanvas();
   }, [renderCanvas]);
+
+  // Initialize WebGL context
+  useEffect(() => {
+    const supported = isWebGLSupported();
+    setWebglSupported(supported);
+    
+    if (supported) {
+      // Initialize WebGL context for combined effects
+      const fragmentShader = getFragmentShaderForEffects(true); // Include sharpness
+      const context = initWebGLContext(canvasSize.width, canvasSize.height, fragmentShader);
+      webglContextRef.current = context;
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (webglContextRef.current) {
+        webglContextRef.current.cleanup();
+        webglContextRef.current = null;
+      }
+    };
+  }, [canvasSize.width, canvasSize.height]);
 
   // Mouse handlers
   const handleMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
