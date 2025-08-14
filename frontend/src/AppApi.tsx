@@ -32,6 +32,8 @@ import { PhotoGridApi } from './components/PhotoGridApi';
 import { TitleInput } from './components/TitleInput';
 import { PhotoEditorApi } from './components/PhotoEditorApi';
 import { PhotoControls } from './components/PhotoControls';
+import { AspectRatioSelector } from './components/AspectRatioSelector';
+import { useAspectRatio } from './contexts/AspectRatioContext';
 import { generatePDF } from './utils/pdfGenerator';
 
 interface ApiPhoto {
@@ -68,6 +70,8 @@ function AppApi() {
     refreshSession,
     getSessionStats
   } = usePhotoSessionApi();
+  
+  const { currentRatio } = useAspectRatio();
   
   // State to track if we should show loading text
   const [showLoadingText, setShowLoadingText] = useState(false);
@@ -167,7 +171,7 @@ function AppApi() {
         }))
       };
 
-      await generatePDF(set1WithLabels, set2WithLabels, sessionId);
+      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio);
     } catch (error) {
       console.error('PDF generation failed:', error);
       // Could add user notification here
@@ -323,6 +327,19 @@ function AppApi() {
                 variant="filled"
               />
             )}
+          </Box>
+        </Paper>
+
+        {/* Photo Format Configuration */}
+        <Paper elevation={1} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+            <Typography variant="h6" color="primary" sx={{ fontWeight: 600, minWidth: 'fit-content' }}>
+              Photo Format:
+            </Typography>
+            <AspectRatioSelector />
+            <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto', fontStyle: 'italic' }}>
+              Choose the aspect ratio that matches your camera format
+            </Typography>
           </Box>
         </Paper>
 

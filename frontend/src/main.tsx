@@ -6,6 +6,7 @@ import './index.css'
 import App from './App.tsx' // localStorage version
 import AppApi from './AppApi.tsx' // Backend API version
 import { theme } from './theme'
+import { AspectRatioProvider } from './contexts/AspectRatioContext'
 
 // Choose which version to use:
 // - App: localStorage version (original)
@@ -17,7 +18,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AppComponent />
+      <AspectRatioProvider>
+        <AppComponent />
+      </AspectRatioProvider>
     </ThemeProvider>
   </StrictMode>,
 )

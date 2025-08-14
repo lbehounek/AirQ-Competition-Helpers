@@ -4,6 +4,7 @@ import { Image as ImageIcon, CloudUpload } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { PhotoEditorApi } from './PhotoEditorApi';
 import { isValidImageFile } from '../utils/imageProcessing';
+import { useAspectRatio } from '../contexts/AspectRatioContext';
 
 interface ApiPhoto {
   id: string;
@@ -62,6 +63,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   onFilesDropped,
   labelOffset = 0
 }) => {
+  const { currentRatio } = useAspectRatio();
   // Create 9 grid slots (3x3)
   const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
     const label = String.fromCharCode(65 + labelOffset + index); // A, B, C, ... or continue from previous set
@@ -94,7 +96,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
             key={slot.id}
             elevation={slot.photo ? 2 : 0}
             sx={{
-              aspectRatio: '4/3',
+              aspectRatio: currentRatio.cssRatio,
               bgcolor: slot.photo ? 'background.paper' : 'grey.50',
               border: '1px solid',
               borderColor: slot.photo ? 'primary.main' : 'grey.300',

@@ -9,6 +9,7 @@ import {
 } from '../utils/webglUtils';
 import { useWebGLContext } from '../utils/webglContextManager';
 import { drawLabel, drawSetName, getCanvasContext } from '../utils/canvasUtils';
+import { useAspectRatio } from '../contexts/AspectRatioContext';
 
 interface ApiPhoto {
   id: string;
@@ -32,9 +33,8 @@ interface PhotoEditorApiProps {
 
 // UNIFIED RENDERING SYSTEM - Same logic for grid and modal
 const BASE_WIDTH = 300;
-const BASE_HEIGHT = 225;
 
-const cropImageTo43 = (image: HTMLImageElement): HTMLCanvasElement => {
+const cropImageToAspectRatio = (image: HTMLImageElement, targetAspect: number, canvasSize: { width: number; height: number }): HTMLCanvasElement => {
   const canvas = document.createElement('canvas');
   const ctx = getCanvasContext(canvas);
   if (!ctx) {
@@ -42,7 +42,6 @@ const cropImageTo43 = (image: HTMLImageElement): HTMLCanvasElement => {
     return canvas; // Return empty canvas as fallback
   }
   
-  const targetAspect = 4 / 3;
   const imageAspect = image.width / image.height;
   
   let sourceWidth = image.width;
@@ -58,8 +57,8 @@ const cropImageTo43 = (image: HTMLImageElement): HTMLCanvasElement => {
     sourceY = (image.height - sourceHeight) / 2;
   }
   
-  canvas.width = 400; // Fixed size for consistency
-  canvas.height = 300;
+  canvas.width = canvasSize.width;
+  canvas.height = canvasSize.height;
   
   ctx.drawImage(
     image,
@@ -81,7 +80,9 @@ const renderPhotoOnCanvas = (
   webglContext?: WebGLContext | null,
   webglManager?: { requestContext: () => WebGLContext | null; releaseContext: (ctx: WebGLContext) => void; isAvailable: boolean },
   isFirstInSet = false,
-  setName?: string
+  setName?: string,
+  aspectRatio = 4/3,
+  baseHeight = 225
 ) => {
   const ctx = getCanvasContext(canvas);
   if (!ctx) {
@@ -90,13 +91,13 @@ const renderPhotoOnCanvas = (
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  // Crop to 4:3
-  const croppedImage = cropImageTo43(image);
+  // Crop to current aspect ratio
+  const croppedImage = cropImageToAspectRatio(image, aspectRatio, { width: BASE_WIDTH, height: baseHeight });
   
   // Calculate minimum scale based on BASE dimensions (not current canvas)
   // This ensures consistent scaling across different canvas sizes
   const minScaleX = BASE_WIDTH / croppedImage.width;
-  const minScaleY = BASE_HEIGHT / croppedImage.height;
+  const minScaleY = baseHeight / croppedImage.height;
   const minScale = Math.max(minScaleX, minScaleY);
   const actualScale = Math.max(canvasState.scale, minScale);
   
@@ -365,11 +366,17 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   setName,
   isFirstInSet = false
 }) => {
+  const { currentRatio, getCanvasSize } = useAspectRatio();
+  
+  // Dynamic canvas sizes based on aspect ratio
+  const gridCanvasSize = getCanvasSize(240);
+  const largeCanvasSize = getCanvasSize(400);
+  
   if (!photo || !photo.canvasState) {
     return (
       <Box sx={{
-        width: size === 'large' ? 400 : 240,
-        height: size === 'large' ? 300 : 180,
+        width: size === 'large' ? largeCanvasSize.width : gridCanvasSize.width,
+        height: size === 'large' ? largeCanvasSize.height : gridCanvasSize.height,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -393,17 +400,17 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   // Local state for smooth dragging
   const [localPosition, setLocalPosition] = useState(photo.canvasState.position);
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
-  const pendingUpdateRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingUpdateRef = useRef<number | null>(null);
   
   // WebGL context management
   const webglManager = useWebGLContext();
   const webglContextRef = useRef<WebGLContext | null>(null);
   const [webglSupported, setWebglSupported] = useState<boolean>(false);
 
-  // Canvas dimensions
+  // Dynamic canvas dimensions based on aspect ratio
   const canvasSize = size === 'large'
-    ? { width: 600, height: 450 } // 2x scale for modal
-    : { width: 300, height: 225 }; // Base size for grid
+    ? getCanvasSize(600) // 2x scale for modal
+    : getCanvasSize(300); // Base size for grid
 
   // Load image
   useEffect(() => {
@@ -452,7 +459,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Create a temporary canvas to analyze the image
     const tempCanvas = document.createElement('canvas');
-    const croppedImage = cropImageTo43(loadedImage);
+    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, canvasSize);
     tempCanvas.width = croppedImage.width;
     tempCanvas.height = croppedImage.height;
     const tempCtx = getCanvasContext(tempCanvas);
@@ -549,9 +556,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       webglContextRef.current,
       webglManager,
       isFirstInSet,
-      setName
+      setName,
+      currentRatio.ratio,
+      canvasSize.height
     );
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, isFirstInSet, setName]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, isFirstInSet, setName, currentRatio]);
 
   useEffect(() => {
     renderCanvas();
@@ -615,9 +624,9 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     };
 
     // Apply constraints in base coordinate system
-    const croppedImage = cropImageTo43(loadedImage);
+    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, canvasSize);
     const minScaleX = BASE_WIDTH / croppedImage.width;
-    const minScaleY = BASE_HEIGHT / croppedImage.height;
+    const minScaleY = canvasSize.height / croppedImage.height;
     const minScale = Math.max(minScaleX, minScaleY);
     const actualScale = Math.max(photo.canvasState.scale, minScale);
     const scaledWidth = croppedImage.width * actualScale;
@@ -629,8 +638,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       newPosition.x = Math.max(-maxX, Math.min(0, newPosition.x));
     }
     
-    if (scaledHeight > BASE_HEIGHT) {
-      const maxY = scaledHeight - BASE_HEIGHT;
+    if (scaledHeight > canvasSize.height) {
+      const maxY = scaledHeight - canvasSize.height;
       newPosition.y = Math.max(-maxY, Math.min(0, newPosition.y));
     }
 
@@ -697,9 +706,9 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     };
 
     // Apply constraints in base coordinates
-    const croppedImage = cropImageTo43(loadedImage);
+    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, canvasSize);
     const minScaleX = BASE_WIDTH / croppedImage.width;
-    const minScaleY = BASE_HEIGHT / croppedImage.height;
+    const minScaleY = canvasSize.height / croppedImage.height;
     const minScale = Math.max(minScaleX, minScaleY);
     const actualScale = Math.max(newScale, minScale);
     const scaledWidth = croppedImage.width * actualScale;
@@ -711,8 +720,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       newPosition.x = Math.max(-maxX, Math.min(0, newPosition.x));
     }
     
-    if (scaledHeight > BASE_HEIGHT) {
-      const maxY = scaledHeight - BASE_HEIGHT;
+    if (scaledHeight > canvasSize.height) {
+      const maxY = scaledHeight - canvasSize.height;
       newPosition.y = Math.max(-maxY, Math.min(0, newPosition.y));
     }
 

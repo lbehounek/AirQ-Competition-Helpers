@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { ASPECT_RATIO_OPTIONS } from '../contexts/AspectRatioContext';
 
 interface ApiPhoto {
   id: string;
@@ -32,7 +33,8 @@ interface PhotoSet {
 export const generatePDF = async (
   set1: PhotoSet,
   set2: PhotoSet,
-  sessionId: string
+  sessionId: string,
+  aspectRatio = 4/3
 ): Promise<void> => {
   // A4 landscape dimensions in mm
   const pageWidth = 297;
@@ -52,9 +54,9 @@ export const generatePDF = async (
   const gridWidth = pageWidth - (2 * sideMargin);
   const gridHeight = pageHeight - (2 * topBottomMargin);
   
-  // Calculate cell dimensions (4:3 aspect ratio)
+  // Calculate cell dimensions with dynamic aspect ratio
   const cellWidth = (gridWidth - (2 * spacing)) / 3;
-  const cellHeight = cellWidth * 0.75; // 4:3 aspect ratio
+  const cellHeight = cellWidth / aspectRatio; // Dynamic aspect ratio
   
   // Center the grid vertically on the page (no title needed - set name is on first photo)
   const totalGridHeight = (3 * cellHeight) + (2 * spacing);

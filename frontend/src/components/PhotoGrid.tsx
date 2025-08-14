@@ -3,6 +3,7 @@ import { Box, Typography, Grid, Paper, Chip } from '@mui/material';
 import { Image as ImageIcon, PhotoCamera } from '@mui/icons-material';
 import type { PhotoSet } from '../types';
 import { PhotoEditor } from './PhotoEditor';
+import { useAspectRatio } from '../contexts/AspectRatioContext';
 
 interface PhotoGridProps {
   photoSet: PhotoSet;
@@ -19,6 +20,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   onPhotoRemove,
   onPhotoClick
 }) => {
+  const { currentRatio } = useAspectRatio();
   // Create array of 9 slots (3x3 grid)
   const gridSlots = Array.from({ length: 9 }, (_, index) => {
     const photo = photoSet.photos[index] || null;
@@ -51,7 +53,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
             key={slot.id}
             elevation={slot.photo ? 2 : 0}
             sx={{
-              aspectRatio: '4/3',
+              aspectRatio: currentRatio.cssRatio,
               bgcolor: slot.photo ? 'background.paper' : 'grey.50',
               border: '1px solid',
               borderColor: slot.photo ? 'primary.main' : 'grey.300',
