@@ -79,15 +79,22 @@ export const drawLabel = (
     return;
   }
   
+  // Scale font size based on canvas size to maintain consistent visual appearance
+  // Base font size for 300x225 canvas, scale proportionally
+  const baseFontSize = 48;
+  const baseCanvasWidth = 300;
+  const scaleFactor = canvas.width / baseCanvasWidth;
+  const fontSize = Math.round(baseFontSize * scaleFactor);
+  
   // Label styling - 3x bigger than default with thin black border
-  ctx.font = 'bold 48px Arial';
+  ctx.font = `bold ${fontSize}px Arial`;
   ctx.fillStyle = 'white';
   ctx.strokeStyle = 'black';
-  ctx.lineWidth = 1; // Thin black border
+  ctx.lineWidth = Math.max(1, Math.round(scaleFactor)); // Scale border width too
   
   // Calculate position based on canvas size and label position
   let x: number, y: number;
-  const padding = 16; // Increased padding for bigger text
+  const padding = Math.round(16 * scaleFactor); // Scale padding proportionally
   
   switch (position) {
     case 'bottom-left':
@@ -100,11 +107,11 @@ export const drawLabel = (
       break;
     case 'top-left':
       x = padding;
-      y = 48 + padding; // Adjusted for font size
+      y = fontSize + padding; // Scale with font size
       break;
     case 'top-right':
       x = canvas.width - ctx.measureText(label).width - padding;
-      y = 48 + padding; // Adjusted for font size
+      y = fontSize + padding; // Scale with font size
       break;
   }
   
