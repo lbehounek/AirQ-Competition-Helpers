@@ -39,7 +39,8 @@ export const AspectRatioSelector: React.FC = () => {
             key={option.id}
             onClick={() => handleCardClick(option)}
             sx={{
-              minWidth: 140,
+              minWidth: 120,
+              maxWidth: 140,
               cursor: 'pointer',
               transition: 'all 0.2s ease-in-out',
               border: 2,
@@ -55,33 +56,34 @@ export const AspectRatioSelector: React.FC = () => {
               }
             }}
           >
-            <CardContent sx={{ textAlign: 'center', py: 2 }}>
+            <CardContent sx={{ textAlign: 'center', py: 1.5, px: 1.5 }}>
               <Box sx={{ 
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'center',
-                mb: 1,
+                mb: 0.5,
                 color: isSelected ? 'primary.main' : 'text.secondary'
               }}>
                 {getFormatIcon(option.id)}
               </Box>
               
               <Typography 
-                variant="h6" 
+                variant="subtitle2" 
                 component="div" 
                 sx={{ 
                   fontWeight: 600,
                   color: isSelected ? 'primary.main' : 'text.primary',
-                  mb: 0.5
+                  mb: 0.25,
+                  fontSize: '0.875rem'
                 }}
               >
                 {option.name}
               </Typography>
               
               <Typography 
-                variant="body2" 
+                variant="caption" 
                 color="text.secondary"
-                sx={{ mb: 1, fontSize: '0.75rem' }}
+                sx={{ fontSize: '0.7rem', lineHeight: 1.2 }}
               >
                 {option.description}
               </Typography>
@@ -91,7 +93,7 @@ export const AspectRatioSelector: React.FC = () => {
                   label="Selected" 
                   size="small" 
                   color="primary"
-                  sx={{ fontSize: '0.7rem', height: 20 }}
+                  sx={{ fontSize: '0.65rem', height: 18, mt: 0.5 }}
                 />
               )}
             </CardContent>

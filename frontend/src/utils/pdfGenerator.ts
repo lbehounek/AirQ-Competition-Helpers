@@ -47,20 +47,30 @@ export const generatePDF = async (
     format: 'a4'
   });
 
-  // 3x3 grid layout with printer-friendly margins
+  // Dynamic 3x3 grid layout optimized for aspect ratio
   const topBottomMargin = 5; // 0.5cm for printer friendliness
-  const sideMargin = 15;
-  const spacing = 8;
-  const gridWidth = pageWidth - (2 * sideMargin);
-  const gridHeight = pageHeight - (2 * topBottomMargin);
   
-  // Calculate cell dimensions with dynamic aspect ratio
-  const cellWidth = (gridWidth - (2 * spacing)) / 3;
-  const cellHeight = cellWidth / aspectRatio; // Dynamic aspect ratio
+  // Adaptive spacing based on aspect ratio to better utilize page
+  const spacing = Math.max(3, 8 - (aspectRatio - 1) * 3); // Less spacing for wider formats
   
-  // Center the grid vertically on the page (no title needed - set name is on first photo)
+  // Calculate optimal dimensions to maximize photo size while fitting 3x3 grid
+  const availableWidth = pageWidth - 20; // 10mm margins on sides
+  const availableHeight = pageHeight - (2 * topBottomMargin);
+  
+  // Calculate cell dimensions considering both width and height constraints
+  const cellWidthFromWidth = (availableWidth - (2 * spacing)) / 3;
+  const cellWidthFromHeight = (availableHeight - (2 * spacing)) * aspectRatio / 3;
+  
+  // Use the smaller dimension to ensure everything fits
+  const cellWidth = Math.min(cellWidthFromWidth, cellWidthFromHeight);
+  const cellHeight = cellWidth / aspectRatio;
+  
+  // Calculate actual used space and center on page
+  const totalGridWidth = (3 * cellWidth) + (2 * spacing);
   const totalGridHeight = (3 * cellHeight) + (2 * spacing);
-  const verticalOffset = topBottomMargin + (gridHeight - totalGridHeight) / 2;
+  
+  const sideMargin = (pageWidth - totalGridWidth) / 2;
+  const verticalOffset = topBottomMargin + (availableHeight - totalGridHeight) / 2;
 
   const addPhotoSetToPage = (photoSet: PhotoSet, setKey: 'set1' | 'set2', isFirstPage: boolean = true) => {
     if (!isFirstPage) {
