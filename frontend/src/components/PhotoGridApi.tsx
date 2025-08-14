@@ -64,13 +64,14 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   labelOffset = 0
 }) => {
   const { currentRatio } = useAspectRatio();
-  const [displayRatio, setDisplayRatio] = useState(currentRatio);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   
-  // Delay aspect ratio CSS change to sync with canvas rendering
+  // Handle aspect ratio transitions with loading state
   useEffect(() => {
+    setIsTransitioning(true);
     const timer = setTimeout(() => {
-      setDisplayRatio(currentRatio);
-    }, 50); // Small delay to let canvas render first
+      setIsTransitioning(false);
+    }, 250); // Longer transition to ensure canvas fully renders
     
     return () => clearTimeout(timer);
   }, [currentRatio]);
@@ -88,7 +89,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   });
 
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%', position: 'relative' }}>
       {/* 3x3 Photo Grid */}
       <Box sx={{
         display: 'grid',
@@ -99,14 +100,16 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
         borderRadius: 2,
         border: '2px solid',
         borderColor: 'primary.light',
-        boxShadow: 1
+        boxShadow: 1,
+        opacity: isTransitioning ? 0.3 : 1,
+        transition: 'opacity 0.1s ease-in-out'
       }}>
         {gridSlots.map((slot) => (
           <Paper
             key={slot.id}
             elevation={slot.photo ? 2 : 0}
             sx={{
-              aspectRatio: displayRatio.cssRatio,
+              aspectRatio: currentRatio.cssRatio,
               bgcolor: slot.photo ? 'background.paper' : 'grey.50',
               border: '1px solid',
               borderColor: slot.photo ? 'primary.main' : 'grey.300',
