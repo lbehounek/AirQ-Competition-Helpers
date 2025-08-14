@@ -75,3 +75,6 @@ pids
 /uploads
 /temp
 *.tmp
+
+# Backend storage - runtime data, should not be in git
+backend/storage/
