@@ -20,58 +20,74 @@ import {
   FileDownload,
   RestartAlt,
   Close,
-  CheckCircle
+  CheckCircle,
+  CloudOff,
+  Refresh
 } from '@mui/icons-material';
-import { usePhotoSession } from './hooks/usePhotoSession';
+import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
 import { DropZone } from './components/DropZone';
-import { PhotoGrid } from './components/PhotoGrid';
+import { PhotoGridApi } from './components/PhotoGridApi';
 import { TitleInput } from './components/TitleInput';
-import { PhotoEditor } from './components/PhotoEditor';
+import { PhotoEditorApi } from './components/PhotoEditorApi';
 import { PhotoControls } from './components/PhotoControls';
-import type { Photo } from './types';
 
-function App() {
+interface ApiPhoto {
+  id: string;
+  url: string;
+  filename: string;
+  canvasState: {
+    position: { x: number; y: number };
+    scale: number;
+    brightness: number;
+    contrast: number;
+    labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  };
+  label: string;
+}
+
+function AppApi() {
   const {
     session,
+    sessionId,
     loading,
     error,
+    backendAvailable,
     addPhotosToSet,
     removePhoto,
     updatePhotoState,
     updateSetTitle,
     resetSession,
     clearError,
+    checkBackendHealth,
     getSessionStats
-  } = usePhotoSession();
+  } = usePhotoSessionApi();
 
   const [selectedPhoto, setSelectedPhoto] = useState<{
-    photo: Photo;
+    photo: ApiPhoto;
     setKey: 'set1' | 'set2';
     label: string;
   } | null>(null);
 
   const stats = getSessionStats();
 
-  const handlePhotoClick = (photo: Photo, setKey: 'set1' | 'set2') => {
-    console.log('Photo clicked:', photo.id, setKey); // Debug log
-    const setPhotos = session.sets[setKey].photos;
+  const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
+    const setPhotos = session?.sets[setKey].photos || [];
     const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
     const label = String.fromCharCode(65 + photoIndex); // A, B, C, etc.
-    
+
     setSelectedPhoto({ photo, setKey, label });
-    console.log('Selected photo set:', { photo: photo.id, setKey, label }); // Debug log
   };
 
   const handlePhotoUpdate = (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
     updatePhotoState(setKey, photoId, canvasState);
-    
+
     // Update selected photo if it's the one being edited
-    if (selectedPhoto?.photo.id === photoId) {
+    if (selectedPhoto?.photo.id === photoId && session) {
       const updatedPhoto = session.sets[setKey].photos.find(p => p.id === photoId);
       if (updatedPhoto) {
         setSelectedPhoto({
           ...selectedPhoto,
-          photo: updatedPhoto
+          photo: updatedPhoto as ApiPhoto
         });
       }
     }
@@ -79,12 +95,71 @@ function App() {
 
   const handlePhotoRemove = (setKey: 'set1' | 'set2', photoId: string) => {
     removePhoto(setKey, photoId);
-    
+
     // Close detailed editor if this photo was selected
     if (selectedPhoto?.photo.id === photoId) {
       setSelectedPhoto(null);
     }
   };
+
+  // Backend not available
+  if (!backendAvailable) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
+        <Container maxWidth="md" sx={{ pt: 8 }}>
+          <Alert 
+            severity="error" 
+            sx={{ 
+              p: 4, 
+              textAlign: 'center',
+              fontSize: '1.1rem'
+            }}
+            icon={<CloudOff sx={{ fontSize: 40 }} />}
+          >
+            <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
+              Backend Server Not Running
+            </Typography>
+            <Typography variant="body1" sx={{ mb: 3 }}>
+              The backend server needs to be running for the application to work.
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', bgcolor: 'grey.100', p: 2, borderRadius: 1 }}>
+                cd backend<br />
+                pip install -r requirements.txt<br />
+                python run.py
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<Refresh />}
+                onClick={checkBackendHealth}
+                size="large"
+              >
+                Check Again
+              </Button>
+            </Box>
+          </Alert>
+        </Container>
+      </Box>
+    );
+  }
+
+  // No session created yet
+  if (!session || !sessionId) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
+        <Container maxWidth="md" sx={{ pt: 8 }}>
+          <Alert severity="info" sx={{ p: 4, textAlign: 'center' }}>
+            <Typography variant="h5" sx={{ mb: 2 }}>
+              Creating New Session...
+            </Typography>
+            <Typography>
+              Setting up your photo organization workspace
+            </Typography>
+          </Alert>
+        </Container>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
@@ -97,36 +172,52 @@ function App() {
               Navigation Flight Photo Organizer
             </Typography>
           </Box>
-          <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 3 }}>
+          <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 2 }}>
             Organize your navigation flight photos into standardized PDF layouts
           </Typography>
           
+          {/* Session Info */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
+            <Chip
+              label={`Session: ${sessionId.substring(0, 8)}...`}
+              color="secondary"
+              variant="filled"
+              size="small"
+            />
+            <Chip
+              label="🟢 Backend Connected"
+              color="success"
+              variant="filled"
+              size="small"
+            />
+          </Box>
+
           {/* Session Stats */}
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
-            <Chip 
-              icon={<PhotoCamera />} 
-              label={`Total Photos: ${stats.totalPhotos}/18`} 
-              color="secondary" 
-              variant="filled" 
+            <Chip
+              icon={<PhotoCamera />}
+              label={`Total Photos: ${stats.totalPhotos}/18`}
+              color="secondary"
+              variant="filled"
             />
-            <Chip 
-              label={`Set 1: ${stats.set1Photos}/9`} 
-              color={stats.set1Photos === 9 ? 'success' : 'default'} 
-              variant="outlined" 
+            <Chip
+              label={`Set 1: ${stats.set1Photos}/9`}
+              color={stats.set1Photos === 9 ? 'success' : 'default'}
+              variant="outlined"
               sx={{ bgcolor: 'rgba(255, 255, 255, 0.9)' }}
             />
-            <Chip 
-              label={`Set 2: ${stats.set2Photos}/9`} 
-              color={stats.set2Photos === 9 ? 'success' : 'default'} 
-              variant="outlined" 
+            <Chip
+              label={`Set 2: ${stats.set2Photos}/9`}
+              color={stats.set2Photos === 9 ? 'success' : 'default'}
+              variant="outlined"
               sx={{ bgcolor: 'rgba(255, 255, 255, 0.9)' }}
             />
             {stats.isComplete && (
-              <Chip 
-                icon={<CheckCircle />} 
-                label="Complete" 
-                color="success" 
-                variant="filled" 
+              <Chip
+                icon={<CheckCircle />}
+                label="Complete"
+                color="success"
+                variant="filled"
               />
             )}
           </Box>
@@ -134,8 +225,8 @@ function App() {
 
         {/* Global Error Display */}
         {error && (
-          <Alert 
-            severity="error" 
+          <Alert
+            severity="error"
             sx={{ mb: 3 }}
             action={
               <IconButton color="inherit" size="small" onClick={clearError}>
@@ -159,9 +250,9 @@ function App() {
                 setName="Set 1"
                 placeholder="Enter title for Set 1..."
               />
-              <Chip 
-                label={`${stats.set1Photos}/9`} 
-                color={stats.set1Photos === 9 ? 'success' : 'primary'} 
+              <Chip
+                label={`${stats.set1Photos}/9`}
+                color={stats.set1Photos === 9 ? 'success' : 'primary'}
                 variant={stats.set1Photos > 0 ? 'filled' : 'outlined'}
                 size="medium"
               />
@@ -177,17 +268,17 @@ function App() {
           </Paper>
 
           {/* Set 1 Photo Grid - Dominating Element */}
-          {stats.set1Photos > 0 && (
+          {stats.set1Photos > 0 && session && (
             <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
               <Box sx={{ mb: 3 }}>
                 <Typography variant="h5" color="primary" sx={{ fontWeight: 600 }}>
                   {session.sets.set1.title || 'Set 1'} Preview
                 </Typography>
               </Box>
-              <PhotoGrid
+              <PhotoGridApi
                 photoSet={session.sets.set1}
                 setKey="set1"
-                onPhotoUpdate={(photoId, canvasState) => 
+                onPhotoUpdate={(photoId, canvasState) =>
                   handlePhotoUpdate('set1', photoId, canvasState)
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
@@ -199,10 +290,10 @@ function App() {
 
         {/* Horizontal Divider */}
         <Divider sx={{ my: 6, borderWidth: 2, '&::before, &::after': { borderWidth: '2px' } }}>
-          <Chip 
-            label="Set 2" 
-            size="large" 
-            color="primary" 
+          <Chip
+            label="Set 2"
+            size="large"
+            color="primary"
             variant="filled"
             sx={{ px: 3, py: 1, fontSize: '1rem', fontWeight: 600 }}
           />
@@ -220,9 +311,9 @@ function App() {
                 setName="Set 2"
                 placeholder="Enter title for Set 2..."
               />
-              <Chip 
-                label={`${stats.set2Photos}/9`} 
-                color={stats.set2Photos === 9 ? 'success' : 'primary'} 
+              <Chip
+                label={`${stats.set2Photos}/9`}
+                color={stats.set2Photos === 9 ? 'success' : 'primary'}
                 variant={stats.set2Photos > 0 ? 'filled' : 'outlined'}
                 size="medium"
               />
@@ -238,17 +329,17 @@ function App() {
           </Paper>
 
           {/* Set 2 Photo Grid - Dominating Element */}
-          {stats.set2Photos > 0 && (
+          {stats.set2Photos > 0 && session && (
             <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
               <Box sx={{ mb: 3 }}>
                 <Typography variant="h5" color="primary" sx={{ fontWeight: 600 }}>
                   {session.sets.set2.title || 'Set 2'} Preview
                 </Typography>
               </Box>
-              <PhotoGrid
+              <PhotoGridApi
                 photoSet={session.sets.set2}
                 setKey="set2"
-                onPhotoUpdate={(photoId, canvasState) => 
+                onPhotoUpdate={(photoId, canvasState) =>
                   handlePhotoUpdate('set2', photoId, canvasState)
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
@@ -257,8 +348,6 @@ function App() {
             </Paper>
           )}
         </Box>
-
-        
 
         {/* Action Buttons - Centered and Prominent */}
         <Paper elevation={1} sx={{ p: 4, mb: 4, borderRadius: 3 }}>
@@ -269,8 +358,8 @@ function App() {
               startIcon={<RestartAlt />}
               onClick={resetSession}
               size="large"
-              sx={{ 
-                py: 1.5, 
+              sx={{
+                py: 1.5,
                 px: 4,
                 fontSize: '1.1rem',
                 minWidth: 160,
@@ -286,8 +375,8 @@ function App() {
               startIcon={<FileDownload />}
               disabled={!stats.isComplete}
               size="large"
-              sx={{ 
-                py: 1.5, 
+              sx={{
+                py: 1.5,
                 px: 4,
                 fontSize: '1.1rem',
                 minWidth: 180,
@@ -303,22 +392,22 @@ function App() {
 
         {/* Welcome Instructions - Only shown when no photos */}
         {stats.totalPhotos === 0 && (
-          <Alert 
-            severity="info" 
-            sx={{ 
-              p: 4, 
-              mb: 4, 
+          <Alert
+            severity="info"
+            sx={{
+              p: 4,
+              mb: 4,
               borderRadius: 3,
               border: '1px solid',
               borderColor: 'info.light'
             }}
           >
             <Typography variant="h5" component="h3" sx={{ mb: 3, color: 'info.main', fontWeight: 600 }}>
-              Welcome to AirQ Photo Organizer
+              Welcome to AirQ Photo Organizer (Backend Mode)
             </Typography>
             <Box component="ul" sx={{ m: 0, pl: 3, fontSize: '1.1rem', '& li': { mb: 1.5, color: 'info.dark' } }}>
               <li>Upload up to 9 photos for each set using the upload areas above</li>
-              <li>Photos will be automatically cropped to 4:3 aspect ratio</li>
+              <li>Photos are stored on the backend server in local filesystem</li>
               <li>Click on any photo in the preview grids to edit it</li>
               <li>Drag photos to reposition, use zoom and brightness controls</li>
               <li>Labels A-I will be added automatically</li>
@@ -402,7 +491,7 @@ function App() {
                     minHeight: { xs: '300px', lg: '500px' },
                     bgcolor: 'grey.50'
                   }}>
-                    <PhotoEditor
+                    <PhotoEditorApi
                       photo={selectedPhoto.photo}
                       label={selectedPhoto.label}
                       onUpdate={(canvasState) =>
@@ -425,7 +514,7 @@ function App() {
                     maxHeight: { xs: '300px', lg: 'none' }
                   }}>
                     <PhotoControls
-                      photo={selectedPhoto.photo}
+                      photo={selectedPhoto.photo as any} // Type compatibility
                       label={selectedPhoto.label}
                       onUpdate={(canvasState) =>
                         handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
@@ -446,4 +535,4 @@ function App() {
   );
 }
 
-export default App;
+export default AppApi;

@@ -1,6 +1,6 @@
 # Test photos and documentation
 photos/
-attempts/
+tmp/
 
 # Dependencies
 node_modules/

@@ -21,10 +21,75 @@ export const usePhotoSession = (sessionId?: string) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Restore HTMLImageElement objects from File objects after loading from localStorage
+   */
+  const restoreImagesFromSession = useCallback(async () => {
+    const needsRestoring = (
+      currentSession.sets.set1.photos.some(p => p.file && !p.originalImage) ||
+      currentSession.sets.set2.photos.some(p => p.file && !p.originalImage)
+    );
+
+    if (!needsRestoring) return;
+
+    setLoading(true);
+    console.log('Restoring images from localStorage...');
+
+    try {
+      const updatedSets = { ...currentSession.sets };
+
+      // Restore Set 1 images
+      for (let i = 0; i < updatedSets.set1.photos.length; i++) {
+        const photo = updatedSets.set1.photos[i];
+        if (photo.file && !photo.originalImage) {
+          try {
+            const image = await loadImageFromFile(photo.file);
+            updatedSets.set1.photos[i] = { ...photo, originalImage: image };
+          } catch (err) {
+            console.error(`Failed to restore image for photo ${photo.id}:`, err);
+          }
+        }
+      }
+
+      // Restore Set 2 images
+      for (let i = 0; i < updatedSets.set2.photos.length; i++) {
+        const photo = updatedSets.set2.photos[i];
+        if (photo.file && !photo.originalImage) {
+          try {
+            const image = await loadImageFromFile(photo.file);
+            updatedSets.set2.photos[i] = { ...photo, originalImage: image };
+          } catch (err) {
+            console.error(`Failed to restore image for photo ${photo.id}:`, err);
+          }
+        }
+      }
+
+      // Update session with restored images
+      const restoredSession = updateSessionVersion({
+        ...currentSession,
+        sets: updatedSets
+      });
+
+      setCurrentSession(restoredSession);
+      console.log('Images restored successfully');
+      
+    } catch (err) {
+      console.error('Failed to restore images:', err);
+      setError('Failed to restore images from previous session');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentSession, setCurrentSession]);
+
   // Clean up old sessions on mount
   useEffect(() => {
     cleanupOldSessions();
   }, []);
+
+  // Restore images when session changes and has photos without originalImage
+  useEffect(() => {
+    restoreImagesFromSession();
+  }, [restoreImagesFromSession]);
 
   /**
    * Add photos to a specific set
@@ -167,7 +232,7 @@ export const usePhotoSession = (sessionId?: string) => {
   /**
    * Load session from localStorage
    */
-  const loadSession = useCallback((sessionId: string): boolean => {
+  const loadSession = useCallback(async (sessionId: string): Promise<boolean> => {
     try {
       const stored = localStorage.getItem(getSessionStorageKey(sessionId));
       if (!stored) return false;
@@ -177,12 +242,16 @@ export const usePhotoSession = (sessionId?: string) => {
 
       setCurrentSession(parsed);
       setError(null);
+      
+      // Restore images after setting the session
+      setTimeout(() => restoreImagesFromSession(), 100);
+      
       return true;
     } catch (err) {
       console.error('Failed to load session:', err);
       return false;
     }
-  }, [setCurrentSession]);
+  }, [setCurrentSession, restoreImagesFromSession]);
 
   /**
    * Get session statistics
