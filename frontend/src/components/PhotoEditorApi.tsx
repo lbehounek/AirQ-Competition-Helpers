@@ -133,7 +133,7 @@ const renderPhotoOnCanvas = (
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = Math.ceil(displayWidth);
   tempCanvas.height = Math.ceil(displayHeight);
-  const tempCtx = tempCanvas.getContext('2d');
+  const tempCtx = getCanvasContext(tempCanvas);
   if (!tempCtx) {
     // Fallback: just draw without effects
     ctx.drawImage(croppedImage, x, y, displayWidth, displayHeight);
@@ -458,14 +458,22 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     renderCanvas();
   }, [renderCanvas]);
 
-  // Initialize WebGL support detection
+  // Initialize WebGL support detection and context
   useEffect(() => {
-    setWebglSupported(isWebGLSupported());
-  }, []);
-
-  // WebGL context lifecycle management
-  useEffect(() => {
-    // Cleanup on unmount - return context to pool if we have one
+    const supported = isWebGLSupported();
+    setWebglSupported(supported);
+    
+    // Request a WebGL context from the pool for this component
+    if (supported && !webglContextRef.current) {
+      const context = webglManager.requestContext();
+      webglContextRef.current = context;
+      
+      if (!context) {
+        console.warn('No WebGL context available from pool');
+      }
+    }
+    
+    // Cleanup on unmount - return context to pool
     return () => {
       if (webglContextRef.current) {
         webglManager.releaseContext(webglContextRef.current);
@@ -573,13 +581,20 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     const baseCenterX = mouseX / scaleRatio;
     const baseCenterY = mouseY / scaleRatio;
 
-    // Calculate position adjustment to zoom towards mouse cursor
-    const scaleChange = newScale / currentScale;
+    // Calculate position adjustment to keep the point under the mouse cursor fixed
+    // When zooming, we want the image point under the cursor to stay in the same place
+    const scaleDiff = newScale - currentScale;
     const currentPosition = photo.canvasState.position;
     
+    // The point under the mouse in image space (relative to image origin)
+    const imagePointX = baseCenterX - currentPosition.x;
+    const imagePointY = baseCenterY - currentPosition.y;
+    
+    // After zoom, this point moves by the scale difference
+    // We need to adjust position to compensate
     const newPosition = {
-      x: baseCenterX + (currentPosition.x - baseCenterX) * scaleChange,
-      y: baseCenterY + (currentPosition.y - baseCenterY) * scaleChange
+      x: currentPosition.x - imagePointX * scaleDiff,
+      y: currentPosition.y - imagePointY * scaleDiff
     };
 
     // Apply constraints in base coordinates
