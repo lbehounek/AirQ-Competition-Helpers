@@ -403,7 +403,7 @@ function AppApi() {
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
                 onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
-                onFilesDropped={(files) => addPhotosToSet('set1', files)}
+                onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
               />
             </Paper>
           )}
@@ -466,7 +466,7 @@ function AppApi() {
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
                 onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
-                onFilesDropped={(files) => addPhotosToSet('set2', files)}
+                onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
               />
             </Paper>
           )}

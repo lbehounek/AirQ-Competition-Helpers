@@ -123,5 +123,18 @@ export const generatePhotoLabels = (): string[] => {
  * Validate if file is a supported image format
  */
 export const isValidImageFile = (file: File): boolean => {
-  return ['image/jpeg', 'image/png'].includes(file.type) && file.size <= 20 * 1024 * 1024;
+  // Accept various JPEG MIME types and PNG
+  const validTypes = [
+    'image/jpeg',
+    'image/jpg', 
+    'image/pjpeg', // Progressive JPEG
+    'image/png'
+  ];
+  
+  const hasValidType = validTypes.includes(file.type) || 
+    file.name.toLowerCase().match(/\.(jpe?g|png)$/); // Fallback to file extension
+  
+  const hasValidSize = file.size <= 20 * 1024 * 1024; // 20MB limit
+  
+  return hasValidType && hasValidSize;
 };

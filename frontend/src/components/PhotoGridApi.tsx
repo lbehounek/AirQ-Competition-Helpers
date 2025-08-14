@@ -218,11 +218,30 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
       'image/png': ['.png']
     },
     maxFiles: 9, // Allow multiple files for easier bulk upload
-    onDrop: (acceptedFiles) => {
+    onDrop: (acceptedFiles, rejectedFiles) => {
+      console.log('Drop event - Accepted:', acceptedFiles, 'Rejected:', rejectedFiles);
+      
+      if (rejectedFiles.length > 0) {
+        console.warn('Rejected files:', rejectedFiles.map(f => ({
+          file: f.file.name,
+          type: f.file.type,
+          size: f.file.size,
+          errors: f.errors
+        })));
+      }
+      
       if (acceptedFiles.length > 0 && onFilesDropped) {
-        const validFiles = acceptedFiles.filter(file => isValidImageFile(file));
+        const validFiles = acceptedFiles.filter(file => {
+          const isValid = isValidImageFile(file);
+          console.log(`File validation - ${file.name}: ${isValid} (type: ${file.type}, size: ${file.size})`);
+          return isValid;
+        });
+        
         if (validFiles.length > 0) {
+          console.log('Calling onFilesDropped with:', validFiles);
           onFilesDropped(validFiles);
+        } else {
+          console.warn('No valid files after filtering');
         }
       }
     },
