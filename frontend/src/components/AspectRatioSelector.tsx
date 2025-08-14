@@ -4,11 +4,11 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  SelectChangeEvent,
   Box,
   Typography,
   Tooltip
 } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import { AspectRatio } from '@mui/icons-material';
 import { useAspectRatio, ASPECT_RATIO_OPTIONS } from '../contexts/AspectRatioContext';
 
