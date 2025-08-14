@@ -79,15 +79,15 @@ export const drawLabel = (
     return;
   }
   
-  // Label styling
-  ctx.font = '16px Arial';
+  // Label styling - 3x bigger than default with thin black border
+  ctx.font = 'bold 48px Arial';
   ctx.fillStyle = 'white';
   ctx.strokeStyle = 'black';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1; // Thin black border
   
   // Calculate position based on canvas size and label position
   let x: number, y: number;
-  const padding = 8;
+  const padding = 16; // Increased padding for bigger text
   
   switch (position) {
     case 'bottom-left':
@@ -100,11 +100,11 @@ export const drawLabel = (
       break;
     case 'top-left':
       x = padding;
-      y = 20 + padding;
+      y = 48 + padding; // Adjusted for font size
       break;
     case 'top-right':
       x = canvas.width - ctx.measureText(label).width - padding;
-      y = 20 + padding;
+      y = 48 + padding; // Adjusted for font size
       break;
   }
   

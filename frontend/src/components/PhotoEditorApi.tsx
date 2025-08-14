@@ -186,7 +186,7 @@ const renderPhotoOnCanvas = (
         ctx.drawImage(processedCanvas, x, y);
         // Draw label on main canvas
         const labelPos = isDragging && localLabelPosition ? localLabelPosition : canvasState.labelPosition;
-        drawLabel(ctx, label, labelPos, canvas.width, canvas.height);
+        drawLabel(canvas, label, labelPos);
         return;
       }
     } catch (error) {
@@ -342,7 +342,7 @@ const renderPhotoOnCanvas = (
   
   // Draw label on main canvas (for both WebGL and CPU paths)
   const labelPos = isDragging && localLabelPosition ? localLabelPosition : canvasState.labelPosition;
-  drawLabel(ctx, label, labelPos, canvas.width, canvas.height);
+  drawLabel(canvas, label, labelPos);
 };
 
 export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({

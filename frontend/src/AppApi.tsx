@@ -46,6 +46,9 @@ interface ApiPhoto {
   label: string;
 }
 
+// Configurable delay before showing loading text (in milliseconds)
+const LOADING_TEXT_DELAY = 3000; // 3 seconds
+
 function AppApi() {
   const {
     session,
@@ -63,6 +66,22 @@ function AppApi() {
     refreshSession,
     getSessionStats
   } = usePhotoSessionApi();
+  
+  // State to track if we should show loading text
+  const [showLoadingText, setShowLoadingText] = useState(false);
+  
+  // Show loading text after delay
+  useEffect(() => {
+    if (backendAvailable === null) {
+      const timer = setTimeout(() => {
+        setShowLoadingText(true);
+      }, LOADING_TEXT_DELAY);
+      
+      return () => clearTimeout(timer);
+    } else {
+      setShowLoadingText(false);
+    }
+  }, [backendAvailable]);
 
   const [selectedPhoto, setSelectedPhoto] = useState<{
     photo: ApiPhoto;
@@ -108,18 +127,30 @@ function AppApi() {
   // Backend checking (loading state)
   if (backendAvailable === null) {
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-        <Container maxWidth="md" sx={{ pt: 8 }}>
-          <Paper sx={{ p: 4, textAlign: 'center' }}>
-            <CircularProgress size={60} sx={{ mb: 3 }} />
-            <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
-              Connecting to Backend Server
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Please wait while we establish connection...
-            </Typography>
-          </Paper>
-        </Container>
+      <Box sx={{ 
+        minHeight: '100vh', 
+        bgcolor: 'background.default', 
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        {showLoadingText ? (
+          // Show full loading message after delay
+          <Container maxWidth="md">
+            <Paper sx={{ p: 4, textAlign: 'center' }}>
+              <CircularProgress size={60} sx={{ mb: 3 }} />
+              <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
+                Connecting to Backend Server
+              </Typography>
+              <Typography variant="body1" color="text.secondary">
+                Please wait while we establish connection...
+              </Typography>
+            </Paper>
+          </Container>
+        ) : (
+          // Just show spinner initially
+          <CircularProgress size={60} />
+        )}
       </Box>
     );
   }
