@@ -25,7 +25,10 @@ import {
   RestoreFromTrash,
   Refresh,
   Label,
-  CropFree
+  CropFree,
+  BlurOn,
+  ColorLens,
+  AutoAwesome
 } from '@mui/icons-material';
 import type { Photo } from '../types';
 
@@ -36,6 +39,12 @@ interface PhotoControlsProps {
       scale: number;
       brightness: number;
       contrast: number;
+      sharpness?: number;
+      whiteBalance?: {
+        temperature: number;
+        tint: number;
+        auto: boolean;
+      };
       labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
     };
   };
@@ -107,6 +116,46 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     });
   };
 
+  const handleSharpnessChange = (newSharpness: number) => {
+    onUpdate({
+      ...photo.canvasState,
+      sharpness: newSharpness
+    });
+  };
+
+  const handleWhiteBalanceTemperatureChange = (newTemperature: number) => {
+    onUpdate({
+      ...photo.canvasState,
+      whiteBalance: {
+        ...(photo.canvasState.whiteBalance || { temperature: 0, tint: 0, auto: false }),
+        temperature: newTemperature,
+        auto: false // Disable auto when manually adjusting
+      }
+    });
+  };
+
+  const handleWhiteBalanceTintChange = (newTint: number) => {
+    onUpdate({
+      ...photo.canvasState,
+      whiteBalance: {
+        ...(photo.canvasState.whiteBalance || { temperature: 0, tint: 0, auto: false }),
+        tint: newTint,
+        auto: false // Disable auto when manually adjusting
+      }
+    });
+  };
+
+  const handleAutoWhiteBalance = () => {
+    onUpdate({
+      ...photo.canvasState,
+      whiteBalance: {
+        temperature: 0,
+        tint: 0,
+        auto: true
+      }
+    });
+  };
+
   const handleLabelPositionChange = (position: LabelPosition) => {
     // Update local state immediately for instant UI feedback
     setLocalLabelPosition(position);
@@ -123,6 +172,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
       scale: 1.0, // Default 100% scale (fills canvas)
       brightness: 0,
       contrast: 1,
+      sharpness: 0,
+      whiteBalance: {
+        temperature: 0,
+        tint: 0,
+        auto: false,
+      },
       labelPosition: 'bottom-left'
     });
   };
@@ -309,7 +364,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             </Box>
 
             {/* Contrast Control */}
-            <Box>
+            <Box sx={{ mb: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Contrast fontSize="small" />
@@ -327,6 +382,107 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 onChange={(_, value) => handleContrastChange(value as number)}
                 color="primary"
                 size="small"
+              />
+            </Box>
+
+            {/* Sharpness Control */}
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <BlurOn fontSize="small" />
+                  Sharpness
+                </Typography>
+                <Typography variant="body2" color="primary" fontWeight={600}>
+                  {photo.canvasState.sharpness || 0}
+                </Typography>
+              </Box>
+              <Slider
+                value={photo.canvasState.sharpness || 0}
+                min={0}
+                max={100}
+                step={5}
+                onChange={(_, value) => handleSharpnessChange(value as number)}
+                color="primary"
+                size="small"
+              />
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* White Balance Controls */}
+        <Grid item xs={12}>
+          <Paper elevation={1} sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ColorLens color="primary" />
+              White Balance
+            </Typography>
+
+            {/* Auto White Balance Button */}
+            <Box sx={{ mb: 3 }}>
+              <Button
+                variant={photo.canvasState.whiteBalance?.auto ? "contained" : "outlined"}
+                startIcon={<AutoAwesome />}
+                onClick={handleAutoWhiteBalance}
+                fullWidth
+                color="primary"
+              >
+                Auto White Balance
+              </Button>
+            </Box>
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* Temperature Control */}
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2">
+                  Temperature (Blue ↔ Yellow)
+                </Typography>
+                <Typography variant="body2" color="primary" fontWeight={600}>
+                  {photo.canvasState.whiteBalance?.temperature || 0}
+                </Typography>
+              </Box>
+              <Slider
+                value={photo.canvasState.whiteBalance?.temperature || 0}
+                min={-100}
+                max={100}
+                step={5}
+                onChange={(_, value) => handleWhiteBalanceTemperatureChange(value as number)}
+                color="primary"
+                size="small"
+                disabled={photo.canvasState.whiteBalance?.auto}
+                sx={{
+                  '& .MuiSlider-track': {
+                    background: 'linear-gradient(90deg, #4FC3F7 0%, #FFE082 100%)'
+                  }
+                }}
+              />
+            </Box>
+
+            {/* Tint Control */}
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2">
+                  Tint (Green ↔ Magenta)
+                </Typography>
+                <Typography variant="body2" color="primary" fontWeight={600}>
+                  {photo.canvasState.whiteBalance?.tint || 0}
+                </Typography>
+              </Box>
+              <Slider
+                value={photo.canvasState.whiteBalance?.tint || 0}
+                min={-100}
+                max={100}
+                step={5}
+                onChange={(_, value) => handleWhiteBalanceTintChange(value as number)}
+                color="primary"
+                size="small"
+                disabled={photo.canvasState.whiteBalance?.auto}
+                sx={{
+                  '& .MuiSlider-track': {
+                    background: 'linear-gradient(90deg, #81C784 0%, #E91E63 100%)'
+                  }
+                }}
               />
             </Box>
           </Paper>

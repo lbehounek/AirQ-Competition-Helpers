@@ -125,39 +125,137 @@ const renderPhotoOnCanvas = (
   // Draw the image to temp canvas
   tempCtx.drawImage(croppedImage, 0, 0, displayWidth, displayHeight);
   
-  // Apply brightness and contrast adjustments on temp canvas
-  if (canvasState.brightness !== 0 || canvasState.contrast !== 1) {
-    try {
-      const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-      const data = imageData.data;
+  // Apply all image adjustments on temp canvas
+  try {
+    let imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+    let data = imageData.data;
+    
+    // Apply white balance first (if needed)
+    if (canvasState.whiteBalance?.auto || 
+        canvasState.whiteBalance?.temperature !== 0 || 
+        canvasState.whiteBalance?.tint !== 0) {
       
-      // Calculate adjustment factors
-      // Brightness: -100 to 100 -> multiply by 2.55 to get -255 to 255
+      if (canvasState.whiteBalance.auto) {
+        // Auto white balance: Calculate average color and neutralize
+        let rSum = 0, gSum = 0, bSum = 0, count = 0;
+        
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] === 0) continue; // Skip transparent
+          rSum += data[i];
+          gSum += data[i + 1];
+          bSum += data[i + 2];
+          count++;
+        }
+        
+        if (count > 0) {
+          const rAvg = rSum / count;
+          const gAvg = gSum / count;
+          const bAvg = bSum / count;
+          const gray = (rAvg + gAvg + bAvg) / 3;
+          
+          const rScale = gray / rAvg;
+          const gScale = gray / gAvg;
+          const bScale = gray / bAvg;
+          
+          for (let i = 0; i < data.length; i += 4) {
+            if (data[i + 3] === 0) continue;
+            data[i] = Math.min(255, data[i] * rScale);
+            data[i + 1] = Math.min(255, data[i + 1] * gScale);
+            data[i + 2] = Math.min(255, data[i + 2] * bScale);
+          }
+        }
+      } else {
+        // Manual white balance adjustments
+        const temp = canvasState.whiteBalance.temperature || 0;
+        const tint = canvasState.whiteBalance.tint || 0;
+        
+        // Temperature: negative = blue, positive = yellow
+        const rTemp = temp > 0 ? temp * 1.5 : 0;
+        const bTemp = temp < 0 ? -temp * 1.5 : 0;
+        
+        // Tint: negative = green, positive = magenta
+        const gTint = tint < 0 ? -tint : 0;
+        const mTint = tint > 0 ? tint * 0.5 : 0;
+        
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] === 0) continue;
+          
+          // Apply temperature
+          data[i] = Math.max(0, Math.min(255, data[i] + rTemp - bTemp));     // Red
+          data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + bTemp - rTemp)); // Blue
+          
+          // Apply tint
+          data[i] = Math.max(0, Math.min(255, data[i] + mTint));     // Red (magenta)
+          data[i + 1] = Math.max(0, Math.min(255, data[i + 1] - gTint + gTint)); // Green
+          data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + mTint)); // Blue (magenta)
+        }
+      }
+    }
+    
+    // Apply brightness and contrast
+    if (canvasState.brightness !== 0 || canvasState.contrast !== 1) {
       const brightnessAdjust = canvasState.brightness * 2.55;
-      // Contrast: 0.5 to 2.0 (where 1 is no change)
       const contrastFactor = canvasState.contrast;
       
       for (let i = 0; i < data.length; i += 4) {
-        // Skip transparent pixels
         if (data[i + 3] === 0) continue;
         
         // Apply contrast first, then brightness
-        // Contrast formula: newValue = (oldValue - 128) * contrast + 128
-        data[i] = (data[i] - 128) * contrastFactor + 128 + brightnessAdjust;     // Red
-        data[i + 1] = (data[i + 1] - 128) * contrastFactor + 128 + brightnessAdjust; // Green
-        data[i + 2] = (data[i + 2] - 128) * contrastFactor + 128 + brightnessAdjust; // Blue
+        data[i] = (data[i] - 128) * contrastFactor + 128 + brightnessAdjust;
+        data[i + 1] = (data[i + 1] - 128) * contrastFactor + 128 + brightnessAdjust;
+        data[i + 2] = (data[i + 2] - 128) * contrastFactor + 128 + brightnessAdjust;
         
-        // Clamp values to 0-255
+        // Clamp values
         data[i] = Math.max(0, Math.min(255, data[i]));
         data[i + 1] = Math.max(0, Math.min(255, data[i + 1]));
         data[i + 2] = Math.max(0, Math.min(255, data[i + 2]));
       }
-      
-      tempCtx.putImageData(imageData, 0, 0);
-    } catch (error) {
-      console.error('Error applying brightness/contrast adjustments:', error);
-      // If we can't apply effects (CORS etc), just use the original image
     }
+    
+    // Apply sharpness using convolution kernel
+    if (canvasState.sharpness && canvasState.sharpness > 0) {
+      // Create a copy of the data for convolution
+      const originalData = new Uint8ClampedArray(data);
+      const width = tempCanvas.width;
+      const height = tempCanvas.height;
+      
+      // Sharpness kernel (adjustable strength)
+      const strength = canvasState.sharpness / 100; // 0 to 1
+      const kernel = [
+        0, -strength, 0,
+        -strength, 1 + 4 * strength, -strength,
+        0, -strength, 0
+      ];
+      
+      // Apply convolution (skip edges for simplicity)
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = (y * width + x) * 4;
+          
+          if (originalData[idx + 3] === 0) continue; // Skip transparent
+          
+          for (let c = 0; c < 3; c++) { // RGB channels
+            let sum = 0;
+            
+            // Apply kernel
+            for (let ky = -1; ky <= 1; ky++) {
+              for (let kx = -1; kx <= 1; kx++) {
+                const kidx = ((y + ky) * width + (x + kx)) * 4;
+                const kval = kernel[(ky + 1) * 3 + (kx + 1)];
+                sum += originalData[kidx + c] * kval;
+              }
+            }
+            
+            data[idx + c] = Math.max(0, Math.min(255, sum));
+          }
+        }
+      }
+    }
+    
+    tempCtx.putImageData(imageData, 0, 0);
+  } catch (error) {
+    console.error('Error applying image adjustments:', error);
+    // If we can't apply effects (CORS etc), just use the original image
   }
   
   // Draw the processed image from temp canvas to main canvas

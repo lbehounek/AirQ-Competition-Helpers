@@ -7,6 +7,12 @@ export interface Photo {
     scale: number;
     brightness: number;
     contrast: number;
+    sharpness: number; // 0 to 100, where 0 is no sharpening
+    whiteBalance: {
+      temperature: number; // -100 to 100, where 0 is neutral
+      tint: number; // -100 to 100, where 0 is neutral
+      auto: boolean; // Whether to use auto white balance
+    };
     labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   };
   label: string; // A, B, C, etc.

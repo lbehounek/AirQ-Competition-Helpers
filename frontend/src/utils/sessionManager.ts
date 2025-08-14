@@ -52,6 +52,12 @@ export const createPhotoFromFile = (file: File, setIndex: number, photoIndex: nu
       scale: 1.0, // 100% scale - fills canvas without white borders
       brightness: 0,
       contrast: 1,
+      sharpness: 0,
+      whiteBalance: {
+        temperature: 0,
+        tint: 0,
+        auto: false,
+      },
       labelPosition: 'bottom-left' as const,
     },
     label: labels[photoIndex] || 'X' // A-I for each set
