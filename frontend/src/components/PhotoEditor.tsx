@@ -97,8 +97,8 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
         });
       }
 
-      // Draw the label
-      drawLabel(canvas, label, 'bottom-left');
+          // Draw the label with position from canvas state
+    drawLabel(canvas, label, photo.canvasState.labelPosition || 'bottom-left');
     } catch (error) {
       console.error('Error rendering canvas:', error);
     }

@@ -7,6 +7,7 @@ export interface Photo {
     scale: number;
     brightness: number;
     contrast: number;
+    labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   };
   label: string; // A, B, C, etc.
 }

@@ -51,7 +51,8 @@ export const createPhotoFromFile = (file: File, setIndex: number, photoIndex: nu
       position: { x: 0, y: 0 },
       scale: 1,
       brightness: 0,
-      contrast: 1
+      contrast: 1,
+      labelPosition: 'bottom-left' as const,
     },
     label: labels[photoIndex] || 'X' // A-I for each set
   };

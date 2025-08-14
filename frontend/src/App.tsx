@@ -24,6 +24,7 @@ import { DropZone } from './components/DropZone';
 import { PhotoGrid } from './components/PhotoGrid';
 import { TitleInput } from './components/TitleInput';
 import { PhotoEditor } from './components/PhotoEditor';
+import { PhotoControls } from './components/PhotoControls';
 import type { Photo } from './types';
 
 function App() {
@@ -276,15 +277,32 @@ function App() {
                 <Close sx={{ color: 'white' }} />
               </IconButton>
             </Box>
-            <PhotoEditor
-              photo={selectedPhoto.photo}
-              label={selectedPhoto.label}
-              onUpdate={(canvasState) => 
-                handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
-              }
-              onRemove={() => handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id)}
-              size="large"
-            />
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 4 }}>
+              {/* Photo Preview */}
+              <Box sx={{ flex: '1 1 auto', minWidth: 300 }}>
+                <PhotoEditor
+                  photo={selectedPhoto.photo}
+                  label={selectedPhoto.label}
+                  onUpdate={(canvasState) => 
+                    handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
+                  }
+                  onRemove={() => handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id)}
+                  size="large"
+                />
+              </Box>
+              
+              {/* Photo Controls */}
+              <Box sx={{ flex: '0 0 auto', minWidth: 320 }}>
+                <PhotoControls
+                  photo={selectedPhoto.photo}
+                  label={selectedPhoto.label}
+                  onUpdate={(canvasState) => 
+                    handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
+                  }
+                  onRemove={() => handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id)}
+                />
+              </Box>
+            </Box>
           </Paper>
         )}
 
