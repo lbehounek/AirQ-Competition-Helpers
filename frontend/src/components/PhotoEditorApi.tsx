@@ -376,7 +376,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   
   // Dynamic canvas sizes based on aspect ratio
   const gridCanvasSize = getCanvasSize(240);
-  const largeCanvasSize = getCanvasSize(400);
+  const largeCanvasSize = getCanvasSize(600); // Match the canvas size used below
   
   if (!photo || !photo.canvasState) {
     return (
