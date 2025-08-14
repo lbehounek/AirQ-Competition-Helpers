@@ -18,7 +18,7 @@ export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
     widthRatio: 4,
     heightRatio: 3,
     cssRatio: '4/3',
-    description: 'Traditional camera format, most compact cameras'
+    description: 'Classic'
   },
   {
     id: '3:2',
@@ -27,7 +27,7 @@ export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
     widthRatio: 3,
     heightRatio: 2,
     cssRatio: '3/2',
-    description: 'Professional DSLR format, 35mm film standard'
+    description: 'DSLR'
   },
   {
     id: '16:9',
@@ -36,7 +36,7 @@ export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
     widthRatio: 16,
     heightRatio: 9,
     cssRatio: '16/9',
-    description: 'HD video format, modern smartphones'
+    description: 'Widescreen'
   }
 ];
 

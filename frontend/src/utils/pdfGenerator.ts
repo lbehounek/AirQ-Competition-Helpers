@@ -50,11 +50,11 @@ export const generatePDF = async (
   // Dynamic 3x3 grid layout optimized for aspect ratio
   const topBottomMargin = 5; // 0.5cm for printer friendliness
   
-  // Adaptive spacing based on aspect ratio to better utilize page
-  const spacing = Math.max(3, 8 - (aspectRatio - 1) * 3); // Less spacing for wider formats
+  // Minimal spacing to maximize photo size
+  const spacing = Math.max(2, 4 - (aspectRatio - 1) * 2); // Even less spacing for all formats
   
   // Calculate optimal dimensions to maximize photo size while fitting 3x3 grid
-  const availableWidth = pageWidth - 20; // 10mm margins on sides
+  const availableWidth = pageWidth - 16; // 8mm margins on sides (reduced from 10mm)
   const availableHeight = pageHeight - (2 * topBottomMargin);
   
   // Calculate cell dimensions considering both width and height constraints

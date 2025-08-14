@@ -41,6 +41,7 @@ export const AspectRatioSelector: React.FC = () => {
             sx={{
               minWidth: 120,
               maxWidth: 140,
+              height: 70, // Even shorter cards
               cursor: 'pointer',
               transition: 'all 0.2s ease-in-out',
               border: 2,
@@ -56,12 +57,12 @@ export const AspectRatioSelector: React.FC = () => {
               }
             }}
           >
-            <CardContent sx={{ textAlign: 'center', py: 1.5, px: 1.5 }}>
+            <CardContent sx={{ textAlign: 'center', py: 1, px: 1 }}>
               <Box sx={{ 
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'center',
-                mb: 0.5,
+                mb: 0.25,
                 color: isSelected ? 'primary.main' : 'text.secondary'
               }}>
                 {getFormatIcon(option.id)}
@@ -73,7 +74,7 @@ export const AspectRatioSelector: React.FC = () => {
                 sx={{ 
                   fontWeight: 600,
                   color: isSelected ? 'primary.main' : 'text.primary',
-                  mb: 0.25,
+                  mb: 0.1,
                   fontSize: '0.875rem'
                 }}
               >
@@ -93,7 +94,7 @@ export const AspectRatioSelector: React.FC = () => {
                   label="Selected" 
                   size="small" 
                   color="primary"
-                  sx={{ fontSize: '0.65rem', height: 18, mt: 0.5 }}
+                  sx={{ fontSize: '0.65rem', height: 16, mt: 0.25 }}
                 />
               )}
             </CardContent>
