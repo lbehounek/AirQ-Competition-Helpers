@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Box, Typography, Grid, Paper, Chip, CircularProgress, IconButton } from '@mui/material';
 import { Image as ImageIcon, PhotoCamera, Close } from '@mui/icons-material';
 import type { PhotoSet } from '../types';
@@ -12,6 +12,7 @@ interface PhotoGridProps {
   onPhotoUpdate: (photoId: string, canvasState: any) => void;
   onPhotoRemove: (photoId: string) => void;
   onPhotoClick?: (photo: any) => void;
+  onPhotoMove?: (fromIndex: number, toIndex: number) => void; // For drag-and-drop reordering
 }
 
 export const PhotoGrid: React.FC<PhotoGridProps> = ({
@@ -19,10 +20,15 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   setKey,
   onPhotoUpdate,
   onPhotoRemove,
-  onPhotoClick
+  onPhotoClick,
+  onPhotoMove
 }) => {
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
+  
+  // Drag and drop state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   
   // Create array of 9 slots (3x3 grid)
   const gridSlots = Array.from({ length: 9 }, (_, index) => {
@@ -36,6 +42,44 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
       id: `${setKey}-slot-${index}`
     };
   });
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
+    
+    // Create custom drag image (optional - use default for now)
+    (e.currentTarget as HTMLElement).style.opacity = '0.5';
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    (e.currentTarget as HTMLElement).style.opacity = '1';
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+    
+    if (dragIndex !== dropIndex && onPhotoMove) {
+      onPhotoMove(dragIndex, dropIndex);
+    }
+    
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
 
   return (
     <Box sx={{ width: '100%', position: 'relative' }}>
@@ -72,27 +116,48 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
           borderColor: 'primary.light',
           boxShadow: 1
         }}>
-        {gridSlots.map((slot) => (
-          <Paper
-            key={slot.id}
-            elevation={slot.photo ? 2 : 0}
-            sx={{
-              aspectRatio: currentRatio.cssRatio,
-              bgcolor: slot.photo ? 'background.paper' : 'grey.50',
-              border: '1px solid',
-              borderColor: slot.photo ? 'primary.main' : 'grey.300',
-              borderRadius: 1.5,
-              overflow: 'hidden',
-              position: 'relative',
-              transition: 'all 0.2s ease-in-out',
-              cursor: slot.photo ? 'pointer' : 'default',
-              '&:hover': slot.photo ? {
-                borderColor: 'primary.dark',
-                boxShadow: 3,
-                transform: 'translateY(-2px)'
-              } : {}
-            }}
-          >
+        {gridSlots.map((slot) => {
+          const isDragOver = dragOverIndex === slot.index;
+          const isDragging = draggedIndex === slot.index;
+          
+          return (
+            <Paper
+              key={slot.id}
+              elevation={slot.photo ? 2 : 0}
+              draggable={slot.photo ? true : false}
+              onDragStart={slot.photo ? (e) => handleDragStart(e, slot.index) : undefined}
+              onDragEnd={slot.photo ? handleDragEnd : undefined}
+              onDragOver={(e) => handleDragOver(e, slot.index)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, slot.index)}
+              sx={{
+                aspectRatio: currentRatio.cssRatio,
+                bgcolor: slot.photo ? 'background.paper' : 'grey.50',
+                border: '2px solid',
+                borderColor: isDragOver 
+                  ? 'success.main' // Green border when drag over
+                  : slot.photo 
+                    ? 'primary.main' 
+                    : 'grey.300',
+                borderRadius: 1.5,
+                overflow: 'hidden',
+                position: 'relative',
+                transition: 'all 0.2s ease-in-out',
+                cursor: slot.photo ? 'grab' : 'default',
+                opacity: isDragging ? 0.5 : 1,
+                transform: isDragOver ? 'scale(1.02)' : 'scale(1)',
+                boxShadow: isDragOver 
+                  ? '0 0 20px rgba(76, 175, 80, 0.6)' // Green glow when drag over
+                  : slot.photo 
+                    ? '0 0 12px rgba(33, 150, 243, 0.4)' // Blue glow for photos
+                    : 'none',
+                '&:hover': slot.photo ? {
+                  borderColor: 'primary.dark',
+                  boxShadow: 3,
+                  transform: 'translateY(-2px)'
+                } : {}
+              }}
+            >
             {slot.photo ? (
               <Box
                 onClick={() => onPhotoClick && onPhotoClick(slot.photo!)}
@@ -173,7 +238,8 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
               />
             )}
           </Paper>
-        ))}
+          );
+        })}
         </Box>
       )}
     </Box>

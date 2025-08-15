@@ -66,6 +66,7 @@ function AppApi() {
     removePhoto,
     updatePhotoState,
     updateSetTitle,
+    reorderPhotos,
     resetSession,
     clearError,
     checkBackendHealth,
@@ -147,6 +148,11 @@ function AppApi() {
     if (selectedPhoto?.photo.id === photoId) {
       setSelectedPhoto(null);
     }
+  };
+
+  const handlePhotoMove = (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
+    // Use the new reorderPhotos function from the hook
+    reorderPhotos(setKey, fromIndex, toIndex);
   };
 
   const handleGeneratePDF = async () => {
@@ -414,6 +420,7 @@ function AppApi() {
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
                 onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
+                onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
                 onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
               />
             </Paper>
@@ -477,6 +484,7 @@ function AppApi() {
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
                 onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
+                onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
                 onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
               />
             </Paper>

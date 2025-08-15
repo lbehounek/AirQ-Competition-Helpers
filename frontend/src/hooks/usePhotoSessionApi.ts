@@ -270,6 +270,50 @@ export const usePhotoSessionApi = () => {
     setError(null);
   }, []);
 
+  const reorderPhotos = useCallback((setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
+    if (!session) return;
+    
+    // Create a new session object with reordered photos
+    const newSession = { ...session };
+    const photos = [...newSession.sets[setKey].photos];
+    
+    // Ensure we have an array of 9 slots (some may be undefined)
+    const photoArray = new Array(9).fill(undefined);
+    photos.forEach((photo, index) => {
+      if (photo && index < 9) {
+        photoArray[index] = photo;
+      }
+    });
+    
+    // Get source and target photos
+    const sourcePhoto = photoArray[fromIndex];
+    const targetPhoto = photoArray[toIndex];
+    
+    if (!sourcePhoto) return; // Can't move from empty slot
+    
+    // Perform the swap or move
+    if (targetPhoto) {
+      // Swap photos
+      photoArray[fromIndex] = targetPhoto;
+      photoArray[toIndex] = sourcePhoto;
+    } else {
+      // Move to empty slot
+      photoArray[fromIndex] = undefined;
+      photoArray[toIndex] = sourcePhoto;
+    }
+    
+    // Update the session with the reordered photos (filter out undefined values)
+    newSession.sets[setKey].photos = photoArray.filter(photo => photo !== undefined);
+    
+    // Update the local state
+    setSession(newSession);
+    
+    console.log('Photos reordered:', { setKey, fromIndex, toIndex });
+    
+    // Note: This is client-side only. To persist, we'd need a backend endpoint
+    // For now, this will work until the page is refreshed
+  }, [session]);
+
   return {
     session,
     sessionId,
@@ -282,6 +326,7 @@ export const usePhotoSessionApi = () => {
     removePhoto,
     updatePhotoState,
     updateSetTitle,
+    reorderPhotos,
     resetSession,
     refreshSession,
     clearError,

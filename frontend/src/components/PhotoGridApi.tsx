@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Box, Typography, Paper, CircularProgress, IconButton } from '@mui/material';
 import { Image as ImageIcon, CloudUpload, Close } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
@@ -39,6 +39,7 @@ interface PhotoGridApiProps {
   onPhotoRemove: (photoId: string) => void;
   onPhotoClick?: (photo: ApiPhoto) => void;
   onFilesDropped?: (files: File[]) => void; // For uploading files to empty slots
+  onPhotoMove?: (fromIndex: number, toIndex: number) => void; // For drag-and-drop reordering
   labelOffset?: number; // Offset for label sequence (e.g., set2 continues from where set1 left off)
 }
 
@@ -62,10 +63,15 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   onPhotoRemove,
   onPhotoClick,
   onFilesDropped,
+  onPhotoMove,
   labelOffset = 0
 }) => {
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
+  
+  // Drag and drop state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   
   // Create 9 grid slots (3x3)
   const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
@@ -79,6 +85,44 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
       photo
     };
   });
+
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
+    
+    // Create custom drag image (optional - use default for now)
+    (e.currentTarget as HTMLElement).style.opacity = '0.5';
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    (e.currentTarget as HTMLElement).style.opacity = '1';
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+    
+    if (dragIndex !== dropIndex && onPhotoMove) {
+      onPhotoMove(dragIndex, dropIndex);
+    }
+    
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
 
   return (
     <Box sx={{ width: '100%', position: 'relative' }}>
@@ -115,27 +159,47 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
           borderColor: 'primary.light',
           boxShadow: 1
         }}>
-        {gridSlots.map((slot) => (
-          <Paper
-            key={slot.id}
-            elevation={slot.photo ? 2 : 0}
-            sx={{
-              aspectRatio: currentRatio.cssRatio,
-              bgcolor: slot.photo ? 'background.paper' : 'grey.50',
-              border: '1px solid',
-              borderColor: slot.photo ? 'primary.main' : 'grey.300',
-              borderRadius: 0, // Rectangular to match PDF output
-              overflow: 'hidden',
-              position: 'relative',
-              transition: 'all 0.2s ease-in-out',
-              cursor: slot.photo ? 'pointer' : 'default',
-              '&:hover': slot.photo ? {
-                borderColor: 'primary.main',
-                boxShadow: '0 0 12px rgba(33, 150, 243, 0.4)', // Blue glow effect
-                // Remove transform to prevent movement
-              } : {}
-            }}
-          >
+        {gridSlots.map((slot) => {
+          const isDragOver = dragOverIndex === slot.index;
+          const isDragging = draggedIndex === slot.index;
+          
+          return <Paper
+              key={slot.id}
+              elevation={slot.photo ? 2 : 0}
+              draggable={slot.photo ? true : false}
+              onDragStart={slot.photo ? (e) => handleDragStart(e, slot.index) : undefined}
+              onDragEnd={slot.photo ? handleDragEnd : undefined}
+              onDragOver={(e) => handleDragOver(e, slot.index)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, slot.index)}
+              sx={{
+                aspectRatio: currentRatio.cssRatio,
+                bgcolor: slot.photo ? 'background.paper' : 'grey.50',
+                border: '2px solid',
+                borderColor: isDragOver 
+                  ? 'success.main' // Green border when drag over
+                  : slot.photo 
+                    ? 'primary.main' 
+                    : 'grey.300',
+                borderRadius: 0, // Rectangular to match PDF output
+                overflow: 'hidden',
+                position: 'relative',
+                transition: 'all 0.2s ease-in-out',
+                cursor: slot.photo ? 'grab' : 'default',
+                opacity: isDragging ? 0.5 : 1,
+                transform: isDragOver ? 'scale(1.02)' : 'scale(1)',
+                boxShadow: isDragOver 
+                  ? '0 0 20px rgba(76, 175, 80, 0.6)' // Green glow when drag over
+                  : slot.photo 
+                    ? '0 0 12px rgba(33, 150, 243, 0.4)' // Blue glow for photos
+                    : 'none',
+                '&:hover': slot.photo ? {
+                  borderColor: 'primary.main',
+                  boxShadow: '0 0 12px rgba(33, 150, 243, 0.4)', // Blue glow effect
+                  // Remove transform to prevent movement
+                } : {}
+              }}
+            >
             {slot.photo ? (
               <Box
                 onClick={() => onPhotoClick && onPhotoClick(slot.photo!)}
@@ -225,8 +289,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                 onFilesDropped={onFilesDropped}
               />
             )}
-          </Paper>
-        ))}
+          </Paper>;
+        })}
         </Box>
       )}
     </Box>
@@ -253,50 +317,27 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
     onDrop: (acceptedFiles, rejectedFiles) => {
       console.log('Drop event - Accepted:', acceptedFiles, 'Rejected:', rejectedFiles);
       
-      if (rejectedFiles.length > 0) {
-        console.warn('Rejected files:', rejectedFiles.map(f => ({
-          file: f.file.name,
-          type: f.file.type,
-          size: f.file.size,
-          errors: f.errors
-        })));
-      }
-      
       if (acceptedFiles.length > 0 && onFilesDropped) {
-        const validFiles = acceptedFiles.filter(file => {
-          const isValid = isValidImageFile(file);
-          console.log(`File validation - ${file.name}: ${isValid} (type: ${file.type}, size: ${file.size})`);
-          return isValid;
-        });
-        
+        // Filter out valid files
+        const validFiles = acceptedFiles.filter(file => isValidImageFile(file));
         if (validFiles.length > 0) {
-          console.log('Calling onFilesDropped with:', validFiles);
           onFilesDropped(validFiles);
-        } else {
-          console.warn('No valid files after filtering');
         }
       }
-    },
-    noClick: false,
-    noKeyboard: false
+    }
   });
 
-  const getBorderColor = () => {
-    if (isDragAccept) return 'success.main';
-    if (isDragReject) return 'error.main';
-    if (isDragActive) return 'primary.main';
-    return 'grey.300';
-  };
-
-  const getBackgroundColor = () => {
-    if (isDragAccept) return 'success.light';
-    if (isDragReject) return 'error.light';
-    if (isDragActive) return 'primary.light';
-    return 'grey.100';
-  };
+  // Determine border color based on drag state
+  const borderColor = isDragActive 
+    ? (isDragAccept ? 'success.main' : (isDragReject ? 'error.main' : 'primary.main'))
+    : 'grey.300';
+  
+  const bgColor = isDragActive 
+    ? (isDragAccept ? 'success.50' : (isDragReject ? 'error.50' : 'primary.50'))
+    : 'grey.50';
 
   return (
-    <Box 
+    <Box
       {...getRootProps()}
       sx={{
         width: '100%',
@@ -305,46 +346,45 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        bgcolor: getBackgroundColor(),
-        color: 'grey.500',
-        border: `2px dashed`,
-        borderColor: getBorderColor(),
+        bgcolor: bgColor,
+        color: isDragActive ? (isDragAccept ? 'success.main' : (isDragReject ? 'error.main' : 'primary.main')) : 'grey.500',
+        border: '2px dashed',
+        borderColor,
+        borderRadius: 1,
         cursor: 'pointer',
         transition: 'all 0.2s ease-in-out',
         '&:hover': {
-          bgcolor: isDragActive ? getBackgroundColor() : 'grey.200',
-          borderColor: isDragActive ? getBorderColor() : 'primary.main',
-          color: 'grey.600'
+          bgcolor: 'primary.50',
+          borderColor: 'primary.main',
+          color: 'primary.main'
         }
       }}
     >
       <input {...getInputProps()} />
       
-      {/* Position indicator */}
-      <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5, color: 'grey.400' }}>
-        {label}
-      </Typography>
-
       {isDragActive ? (
         <>
-          <CloudUpload sx={{ fontSize: 32, color: isDragAccept ? 'success.main' : 'primary.main', mb: 1 }} />
-          <Typography variant="body2" sx={{ textAlign: 'center', px: 1, fontWeight: 500 }}>
-            {isDragAccept ? 'Drop photos here' : 'Invalid file type'}
+          <CloudUpload sx={{ fontSize: 32, mb: 1, opacity: 0.7 }} />
+          <Typography variant="body2" sx={{ fontWeight: 500, textAlign: 'center', px: 1 }}>
+            {isDragAccept ? 'Drop images here' : 'Invalid file type'}
           </Typography>
         </>
       ) : (
         <>
-          {/* Position text */}
-          <Typography variant="caption" sx={{ textAlign: 'center', px: 1, color: 'grey.500', mb: 0.5 }}>
-            Position {position}
+          <ImageIcon sx={{ fontSize: 28, mb: 1, opacity: 0.5 }} />
+          <Typography 
+            variant="h6" 
+            sx={{ 
+              fontWeight: 700, 
+              fontSize: '1.1rem',
+              color: 'text.secondary',
+              mb: 0.5
+            }}
+          >
+            {label}
           </Typography>
-
-          {/* Placeholder icon */}
-          <ImageIcon sx={{ fontSize: 24, color: 'grey.400', opacity: 0.7, mb: 0.5 }} />
-          
-          {/* Upload hint */}
-          <Typography variant="caption" sx={{ textAlign: 'center', px: 1, color: 'grey.500' }}>
-            Click or drag photos
+          <Typography variant="caption" sx={{ opacity: 0.7, textAlign: 'center', px: 1 }}>
+            Click or drop images
           </Typography>
         </>
       )}

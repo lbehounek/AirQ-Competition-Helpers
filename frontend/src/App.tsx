@@ -86,6 +86,58 @@ function App() {
     }
   };
 
+  const handlePhotoMove = (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
+    // For localStorage mode, manipulate the session directly
+    if (!session) return;
+
+    const photos = [...session.sets[setKey].photos];
+    
+    // Handle different scenarios:
+    // 1. Both positions have photos - swap them
+    // 2. Only source has photo - move to empty position
+    
+    const sourcePhoto = photos[fromIndex];
+    const targetPhoto = photos[toIndex];
+    
+    if (sourcePhoto && targetPhoto) {
+      // Swap photos
+      photos[fromIndex] = targetPhoto;
+      photos[toIndex] = sourcePhoto;
+    } else if (sourcePhoto && !targetPhoto) {
+      // Move to empty position
+      photos[toIndex] = sourcePhoto;
+      photos[fromIndex] = null;
+    }
+    
+    // Update the session with reordered photos (filter out nulls and pad to 9 slots)
+    const updatedPhotos = new Array(9).fill(null);
+    photos.forEach((photo, index) => {
+      if (photo && index < 9) {
+        updatedPhotos[index] = photo;
+      }
+    });
+    
+    // Update the session directly for localStorage mode
+    const updatedSession = {
+      ...session,
+      sets: {
+        ...session.sets,
+        [setKey]: {
+          ...session.sets[setKey],
+          photos: updatedPhotos.filter(photo => photo !== null) // Remove nulls for clean storage
+        }
+      }
+    };
+    
+    // Save to localStorage (this would typically be done in the hook)
+    localStorage.setItem('photoSession', JSON.stringify(updatedSession));
+    
+    // For immediate UI update, we'd need to trigger a re-render
+    // This is a simplified implementation - ideally this would go through the session hook
+    console.log('Photo move completed:', { setKey, fromIndex, toIndex, updatedPhotos });
+    window.location.reload(); // Quick solution - in production, use proper state management
+  };
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
       <Container maxWidth="xl" sx={{ pt: 4 }}>
@@ -192,6 +244,7 @@ function App() {
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
                 onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
+                onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
               />
             </Paper>
           )}
@@ -253,6 +306,7 @@ function App() {
                 }
                 onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
                 onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
+                onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
               />
             </Paper>
           )}
