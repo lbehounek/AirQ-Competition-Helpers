@@ -1,6 +1,6 @@
 import React from 'react';
-import { Box, Typography, Grid, Paper, Chip, CircularProgress } from '@mui/material';
-import { Image as ImageIcon, PhotoCamera } from '@mui/icons-material';
+import { Box, Typography, Grid, Paper, Chip, CircularProgress, IconButton } from '@mui/material';
+import { Image as ImageIcon, PhotoCamera, Close } from '@mui/icons-material';
 import type { PhotoSet } from '../types';
 import { PhotoEditor } from './PhotoEditor';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
@@ -96,7 +96,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
             {slot.photo ? (
               <Box
                 onClick={() => onPhotoClick && onPhotoClick(slot.photo!)}
-                sx={{ cursor: 'pointer', width: '100%', height: '100%' }}
+                sx={{ cursor: 'pointer', width: '100%', height: '100%', position: 'relative' }}
               >
                 <PhotoEditor
                   photo={slot.photo}
@@ -105,6 +105,66 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                   onRemove={() => onPhotoRemove(slot.photo!.id)}
                   size="grid" // Small size for grid view
                 />
+                
+                {/* Hover overlay with delete button */}
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    bgcolor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: 0,
+                    transition: 'opacity 0.2s ease-in-out',
+                    pointerEvents: 'none',
+                    '&:hover': {
+                      opacity: 1
+                    }
+                  }}
+                >
+                  {/* Delete button - top right corner, visible only on hover */}
+                  <IconButton
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent triggering photo click
+                      onPhotoRemove(slot.photo!.id);
+                    }}
+                    sx={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      width: 28,
+                      height: 28,
+                      bgcolor: 'rgba(128, 128, 128, 0.9)', // Grayscale background
+                      color: 'white',
+                      borderRadius: '4px', // Square with slight rounding
+                      pointerEvents: 'auto', // Enable clicking
+                      transition: 'all 0.2s ease-in-out',
+                      '&:hover': {
+                        bgcolor: 'rgba(128, 128, 128, 1)',
+                        boxShadow: '0 0 12px rgba(255, 255, 255, 0.8)', // White glow effect
+                        transform: 'scale(1.1)'
+                      }
+                    }}
+                    size="small"
+                  >
+                    <Close sx={{ fontSize: 18 }} />
+                  </IconButton>
+                  
+                  <Typography 
+                    variant="body1" 
+                    sx={{ 
+                      color: 'white', 
+                      fontWeight: 600,
+                      textShadow: '0 2px 4px rgba(0,0,0,0.8)'
+                    }}
+                  >
+                    Click to Edit
+                  </Typography>
+                </Box>
               </Box>
             ) : (
               <PhotoGridSlotEmpty 

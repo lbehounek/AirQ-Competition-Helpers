@@ -1,6 +1,6 @@
 import React from 'react';
-import { Box, Typography, Paper, CircularProgress } from '@mui/material';
-import { Image as ImageIcon, CloudUpload } from '@mui/icons-material';
+import { Box, Typography, Paper, CircularProgress, IconButton } from '@mui/material';
+import { Image as ImageIcon, CloudUpload, Close } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { PhotoEditorApi } from './PhotoEditorApi';
 import { isValidImageFile } from '../utils/imageProcessing';
@@ -159,6 +159,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                   setName={photoSet.title}
                   isFirstInSet={slot.index === 0} // First photo gets set name
                 />
+                
                 {/* Hover overlay */}
                 <Box
                   className="hover-overlay"
@@ -177,6 +178,34 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                     pointerEvents: 'none'
                   }}
                 >
+                  {/* Delete button - top right corner, visible only on hover */}
+                  <IconButton
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent triggering photo click
+                      onPhotoRemove(slot.photo!.id);
+                    }}
+                    sx={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      width: 28,
+                      height: 28,
+                      bgcolor: 'rgba(128, 128, 128, 0.9)', // Grayscale background
+                      color: 'white',
+                      borderRadius: '4px', // Square with slight rounding
+                      pointerEvents: 'auto', // Enable clicking
+                      transition: 'all 0.2s ease-in-out',
+                      '&:hover': {
+                        bgcolor: 'rgba(128, 128, 128, 1)',
+                        boxShadow: '0 0 12px rgba(255, 255, 255, 0.8)', // White glow effect
+                        transform: 'scale(1.1)'
+                      }
+                    }}
+                    size="small"
+                  >
+                    <Close sx={{ fontSize: 18 }} />
+                  </IconButton>
+                  
                   <Typography 
                     variant="body1" 
                     sx={{ 
