@@ -279,7 +279,7 @@ function AppApi() {
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
             <FlightTakeoff sx={{ fontSize: 40, color: 'white', mr: 2 }} />
             <Typography variant="h3" component="h1" sx={{ color: 'white', fontWeight: 600 }}>
-              Navigation Flight Photo Organizer
+              Photo Helper
             </Typography>
           </Box>
           <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 2 }}>
@@ -339,30 +339,22 @@ function AppApi() {
             Photo Configuration
           </Typography>
           
-          {/* Aspect Ratio Selection */}
-          <Box sx={{ mb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', mb: 2 }}>
-              <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500, minWidth: 'fit-content' }}>
+          <Box sx={{ display: 'flex', gap: 4, alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {/* Photo Format */}
+            <Box sx={{ flex: '1 1 auto', minWidth: 280 }}>
+              <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500, mb: 2, textAlign: 'center' }}>
                 Photo Format:
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto', fontStyle: 'italic' }}>
-                Choose the aspect ratio that matches your camera format
-              </Typography>
+              <AspectRatioSelector />
             </Box>
-            <AspectRatioSelector />
-          </Box>
 
-          {/* Labeling Selection */}
-          <Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', mb: 2 }}>
-              <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500, minWidth: 'fit-content' }}>
+            {/* Photo Labels */}
+            <Box sx={{ flex: '1 1 auto', minWidth: 280 }}>
+              <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500, mb: 2, textAlign: 'center' }}>
                 Photo Labels:
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto', fontStyle: 'italic' }}>
-                Choose how to label your photos
-              </Typography>
+              <LabelingSelector />
             </Box>
-            <LabelingSelector />
           </Box>
         </Paper>
 
