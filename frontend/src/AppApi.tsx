@@ -37,8 +37,10 @@ import { PhotoEditorApi } from './components/PhotoEditorApi';
 import { PhotoControls } from './components/PhotoControls';
 import { AspectRatioSelector } from './components/AspectRatioSelector';
 import { LabelingSelector } from './components/LabelingSelector';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
+import { useI18n } from './contexts/I18nContext';
 import { generatePDF } from './utils/pdfGenerator';
 
 interface ApiPhoto {
@@ -79,6 +81,7 @@ function AppApi() {
   
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
+  const { t } = useI18n();
   
   // State to track if we should show loading text
   const [showLoadingText, setShowLoadingText] = useState(false);
@@ -261,10 +264,10 @@ function AppApi() {
             <Paper sx={{ p: 4, textAlign: 'center' }}>
               <CircularProgress size={60} sx={{ mb: 3 }} />
               <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
-                Connecting to Backend Server
+                {t('session.connecting')}
               </Typography>
               <Typography variant="body1" color="text.secondary">
-                Please wait while we establish connection...
+                {t('session.checkConnection')}
               </Typography>
             </Paper>
           </Container>
@@ -343,17 +346,25 @@ function AppApi() {
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
             <FlightTakeoff sx={{ fontSize: 40, color: 'white', mr: 2 }} />
             <Typography variant="h3" component="h1" sx={{ color: 'white', fontWeight: 600 }}>
-              Photo Helper
+              {t('app.title')}
             </Typography>
           </Box>
           <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 2 }}>
-            Organize your navigation flight photos into standardized PDF layouts
+            {t('app.subtitle')}
           </Typography>
+          
+          {/* Language Switcher */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 1.5 }}>
+              Language / Jazyk
+            </Typography>
+            <LanguageSwitcher />
+          </Box>
           
           {/* Session Info */}
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
             <Chip
-              label={`Session: ${sessionId.substring(0, 8)}...`}
+              label={t('session.sessionId', { id: sessionId.substring(0, 8) + '...' })}
               color="secondary"
               variant="filled"
               size="small"
@@ -370,18 +381,18 @@ function AppApi() {
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
             <Chip
               icon={<PhotoCamera />}
-              label={`Total Photos: ${stats.totalPhotos}/18`}
+              label={t('session.totalPhotos', { count: `${stats.totalPhotos}/18` })}
               color="secondary"
               variant="filled"
             />
             <Chip
-              label={`Set 1: ${stats.set1Photos}/9`}
+              label={t('session.setPhotos', { setName: t('sets.set1'), current: stats.set1Photos, max: 9 })}
               color={stats.set1Photos === 9 ? 'success' : 'default'}
               variant="outlined"
               sx={{ bgcolor: 'rgba(255, 255, 255, 0.9)' }}
             />
             <Chip
-              label={`Set 2: ${stats.set2Photos}/9`}
+              label={t('session.setPhotos', { setName: t('sets.set2'), current: stats.set2Photos, max: 9 })}
               color={stats.set2Photos === 9 ? 'success' : 'default'}
               variant="outlined"
               sx={{ bgcolor: 'rgba(255, 255, 255, 0.9)' }}
@@ -403,7 +414,7 @@ function AppApi() {
             {/* Photo Format */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                Photo Format:
+                {t('photoFormat.title')}
               </Typography>
               <AspectRatioSelector />
             </Box>
@@ -411,7 +422,7 @@ function AppApi() {
             {/* Photo Labels */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                Photo Labels:
+                {t('photoLabels.title')}
               </Typography>
               <LabelingSelector />
             </Box>
@@ -419,7 +430,7 @@ function AppApi() {
             {/* Shuffle Photos */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                Actions:
+                {t('actions.title')}
               </Typography>
               <Card
                 onClick={handleShuffle}
@@ -464,7 +475,7 @@ function AppApi() {
                       fontSize: '0.875rem'
                     }}
                   >
-                    Shuffle
+                    {t('actions.shuffle.name')}
                   </Typography>
                   
                   <Typography 
@@ -472,7 +483,7 @@ function AppApi() {
                     color="text.secondary"
                     sx={{ fontSize: '0.7rem', lineHeight: 1.2 }}
                   >
-                    Randomize order
+                    {t('actions.shuffle.description')}
                   </Typography>
                 </CardContent>
               </Card>
@@ -505,7 +516,7 @@ function AppApi() {
                 value={session.sets.set1.title}
                 onChange={(title) => updateSetTitle('set1', title)}
                 setName="Set 1"
-                placeholder="Enter title for Set 1..."
+                placeholder={t('sets.title.placeholder', { setName: t('sets.set1') })}
               />
               <Chip
                 label={`${stats.set1Photos}/9`}
@@ -568,7 +579,7 @@ function AppApi() {
                 value={session.sets.set2.title}
                 onChange={(title) => updateSetTitle('set2', title)}
                 setName="Set 2"
-                placeholder="Enter title for Set 2..."
+                placeholder={t('sets.title.placeholder', { setName: t('sets.set2') })}
               />
               <Chip
                 label={`${stats.set2Photos}/9`}
@@ -629,7 +640,7 @@ function AppApi() {
                 '&:hover': { borderWidth: 2 }
               }}
             >
-              Reset All
+              {t('actions.resetSession')}
             </Button>
             <Button
               variant="contained"
@@ -648,7 +659,7 @@ function AppApi() {
                 '&:hover': { boxShadow: 6 }
               }}
             >
-              Generate PDF
+              {t('actions.generatePdf')}
             </Button>
           </Box>
         </Paper>
@@ -666,16 +677,20 @@ function AppApi() {
             }}
           >
             <Typography variant="h5" component="h3" sx={{ mb: 3, color: 'info.main', fontWeight: 600 }}>
-              Welcome to AirQ Photo Organizer (Backend Mode)
+              {t('session.instructions.title')}
+            </Typography>
+            <Typography variant="h6" sx={{ mb: 2, color: 'info.dark', fontWeight: 500 }}>
+              {t('session.instructions.subtitle')}
             </Typography>
             <Box component="ul" sx={{ m: 0, pl: 3, fontSize: '1.1rem', '& li': { mb: 1.5, color: 'info.dark' } }}>
-              <li>Upload up to 9 photos for each set using the upload areas above</li>
-              <li>Photos are stored on the backend server in local filesystem</li>
-              <li>Click on any photo in the preview grids to edit it</li>
-              <li>Drag photos to reposition, use zoom and brightness controls</li>
-              <li>Labels A-I will be added automatically</li>
-              <li>Export to PDF when both sets are complete</li>
+              <li>{t('session.instructions.step1')}</li>
+              <li>{t('session.instructions.step2')}</li>
+              <li>{t('session.instructions.step3')}</li>
+              <li>{t('session.instructions.step4')}</li>
             </Box>
+            <Typography variant="body1" sx={{ mt: 2, color: 'info.dark', fontStyle: 'italic' }}>
+              {t('session.instructions.tips')}
+            </Typography>
           </Alert>
         )}
       </Container>

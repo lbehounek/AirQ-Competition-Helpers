@@ -13,6 +13,7 @@ import {
   Error as ErrorIcon 
 } from '@mui/icons-material';
 import { isValidImageFile } from '../utils/imageProcessing';
+import { useI18n } from '../contexts/I18nContext';
 
 interface DropZoneProps {
   onFilesDropped: (files: File[]) => void;
@@ -33,6 +34,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
 }) => {
   const availableSlots = maxPhotos - currentPhotoCount;
   const isDisabled = loading || availableSlots === 0;
+  const { t } = useI18n();
 
   const {
     getRootProps,
@@ -129,10 +131,10 @@ export const DropZone: React.FC<DropZoneProps> = ({
     }
     
     if (isDragActive) {
-      return 'Release to upload...';
+      return t('upload.dropImages');
     }
     
-    return `Drop photos here or click to browse`;
+    return t('upload.clickOrDrop');
   };
 
   const getSubText = () => {
@@ -140,7 +142,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
       return null;
     }
     
-    return `${availableSlots} slot${availableSlots !== 1 ? 's' : ''} available • JPEG/PNG only • Max 20MB per file`;
+    return t('upload.supported', { maxSize: 20 }) + ` • ${availableSlots} slot${availableSlots !== 1 ? 's' : ''} available`;
   };
 
   return (

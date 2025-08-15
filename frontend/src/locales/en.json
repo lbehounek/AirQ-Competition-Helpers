@@ -1,0 +1,125 @@
+{
+  "app": {
+    "title": "Photo Helper",
+    "subtitle": "Organize your navigation flight photos into standardized PDF layouts"
+  },
+  "navigation": {
+    "overview": "Overview",
+    "statistics": "Statistics"
+  },
+  "photoFormat": {
+    "title": "Photo Format:",
+    "aspectRatios": {
+      "3:2": {
+        "name": "3:2",
+        "description": "Standard"
+      },
+      "4:3": {
+        "name": "4:3", 
+        "description": "Classic"
+      },
+      "16:9": {
+        "name": "16:9",
+        "description": "Widescreen"
+      }
+    }
+  },
+  "photoLabels": {
+    "title": "Photo Labels:",
+    "types": {
+      "letters": {
+        "name": "Letters",
+        "description": "A, B, C..."
+      },
+      "numbers": {
+        "name": "Numbers", 
+        "description": "1, 2, 3..."
+      }
+    }
+  },
+  "actions": {
+    "title": "Actions:",
+    "shuffle": {
+      "name": "Shuffle",
+      "description": "Randomize order"
+    },
+    "generatePdf": "Generate PDF",
+    "resetSession": "Reset Session"
+  },
+  "sets": {
+    "set1": "Set 1",
+    "set2": "Set 2",
+    "title": {
+      "placeholder": "Enter title for {{setName}}..."
+    }
+  },
+  "upload": {
+    "dragDrop": "Drag & drop photos here",
+    "browse": "or click to browse files", 
+    "supported": "Supported: JPEG, PNG (max {{maxSize}}MB each)",
+    "clickOrDrop": "Click or drop images",
+    "dropImages": "Drop images here",
+    "maxFiles": "Maximum {{count}} photos per set",
+    "currentCount": "{{current}}/{{max}} photos"
+  },
+  "photo": {
+    "clickToEdit": "Click to Edit",
+    "position": "Position {{position}}",
+    "loadingFailed": "Failed to load image.",
+    "tryAgain": "Please try again or upload a different file."
+  },
+  "controls": {
+    "brightness": "Brightness",
+    "contrast": "Contrast", 
+    "sharpness": "Sharpness",
+    "whiteBalance": "White Balance",
+    "temperature": "Temperature",
+    "tint": "Tint",
+    "autoWhiteBalance": "Auto White Balance",
+    "resetAll": "Reset All"
+  },
+  "session": {
+    "created": "Session created {{time}}",
+    "version": "Version {{version}}",
+    "photos": "{{count}} photos",
+    "available": "{{count}} available",
+    "loading": "Loading session data...",
+    "connecting": "Connecting to Backend...",
+    "backendUnavailable": "Backend Connection Failed",
+    "checkConnection": "Please ensure the Python backend server is running.",
+    "retryConnection": "Retry Connection",
+    "sessionId": "Session ID: {{id}}",
+    "totalPhotos": "Total Photos: {{count}}",
+    "setPhotos": "{{setName}}: {{current}}/{{max}}",
+    "noActiveSession": "No Active Session",
+    "newSessionInfo": "A new session will be created automatically when you upload your first photo.",
+    "instructions": {
+      "title": "Welcome to Photo Helper!",
+      "subtitle": "Here's how to get started:",
+      "step1": "1. Upload photos to Set 1 and Set 2 using the drag & drop zones above",
+      "step2": "2. Click on any photo to edit brightness, contrast, cropping and positioning",
+      "step3": "3. Photos are automatically labeled (A, B, C...) for competition requirements",
+      "step4": "4. Generate your final PDF when ready - it will be formatted for A4 printing",
+      "tips": "💡 Tips: You can drag photos to reorder them, and use the shuffle button to randomize order!"
+    }
+  },
+  "errors": {
+    "sessionNotFound": "Session not found",
+    "uploadFailed": "Upload failed", 
+    "pdfGenerationFailed": "PDF generation failed",
+    "photoUpdateFailed": "Failed to update photo",
+    "photoRemovalFailed": "Failed to remove photo",
+    "shuffleFailed": "Failed to shuffle photos"
+  },
+  "common": {
+    "loading": "Loading...",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "preview": "Preview",
+    "selected": "Selected"
+  }
+}

@@ -8,6 +8,7 @@ import AppApi from './AppApi.tsx' // Backend API version
 import { theme } from './theme'
 import { AspectRatioProvider } from './contexts/AspectRatioContext'
 import { LabelingProvider } from './contexts/LabelingContext'
+import { I18nProvider } from './contexts/I18nContext'
 
 // Choose which version to use:
 // - App: localStorage version (original)
@@ -19,11 +20,13 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AspectRatioProvider>
-        <LabelingProvider>
-          <AppComponent />
-        </LabelingProvider>
-      </AspectRatioProvider>
+      <I18nProvider>
+        <AspectRatioProvider>
+          <LabelingProvider>
+            <AppComponent />
+          </LabelingProvider>
+        </AspectRatioProvider>
+      </I18nProvider>
     </ThemeProvider>
   </StrictMode>,
 )

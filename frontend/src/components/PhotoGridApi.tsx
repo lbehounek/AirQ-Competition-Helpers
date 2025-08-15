@@ -6,6 +6,7 @@ import { PhotoEditorApi } from './PhotoEditorApi';
 import { isValidImageFile } from '../utils/imageProcessing';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useLabeling } from '../contexts/LabelingContext';
+import { useI18n } from '../contexts/I18nContext';
 
 interface ApiPhoto {
   id: string;
@@ -68,6 +69,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 }) => {
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
+  const { t } = useI18n();
   
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -278,7 +280,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                       textShadow: '0 2px 4px rgba(0,0,0,0.8)'
                     }}
                   >
-                    Click to Edit
+                    {t('photo.clickToEdit')}
                   </Typography>
                 </Box>
               </Box>
@@ -302,6 +304,7 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
   position,
   onFilesDropped
 }) => {
+  const { t } = useI18n();
   const {
     getRootProps,
     getInputProps,
@@ -366,7 +369,7 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
         <>
           <CloudUpload sx={{ fontSize: 32, mb: 1, opacity: 0.7 }} />
           <Typography variant="body2" sx={{ fontWeight: 500, textAlign: 'center', px: 1 }}>
-            {isDragAccept ? 'Drop images here' : 'Invalid file type'}
+            {isDragAccept ? t('upload.dropImages') : 'Invalid file type'}
           </Typography>
         </>
       ) : (
@@ -384,7 +387,7 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
             {label}
           </Typography>
           <Typography variant="caption" sx={{ opacity: 0.7, textAlign: 'center', px: 1 }}>
-            Click or drop images
+            {t('upload.clickOrDrop')}
           </Typography>
         </>
       )}
