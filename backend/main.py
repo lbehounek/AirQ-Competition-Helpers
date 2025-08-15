@@ -8,6 +8,7 @@ import json
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from pathlib import Path
+from pydantic import BaseModel
 import shutil
 from PIL import Image
 import logging
@@ -45,6 +46,11 @@ MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 SESSION_EXPIRY_DAYS = 7
 MAX_PHOTOS_PER_SET = 9
+
+class ReorderRequest(BaseModel):
+    set_key: str      # 'set1' or 'set2'
+    from_index: int   # Source position (0-8)  
+    to_index: int     # Target position (0-8)
 
 class PhotoMetadata:
     def __init__(self, photo_id: str, filename: str, set_key: str, session_id: str):
@@ -344,6 +350,83 @@ async def update_set_title(session_id: str, set_key: str, title: Dict[str, str])
     
     save_session(session)
     return {"message": "Title updated", "session": session.to_dict()}
+
+@app.put("/api/sessions/{session_id}/reorder")
+async def reorder_photos(session_id: str, reorder_data: ReorderRequest):
+    """
+    Reorder photos in a set using metadata only - no photo files touched!
+    
+    Supports:
+    - Photo swapping (photo A ↔ photo B)
+    - Moving to empty slots (photo A → empty position)
+    """
+    session = load_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    set_key = reorder_data.set_key
+    from_index = reorder_data.from_index
+    to_index = reorder_data.to_index
+    
+    # Validate set key
+    if set_key not in ["set1", "set2"]:
+        raise HTTPException(status_code=400, detail="Invalid set_key. Must be 'set1' or 'set2'")
+    
+    # Validate indices
+    if from_index < 0 or from_index > 8 or to_index < 0 or to_index > 8:
+        raise HTTPException(status_code=400, detail="Invalid indices. Must be 0-8")
+    
+    if from_index == to_index:
+        return {"message": "No change needed", "session": session.to_dict()}
+    
+    # Get current photos array and extend to 9 slots
+    photos = session.sets[set_key].get("photos", [])
+    photo_slots = [None] * 9  # Create 9-slot array
+    
+    # Fill known positions
+    for i, photo in enumerate(photos):
+        if i < 9:
+            photo_slots[i] = photo
+    
+    # Get source and target photos
+    source_photo = photo_slots[from_index]
+    target_photo = photo_slots[to_index]
+    
+    # Can't move from empty slot
+    if source_photo is None:
+        raise HTTPException(status_code=400, detail="Cannot move from empty position")
+    
+    # Perform the reorder operation
+    if target_photo is not None:
+        # Swap photos: A ↔ B
+        photo_slots[from_index] = target_photo
+        photo_slots[to_index] = source_photo
+        logger.info(f"Swapped photos: {from_index} ↔ {to_index}")
+    else:
+        # Move to empty: A → empty
+        photo_slots[from_index] = None
+        photo_slots[to_index] = source_photo
+        logger.info(f"Moved photo: {from_index} → {to_index}")
+    
+    # Update session with new order (filter out None values)
+    session.sets[set_key]["photos"] = [photo for photo in photo_slots if photo is not None]
+    session.updated_at = datetime.now()
+    session.version += 1
+    
+    # Save metadata (photos unchanged!)
+    save_session(session)
+    
+    logger.info(f"Photo reorder completed for session {session_id}, set {set_key}")
+    return {
+        "message": "Photos reordered successfully",
+        "session": session.to_dict(),
+        "operation": {
+            "set_key": set_key,
+            "from_index": from_index,
+            "to_index": to_index,
+            "type": "swap" if target_photo else "move"
+        }
+    }
 
 if __name__ == "__main__":
     import uvicorn

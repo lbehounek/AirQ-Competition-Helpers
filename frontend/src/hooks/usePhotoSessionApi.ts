@@ -270,10 +270,10 @@ export const usePhotoSessionApi = () => {
     setError(null);
   }, []);
 
-  const reorderPhotos = useCallback((setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
-    if (!session) return;
+  const reorderPhotos = useCallback(async (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
+    if (!sessionId || !backendAvailable || !session) return;
     
-    // Create a new session object with reordered photos
+    // Immediate optimistic update for smooth UX
     const newSession = { ...session };
     const photos = [...newSession.sets[setKey].photos];
     
@@ -305,14 +305,22 @@ export const usePhotoSessionApi = () => {
     // Update the session with the reordered photos (filter out undefined values)
     newSession.sets[setKey].photos = photoArray.filter(photo => photo !== undefined);
     
-    // Update the local state
+    // Optimistic update - immediate UI response
     setSession(newSession);
     
-    console.log('Photos reordered:', { setKey, fromIndex, toIndex });
-    
-    // Note: This is client-side only. To persist, we'd need a backend endpoint
-    // For now, this will work until the page is refreshed
-  }, [session]);
+    try {
+      // Persist to backend
+      const response = await api.reorderPhotos(sessionId, setKey, fromIndex, toIndex);
+      setSession(response.session as ApiPhotoSession);
+      console.log('✅ Photos reordered and persisted:', response.operation);
+    } catch (err) {
+      // Revert optimistic update on error
+      setSession(session);
+      const errorMessage = err instanceof ApiError ? err.message : 'Failed to reorder photos';
+      setError(errorMessage);
+      console.error('❌ Photo reorder failed:', err);
+    }
+  }, [sessionId, backendAvailable, session]);
 
   return {
     session,

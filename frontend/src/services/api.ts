@@ -150,6 +150,30 @@ export class PhotoOrganizerApi {
   }
   
   /**
+   * Reorder photos in a set using metadata only (no photo files changed)
+   */
+  async reorderPhotos(
+    sessionId: string,
+    setKey: 'set1' | 'set2', 
+    fromIndex: number,
+    toIndex: number
+  ): Promise<{ message: string; session: PhotoSession; operation: any }> {
+    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/reorder`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        set_key: setKey,
+        from_index: fromIndex,
+        to_index: toIndex
+      }),
+    });
+
+    return handleResponse(response);
+  }
+
+  /**
    * Check if backend is available
    */
   async healthCheck(): Promise<{ message: string; status: string }> {
