@@ -147,17 +147,12 @@ export const DropZone: React.FC<DropZoneProps> = ({
 
   return (
     <Box sx={{ width: '100%' }}>
-      {/* Set Title */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" component="h3" sx={{ mb: 2, color: 'text.primary', fontWeight: 600 }}>
-          {setName} ({currentPhotoCount}/{maxPhotos})
-        </Typography>
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
-        )}
-      </Box>
+      {/* Error Display */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
 
       {/* Drop Zone */}
       <Paper

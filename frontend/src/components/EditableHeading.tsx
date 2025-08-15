@@ -116,7 +116,8 @@ export const EditableHeading: React.FC<EditableHeadingProps> = ({
         '&:hover': {
           backgroundColor: 'action.hover',
           '& .edit-icon': {
-            opacity: 1
+            transform: 'scale(1.1)',
+            color: 'primary.main'
           }
         }
       }}
@@ -137,9 +138,10 @@ export const EditableHeading: React.FC<EditableHeadingProps> = ({
         className="edit-icon"
         size="small"
         sx={{ 
-          opacity: 0, 
-          transition: 'opacity 0.2s ease-in-out',
-          p: 0.5
+          opacity: 0.6,
+          transition: 'all 0.2s ease-in-out',
+          p: 0.5,
+          color: 'text.secondary'
         }}
       >
         <Edit fontSize="small" />
