@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import { Pin, Looks3, FormatListNumbered } from '@mui/icons-material';
 import { useLabeling, LABELING_OPTIONS } from '../contexts/LabelingContext';
+import { useI18n } from '../contexts/I18nContext';
 
 const getLabelingIcon = (id: string) => {
   switch (id) {
@@ -22,6 +23,7 @@ const getLabelingIcon = (id: string) => {
 
 export const LabelingSelector: React.FC = () => {
   const { currentLabeling, setLabeling } = useLabeling();
+  const { t } = useI18n();
 
   const handleCardClick = (option: typeof LABELING_OPTIONS[0]) => {
     setLabeling(option);
@@ -76,7 +78,7 @@ export const LabelingSelector: React.FC = () => {
                   fontSize: '0.875rem'
                 }}
               >
-                {option.name}
+                {t(`photoLabels.types.${option.id}.name`)}
               </Typography>
               
               <Typography 
@@ -84,12 +86,12 @@ export const LabelingSelector: React.FC = () => {
                 color="text.secondary"
                 sx={{ fontSize: '0.7rem', lineHeight: 1.2 }}
               >
-                {option.description}
+                {t(`photoLabels.types.${option.id}.description`)}
               </Typography>
               
               {isSelected && (
                 <Chip 
-                  label="Selected" 
+                  label={t('common.selected')} 
                   size="small" 
                   color="primary"
                   sx={{ fontSize: '0.65rem', height: 16, mt: 0.25 }}

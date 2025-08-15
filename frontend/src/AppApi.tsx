@@ -370,7 +370,7 @@ function AppApi() {
               size="small"
             />
             <Chip
-              label="🟢 Backend Connected"
+              label={`🟢 ${t('session.backendConnected')}`}
               color="success"
               variant="filled"
               size="small"
@@ -515,7 +515,7 @@ function AppApi() {
               <TitleInput
                 value={session.sets.set1.title}
                 onChange={(title) => updateSetTitle('set1', title)}
-                setName="Set 1"
+                setName={t('sets.set1')}
                 placeholder={t('sets.title.placeholder', { setName: t('sets.set1') })}
               />
               <Chip
@@ -527,7 +527,7 @@ function AppApi() {
             </Box>
             <DropZone
               onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
-              setName="Set 1"
+              setName={t('sets.set1')}
               currentPhotoCount={stats.set1Photos}
               maxPhotos={9}
               loading={loading}
@@ -540,7 +540,7 @@ function AppApi() {
             <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
               <Box sx={{ mb: 4 }}>
                 <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 1 }}>
-                  {session.sets.set1.title || 'Set 1'} Preview
+                  {session.sets.set1.title || t('sets.set1')} {t('session.preview')}
                 </Typography>
               </Box>
               <PhotoGridApi
@@ -561,7 +561,7 @@ function AppApi() {
         {/* Horizontal Divider */}
         <Divider sx={{ my: 6, borderWidth: 2, '&::before, &::after': { borderWidth: '2px' } }}>
           <Chip
-            label="Set 2"
+            label={t('sets.set2')}
             size="large"
             color="primary"
             variant="filled"
@@ -578,7 +578,7 @@ function AppApi() {
               <TitleInput
                 value={session.sets.set2.title}
                 onChange={(title) => updateSetTitle('set2', title)}
-                setName="Set 2"
+                setName={t('sets.set2')}
                 placeholder={t('sets.title.placeholder', { setName: t('sets.set2') })}
               />
               <Chip
@@ -590,7 +590,7 @@ function AppApi() {
             </Box>
             <DropZone
               onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
-              setName="Set 2"
+              setName={t('sets.set2')}
               currentPhotoCount={stats.set2Photos}
               maxPhotos={9}
               loading={loading}
@@ -603,7 +603,7 @@ function AppApi() {
             <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
               <Box sx={{ mb: 4 }}>
                 <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 1 }}>
-                  {session.sets.set2.title || 'Set 2'} Preview
+                  {session.sets.set2.title || t('sets.set2')} {t('session.preview')}
                 </Typography>
               </Box>
               <PhotoGridApi

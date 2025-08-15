@@ -69,14 +69,20 @@
     "tryAgain": "Please try again or upload a different file."
   },
   "controls": {
+    "imageAdjustments": "Image Adjustments",
     "brightness": "Brightness",
     "contrast": "Contrast", 
     "sharpness": "Sharpness",
     "whiteBalance": "White Balance",
-    "temperature": "Temperature",
-    "tint": "Tint",
+    "temperature": "Temperature (Blue ↔ Yellow)",
+    "tint": "Tint (Green ↔ Magenta)",
     "autoWhiteBalance": "Auto White Balance",
-    "resetAll": "Reset All"
+    "labelPosition": "Label Position",
+    "resetAll": "Reset All",
+    "preview": "Preview",
+    "resetBrightness": "Reset brightness",
+    "resetContrast": "Reset contrast", 
+    "resetSharpness": "Reset sharpness"
   },
   "session": {
     "created": "Session created {{time}}",
@@ -86,6 +92,7 @@
     "loading": "Loading session data...",
     "connecting": "Connecting to Backend...",
     "backendUnavailable": "Backend Connection Failed",
+    "backendConnected": "Backend Connected",
     "checkConnection": "Please ensure the Python backend server is running.",
     "retryConnection": "Retry Connection",
     "sessionId": "Session ID: {{id}}",
@@ -93,6 +100,7 @@
     "setPhotos": "{{setName}}: {{current}}/{{max}}",
     "noActiveSession": "No Active Session",
     "newSessionInfo": "A new session will be created automatically when you upload your first photo.",
+    "preview": "Preview",
     "instructions": {
       "title": "Welcome to Photo Helper!",
       "subtitle": "Here's how to get started:",

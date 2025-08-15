@@ -31,6 +31,7 @@ import {
   AutoAwesome
 } from '@mui/icons-material';
 import type { Photo } from '../types';
+import { useI18n } from '../contexts/I18nContext';
 
 interface PhotoControlsProps {
   photo: {
@@ -61,6 +62,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   onUpdate,
   onRemove
 }) => {
+  const { t } = useI18n();
   // Local state for immediate UI feedback
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
 
@@ -248,7 +250,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           <Paper elevation={1} sx={{ p: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
               <Label color="primary" />
-              <Typography variant="h6">Label Position</Typography>
+              <Typography variant="h6">{t('controls.labelPosition')}</Typography>
             </Box>
             
             {/* Visual Corner Selector */}
@@ -305,7 +307,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 textAlign: 'center'
               }}>
                 <Typography variant="caption" color="text.secondary">
-                  Preview
+                  {t('controls.preview')}
                 </Typography>
               </Box>
             </Box>
@@ -326,7 +328,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           <Paper elevation={1} sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Brightness4 color="primary" />
-              Image Adjustments
+              {t('controls.imageAdjustments')}
             </Typography>
 
             {/* Scale/Zoom Control */}
@@ -385,13 +387,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Brightness4 fontSize="small" />
-                  Brightness
+                  {t('controls.brightness')}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" color="primary" fontWeight={600}>
                     {photo.canvasState.brightness > 0 ? '+' : ''}{photo.canvasState.brightness}
                   </Typography>
-                  <Tooltip title="Reset brightness">
+                  <Tooltip title={t('controls.resetBrightness')}>
                     <IconButton 
                       size="small" 
                       onClick={() => handleBrightnessChange(0)}
@@ -418,13 +420,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Contrast fontSize="small" />
-                  Contrast
+                  {t('controls.contrast')}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" color="primary" fontWeight={600}>
                     {Math.round(photo.canvasState.contrast * 100)}%
                   </Typography>
-                  <Tooltip title="Reset contrast">
+                  <Tooltip title={t('controls.resetContrast')}>
                     <IconButton 
                       size="small" 
                       onClick={() => handleContrastChange(1)}
@@ -451,13 +453,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <BlurOn fontSize="small" />
-                  Sharpness
+                  {t('controls.sharpness')}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" color="primary" fontWeight={600}>
                     {sharpness}
                   </Typography>
-                  <Tooltip title="Reset sharpness">
+                  <Tooltip title={t('controls.resetSharpness')}>
                     <IconButton 
                       size="small" 
                       onClick={() => handleSharpnessChange(0)}
@@ -486,7 +488,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           <Paper elevation={1} sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <ColorLens color="primary" />
-              White Balance
+              {t('controls.whiteBalance')}
             </Typography>
 
             {/* Auto White Balance Button */}
@@ -498,7 +500,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 fullWidth
                 color="primary"
               >
-                Auto White Balance
+                {t('controls.autoWhiteBalance')}
               </Button>
             </Box>
 
@@ -508,7 +510,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2">
-                  Temperature (Blue ↔ Yellow)
+                  {t('controls.temperature')}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" color="primary" fontWeight={600}>
@@ -547,7 +549,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2">
-                  Tint (Green ↔ Magenta)
+                  {t('controls.tint')}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" color="primary" fontWeight={600}>

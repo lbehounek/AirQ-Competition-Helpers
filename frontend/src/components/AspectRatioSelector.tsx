@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import { AspectRatio, CameraAlt, PhotoCamera, Tv } from '@mui/icons-material';
 import { useAspectRatio, ASPECT_RATIO_OPTIONS } from '../contexts/AspectRatioContext';
+import { useI18n } from '../contexts/I18nContext';
 
 const getFormatIcon = (id: string) => {
   switch (id) {
@@ -24,6 +25,7 @@ const getFormatIcon = (id: string) => {
 
 export const AspectRatioSelector: React.FC = () => {
   const { currentRatio, setAspectRatio } = useAspectRatio();
+  const { t } = useI18n();
 
   const handleCardClick = (option: typeof ASPECT_RATIO_OPTIONS[0]) => {
     setAspectRatio(option);
@@ -78,7 +80,7 @@ export const AspectRatioSelector: React.FC = () => {
                   fontSize: '0.875rem'
                 }}
               >
-                {option.name}
+                {t(`photoFormat.aspectRatios.${option.id}.name`)}
               </Typography>
               
               <Typography 
@@ -86,12 +88,12 @@ export const AspectRatioSelector: React.FC = () => {
                 color="text.secondary"
                 sx={{ fontSize: '0.7rem', lineHeight: 1.2 }}
               >
-                {option.description}
+                {t(`photoFormat.aspectRatios.${option.id}.description`)}
               </Typography>
               
               {isSelected && (
                 <Chip 
-                  label="Selected" 
+                  label={t('common.selected')} 
                   size="small" 
                   color="primary"
                   sx={{ fontSize: '0.65rem', height: 16, mt: 0.25 }}

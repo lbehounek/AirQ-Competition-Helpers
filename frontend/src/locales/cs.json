@@ -69,14 +69,20 @@
     "tryAgain": "Zkuste to znovu nebo nahrajte jiný soubor."
   },
   "controls": {
+    "imageAdjustments": "Úpravy obrázku",
     "brightness": "Jas",
     "contrast": "Kontrast", 
     "sharpness": "Ostrost",
     "whiteBalance": "Vyvážení bílé",
-    "temperature": "Teplota",
-    "tint": "Odstín",
+    "temperature": "Teplota (Modrá ↔ Žlutá)",
+    "tint": "Odstín (Zelená ↔ Purpurová)",
     "autoWhiteBalance": "Automatické vyvážení bílé",
-    "resetAll": "Obnovit vše"
+    "labelPosition": "Pozice popisku",
+    "resetAll": "Obnovit vše",
+    "preview": "Náhled",
+    "resetBrightness": "Obnovit jas",
+    "resetContrast": "Obnovit kontrast", 
+    "resetSharpness": "Obnovit ostrost"
   },
   "session": {
     "created": "Relace vytvořena {{time}}",
@@ -86,6 +92,7 @@
     "loading": "Načítání dat relace...",
     "connecting": "Připojování k backend serveru...",
     "backendUnavailable": "Připojení k backend serveru selhalo",
+    "backendConnected": "Backend připojen",
     "checkConnection": "Ujistěte se, že Python backend server běží.",
     "retryConnection": "Opakovat připojení",
     "sessionId": "ID relace: {{id}}",
@@ -93,6 +100,7 @@
     "setPhotos": "{{setName}}: {{current}}/{{max}}",
     "noActiveSession": "Žádná aktivní relace",
     "newSessionInfo": "Nová relace bude automaticky vytvořena při nahrání první fotografie.",
+    "preview": "Náhled",
     "instructions": {
       "title": "Vítejte v Foto Pomocníkovi!",
       "subtitle": "Zde je návod, jak začít:",
