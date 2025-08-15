@@ -77,12 +77,22 @@
     "temperature": "Temperature (Blue ↔ Yellow)",
     "tint": "Tint (Green ↔ Magenta)",
     "autoWhiteBalance": "Auto White Balance",
+    "autoShort": "Auto",
     "labelPosition": "Label Position",
     "resetAll": "Reset All",
     "preview": "Preview",
     "resetBrightness": "Reset brightness",
     "resetContrast": "Reset contrast", 
-    "resetSharpness": "Reset sharpness"
+    "resetSharpness": "Reset sharpness",
+    "zoom": "Zoom",
+    "basicColor": "Basic Color",
+    "resetZoom": "Reset zoom",
+    "resetTemperature": "Reset temperature",
+    "resetTint": "Reset tint",
+    "showOriginal": "Show Original",
+    "showEdited": "Show Edited",
+    "editPhoto": "Edit Photo {{label}}",
+    "photoLabel": "Photo {{label}}"
   },
   "session": {
     "created": "Session created {{time}}",

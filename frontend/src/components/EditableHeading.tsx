@@ -67,7 +67,7 @@ export const EditableHeading: React.FC<EditableHeadingProps> = ({
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <TextField
-          ref={inputRef}
+          inputRef={inputRef}
           value={tempValue}
           onChange={(e) => setTempValue(e.target.value)}
           onKeyDown={handleKeyDown}

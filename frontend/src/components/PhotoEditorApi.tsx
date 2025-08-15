@@ -29,6 +29,7 @@ interface PhotoEditorApiProps {
   setKey?: 'set1' | 'set2'; // For PDF generation canvas identification
   setName?: string; // Set name to show on first photo
   isFirstInSet?: boolean; // Whether this is the first photo in the set
+  showOriginal?: boolean; // Whether to show original (no effects) or edited version
 }
 
 // UNIFIED RENDERING SYSTEM - Same logic for grid and modal
@@ -88,7 +89,8 @@ const renderPhotoOnCanvas = (
   isFirstInSet = false,
   setName?: string,
   aspectRatio = 4/3,
-  baseHeight = 225
+  baseHeight = 225,
+  showOriginal = false
 ) => {
   const ctx = getCanvasContext(canvas);
   if (!ctx) {
@@ -155,16 +157,18 @@ const renderPhotoOnCanvas = (
   // Draw the image to temp canvas
   tempCtx.drawImage(croppedImage, 0, 0, displayWidth, displayHeight);
   
-  // Try WebGL acceleration first, fallback to CPU processing
+  // Skip processing if showing original
   const sharpness = canvasState.sharpness || 0;
   const whiteBalance = canvasState.whiteBalance || { temperature: 0, tint: 0, auto: false };
   
-  const needsProcessing = canvasState.brightness !== 0 || 
-                         canvasState.contrast !== 1 || 
-                         sharpness > 0 || 
-                         whiteBalance.auto || 
-                         whiteBalance.temperature !== 0 || 
-                         whiteBalance.tint !== 0;
+  const needsProcessing = !showOriginal && (
+    canvasState.brightness !== 0 || 
+    canvasState.contrast !== 1 || 
+    sharpness > 0 || 
+    whiteBalance.auto || 
+    whiteBalance.temperature !== 0 || 
+    whiteBalance.tint !== 0
+  );
 
   // Request WebGL context on-demand only when processing is needed
   let webglContextToUse = webglContext;
@@ -370,7 +374,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   size = 'grid',
   setKey,
   setName,
-  isFirstInSet = false
+  isFirstInSet = false,
+  showOriginal = false
 }) => {
   const { currentRatio, getCanvasSize } = useAspectRatio();
   
@@ -567,7 +572,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       isFirstInSet,
       setName,
       currentRatio.ratio,
-      BASE_WIDTH / currentRatio.ratio  // Always use BASE dimensions for consistent cropping
+      BASE_WIDTH / currentRatio.ratio,  // Always use BASE dimensions for consistent cropping
+      showOriginal // Pass the showOriginal parameter
     );
 
     // Atomically update the visible canvas - no distortion flash
@@ -577,7 +583,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     if (ctx) {
       ctx.drawImage(tempCanvas, 0, 0);
     }
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, isFirstInSet, setName, currentRatio]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, isFirstInSet, setName, currentRatio, showOriginal]);
 
   useEffect(() => {
     renderCanvas();

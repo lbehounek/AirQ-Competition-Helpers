@@ -52,6 +52,9 @@ interface PhotoControlsProps {
   label: string;
   onUpdate: (canvasState: Photo['canvasState']) => void;
   onRemove: () => void;
+  mode?: 'full' | 'sidebar' | 'sliders' | 'compact-left' | 'compact-right';
+  showOriginal?: boolean;
+  onToggleOriginal?: () => void;
 }
 
 type LabelPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -60,7 +63,10 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   photo,
   label,
   onUpdate,
-  onRemove
+  onRemove,
+  mode = 'full',
+  showOriginal = false,
+  onToggleOriginal
 }) => {
   const { t } = useI18n();
   // Local state for immediate UI feedback
@@ -216,111 +222,627 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     { label: '250%', value: 2.5 }
   ];
 
-  return (
-    <Box sx={{ width: '100%', maxWidth: 600, mx: 'auto' }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CropFree color="primary" />
-          <Typography variant="h6" color="primary">
-            Photo {label} Controls
-          </Typography>
+  // Render header component
+  const renderHeader = () => (
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <CropFree color="primary" fontSize="small" />
+        <Typography variant="subtitle1" color="primary" sx={{ fontSize: '1rem', fontWeight: 600 }}>
+          {t('controls.photoLabel', { label })}
+        </Typography>
+      </Box>
+      <Box sx={{ display: 'flex', gap: 0.5 }}>
+        <Button 
+          variant="outlined" 
+          color="warning" 
+          size="small"
+          startIcon={<Refresh fontSize="small" />}
+          onClick={handleReset}
+          sx={{ fontSize: '0.75rem', py: 0.5, px: 1 }}
+        >
+          {t('controls.resetAll')}
+        </Button>
+        <Tooltip title="Remove photo">
+          <IconButton onClick={onRemove} color="error" size="small">
+            <RestoreFromTrash fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Box>
+    </Box>
+  );
+
+  // Render label position selector and zoom
+  const renderSidebarControls = () => (
+    <Box>
+      {/* Label Position */}
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Label color="primary" />
+          <Typography variant="h6">{t('controls.labelPosition')}</Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button 
-            variant="outlined" 
-            color="warning" 
-            size="small"
-            startIcon={<Refresh />}
-            onClick={handleReset}
-          >
-            Reset All
-          </Button>
-          <Tooltip title="Remove photo">
-            <IconButton onClick={onRemove} color="error" size="small">
-              <RestoreFromTrash />
+        
+        {/* Visual Corner Selector */}
+        <Box sx={{ 
+          width: 120, 
+          height: 90, 
+          mx: 'auto',
+          mb: 2,
+          position: 'relative',
+          border: '2px solid',
+          borderColor: 'primary.light',
+          borderRadius: 1,
+          bgcolor: 'grey.50'
+        }}>
+          {/* Corner buttons */}
+          {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as LabelPosition[]).map((position) => {
+            const isSelected = localLabelPosition === position;
+            const [vertical, horizontal] = position.split('-');
+            
+            return (
+              <IconButton
+                key={position}
+                size="small"
+                onClick={() => handleLabelPositionChange(position)}
+                sx={{
+                  position: 'absolute',
+                  [vertical]: -12,
+                  [horizontal]: -12,
+                  width: 24,
+                  height: 24,
+                  bgcolor: isSelected ? 'primary.main' : 'background.paper',
+                  color: isSelected ? 'white' : 'text.primary',
+                  border: '2px solid',
+                  borderColor: isSelected ? 'primary.main' : 'grey.400',
+                  '&:hover': {
+                    bgcolor: isSelected ? 'primary.dark' : 'primary.light',
+                    color: 'white'
+                  }
+                }}
+              >
+                <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700 }}>
+                  {label}
+                </Typography>
+              </IconButton>
+            );
+          })}
+          
+          {/* Center preview */}
+          <Box sx={{ 
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            textAlign: 'center'
+          }}>
+            <Typography variant="caption" color="text.secondary">
+              {t('controls.preview')}
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* Current selection indicator */}
+        <Chip
+          label={`Label: ${localLabelPosition}`}
+          color="primary"
+          variant="outlined"
+          size="small"
+          sx={{ width: '100%' }}
+        />
+      </Paper>
+
+      {/* Zoom Control */}
+      <Paper elevation={1} sx={{ p: 3 }}>
+        <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ZoomIn color="primary" />
+          {t('controls.zoom')}
+        </Typography>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography variant="body2" color="primary" fontWeight={600}>
+            {Math.round(photo.canvasState.scale * 100)}%
+          </Typography>
+          <Tooltip title={t('controls.resetZoom')}>
+            <IconButton 
+              size="small" 
+              onClick={() => handleScaleChange(1.0)}
+              sx={{ padding: 0.5 }}
+            >
+              <Refresh fontSize="small" />
             </IconButton>
           </Tooltip>
         </Box>
+        
+        <Slider
+          value={Math.max(1.0, photo.canvasState.scale)}
+          onChange={(_, value) => handleScaleChange(value as number)}
+          min={1.0}
+          max={3}
+          step={0.05}
+          color="primary"
+          size="small"
+          sx={{ mb: 2 }}
+        />
+        
+        {/* Quick scale buttons */}
+        <ButtonGroup size="small" variant="outlined" fullWidth>
+          {quickScaleOptions.map((option) => (
+            <Button
+              key={option.value}
+              onClick={() => handleScaleChange(option.value)}
+              variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
+              size="small"
+              sx={{ fontSize: '0.75rem' }}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </ButtonGroup>
+      </Paper>
+    </Box>
+  );
+
+  // Render bottom sliders (horizontal layout for L-shape) - 3 equal-width tiles
+  const renderSliders = () => (
+    <Box sx={{ width: '100%', p: 2 }}>
+      <Box sx={{ display: 'flex', gap: 2, width: '100%' }}>
+        {/* Brightness + Contrast Grouped - 1/3 width */}
+        <Box sx={{ flex: '1 1 0', minWidth: 0 }}>
+          <Paper elevation={1} sx={{ p: 3, height: '100%' }}>
+            <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Brightness4 color="primary" />
+              {t('controls.basicColor')}
+            </Typography>
+            
+            {/* Brightness */}
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2">
+                  {t('controls.brightness')}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {photo.canvasState.brightness > 0 ? '+' : ''}{photo.canvasState.brightness}
+                  </Typography>
+                  <Tooltip title={t('controls.resetBrightness')}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleBrightnessChange(0)}
+                      sx={{ padding: 0.5 }}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              <Slider
+                value={photo.canvasState.brightness}
+                min={-100}
+                max={100}
+                step={1}
+                onChange={(_, value) => handleBrightnessChange(value as number)}
+                color="primary"
+                size="small"
+              />
+            </Box>
+
+            {/* Contrast */}
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2">
+                  {t('controls.contrast')}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {Math.round(photo.canvasState.contrast * 100)}%
+                  </Typography>
+                  <Tooltip title={t('controls.resetContrast')}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleContrastChange(1)}
+                      sx={{ padding: 0.5 }}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              <Slider
+                value={photo.canvasState.contrast}
+                min={0.5}
+                max={2}
+                step={0.1}
+                onChange={(_, value) => handleContrastChange(value as number)}
+                color="primary"
+                size="small"
+              />
+            </Box>
+          </Paper>
+        </Box>
+
+        {/* Sharpness - 1/3 width */}
+        <Box sx={{ flex: '1 1 0', minWidth: 0 }}>
+          <Paper elevation={1} sx={{ p: 3, height: '100%' }}>
+            <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <BlurOn color="primary" />
+              {t('controls.sharpness')}
+            </Typography>
+            
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="body2" color="primary" fontWeight={600}>
+                {sharpness}
+              </Typography>
+              <Tooltip title={t('controls.resetSharpness')}>
+                <IconButton 
+                  size="small" 
+                  onClick={() => handleSharpnessChange(0)}
+                  sx={{ padding: 0.5 }}
+                >
+                  <Refresh fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+            
+            <Slider
+              value={sharpness}
+              min={0}
+              max={100}
+              step={5}
+              onChange={(_, value) => handleSharpnessChange(value as number)}
+              color="primary"
+              size="small"
+            />
+          </Paper>
+        </Box>
+
+        {/* White Balance - 1/3 width */}
+        <Box sx={{ flex: '1 1 0', minWidth: 0 }}>
+          <Paper elevation={1} sx={{ p: 3, height: '100%' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <ColorLens color="primary" />
+                {t('controls.whiteBalance')}
+              </Typography>
+              
+              <Button
+                variant={whiteBalance.auto ? "contained" : "outlined"}
+                onClick={handleAutoWhiteBalance}
+                color="primary"
+                size="small"
+                sx={{ minWidth: 'auto', px: 2 }}
+              >
+                {t('controls.autoShort')}
+              </Button>
+            </Box>
+
+            {/* Temperature Control - Below each other */}
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2">
+                  {t('controls.temperature')}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {whiteBalance.temperature}
+                  </Typography>
+                  <Tooltip title={t('controls.resetTemperature')}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleWhiteBalanceTemperatureChange(0)}
+                      sx={{ padding: 0.5 }}
+                      disabled={whiteBalance.auto}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              <Slider
+                value={whiteBalance.temperature}
+                min={-100}
+                max={100}
+                step={5}
+                onChange={(_, value) => handleWhiteBalanceTemperatureChange(value as number)}
+                color="primary"
+                size="small"
+                disabled={whiteBalance.auto}
+                sx={{
+                  '& .MuiSlider-track': {
+                    background: 'linear-gradient(90deg, #4FC3F7 0%, #FFE082 100%)'
+                  }
+                }}
+              />
+            </Box>
+
+            {/* Tint Control - Below temperature */}
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2">
+                  {t('controls.tint')}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {whiteBalance.tint}
+                  </Typography>
+                  <Tooltip title={t('controls.resetTint')}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleWhiteBalanceTintChange(0)}
+                      sx={{ padding: 0.5 }}
+                      disabled={whiteBalance.auto}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              <Slider
+                value={whiteBalance.tint}
+                min={-100}
+                max={100}
+                step={5}
+                onChange={(_, value) => handleWhiteBalanceTintChange(value as number)}
+                color="primary"
+                size="small"
+                disabled={whiteBalance.auto}
+                sx={{
+                  '& .MuiSlider-track': {
+                    background: 'linear-gradient(90deg, #81C784 0%, #E91E63 100%)'
+                  }
+                }}
+              />
+            </Box>
+          </Paper>
+        </Box>
       </Box>
+    </Box>
+  );
+
+  // Render compact controls for reverse L layout
+  const renderCompactLeft = () => (
+    <Box sx={{ width: '100%', height: '100%', p: 2 }}>
+      {renderHeader()}
+      
+      {/* Original/Edited Toggle */}
+      {onToggleOriginal && (
+        <Box sx={{ mb: 2 }}>
+          <Button
+            variant={showOriginal ? "outlined" : "contained"}
+            size="small"
+            onClick={onToggleOriginal}
+            fullWidth
+            color="primary"
+            sx={{ fontSize: '0.75rem', py: 0.5 }}
+          >
+            {showOriginal ? t('controls.showEdited') : t('controls.showOriginal')}
+          </Button>
+        </Box>
+      )}
+      
+      {/* Label Position - Compact */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Label fontSize="small" color="primary" />
+          {t('controls.labelPosition')}
+        </Typography>
+        <Box sx={{ 
+          width: 100, 
+          height: 80, 
+          mx: 'auto',
+          position: 'relative',
+          border: '2px solid',
+          borderColor: 'primary.light',
+          borderRadius: 1,
+          bgcolor: 'grey.50',
+          mb: 1
+        }}>
+          {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as LabelPosition[]).map((position) => {
+            const isSelected = localLabelPosition === position;
+            const [vertical, horizontal] = position.split('-');
+            return (
+              <IconButton
+                key={position}
+                size="small"
+                onClick={() => handleLabelPositionChange(position)}
+                sx={{
+                  position: 'absolute',
+                  [vertical]: -12,
+                  [horizontal]: -12,
+                  width: 24,
+                  height: 24,
+                  fontSize: '10px',
+                  bgcolor: isSelected ? 'primary.main' : 'background.paper',
+                  color: isSelected ? 'white' : 'text.primary',
+                  border: '1px solid',
+                  borderColor: isSelected ? 'primary.main' : 'grey.400'
+                }}
+              >
+                <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700 }}>
+                  {label}
+                </Typography>
+              </IconButton>
+            );
+          })}
+        </Box>
+      </Box>
+      
+      {/* Zoom - Compact */}
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <ZoomIn fontSize="small" color="primary" />
+            {t('controls.zoom')}
+          </Typography>
+          <Typography variant="caption" color="primary" fontWeight={600}>
+            {Math.round(photo.canvasState.scale * 100)}%
+          </Typography>
+        </Box>
+        <Slider
+          value={Math.max(1.0, photo.canvasState.scale)}
+          onChange={(_, value) => handleScaleChange(value as number)}
+          min={1.0}
+          max={3}
+          step={0.05}
+          color="primary"
+          size="small"
+          sx={{ mb: 1 }}
+        />
+        
+        {/* Quick scale buttons */}
+        <ButtonGroup size="small" variant="outlined" fullWidth>
+          {quickScaleOptions.map((option) => (
+            <Button
+              key={option.value}
+              onClick={() => handleScaleChange(option.value)}
+              variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
+              size="small"
+              sx={{ fontSize: '0.7rem', py: 0.25 }}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </ButtonGroup>
+      </Box>
+    </Box>
+  );
+  
+  const renderCompactRight = () => (
+    <Box sx={{ width: '100%', height: '100%', p: 2 }}>
+      {renderHeader()}
+      
+      {/* Original/Edited Toggle */}
+      {onToggleOriginal && (
+        <Box sx={{ mb: 2 }}>
+          <Button
+            variant={showOriginal ? "outlined" : "contained"}
+            size="small"
+            onClick={onToggleOriginal}
+            fullWidth
+            color="primary"
+            sx={{ fontSize: '0.75rem', py: 0.5 }}
+          >
+            {showOriginal ? t('controls.showEdited') : t('controls.showOriginal')}
+          </Button>
+        </Box>
+      )}
+      
+      {/* Label Position - Compact */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Label fontSize="small" color="primary" />
+          {t('controls.labelPosition')}
+        </Typography>
+        <Box sx={{ 
+          width: 100, 
+          height: 80, 
+          mx: 'auto',
+          position: 'relative',
+          border: '2px solid',
+          borderColor: 'primary.light',
+          borderRadius: 1,
+          bgcolor: 'grey.50',
+          mb: 1
+        }}>
+          {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as LabelPosition[]).map((position) => {
+            const isSelected = localLabelPosition === position;
+            const [vertical, horizontal] = position.split('-');
+            return (
+              <IconButton
+                key={position}
+                size="small"
+                onClick={() => handleLabelPositionChange(position)}
+                sx={{
+                  position: 'absolute',
+                  [vertical]: -12,
+                  [horizontal]: -12,
+                  width: 24,
+                  height: 24,
+                  fontSize: '10px',
+                  bgcolor: isSelected ? 'primary.main' : 'background.paper',
+                  color: isSelected ? 'white' : 'text.primary',
+                  border: '1px solid',
+                  borderColor: isSelected ? 'primary.main' : 'grey.400'
+                }}
+              >
+                <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700 }}>
+                  {label}
+                </Typography>
+              </IconButton>
+            );
+          })}
+        </Box>
+      </Box>
+      
+      {/* Zoom - Compact */}
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <ZoomIn fontSize="small" color="primary" />
+            {t('controls.zoom')}
+          </Typography>
+          <Typography variant="caption" color="primary" fontWeight={600}>
+            {Math.round(photo.canvasState.scale * 100)}%
+          </Typography>
+        </Box>
+        <Slider
+          value={Math.max(1.0, photo.canvasState.scale)}
+          onChange={(_, value) => handleScaleChange(value as number)}
+          min={1.0}
+          max={3}
+          step={0.05}
+          color="primary"
+          size="small"
+          sx={{ mb: 1 }}
+        />
+        
+        {/* Quick scale buttons */}
+        <ButtonGroup size="small" variant="outlined" fullWidth>
+          {quickScaleOptions.map((option) => (
+            <Button
+              key={option.value}
+              onClick={() => handleScaleChange(option.value)}
+              variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
+              size="small"
+              sx={{ fontSize: '0.7rem', py: 0.25 }}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </ButtonGroup>
+      </Box>
+    </Box>
+  );
+
+  // Main render logic based on mode
+  if (mode === 'compact-left') {
+    return renderCompactLeft();
+  }
+  
+  if (mode === 'compact-right') {
+    return renderCompactRight();
+  }
+
+  if (mode === 'sidebar') {
+    return (
+      <Box sx={{ width: '100%', p: 2 }}>
+        {renderHeader()}
+        {renderSidebarControls()}
+      </Box>
+    );
+  }
+
+  if (mode === 'sliders') {
+    return renderSliders();
+  }
+
+  // Full mode (original layout)
+  return (
+    <Box sx={{ width: '100%', maxWidth: 600, mx: 'auto' }}>
+      {renderHeader()}
 
       <Grid container spacing={3}>
         {/* Label Position Selector */}
         <Grid item xs={12} md={6}>
-          <Paper elevation={1} sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-              <Label color="primary" />
-              <Typography variant="h6">{t('controls.labelPosition')}</Typography>
-            </Box>
-            
-            {/* Visual Corner Selector */}
-            <Box sx={{ 
-              width: 120, 
-              height: 90, 
-              mx: 'auto',
-              mb: 2,
-              position: 'relative',
-              border: '2px solid',
-              borderColor: 'primary.light',
-              borderRadius: 1,
-              bgcolor: 'grey.50'
-            }}>
-              {/* Corner buttons */}
-              {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as LabelPosition[]).map((position) => {
-                const isSelected = localLabelPosition === position;
-                const [vertical, horizontal] = position.split('-');
-                
-                return (
-                  <IconButton
-                    key={position}
-                    size="small"
-                    onClick={() => handleLabelPositionChange(position)}
-                    sx={{
-                      position: 'absolute',
-                      [vertical]: -12,
-                      [horizontal]: -12,
-                      width: 24,
-                      height: 24,
-                      bgcolor: isSelected ? 'primary.main' : 'background.paper',
-                      color: isSelected ? 'white' : 'text.primary',
-                      border: '2px solid',
-                      borderColor: isSelected ? 'primary.main' : 'grey.400',
-                      '&:hover': {
-                        bgcolor: isSelected ? 'primary.dark' : 'primary.light',
-                        color: 'white'
-                      }
-                    }}
-                  >
-                    <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 700 }}>
-                      {label}
-                    </Typography>
-                  </IconButton>
-                );
-              })}
-              
-              {/* Center preview */}
-              <Box sx={{ 
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                textAlign: 'center'
-              }}>
-                <Typography variant="caption" color="text.secondary">
-                  {t('controls.preview')}
-                </Typography>
-              </Box>
-            </Box>
-
-            {/* Current selection indicator */}
-            <Chip
-              label={`Label: ${localLabelPosition}`}
-              color="primary"
-              variant="outlined"
-              size="small"
-              sx={{ width: '100%' }}
-            />
-          </Paper>
+          {renderSidebarControls()}
         </Grid>
 
         {/* Image Adjustments */}
@@ -516,7 +1038,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Typography variant="body2" color="primary" fontWeight={600}>
                     {whiteBalance.temperature}
                   </Typography>
-                  <Tooltip title="Reset temperature">
+                  <Tooltip title={t('controls.resetTemperature')}>
                     <IconButton 
                       size="small" 
                       onClick={() => handleWhiteBalanceTemperatureChange(0)}
@@ -555,7 +1077,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Typography variant="body2" color="primary" fontWeight={600}>
                     {whiteBalance.tint}
                   </Typography>
-                  <Tooltip title="Reset tint">
+                                      <Tooltip title={t('controls.resetTint')}>
                     <IconButton 
                       size="small" 
                       onClick={() => handleWhiteBalanceTintChange(0)}

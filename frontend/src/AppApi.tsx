@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Container,
   Typography,
   Box,
   Paper,
-  Grid,
   Chip,
   Alert,
   Button,
@@ -19,7 +18,6 @@ import {
 } from '@mui/material';
 import {
   FlightTakeoff,
-  FileDownload,
   RestartAlt,
   Close,
   CheckCircle,
@@ -51,6 +49,12 @@ interface ApiPhoto {
     scale: number;
     brightness: number;
     contrast: number;
+    sharpness: number;
+    whiteBalance: {
+      temperature: number;
+      tint: number;
+      auto: boolean;
+    };
     labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   };
   label: string;
@@ -105,6 +109,7 @@ function AppApi() {
     isFirstInSet: boolean;
     setName: string;
   } | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
 
   const stats = getSessionStats();
 
@@ -228,7 +233,7 @@ function AppApi() {
         photos: session.sets.set1.photos.map((photo, index) => ({
           ...photo,
           label: generateLabel(index) // Use dynamic labeling (letters or numbers) with dot
-        }))
+        } as unknown as ApiPhoto & { label: string }))
       };
 
       const set1Count = session.sets.set1.photos.length;
@@ -237,7 +242,7 @@ function AppApi() {
         photos: session.sets.set2.photos.map((photo, index) => ({
           ...photo,
           label: generateLabel(index, set1Count) // Continue from where Set 1 left off
-        }))
+        } as unknown as ApiPhoto & { label: string }))
       };
 
       await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio);
@@ -558,7 +563,7 @@ function AppApi() {
         <Divider sx={{ my: 6, borderWidth: 2, '&::before, &::after': { borderWidth: '2px' } }}>
           <Chip
             label={t('sets.set2')}
-            size="large"
+            size="medium"
             color="primary"
             variant="filled"
             sx={{ px: 3, py: 1, fontSize: '1rem', fontWeight: 600 }}
@@ -714,7 +719,7 @@ function AppApi() {
             transform: 'translate(-50%, -50%)',
             width: { xs: '95vw', sm: '90vw', md: '90vw', lg: '85vw' },
             maxWidth: '1400px',
-            maxHeight: '90vh',
+            maxHeight: '95vh', // Taller modal to accommodate all elements
             bgcolor: 'background.paper',
             borderRadius: 3,
             boxShadow: 24,
@@ -724,18 +729,18 @@ function AppApi() {
           }}>
             {selectedPhoto && (
               <>
-                {/* Modal Header */}
+                {/* Modal Header - Compact */}
                 <Box sx={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  p: 3,
+                  p: 1.5, // Even more compact header
                   borderBottom: '1px solid',
                   borderColor: 'divider',
                   background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)'
                 }}>
-                  <Typography variant="h4" sx={{ color: 'white', fontWeight: 600 }}>
-                    Edit Photo {selectedPhoto.label}
+                  <Typography variant="h5" sx={{ color: 'white', fontWeight: 600, fontSize: '1.2rem' }}>
+                    {t('controls.editPhoto', { label: selectedPhoto.label })}
                   </Typography>
                   <IconButton
                     onClick={() => setSelectedPhoto(null)}
@@ -750,45 +755,78 @@ function AppApi() {
                   </IconButton>
                 </Box>
 
-                {/* Modal Content */}
-                <Box sx={{
+                {/* Modal Content - L-Shape Layout: Photo top-left, Controls wrapping around */}
+                <Box sx={{ 
+                  flex: 1, 
                   display: 'flex',
-                  flexDirection: { xs: 'column', lg: 'row' },
-                  flex: 1,
-                  overflow: 'hidden'
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                  height: '85vh', // Taller modal content
+                  maxHeight: '800px'
                 }}>
-                  {/* Photo Preview - Larger Left Side */}
+                  {/* Top Row: Photo (left) + Right Controls */}
                   <Box sx={{
-                    flex: { xs: '1 1 auto', lg: '2 1 auto' }, // More space on desktop
-                    p: { xs: 2, lg: 4 },
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: 'grey.50'
+                    flex: '1 1 55%', // Reduced to 55% to give more space to bottom
+                    overflow: 'hidden'
                   }}>
-                    <PhotoEditorApi
-                      photo={selectedPhoto.photo}
-                      label={selectedPhoto.label}
-                      onUpdate={(canvasState) =>
-                        handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
-                      }
-                      onRemove={() => handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id)}
-                      size="large"
-                      setKey={selectedPhoto.setKey}
-                      setName={selectedPhoto.setName}
-                      isFirstInSet={selectedPhoto.isFirstInSet}
-                    />
+                    {/* Photo - Top Left */}
+                    <Box sx={{
+                      flex: '1 1 65%', // Take 65% of width
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: 'grey.50',
+                      px: 4, // Horizontal padding
+                      py: 10 // Much more vertical padding above and below photo
+                    }}>
+                      <PhotoEditorApi
+                        photo={selectedPhoto.photo}
+                        label={selectedPhoto.label}
+                        onUpdate={(canvasState) =>
+                          handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
+                        }
+                        onRemove={() => handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id)}
+                        size="large"
+                        setKey={selectedPhoto.setKey}
+                        setName={selectedPhoto.setName}
+                        isFirstInSet={selectedPhoto.isFirstInSet}
+                        showOriginal={showOriginal}
+                      />
+                    </Box>
+
+                    {/* Right Controls */}
+                    <Box sx={{
+                      flex: '0 0 35%', // Take 35% of width
+                      borderLeft: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'background.default',
+                      overflow: 'auto'
+                    }}>
+                      <PhotoControls
+                        photo={selectedPhoto.photo}
+                        label={selectedPhoto.label}
+                        onUpdate={(canvasState) =>
+                          handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
+                        }
+                        onRemove={() => {
+                          handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id);
+                          setSelectedPhoto(null);
+                        }}
+                        mode="compact-right"
+                        showOriginal={showOriginal}
+                        onToggleOriginal={() => setShowOriginal(!showOriginal)}
+                      />
+                    </Box>
                   </Box>
 
-                  {/* Photo Controls - Smaller Right Side */}
+                  {/* Bottom Row: Controls spanning full width - Taller */}
                   <Box sx={{
-                    flex: { xs: '1 1 auto', lg: '0 0 320px' }, // Fixed smaller width on desktop
-                    borderLeft: { xs: 'none', lg: '1px solid' },
-                    borderTop: { xs: '1px solid', lg: 'none' },
+                    flex: '0 0 45%', // Increased to 45% to fit 3 equal tiles comfortably
+                    borderTop: '1px solid',
                     borderColor: 'divider',
-                    bgcolor: 'background.default',
-                    overflow: 'auto',
-                    maxHeight: { xs: '250px', lg: 'none' } // Less height on mobile
+                    bgcolor: 'background.paper',
+                    overflow: 'auto'
                   }}>
                     <PhotoControls
                       photo={selectedPhoto.photo}
@@ -798,8 +836,9 @@ function AppApi() {
                       }
                       onRemove={() => {
                         handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id);
-                        setSelectedPhoto(null); // Close modal when photo is removed
+                        setSelectedPhoto(null);
                       }}
+                      mode="sliders"
                     />
                   </Box>
                 </Box>

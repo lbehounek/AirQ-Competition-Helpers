@@ -77,12 +77,22 @@
     "temperature": "Teplota (Modrá ↔ Žlutá)",
     "tint": "Odstín (Zelená ↔ Purpurová)",
     "autoWhiteBalance": "Automatické vyvážení bílé",
+    "autoShort": "Auto",
     "labelPosition": "Pozice popisku",
     "resetAll": "Obnovit vše",
     "preview": "Náhled",
     "resetBrightness": "Obnovit jas",
     "resetContrast": "Obnovit kontrast", 
-    "resetSharpness": "Obnovit ostrost"
+    "resetSharpness": "Obnovit ostrost",
+    "zoom": "Přiblížení",
+    "basicColor": "Základní barvy",
+    "resetZoom": "Obnovit přiblížení",
+    "resetTemperature": "Obnovit teplotu",
+    "resetTint": "Obnovit odstín",
+    "showOriginal": "Zobrazit originál",
+    "showEdited": "Zobrazit upravené",
+    "editPhoto": "Upravit fotografii {{label}}",
+    "photoLabel": "Fotografie {{label}}"
   },
   "session": {
     "created": "Relace vytvořena {{time}}",
