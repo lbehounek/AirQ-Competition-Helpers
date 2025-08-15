@@ -602,19 +602,27 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     <Box sx={{ width: '100%', height: '100%', p: 2 }}>
       {renderHeader()}
       
-      {/* Original/Edited Toggle */}
+      {/* Original/Edited Segmented Switch */}
       {onToggleOriginal && (
         <Box sx={{ mb: 2 }}>
-          <Button
-            variant={showOriginal ? "outlined" : "contained"}
-            size="small"
-            onClick={onToggleOriginal}
-            fullWidth
-            color="primary"
-            sx={{ fontSize: '0.75rem', py: 0.5 }}
-          >
-            {showOriginal ? t('controls.showEdited') : t('controls.showOriginal')}
-          </Button>
+          <ButtonGroup fullWidth size="small">
+            <Button
+              variant={showOriginal ? 'contained' : 'outlined'}
+              color={showOriginal ? 'primary' : 'inherit'}
+              onClick={() => { if (!showOriginal) onToggleOriginal(); }}
+              sx={{ fontSize: '0.75rem', py: 0.5 }}
+            >
+              {t('controls.showOriginal')}
+            </Button>
+            <Button
+              variant={!showOriginal ? 'contained' : 'outlined'}
+              color={!showOriginal ? 'primary' : 'inherit'}
+              onClick={() => { if (showOriginal) onToggleOriginal(); }}
+              sx={{ fontSize: '0.75rem', py: 0.5 }}
+            >
+              {t('controls.showEdited')}
+            </Button>
+          </ButtonGroup>
         </Box>
       )}
       
@@ -709,19 +717,27 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     <Box sx={{ width: '100%', height: '100%', p: 2 }}>
       {renderHeader()}
       
-      {/* Original/Edited Toggle */}
+      {/* Original/Edited Segmented Switch */}
       {onToggleOriginal && (
         <Box sx={{ mb: 2 }}>
-          <Button
-            variant={showOriginal ? "outlined" : "contained"}
-            size="small"
-            onClick={onToggleOriginal}
-            fullWidth
-            color="primary"
-            sx={{ fontSize: '0.75rem', py: 0.5 }}
-          >
-            {showOriginal ? t('controls.showEdited') : t('controls.showOriginal')}
-          </Button>
+          <ButtonGroup fullWidth size="small">
+            <Button
+              variant={showOriginal ? 'contained' : 'outlined'}
+              color={showOriginal ? 'primary' : 'inherit'}
+              onClick={() => { if (!showOriginal) onToggleOriginal(); }}
+              sx={{ fontSize: '0.75rem', py: 0.5 }}
+            >
+              {t('controls.showOriginal')}
+            </Button>
+            <Button
+              variant={!showOriginal ? 'contained' : 'outlined'}
+              color={!showOriginal ? 'primary' : 'inherit'}
+              onClick={() => { if (showOriginal) onToggleOriginal(); }}
+              sx={{ fontSize: '0.75rem', py: 0.5 }}
+            >
+              {t('controls.showEdited')}
+            </Button>
+          </ButtonGroup>
         </Box>
       )}
       
