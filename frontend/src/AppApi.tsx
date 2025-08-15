@@ -19,7 +19,6 @@ import {
 } from '@mui/material';
 import {
   FlightTakeoff,
-  PhotoCamera,
   FileDownload,
   RestartAlt,
   Close,
@@ -32,7 +31,7 @@ import {
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
 import { DropZone } from './components/DropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
-import { TitleInput } from './components/TitleInput';
+import { EditableHeading } from './components/EditableHeading';
 import { PhotoEditorApi } from './components/PhotoEditorApi';
 import { PhotoControls } from './components/PhotoControls';
 import { AspectRatioSelector } from './components/AspectRatioSelector';
@@ -380,7 +379,6 @@ function AppApi() {
           {/* Session Stats */}
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
             <Chip
-              icon={<PhotoCamera />}
               label={t('session.totalPhotos', { count: `${stats.totalPhotos}/18` })}
               color="secondary"
               variant="filled"
@@ -508,22 +506,19 @@ function AppApi() {
 
         {/* Set 1 Section */}
         <Box sx={{ mb: 6 }}>
-          {/* Set 1 Upload Area - Wide and Compact */}
-          <Paper elevation={1} sx={{ p: 2.5, mb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-              <PhotoCamera color="primary" sx={{ fontSize: 28 }} />
-              <TitleInput
+          {/* Set 1 Upload Area - Simple */}
+          <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+            <Box sx={{ mb: 2 }}>
+              <EditableHeading
                 value={session.sets.set1.title}
+                defaultValue={t('sets.set1')}
                 onChange={(title) => updateSetTitle('set1', title)}
-                setName={t('sets.set1')}
-                placeholder={t('sets.title.placeholder', { setName: t('sets.set1') })}
+                variant="h6"
+                color="text.primary"
               />
-              <Chip
-                label={`${stats.set1Photos}/9`}
-                color={stats.set1Photos === 9 ? 'success' : 'primary'}
-                variant={stats.set1Photos > 0 ? 'filled' : 'outlined'}
-                size="medium"
-              />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {t('upload.dragDrop')}
+              </Typography>
             </Box>
             <DropZone
               onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
@@ -539,9 +534,13 @@ function AppApi() {
           {stats.set1Photos > 0 && session && (
             <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
               <Box sx={{ mb: 4 }}>
-                <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 1 }}>
-                  {session.sets.set1.title || t('sets.set1')} {t('session.preview')}
-                </Typography>
+                <EditableHeading
+                  value={session.sets.set1.title}
+                  defaultValue={t('sets.set1')}
+                  onChange={(title) => updateSetTitle('set1', title)}
+                  variant="h4"
+                  color="primary"
+                />
               </Box>
               <PhotoGridApi
                 photoSet={session.sets.set1}
@@ -571,22 +570,19 @@ function AppApi() {
 
         {/* Set 2 Section */}
         <Box sx={{ mb: 6 }}>
-          {/* Set 2 Upload Area - Wide and Compact */}
-          <Paper elevation={1} sx={{ p: 2.5, mb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-              <PhotoCamera color="primary" sx={{ fontSize: 28 }} />
-              <TitleInput
+          {/* Set 2 Upload Area - Simple */}
+          <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+            <Box sx={{ mb: 2 }}>
+              <EditableHeading
                 value={session.sets.set2.title}
+                defaultValue={t('sets.set2')}
                 onChange={(title) => updateSetTitle('set2', title)}
-                setName={t('sets.set2')}
-                placeholder={t('sets.title.placeholder', { setName: t('sets.set2') })}
+                variant="h6"
+                color="text.primary"
               />
-              <Chip
-                label={`${stats.set2Photos}/9`}
-                color={stats.set2Photos === 9 ? 'success' : 'primary'}
-                variant={stats.set2Photos > 0 ? 'filled' : 'outlined'}
-                size="medium"
-              />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {t('upload.dragDrop')}
+              </Typography>
             </Box>
             <DropZone
               onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
@@ -602,9 +598,13 @@ function AppApi() {
           {stats.set2Photos > 0 && session && (
             <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
               <Box sx={{ mb: 4 }}>
-                <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 1 }}>
-                  {session.sets.set2.title || t('sets.set2')} {t('session.preview')}
-                </Typography>
+                <EditableHeading
+                  value={session.sets.set2.title}
+                  defaultValue={t('sets.set2')}
+                  onChange={(title) => updateSetTitle('set2', title)}
+                  variant="h4"
+                  color="primary"
+                />
               </Box>
               <PhotoGridApi
                 photoSet={session.sets.set2}
