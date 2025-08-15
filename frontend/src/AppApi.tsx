@@ -24,7 +24,8 @@ import {
   CheckCircle,
   CloudOff,
   Refresh,
-  PictureAsPdf
+  PictureAsPdf,
+  Shuffle
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
 import { DropZone } from './components/DropZone';
@@ -153,6 +154,61 @@ function AppApi() {
   const handlePhotoMove = (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
     // Use the new reorderPhotos function from the hook
     reorderPhotos(setKey, fromIndex, toIndex);
+  };
+
+  const handleShuffle = async () => {
+    if (!session) return;
+    
+    // Shuffle function using Fisher-Yates algorithm
+    const shuffleArray = (array: any[]) => {
+      const shuffled = [...array];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    };
+
+    console.log('🎲 Shuffling photos in both sets...');
+    
+    // Shuffle Set 1 if it has photos
+    if (session.sets.set1.photos.length > 1) {
+      const set1Photos = [...session.sets.set1.photos];
+      const shuffled1 = shuffleArray(set1Photos);
+      
+      // Apply the new order by moving each photo to its shuffled position
+      for (let i = 0; i < shuffled1.length; i++) {
+        const currentPhoto = shuffled1[i];
+        const currentIndex = set1Photos.findIndex((p: any) => p.id === currentPhoto.id);
+        if (currentIndex !== i) {
+          await reorderPhotos('set1', currentIndex, i);
+          // Update the array to reflect the move for next iteration
+          [set1Photos[currentIndex], set1Photos[i]] = [set1Photos[i], set1Photos[currentIndex]];
+        }
+      }
+    }
+
+    // Small delay between sets for better UX
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Shuffle Set 2 if it has photos  
+    if (session.sets.set2.photos.length > 1) {
+      const set2Photos = [...session.sets.set2.photos];
+      const shuffled2 = shuffleArray(set2Photos);
+      
+      // Apply the new order by moving each photo to its shuffled position
+      for (let i = 0; i < shuffled2.length; i++) {
+        const currentPhoto = shuffled2[i];
+        const currentIndex = set2Photos.findIndex((p: any) => p.id === currentPhoto.id);
+        if (currentIndex !== i) {
+          await reorderPhotos('set2', currentIndex, i);
+          // Update the array to reflect the move for next iteration
+          [set2Photos[currentIndex], set2Photos[i]] = [set2Photos[i], set2Photos[currentIndex]];
+        }
+      }
+    }
+
+    console.log('✨ Photo shuffle completed!');
   };
 
   const handleGeneratePDF = async () => {
@@ -341,7 +397,7 @@ function AppApi() {
 
         {/* Photo Configuration */}
         <Paper elevation={1} sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
-          <Box sx={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
             {/* Photo Format */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
@@ -356,6 +412,35 @@ function AppApi() {
                 Photo Labels:
               </Typography>
               <LabelingSelector />
+            </Box>
+
+            {/* Shuffle Photos */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                Actions:
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<Shuffle />}
+                onClick={handleShuffle}
+                disabled={loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1)}
+                sx={{
+                  minWidth: 'auto',
+                  px: 2,
+                  py: 0.5,
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  textTransform: 'none',
+                  borderRadius: 2,
+                  '&:hover': {
+                    bgcolor: 'primary.50',
+                    borderColor: 'primary.main'
+                  }
+                }}
+              >
+                Shuffle
+              </Button>
             </Box>
           </Box>
         </Paper>
