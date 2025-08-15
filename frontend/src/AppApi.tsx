@@ -13,7 +13,9 @@ import {
   Modal,
   Backdrop,
   Fade,
-  CircularProgress
+  CircularProgress,
+  Card,
+  CardContent
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -419,28 +421,61 @@ function AppApi() {
               <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
                 Actions:
               </Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<Shuffle />}
+              <Card
                 onClick={handleShuffle}
-                disabled={loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1)}
                 sx={{
-                  minWidth: 'auto',
-                  px: 2,
-                  py: 0.5,
-                  fontSize: '0.75rem',
-                  fontWeight: 500,
-                  textTransform: 'none',
-                  borderRadius: 2,
-                  '&:hover': {
-                    bgcolor: 'primary.50',
-                    borderColor: 'primary.main'
-                  }
+                  minWidth: 120,
+                  maxWidth: 140,
+                  height: 70,
+                  cursor: loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1) ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s ease-in-out',
+                  border: 2,
+                  borderColor: 'grey.300',
+                  backgroundColor: 'background.paper',
+                  opacity: loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1) ? 0.5 : 1,
+                  transform: 'scale(1)',
+                  boxShadow: 1,
+                  '&:hover': !loading && session && (session.sets.set1.photos.length > 1 || session.sets.set2.photos.length > 1) ? {
+                    borderColor: 'primary.light',
+                    backgroundColor: 'primary.25',
+                    transform: 'scale(1.02)',
+                    boxShadow: 3
+                  } : {}
                 }}
               >
-                Shuffle
-              </Button>
+                <CardContent sx={{ textAlign: 'center', py: 1, px: 1 }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    mb: 0.25,
+                    color: 'text.secondary'
+                  }}>
+                    <Shuffle />
+                  </Box>
+                  
+                  <Typography 
+                    variant="subtitle2" 
+                    component="div" 
+                    sx={{ 
+                      fontWeight: 600,
+                      color: 'text.primary',
+                      mb: 0.1,
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    Shuffle
+                  </Typography>
+                  
+                  <Typography 
+                    variant="caption" 
+                    color="text.secondary"
+                    sx={{ fontSize: '0.7rem', lineHeight: 1.2 }}
+                  >
+                    Randomize order
+                  </Typography>
+                </CardContent>
+              </Card>
             </Box>
           </Box>
         </Paper>
