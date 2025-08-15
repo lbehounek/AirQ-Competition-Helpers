@@ -516,9 +516,6 @@ function AppApi() {
                 variant="h6"
                 color="text.primary"
               />
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                {t('upload.dragDrop')}
-              </Typography>
             </Box>
             <DropZone
               onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
@@ -580,9 +577,6 @@ function AppApi() {
                 variant="h6"
                 color="text.primary"
               />
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                {t('upload.dragDrop')}
-              </Typography>
             </Box>
             <DropZone
               onFilesDropped={(files) => addPhotosToSet(files, 'set2')}

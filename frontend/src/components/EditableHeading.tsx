@@ -128,8 +128,8 @@ export const EditableHeading: React.FC<EditableHeadingProps> = ({
         color={color}
         sx={{ 
           fontWeight: 600,
-          flexGrow: 1,
-          lineHeight: 1.2
+          lineHeight: 1.2,
+          display: 'inline'
         }}
       >
         {displayText}
@@ -140,7 +140,8 @@ export const EditableHeading: React.FC<EditableHeadingProps> = ({
         sx={{ 
           opacity: 0.6,
           transition: 'all 0.2s ease-in-out',
-          p: 0.5,
+          p: 0.25,
+          ml: 0.5,
           color: 'text.secondary'
         }}
       >
