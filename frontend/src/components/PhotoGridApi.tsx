@@ -188,11 +188,11 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                       position: 'absolute',
                       top: 8,
                       right: 8,
-                      width: 28,
-                      height: 28,
+                      width: 36,
+                      height: 36,
                       bgcolor: 'rgba(128, 128, 128, 0.9)', // Grayscale background
                       color: 'white',
-                      borderRadius: '4px', // Square with slight rounding
+                      borderRadius: '6px', // Square with slight rounding
                       pointerEvents: 'auto', // Enable clicking
                       transition: 'all 0.2s ease-in-out',
                       '&:hover': {
@@ -201,9 +201,9 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                         transform: 'scale(1.1)'
                       }
                     }}
-                    size="small"
+                    size="medium"
                   >
-                    <Close sx={{ fontSize: 18 }} />
+                    <Close sx={{ fontSize: 22 }} />
                   </IconButton>
                   
                   <Typography 
