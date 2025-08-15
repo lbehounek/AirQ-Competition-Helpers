@@ -4,6 +4,7 @@ import { Image as ImageIcon, PhotoCamera } from '@mui/icons-material';
 import type { PhotoSet } from '../types';
 import { PhotoEditor } from './PhotoEditor';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
+import { useLabeling } from '../contexts/LabelingContext';
 
 interface PhotoGridProps {
   photoSet: PhotoSet;
@@ -21,10 +22,12 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   onPhotoClick
 }) => {
   const { currentRatio, isTransitioning } = useAspectRatio();
+  const { generateLabel } = useLabeling();
+  
   // Create array of 9 slots (3x3 grid)
   const gridSlots = Array.from({ length: 9 }, (_, index) => {
     const photo = photoSet.photos[index] || null;
-    const label = String.fromCharCode(65 + index); // A, B, C, etc.
+    const label = generateLabel(index); // Use dynamic labeling (letters or numbers) with dot
     
     return {
       index,

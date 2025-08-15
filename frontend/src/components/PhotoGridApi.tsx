@@ -5,6 +5,7 @@ import { useDropzone } from 'react-dropzone';
 import { PhotoEditorApi } from './PhotoEditorApi';
 import { isValidImageFile } from '../utils/imageProcessing';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
+import { useLabeling } from '../contexts/LabelingContext';
 
 interface ApiPhoto {
   id: string;
@@ -64,9 +65,11 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   labelOffset = 0
 }) => {
   const { currentRatio, isTransitioning } = useAspectRatio();
+  const { generateLabel } = useLabeling();
+  
   // Create 9 grid slots (3x3)
   const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
-    const label = String.fromCharCode(65 + labelOffset + index); // A, B, C, ... or continue from previous set
+    const label = generateLabel(index, labelOffset); // Use dynamic labeling (letters or numbers) with dot
     const photo = photoSet.photos[index] || null;
     
     return {

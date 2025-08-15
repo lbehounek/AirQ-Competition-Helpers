@@ -33,7 +33,9 @@ import { TitleInput } from './components/TitleInput';
 import { PhotoEditorApi } from './components/PhotoEditorApi';
 import { PhotoControls } from './components/PhotoControls';
 import { AspectRatioSelector } from './components/AspectRatioSelector';
+import { LabelingSelector } from './components/LabelingSelector';
 import { useAspectRatio } from './contexts/AspectRatioContext';
+import { useLabeling } from './contexts/LabelingContext';
 import { generatePDF } from './utils/pdfGenerator';
 
 interface ApiPhoto {
@@ -72,6 +74,7 @@ function AppApi() {
   } = usePhotoSessionApi();
   
   const { currentRatio } = useAspectRatio();
+  const { generateLabel } = useLabeling();
   
   // State to track if we should show loading text
   const [showLoadingText, setShowLoadingText] = useState(false);
@@ -158,7 +161,7 @@ function AppApi() {
         ...session.sets.set1,
         photos: session.sets.set1.photos.map((photo, index) => ({
           ...photo,
-          label: String.fromCharCode(65 + index) // A, B, C...
+          label: generateLabel(index) // Use dynamic labeling (letters or numbers) with dot
         }))
       };
 
@@ -167,7 +170,7 @@ function AppApi() {
         ...session.sets.set2,
         photos: session.sets.set2.photos.map((photo, index) => ({
           ...photo,
-          label: String.fromCharCode(65 + set1Count + index) // Continue from where Set 1 left off
+          label: generateLabel(index, set1Count) // Continue from where Set 1 left off
         }))
       };
 
@@ -330,16 +333,36 @@ function AppApi() {
           </Box>
         </Paper>
 
-        {/* Photo Format Configuration */}
+        {/* Photo Configuration */}
         <Paper elevation={1} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
-            <Typography variant="h6" color="primary" sx={{ fontWeight: 600, minWidth: 'fit-content' }}>
-              Photo Format:
-            </Typography>
+          <Typography variant="h6" color="primary" sx={{ fontWeight: 600, mb: 3, textAlign: 'center' }}>
+            Photo Configuration
+          </Typography>
+          
+          {/* Aspect Ratio Selection */}
+          <Box sx={{ mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', mb: 2 }}>
+              <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500, minWidth: 'fit-content' }}>
+                Photo Format:
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto', fontStyle: 'italic' }}>
+                Choose the aspect ratio that matches your camera format
+              </Typography>
+            </Box>
             <AspectRatioSelector />
-            <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto', fontStyle: 'italic' }}>
-              Choose the aspect ratio that matches your camera format
-            </Typography>
+          </Box>
+
+          {/* Labeling Selection */}
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap', mb: 2 }}>
+              <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500, minWidth: 'fit-content' }}>
+                Photo Labels:
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto', fontStyle: 'italic' }}>
+                Choose how to label your photos
+              </Typography>
+            </Box>
+            <LabelingSelector />
           </Box>
         </Paper>
 
