@@ -839,6 +839,8 @@ function AppApi() {
                         setSelectedPhoto(null);
                       }}
                       mode="sliders"
+                      showOriginal={showOriginal}
+                      onToggleOriginal={() => setShowOriginal(!showOriginal)}
                     />
                   </Box>
                 </Box>

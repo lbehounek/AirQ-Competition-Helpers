@@ -72,6 +72,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   // Local state for immediate UI feedback
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
 
+  // Ensure we are viewing the edited version after any change
+  const ensureEdited = () => {
+    if (showOriginal && onToggleOriginal) {
+      onToggleOriginal();
+    }
+  };
+
   // Provide default values for new properties that might not exist in old sessions
   const sharpness = photo.canvasState.sharpness || 0;
   const whiteBalance = photo.canvasState.whiteBalance || { temperature: 0, tint: 0, auto: false };
@@ -82,6 +89,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   }, [photo.canvasState.labelPosition]);
 
   const handleScaleChange = (newScale: number) => {
+    ensureEdited();
     // Ensure scale is at least 1.0 to prevent white borders
     const clampedScale = Math.max(1.0, newScale);
     
@@ -115,6 +123,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   };
 
   const handleBrightnessChange = (newBrightness: number) => {
+    ensureEdited();
     onUpdate({
       ...photo.canvasState,
       brightness: newBrightness
@@ -122,6 +131,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   };
 
   const handleContrastChange = (newContrast: number) => {
+    ensureEdited();
     onUpdate({
       ...photo.canvasState,
       contrast: newContrast
@@ -131,6 +141,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   // Debounced sharpness handler to reduce computational load
   const debouncedSharpnessRef = useRef<NodeJS.Timeout>();
   const handleSharpnessChange = useCallback((newSharpness: number) => {
+    ensureEdited();
     // Clear previous timeout
     if (debouncedSharpnessRef.current) {
       clearTimeout(debouncedSharpnessRef.current);
@@ -155,6 +166,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   }, []);
 
   const handleWhiteBalanceTemperatureChange = (newTemperature: number) => {
+    ensureEdited();
     onUpdate({
       ...photo.canvasState,
       whiteBalance: {
@@ -166,6 +178,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   };
 
   const handleWhiteBalanceTintChange = (newTint: number) => {
+    ensureEdited();
     onUpdate({
       ...photo.canvasState,
       whiteBalance: {
@@ -177,6 +190,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   };
 
   const handleAutoWhiteBalance = () => {
+    ensureEdited();
     // Set auto flag temporarily to trigger calculation
     // The PhotoEditorApi component will calculate the actual values
     onUpdate({
@@ -189,6 +203,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   };
 
   const handleLabelPositionChange = (position: LabelPosition) => {
+    ensureEdited();
     // Update local state immediately for instant UI feedback
     setLocalLabelPosition(position);
     // Then update backend
@@ -199,6 +214,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   };
 
   const handleReset = () => {
+    ensureEdited();
     onUpdate({
       position: { x: 0, y: 0 },
       scale: 1.0, // Default 100% scale (fills canvas)
