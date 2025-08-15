@@ -334,23 +334,23 @@ function AppApi() {
         </Paper>
 
         {/* Photo Configuration */}
-        <Paper elevation={1} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
-          <Typography variant="h6" color="primary" sx={{ fontWeight: 600, mb: 3, textAlign: 'center' }}>
+        <Paper elevation={1} sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+          <Typography variant="subtitle1" color="primary" sx={{ fontWeight: 600, mb: 2, textAlign: 'center', fontSize: '1rem' }}>
             Photo Configuration
           </Typography>
           
-          <Box sx={{ display: 'flex', gap: 4, alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'center' }}>
             {/* Photo Format */}
-            <Box sx={{ flex: '1 1 auto', minWidth: 280 }}>
-              <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500, mb: 2, textAlign: 'center' }}>
+            <Box sx={{ flex: '1 1 auto', minWidth: 250 }}>
+              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, mb: 1, textAlign: 'center', fontSize: '0.875rem' }}>
                 Photo Format:
               </Typography>
               <AspectRatioSelector />
             </Box>
 
             {/* Photo Labels */}
-            <Box sx={{ flex: '1 1 auto', minWidth: 280 }}>
-              <Typography variant="subtitle1" color="text.primary" sx={{ fontWeight: 500, mb: 2, textAlign: 'center' }}>
+            <Box sx={{ flex: '1 1 auto', minWidth: 250 }}>
+              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, mb: 1, textAlign: 'center', fontSize: '0.875rem' }}>
                 Photo Labels:
               </Typography>
               <LabelingSelector />
