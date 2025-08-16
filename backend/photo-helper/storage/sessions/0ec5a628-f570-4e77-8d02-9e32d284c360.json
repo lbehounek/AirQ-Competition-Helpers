@@ -1,8 +1,8 @@
 {
   "id": "0ec5a628-f570-4e77-8d02-9e32d284c360",
   "createdAt": "2025-08-16T17:12:37.342736",
-  "updatedAt": "2025-08-16T21:59:04.466422",
-  "version": 386,
+  "updatedAt": "2025-08-16T21:59:57.551044",
+  "version": 475,
   "mode": "track",
   "competition_name": "Memori\u00e1l Zde\u0148ka B\u011bhounka 2024 - PINK",
   "sets": {
@@ -49,8 +49,8 @@
               "auto": false
             },
             "circle": {
-              "x": 207.14706420898438,
-              "y": 47.76470947265625,
+              "x": 201.64706420898438,
+              "y": 52.76470947265625,
               "radius": 75,
               "color": "red",
               "visible": true
@@ -404,8 +404,8 @@
               "auto": false
             },
             "circle": {
-              "x": 207.14706420898438,
-              "y": 47.76470947265625,
+              "x": 201.64706420898438,
+              "y": 52.76470947265625,
               "radius": 75,
               "color": "red",
               "visible": true

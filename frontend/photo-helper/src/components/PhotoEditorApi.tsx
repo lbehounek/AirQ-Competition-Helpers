@@ -705,25 +705,26 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Check if in circle mode
     if (circleMode) {
-      // Check if clicking on existing circle to drag it
+      // Always place/move circle to click position in circle mode
+      const baseCoords = canvasToBaseCoords(x, y);
+      const newCircle = {
+        x: baseCoords.x,
+        y: baseCoords.y,
+        radius: photo.canvasState.circle?.radius || 30,
+        color: photo.canvasState.circle?.color || 'red' as const,
+        visible: true
+      };
+      onUpdate({
+        ...photo.canvasState,
+        circle: newCircle
+      });
+      
+      // If clicking on existing circle, prepare for potential dragging
       if (photo.canvasState.circle && isClickOnCircle(x, y)) {
         setIsDraggingCircle(true);
         setDragStart({ x, y });
-      } else {
-        // Place new circle or move existing circle
-        const baseCoords = canvasToBaseCoords(x, y);
-        const newCircle = {
-          x: baseCoords.x,
-          y: baseCoords.y,
-          radius: photo.canvasState.circle?.radius || 30,
-          color: photo.canvasState.circle?.color || 'red' as const,
-          visible: true
-        };
-        onUpdate({
-          ...photo.canvasState,
-          circle: newCircle
-        });
       }
+      
       event.preventDefault();
       return;
     }
