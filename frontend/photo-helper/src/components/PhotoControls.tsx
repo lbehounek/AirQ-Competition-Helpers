@@ -591,7 +591,101 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   const renderSliders = () => (
     <Box sx={{ width: '100%', p: 2 }}>
       <Box sx={{ display: 'flex', gap: 2, width: '100%' }}>
-        {/* Brightness + Contrast Grouped - 1/3 width */}
+        {/* Zoom + Sharpness - 1/3 width - First position */}
+        <Box sx={{ flex: '1 1 0', minWidth: 0 }}>
+          <Paper elevation={1} sx={{ p: 3, height: '100%' }}>
+            <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ZoomIn color="primary" />
+              Zoom and Sharpness
+            </Typography>
+            
+            {/* Zoom Control */}
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ZoomIn fontSize="small" />
+                  {t('controls.zoom')}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {Math.round(photo.canvasState.scale * 100)}%
+                  </Typography>
+                  <Tooltip title={t('controls.resetZoom')}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleScaleChange(1.0)}
+                      sx={{ padding: 0.5 }}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              
+              <Slider
+                value={Math.max(1.0, photo.canvasState.scale)}
+                onChange={(_, value) => handleScaleChange(value as number)}
+                min={1.0}
+                max={3}
+                step={0.05}
+                color="primary"
+                size="small"
+                sx={{ mb: 2 }}
+              />
+              
+              {/* Quick scale buttons */}
+              <ButtonGroup size="small" variant="outlined" fullWidth>
+                {quickScaleOptions.map((option) => (
+                  <Button
+                    key={option.value}
+                    onClick={() => handleScaleChange(option.value)}
+                    variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
+                    size="small"
+                    sx={{ fontSize: '0.75rem', py: 0.5 }}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </ButtonGroup>
+            </Box>
+
+            {/* Sharpness Control */}
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <BlurOn fontSize="small" />
+                  {t('controls.sharpness')}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {sharpness}
+                  </Typography>
+                  <Tooltip title={t('controls.resetSharpness')}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleSharpnessChange(0)}
+                      sx={{ padding: 0.5 }}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              
+              <Slider
+                value={sharpness}
+                min={0}
+                max={100}
+                step={5}
+                onChange={(_, value) => handleSharpnessChange(value as number)}
+                color="primary"
+                size="small"
+              />
+            </Box>
+          </Paper>
+        </Box>
+
+        {/* Brightness + Contrast - 1/3 width - Second position */}
         <Box sx={{ flex: '1 1 0', minWidth: 0 }}>
           <Paper elevation={1} sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -661,94 +755,6 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 color="primary"
                 size="small"
               />
-            </Box>
-          </Paper>
-        </Box>
-
-        {/* Sharpness + Zoom - 1/3 width */}
-        <Box sx={{ flex: '1 1 0', minWidth: 0 }}>
-          <Paper elevation={1} sx={{ p: 3, height: '100%' }}>
-            <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <BlurOn color="primary" />
-              {t('controls.sharpness')}
-            </Typography>
-            
-            {/* Sharpness Control */}
-            <Box sx={{ mb: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="primary" fontWeight={600}>
-                  {sharpness}
-                </Typography>
-                <Tooltip title={t('controls.resetSharpness')}>
-                  <IconButton 
-                    size="small" 
-                    onClick={() => handleSharpnessChange(0)}
-                    sx={{ padding: 0.5 }}
-                  >
-                    <Refresh fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-              
-              <Slider
-                value={sharpness}
-                min={0}
-                max={100}
-                step={5}
-                onChange={(_, value) => handleSharpnessChange(value as number)}
-                color="primary"
-                size="small"
-              />
-            </Box>
-
-            {/* Zoom Control */}
-            <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <ZoomIn fontSize="small" />
-                  {t('controls.zoom')}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="primary" fontWeight={600}>
-                    {Math.round(photo.canvasState.scale * 100)}%
-                  </Typography>
-                  <Tooltip title={t('controls.resetZoom')}>
-                    <IconButton 
-                      size="small" 
-                      onClick={() => handleScaleChange(1.0)}
-                      sx={{ padding: 0.5 }}
-                    >
-                      <Refresh fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              </Box>
-              
-              <Slider
-                value={Math.max(1.0, photo.canvasState.scale)}
-                onChange={(_, value) => handleScaleChange(value as number)}
-                min={1.0}
-                max={3}
-                step={0.05}
-                color="primary"
-                size="small"
-                sx={{ mb: 2 }}
-              />
-              
-              {/* Quick scale buttons */}
-              <ButtonGroup size="small" variant="outlined" fullWidth>
-                {quickScaleOptions.map((option) => (
-                  <Button
-                    key={option.value}
-                    onClick={() => handleScaleChange(option.value)}
-                    variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
-                    size="small"
-                    sx={{ fontSize: '0.75rem', py: 0.5 }}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
-              </ButtonGroup>
             </Box>
           </Paper>
         </Box>
@@ -1048,10 +1054,10 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
       </Box>
       
       {/* Circle Overlay - Compact */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <Box sx={{ mb: 1.5 }}>
+        <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.8rem' }}>
           <RadioButtonUnchecked fontSize="small" color="primary" />
-          Circle Overlay
+          Circle
         </Typography>
         
         {/* Circle Mode Toggle */}
@@ -1062,14 +1068,14 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           startIcon={circleMode ? <Circle fontSize="small" /> : <RadioButtonUnchecked fontSize="small" />}
           onClick={handleCircleModeToggle}
           fullWidth
-          sx={{ mb: 1, fontSize: '0.75rem', py: 0.5 }}
+          sx={{ mb: 0.5, fontSize: '0.7rem', py: 0.25, minHeight: '28px' }}
         >
           {circleMode ? 'ON' : 'OFF'}
         </Button>
         
         {circleMode && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1, fontSize: '0.7rem' }}>
-            Click photo to place circle
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 0.5, fontSize: '0.65rem' }}>
+            Click photo to place
           </Typography>
         )}
 
@@ -1077,12 +1083,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         {circle && (
           <>
             {/* Radius Control */}
-            <Box sx={{ mb: 1 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>
+            <Box sx={{ mb: 0.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
+                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.65rem' }}>
                   Radius
                 </Typography>
-                <Typography variant="caption" color="primary" fontWeight={600} sx={{ fontSize: '0.7rem' }}>
+                <Typography variant="caption" color="primary" fontWeight={600} sx={{ fontSize: '0.65rem' }}>
                   {circle.radius}px
                 </Typography>
               </Box>
@@ -1094,13 +1100,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 step={5}
                 color="primary"
                 size="small"
-                sx={{ mb: 1 }}
+                sx={{ mb: 0.5, height: 20 }}
               />
             </Box>
 
             {/* Color Selection - Compact */}
-            <Box sx={{ mb: 1 }}>
-              <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 600, display: 'block', fontSize: '0.7rem' }}>
+            <Box sx={{ mb: 0.5 }}>
+              <Typography variant="caption" sx={{ mb: 0.25, fontWeight: 600, display: 'block', fontSize: '0.65rem' }}>
                 Color
               </Typography>
               <ButtonGroup size="small" fullWidth>
@@ -1112,7 +1118,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     color: circle.color === 'white' ? 'white' : 'text.primary',
                     borderColor: 'grey.400',
                     '&:hover': { bgcolor: 'grey.700', color: 'white' },
-                    fontSize: '0.65rem', py: 0.25
+                    fontSize: '0.6rem', py: 0.2, minHeight: '24px'
                   }}
                 >
                   W
@@ -1121,7 +1127,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   variant={circle.color === 'red' ? 'contained' : 'outlined'}
                   color="error"
                   onClick={() => handleCircleColorChange('red')}
-                  sx={{ fontSize: '0.65rem', py: 0.25 }}
+                  sx={{ fontSize: '0.6rem', py: 0.2, minHeight: '24px' }}
                 >
                   R
                 </Button>
@@ -1133,7 +1139,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     color: circle.color === 'yellow' ? 'black' : 'text.primary',
                     borderColor: '#FFC107',
                     '&:hover': { bgcolor: '#FFB300', color: 'black' },
-                    fontSize: '0.65rem', py: 0.25
+                    fontSize: '0.6rem', py: 0.2, minHeight: '24px'
                   }}
                 >
                   Y
@@ -1149,7 +1155,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               startIcon={<Clear fontSize="small" />}
               onClick={handleRemoveCircle}
               fullWidth
-              sx={{ fontSize: '0.7rem', py: 0.25 }}
+              sx={{ fontSize: '0.65rem', py: 0.2, minHeight: '26px' }}
             >
               Remove
             </Button>

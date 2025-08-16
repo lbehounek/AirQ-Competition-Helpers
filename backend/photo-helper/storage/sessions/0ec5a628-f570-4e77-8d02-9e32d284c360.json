@@ -1,8 +1,8 @@
 {
   "id": "0ec5a628-f570-4e77-8d02-9e32d284c360",
   "createdAt": "2025-08-16T17:12:37.342736",
-  "updatedAt": "2025-08-16T22:00:27.725421",
-  "version": 479,
+  "updatedAt": "2025-08-16T22:05:54.222303",
+  "version": 543,
   "mode": "track",
   "competition_name": "Memori\u00e1l Zde\u0148ka B\u011bhounka 2024 - PINK",
   "sets": {
@@ -35,11 +35,11 @@
           "uploadedAt": "2025-08-16T17:12:45.838459",
           "canvasState": {
             "position": {
-              "x": -271.9370140526859,
-              "y": -65.11415472019374
+              "x": -74.75657843475238,
+              "y": 0
             },
-            "scale": 1.771561000000001,
-            "brightness": 0,
+            "scale": 1.2405789780642051,
+            "brightness": 6,
             "contrast": 1,
             "labelPosition": "bottom-left",
             "sharpness": 30,
@@ -49,9 +49,9 @@
               "auto": false
             },
             "circle": {
-              "x": 201.64706420898438,
-              "y": 52.76470947265625,
-              "radius": 75,
+              "x": 239.64706420898438,
+              "y": 81.26470947265625,
+              "radius": 60,
               "color": "red",
               "visible": true
             }
@@ -390,11 +390,11 @@
           "uploadedAt": "2025-08-16T17:12:45.838459",
           "canvasState": {
             "position": {
-              "x": -271.9370140526859,
-              "y": -65.11415472019374
+              "x": -74.75657843475238,
+              "y": 0
             },
-            "scale": 1.771561000000001,
-            "brightness": 0,
+            "scale": 1.2405789780642051,
+            "brightness": 6,
             "contrast": 1,
             "labelPosition": "bottom-left",
             "sharpness": 30,
@@ -404,9 +404,9 @@
               "auto": false
             },
             "circle": {
-              "x": 201.64706420898438,
-              "y": 52.76470947265625,
-              "radius": 75,
+              "x": 239.64706420898438,
+              "y": 81.26470947265625,
+              "radius": 60,
               "color": "red",
               "visible": true
             }
