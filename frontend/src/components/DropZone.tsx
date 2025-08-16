@@ -115,19 +115,20 @@ export const DropZone: React.FC<DropZoneProps> = ({
 
   const getStatusText = () => {
     if (loading) {
-      return 'Processing photos...';
+      return t('upload.processing');
     }
     
     if (availableSlots === 0) {
-      return `${setName} is full (${currentPhotoCount}/${maxPhotos} photos)`;
+      return t('upload.setFull', { setName, current: currentPhotoCount, max: maxPhotos });
     }
     
     if (isDragReject) {
-      return 'Invalid file type. Please use JPEG or PNG files only.';
+      return t('upload.invalidFileType');
     }
     
     if (isDragAccept) {
-      return `Drop ${availableSlots > 1 ? 'photos' : 'photo'} here`;
+      const photoText = availableSlots > 1 ? t('upload.photos') : t('upload.photo');
+      return t('upload.dropPhotosHere', { count: availableSlots, photoText });
     }
     
     if (isDragActive) {
@@ -142,7 +143,9 @@ export const DropZone: React.FC<DropZoneProps> = ({
       return null;
     }
     
-    return t('upload.supported', { maxSize: 20 }) + ` • ${availableSlots} slot${availableSlots !== 1 ? 's' : ''} available`;
+    const slotText = availableSlots !== 1 ? t('upload.slots') : t('upload.slot');
+    const slotsAvailable = t('upload.slotsAvailable', { count: availableSlots, slotText });
+    return t('upload.supported', { maxSize: 20 }) + ` • ${slotsAvailable}`;
   };
 
   return (

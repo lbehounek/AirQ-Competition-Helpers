@@ -78,7 +78,16 @@
     "clickOrDrop": "Click or drop images",
     "dropImages": "Drop images here",
     "maxFiles": "Maximum {{count}} photos per set",
-    "currentCount": "{{current}}/{{max}} photos"
+    "currentCount": "{{current}}/{{max}} photos",
+    "processing": "Processing photos...",
+    "setFull": "{{setName}} is full ({{current}}/{{max}} photos)",
+    "invalidFileType": "Invalid file type. Please use JPEG or PNG files only.",
+    "dropPhotosHere": "Drop {{count}} {{photoText}} here",
+    "photo": "photo",
+    "photos": "photos",
+    "slotsAvailable": "{{count}} {{slotText}} available",
+    "slot": "slot",
+    "slots": "slots"
   },
   "photo": {
     "clickToEdit": "Click to Edit",

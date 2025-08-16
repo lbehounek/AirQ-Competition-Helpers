@@ -67,14 +67,6 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
     <Box>
       {/* Unified Drop Zone */}
       <Paper elevation={1} sx={{ p: 3, mb: 4 }}>
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="h6" color="text.primary" sx={{ fontWeight: 600 }}>
-            {t('turningpoint.title')}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {t('turningpoint.description', { count: totalPhotoCount, max: 18 })}
-          </Typography>
-        </Box>
         <DropZone
           onFilesDropped={onFilesDropped}
           setName={t('turningpoint.photos')}

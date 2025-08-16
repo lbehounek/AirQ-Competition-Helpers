@@ -78,7 +78,16 @@
     "clickOrDrop": "Klikněte nebo přetáhněte obrázky",
     "dropImages": "Přetáhněte obrázky sem",
     "maxFiles": "Maximálně {{count}} fotografií na sadu",
-    "currentCount": "{{current}}/{{max}} fotografií"
+    "currentCount": "{{current}}/{{max}} fotografií",
+    "processing": "Zpracovávání fotografií...",
+    "setFull": "{{setName}} je plná ({{current}}/{{max}} fotografií)",
+    "invalidFileType": "Neplatný typ souboru. Použijte pouze JPEG nebo PNG soubory.",
+    "dropPhotosHere": "Přetáhněte {{count}} {{photoText}} sem",
+    "photo": "fotografii",
+    "photos": "fotografií",
+    "slotsAvailable": "{{count}} {{slotText}} k dispozici",
+    "slot": "místo",
+    "slots": "míst"
   },
   "photo": {
     "clickToEdit": "Klikněte pro úpravu",
