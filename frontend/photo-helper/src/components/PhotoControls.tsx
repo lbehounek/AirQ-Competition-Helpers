@@ -321,29 +321,29 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     { label: '250%', value: 2.5 }
   ];
 
-  // Render header component
+  // Render header component - Compact version (65-70% height)
   const renderHeader = () => (
-    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <CropFree color="primary" fontSize="small" />
-        <Typography variant="subtitle1" color="primary" sx={{ fontSize: '1rem', fontWeight: 600 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.2, py: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+        <CropFree color="primary" sx={{ fontSize: '1rem' }} />
+        <Typography variant="subtitle1" color="primary" sx={{ fontSize: '0.85rem', fontWeight: 600, lineHeight: 1.2 }}>
           {t('controls.photoLabel', { label })}
         </Typography>
       </Box>
-      <Box sx={{ display: 'flex', gap: 0.5 }}>
+      <Box sx={{ display: 'flex', gap: 0.4 }}>
         <Button 
           variant="outlined" 
           color="warning" 
           size="small"
-          startIcon={<Refresh fontSize="small" />}
+          startIcon={<Refresh sx={{ fontSize: '0.9rem' }} />}
           onClick={handleReset}
-          sx={{ fontSize: '0.75rem', py: 0.5, px: 1 }}
+          sx={{ fontSize: '0.65rem', py: 0.3, px: 0.8, minHeight: '28px' }}
         >
           {t('controls.resetAll')}
         </Button>
         <Tooltip title="Remove photo">
-          <IconButton onClick={onRemove} color="error" size="small">
-            <RestoreFromTrash fontSize="small" />
+          <IconButton onClick={onRemove} color="error" size="small" sx={{ p: 0.4 }}>
+            <RestoreFromTrash sx={{ fontSize: '1rem' }} />
           </IconButton>
         </Tooltip>
       </Box>
