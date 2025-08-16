@@ -588,15 +588,6 @@ function AppApi() {
             <Box sx={{ mb: 6 }}>
           {/* Set 1 Upload Area - Simple */}
           <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-            <Box sx={{ mb: 2 }}>
-              <EditableHeading
-                value={session.sets.set1.title}
-                defaultValue={t('sets.set1')}
-                onChange={(title) => updateSetTitle('set1', title)}
-                variant="h6"
-                color="text.primary"
-              />
-            </Box>
             <DropZone
               onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
               setName={t('sets.set1')}
@@ -649,15 +640,6 @@ function AppApi() {
         <Box sx={{ mb: 6 }}>
           {/* Set 2 Upload Area - Simple */}
           <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-            <Box sx={{ mb: 2 }}>
-              <EditableHeading
-                value={session.sets.set2.title}
-                defaultValue={t('sets.set2')}
-                onChange={(title) => updateSetTitle('set2', title)}
-                variant="h6"
-                color="text.primary"
-              />
-            </Box>
             <DropZone
               onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
               setName={t('sets.set2')}
