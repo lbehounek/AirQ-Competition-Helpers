@@ -807,33 +807,7 @@ function AppApi() {
           }}>
             {selectedPhoto && (
               <>
-                {/* Modal Header - Ultra Compact (65-70% height) */}
-                <Box sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  p: 1, // Reduced from 1.5 to 1
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)',
-                  minHeight: '48px' // Force compact height
-                }}>
-                  <Typography variant="h6" sx={{ color: 'white', fontWeight: 600, fontSize: '1rem', lineHeight: 1.2 }}>
-                    {t('controls.editPhoto', { label: selectedPhoto.label })}
-                  </Typography>
-                  <IconButton
-                    onClick={() => setSelectedPhoto(null)}
-                    sx={{
-                      color: 'white',
-                      bgcolor: 'rgba(255, 255, 255, 0.2)',
-                      '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.3)' },
-                      p: 0.75 // Smaller padding for compact button
-                    }}
-                    size="medium"
-                  >
-                    <Close fontSize="small" />
-                  </IconButton>
-                </Box>
+
 
                 {/* Modal Content - L-Shape Layout: Photo top-left, Controls wrapping around */}
                 <Box sx={{ 
@@ -890,9 +864,11 @@ function AppApi() {
                         onUpdate={(canvasState) =>
                           handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
                         }
-                        onRemove={() => {
-                          handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id);
+                        onRemove={() => {}} // No-op since delete button is removed
+                        onClose={() => {
                           setSelectedPhoto(null);
+                          // Immediately refresh session to sync grid with modal changes
+                          refreshSession();
                         }}
                         mode="compact-right"
                         showOriginal={showOriginal}
@@ -917,9 +893,11 @@ function AppApi() {
                       onUpdate={(canvasState) =>
                         handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
                       }
-                      onRemove={() => {
-                        handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id);
+                      onRemove={() => {}} // No-op since delete button is removed
+                      onClose={() => {
                         setSelectedPhoto(null);
+                        // Immediately refresh session to sync grid with modal changes
+                        refreshSession();
                       }}
                       mode="sliders"
                       showOriginal={showOriginal}

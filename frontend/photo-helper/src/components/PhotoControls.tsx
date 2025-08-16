@@ -31,7 +31,8 @@ import {
   AutoAwesome,
   RadioButtonUnchecked,
   Circle,
-  Clear
+  Clear,
+  Close
 } from '@mui/icons-material';
 import type { Photo } from '../types';
 import { useI18n } from '../contexts/I18nContext';
@@ -62,6 +63,7 @@ interface PhotoControlsProps {
   label: string;
   onUpdate: (canvasState: Photo['canvasState']) => void;
   onRemove: () => void;
+  onClose?: () => void; // Close modal callback
   mode?: 'full' | 'sidebar' | 'sliders' | 'compact-left' | 'compact-right';
   showOriginal?: boolean;
   onToggleOriginal?: () => void;
@@ -77,6 +79,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   label,
   onUpdate,
   onRemove,
+  onClose,
   mode = 'full',
   showOriginal = false,
   onToggleOriginal,
@@ -321,7 +324,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     { label: '250%', value: 2.5 }
   ];
 
-  // Render header component
+  // Render header component with close button (no delete button - can delete from grid)
   const renderHeader = () => (
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -341,9 +344,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         >
           {t('controls.resetAll')}
         </Button>
-        <Tooltip title="Remove photo">
-          <IconButton onClick={onRemove} color="error" size="small">
-            <RestoreFromTrash fontSize="small" />
+        <Tooltip title="Close editor">
+          <IconButton onClick={onClose} color="primary" size="small">
+            <Close fontSize="small" />
           </IconButton>
         </Tooltip>
       </Box>
