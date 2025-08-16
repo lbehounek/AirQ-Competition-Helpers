@@ -16,8 +16,12 @@ echo "🐍 Starting photo-helper backend..."
 cd backend/photo-helper
 
 # Setup Python environment
-[ ! -d "venv" ] && python3 -m venv venv
+if [ ! -d "venv" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv venv
+fi
 source venv/bin/activate
+pip install -q --upgrade pip
 pip install -q -r requirements.txt
 
 # Start backend server
