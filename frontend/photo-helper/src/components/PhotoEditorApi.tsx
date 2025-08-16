@@ -8,7 +8,7 @@ import {
   type ImageAdjustments 
 } from '../utils/webglUtils';
 import { useWebGLContext } from '../utils/webglContextManager';
-import { drawLabel, drawSetName, getCanvasContext } from '../utils/canvasUtils';
+import { drawLabel, getCanvasContext } from '../utils/canvasUtils';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 
 interface ApiPhoto {
@@ -27,8 +27,6 @@ interface PhotoEditorApiProps {
   onRemove: () => void;
   size?: 'grid' | 'large';
   setKey?: 'set1' | 'set2'; // For PDF generation canvas identification
-  setName?: string; // Set name to show on first photo
-  isFirstInSet?: boolean; // Whether this is the first photo in the set
   showOriginal?: boolean; // Whether to show original (no effects) or edited version
   circleMode?: boolean; // Whether circle mode is enabled
 }
@@ -87,8 +85,6 @@ const renderPhotoOnCanvas = (
   isDragging = false,
   webglContext?: WebGLContext | null,
   webglManager?: { requestContext: () => WebGLContext | null; releaseContext: (ctx: WebGLContext) => void; isAvailable: boolean },
-  isFirstInSet = false,
-  setName?: string,
   aspectRatio = 4/3,
   baseHeight = 225,
   showOriginal = false
@@ -360,11 +356,6 @@ const renderPhotoOnCanvas = (
   // Draw label on main canvas (for both WebGL and CPU paths)
   const labelPos = isDragging && localLabelPosition ? localLabelPosition : canvasState.labelPosition;
   drawLabel(canvas, label, labelPos);
-  
-  // Draw set name on first photo (bottom-right corner always)
-  if (isFirstInSet && setName) {
-    drawSetName(canvas, setName);
-  }
 };
 
 // Draw circle overlay on canvas
@@ -414,8 +405,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   onRemove,
   size = 'grid',
   setKey,
-  setName,
-  isFirstInSet = false,
   showOriginal = false,
   circleMode: externalCircleMode = false
 }) => {
@@ -618,8 +607,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       isDragging,
       webglContextRef.current,
       webglManager,
-      isFirstInSet,
-      setName,
       currentRatio.ratio,
       BASE_WIDTH / currentRatio.ratio,  // Always use BASE dimensions for consistent cropping
       showOriginal // Pass the showOriginal parameter
@@ -638,7 +625,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     if (ctx) {
       ctx.drawImage(tempCanvas, 0, 0);
     }
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, isFirstInSet, setName, currentRatio, showOriginal]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, currentRatio, showOriginal]);
 
   useEffect(() => {
     renderCanvas();

@@ -112,8 +112,6 @@ function AppApi() {
     photo: ApiPhoto;
     setKey: 'set1' | 'set2';
     label: string;
-    isFirstInSet: boolean;
-    setName: string;
   } | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
   const [circleMode, setCircleMode] = useState(false);
@@ -151,9 +149,7 @@ function AppApi() {
     setSelectedPhoto({ 
       photo, 
       setKey, 
-      label, 
-      isFirstInSet: photoIndex === 0,
-      setName: session?.sets[setKey].title || (setKey === 'set1' ? 'Set 1' : 'Set 2')
+      label
     });
   };
 
@@ -843,8 +839,6 @@ function AppApi() {
                         onRemove={() => handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id)}
                         size="large"
                         setKey={selectedPhoto.setKey}
-                        setName={selectedPhoto.setName}
-                        isFirstInSet={selectedPhoto.isFirstInSet}
                         showOriginal={showOriginal}
                         circleMode={circleMode}
                       />

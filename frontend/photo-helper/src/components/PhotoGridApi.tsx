@@ -236,8 +236,6 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                   onRemove={() => onPhotoRemove(slot.photo!.id)}
                   size="grid" // Small size for grid view
                   setKey={setKey} // Pass setKey for PDF generation
-                  setName={photoSet.title}
-                  isFirstInSet={slot.index === 0} // First photo gets set name
                 />
                 
                 {/* Hover overlay */}
