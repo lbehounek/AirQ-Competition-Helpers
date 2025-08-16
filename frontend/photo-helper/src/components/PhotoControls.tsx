@@ -153,7 +153,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         ...photo.canvasState,
         sharpness: newSharpness
       });
-    }, 300); // 300ms delay
+    }, 50); // 50ms delay - much more responsive
   }, [onUpdate, photo.canvasState]);
 
   // Cleanup timeout on unmount
