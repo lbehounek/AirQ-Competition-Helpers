@@ -30,6 +30,7 @@ interface PhotoEditorApiProps {
   setName?: string; // Set name to show on first photo
   isFirstInSet?: boolean; // Whether this is the first photo in the set
   showOriginal?: boolean; // Whether to show original (no effects) or edited version
+  circleMode?: boolean; // Whether circle mode is enabled
 }
 
 // UNIFIED RENDERING SYSTEM - Same logic for grid and modal
@@ -415,7 +416,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   setKey,
   setName,
   isFirstInSet = false,
-  showOriginal = false
+  showOriginal = false,
+  circleMode: externalCircleMode = false
 }) => {
   const { currentRatio, getCanvasSize } = useAspectRatio();
   
@@ -447,7 +449,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
   const [imageError, setImageError] = useState(false);
-  const [circleMode, setCircleMode] = useState(false);
+  const [circleMode, setCircleMode] = useState(externalCircleMode);
   const [isDraggingCircle, setIsDraggingCircle] = useState(false);
   
   // Local state for smooth dragging
@@ -498,6 +500,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     }
     setLocalLabelPosition(photo.canvasState.labelPosition);
   }, [photo.canvasState.position, photo.canvasState.labelPosition, isDragging]);
+
+  // Sync with external circle mode
+  useEffect(() => {
+    setCircleMode(externalCircleMode);
+  }, [externalCircleMode]);
 
   // Update local position when scale changes
   useEffect(() => {

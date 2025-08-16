@@ -66,6 +66,7 @@ interface PhotoControlsProps {
   showOriginal?: boolean;
   onToggleOriginal?: () => void;
   circleMode?: boolean;
+  onCircleModeToggle?: () => void;
   onCircleClick?: (x: number, y: number) => void;
 }
 
@@ -80,6 +81,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   showOriginal = false,
   onToggleOriginal,
   circleMode: externalCircleMode,
+  onCircleModeToggle,
   onCircleClick
 }) => {
   const { t } = useI18n();
@@ -238,10 +240,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   // Circle overlay handlers
   const handleCircleModeToggle = () => {
     ensureEdited();
-    const newMode = !circleMode;
-    setCircleMode(newMode);
-    // If there's an external circle mode handler, call it
-    // This will be used by PhotoEditorApi to manage canvas interactions
+    if (onCircleModeToggle) {
+      onCircleModeToggle();
+    } else {
+      // Fallback to local state if no external handler
+      setCircleMode(!circleMode);
+    }
   };
 
   const handleAddCircle = (x: number, y: number) => {

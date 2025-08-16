@@ -116,6 +116,7 @@ function AppApi() {
     setName: string;
   } | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
+  const [circleMode, setCircleMode] = useState(false);
 
   const stats = getSessionStats();
 
@@ -869,6 +870,7 @@ function AppApi() {
                         setName={selectedPhoto.setName}
                         isFirstInSet={selectedPhoto.isFirstInSet}
                         showOriginal={showOriginal}
+                        circleMode={circleMode}
                       />
                     </Box>
 
@@ -893,6 +895,8 @@ function AppApi() {
                         mode="compact-right"
                         showOriginal={showOriginal}
                         onToggleOriginal={() => setShowOriginal(!showOriginal)}
+                        circleMode={circleMode}
+                        onCircleModeToggle={() => setCircleMode(!circleMode)}
                       />
                     </Box>
                   </Box>
