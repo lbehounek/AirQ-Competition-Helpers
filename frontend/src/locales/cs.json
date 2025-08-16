@@ -48,6 +48,13 @@
       "description": "Sekvenční fotky otočných bodů (SP, TP1-TPx, FP)"
     }
   },
+  "turningpoint": {
+    "title": "Fotky otočných bodů",
+    "description": "{{count}}/{{max}} fotek nahráno",
+    "photos": "Fotky otočných bodů",
+    "page1": "Stránka 1",
+    "page2": "Stránka 2"
+  },
   "actions": {
     "title": "Akce:",
     "shuffle": {

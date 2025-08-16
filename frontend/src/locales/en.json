@@ -48,6 +48,13 @@
       "description": "Sequential turning point photos (SP, TP1-TPx, FP)"
     }
   },
+  "turningpoint": {
+    "title": "Turning Point Photos",
+    "description": "{{count}}/{{max}} photos uploaded",
+    "photos": "Turning Point Photos",
+    "page1": "Page 1",
+    "page2": "Page 2"
+  },
   "actions": {
     "title": "Actions:",
     "shuffle": {

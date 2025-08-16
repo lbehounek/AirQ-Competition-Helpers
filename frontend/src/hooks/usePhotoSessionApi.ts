@@ -336,6 +336,52 @@ export const usePhotoSessionApi = () => {
     }
   }, [sessionId, backendAvailable, session]);
 
+  const addPhotosToTurningPoint = useCallback(async (files: File[]) => {
+    if (!sessionId || !backendAvailable || !session) return;
+
+    try {
+      // Calculate current photo counts
+      const set1Count = session.sets.set1.photos.length;
+      const set2Count = session.sets.set2.photos.length;
+      const totalCount = set1Count + set2Count;
+      
+      // Check if we can add all files
+      if (totalCount + files.length > 18) {
+        setError(`Cannot add ${files.length} photos. Maximum 18 photos allowed (${totalCount} already uploaded).`);
+        return;
+      }
+
+      // Distribute files: fill set1 first (up to 9), then set2
+      const filesToSet1 = [];
+      const filesToSet2 = [];
+      
+      for (let i = 0; i < files.length; i++) {
+        const currentSet1Count = set1Count + filesToSet1.length;
+        if (currentSet1Count < 9) {
+          filesToSet1.push(files[i]);
+        } else {
+          filesToSet2.push(files[i]);
+        }
+      }
+
+      // Upload to set1 first
+      if (filesToSet1.length > 0) {
+        await addPhotosToSet(filesToSet1, 'set1');
+      }
+
+      // Then upload to set2
+      if (filesToSet2.length > 0) {
+        await addPhotosToSet(filesToSet2, 'set2');
+      }
+
+      console.log(`✅ Distributed ${filesToSet1.length} photos to set1, ${filesToSet2.length} photos to set2`);
+    } catch (err) {
+      const errorMessage = err instanceof ApiError ? err.message : 'Failed to add photos to turning point';
+      setError(errorMessage);
+      console.error('❌ Turning point photo upload failed:', err);
+    }
+  }, [sessionId, backendAvailable, session, addPhotosToSet]);
+
   return {
     session,
     sessionId,
@@ -345,6 +391,7 @@ export const usePhotoSessionApi = () => {
     
     // Actions
     addPhotosToSet,
+    addPhotosToTurningPoint,
     removePhoto,
     updatePhotoState,
     updateSetTitle,

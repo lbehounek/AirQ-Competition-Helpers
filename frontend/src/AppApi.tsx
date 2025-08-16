@@ -35,6 +35,7 @@ import { PhotoControls } from './components/PhotoControls';
 import { AspectRatioSelector } from './components/AspectRatioSelector';
 import { LabelingSelector } from './components/LabelingSelector';
 import { ModeSelector } from './components/ModeSelector';
+import { TurningPointLayout } from './components/TurningPointLayout';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
@@ -73,6 +74,7 @@ function AppApi() {
     error,
     backendAvailable,
     addPhotosToSet,
+    addPhotosToTurningPoint,
     removePhoto,
     updatePhotoState,
     updateSetTitle,
@@ -566,8 +568,24 @@ function AppApi() {
           </Alert>
         )}
 
-        {/* Set 1 Section */}
-        <Box sx={{ mb: 6 }}>
+        {/* Conditional Layout based on mode */}
+        {session?.mode === 'turningpoint' ? (
+          <TurningPointLayout
+            set1={session.sets.set1}
+            set2={session.sets.set2}
+            loading={loading}
+            error={error}
+            onFilesDropped={addPhotosToTurningPoint}
+            onPhotoClick={handlePhotoClick}
+            onPhotoUpdate={handlePhotoUpdate}
+            onPhotoRemove={handlePhotoRemove}
+            onPhotoMove={handlePhotoMove}
+            totalPhotoCount={stats.set1Photos + stats.set2Photos}
+          />
+        ) : (
+          <>
+            {/* Set 1 Section */}
+            <Box sx={{ mb: 6 }}>
           {/* Set 1 Upload Area - Simple */}
           <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
             <Box sx={{ mb: 2 }}>
@@ -677,6 +695,8 @@ function AppApi() {
             </Paper>
           )}
         </Box>
+          </>
+        )}
 
         {/* Action Buttons - Centered and Prominent */}
         <Paper elevation={1} sx={{ p: 4, mb: 4, borderRadius: 3 }}>
