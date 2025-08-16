@@ -1,6 +1,9 @@
 import jsPDF from 'jspdf';
 import { ASPECT_RATIO_OPTIONS } from '../contexts/AspectRatioContext';
 
+// Import font for Czech character support
+import 'jspdf/dist/polyfills.es.js';
+
 interface ApiPhoto {
   id: string;
   url: string;
@@ -34,28 +37,36 @@ export const generatePDF = async (
   set1: PhotoSet,
   set2: PhotoSet,
   sessionId: string,
-  aspectRatio = 4/3
+  aspectRatio = 4/3,
+  competitionName?: string
 ): Promise<void> => {
   // A4 landscape dimensions in mm
   const pageWidth = 297;
   const pageHeight = 210;
   
-  // Create PDF in landscape orientation
+  // Create PDF in landscape orientation with UTF-8 support
   const pdf = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
-    format: 'a4'
+    format: 'a4',
+    putOnlyUsedFonts: true,
+    compress: true
   });
 
-  // Dynamic 3x3 grid layout optimized for aspect ratio
-  const topBottomMargin = 5; // 0.5cm for printer friendliness
+  // Header space for metadata
+  const headerHeight = 8; // Compact header space
+  const headerSpacing = 3; // Small gap between header and photos
+  
+  // Dynamic 3x3 grid layout optimized for aspect ratio  
+  const topBottomMargin = 5; // 0.5cm margins for printer friendliness
   
   // Minimal spacing to maximize photo size
   const spacing = Math.max(2, 4 - (aspectRatio - 1) * 2); // Even less spacing for all formats
   
   // Calculate optimal dimensions to maximize photo size while fitting 3x3 grid
-  const availableWidth = pageWidth - 16; // 8mm margins on sides (reduced from 10mm)
-  const availableHeight = pageHeight - (2 * topBottomMargin);
+  const sideMargin = 5; // 0.5cm side margins
+  const availableWidth = pageWidth - (2 * sideMargin);
+  const availableHeight = pageHeight - (2 * topBottomMargin) - headerHeight - headerSpacing;
   
   // Calculate cell dimensions considering both width and height constraints
   const cellWidthFromWidth = (availableWidth - (2 * spacing)) / 3;
@@ -65,17 +76,53 @@ export const generatePDF = async (
   const cellWidth = Math.min(cellWidthFromWidth, cellWidthFromHeight);
   const cellHeight = cellWidth / aspectRatio;
   
-  // Calculate actual used space and center on page
+  // Calculate actual used space for the unified block (header + photos)
   const totalGridWidth = (3 * cellWidth) + (2 * spacing);
   const totalGridHeight = (3 * cellHeight) + (2 * spacing);
+  const totalBlockHeight = headerHeight + headerSpacing + totalGridHeight;
   
-  const sideMargin = (pageWidth - totalGridWidth) / 2;
-  const verticalOffset = topBottomMargin + (availableHeight - totalGridHeight) / 2;
+  // Center the unified block (header + photos) on the page
+  const blockStartX = (pageWidth - totalGridWidth) / 2;
+  const blockStartY = (pageHeight - totalBlockHeight) / 2;
+
+  // Function to draw header metadata
+  const drawHeader = (setTitle: string) => {
+    const headerY = blockStartY + 6; // Position within the unified block
+    
+    // Left side: Competition name
+    if (competitionName) {
+      pdf.setFontSize(11);
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont('helvetica', 'bold');
+      // Use direct text with proper font encoding
+      pdf.text(competitionName, blockStartX, headerY, { 
+        align: 'left',
+        charSpace: 0, // Reduce character spacing
+        renderingMode: 'fill'
+      });
+    }
+    
+    // Right side: Set identification
+    if (setTitle) {
+      pdf.setFontSize(11);
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont('helvetica', 'bold');
+      // Use direct text with proper font encoding
+      pdf.text(setTitle, blockStartX + totalGridWidth, headerY, { 
+        align: 'right',
+        charSpace: 0, // Reduce character spacing
+        renderingMode: 'fill'
+      });
+    }
+  };
 
   const addPhotoSetToPage = (photoSet: PhotoSet, setKey: 'set1' | 'set2', isFirstPage: boolean = true) => {
     if (!isFirstPage) {
       pdf.addPage();
     }
+    
+    // Draw header metadata
+    drawHeader(photoSet.title);
     
     // No title text - set name is shown on first photo
     
@@ -85,9 +132,9 @@ export const generatePDF = async (
         const index = row * 3 + col;
         const photo = photoSet.photos[index];
         
-        // Calculate position
-        const x = sideMargin + col * (cellWidth + spacing);
-        const y = verticalOffset + row * (cellHeight + spacing);
+        // Calculate position within the unified block
+        const x = blockStartX + col * (cellWidth + spacing);
+        const y = blockStartY + headerHeight + headerSpacing + row * (cellHeight + spacing);
         
         if (photo) {
           try {
