@@ -599,7 +599,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           <Paper elevation={1} sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
               <ZoomIn color="primary" />
-              Zoom and Sharpness
+              {t('controls.zoomAndSharpness')}
             </Typography>
             
             {/* Zoom Control */}
@@ -1060,7 +1060,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
       <Box sx={{ mt: 3, mb: 2 }}>
         <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.8rem' }}>
           <RadioButtonUnchecked fontSize="small" color="primary" />
-          Circle Overlay
+          {t('controls.circleOverlay')}
         </Typography>
         
         {/* Circle Mode Toggle Switch */}
@@ -1071,7 +1071,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             onClick={() => { if (circleMode) handleCircleModeToggle(); }}
             sx={{ fontSize: '0.7rem', py: 0.4 }}
           >
-            OFF
+            {t('controls.circleMode.off')}
           </Button>
           <Button
             variant={circleMode ? 'contained' : 'outlined'}
@@ -1079,13 +1079,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             onClick={() => { if (!circleMode) handleCircleModeToggle(); }}
             sx={{ fontSize: '0.7rem', py: 0.4 }}
           >
-            ON
+            {t('controls.circleMode.on')}
           </Button>
         </ButtonGroup>
         
         {circleMode && !circle && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1, fontSize: '0.65rem' }}>
-            Click photo to place circle
+            {t('controls.circleMode.clickToPlace')}
           </Typography>
         )}
 
@@ -1096,7 +1096,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
                 <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.65rem' }}>
-                  Radius
+                  {t('controls.circleMode.radius')}
                 </Typography>
                 <Typography variant="caption" color="primary" fontWeight={600} sx={{ fontSize: '0.65rem' }}>
                   {circle.radius}px
@@ -1117,7 +1117,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             {/* Color Selection */}
             <Box sx={{ mb: 1 }}>
               <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 600, display: 'block', fontSize: '0.65rem' }}>
-                Color
+                {t('controls.circleMode.color')}
               </Typography>
               <ButtonGroup size="small" fullWidth>
                 <Button
@@ -1131,7 +1131,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     fontSize: '0.6rem', py: 0.3
                   }}
                 >
-                  White
+                  {t('controls.circleMode.white')}
                 </Button>
                 <Button
                   variant={circle.color === 'red' ? 'contained' : 'outlined'}
@@ -1139,7 +1139,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   onClick={() => handleCircleColorChange('red')}
                   sx={{ fontSize: '0.6rem', py: 0.3 }}
                 >
-                  Red
+                  {t('controls.circleMode.red')}
                 </Button>
                 <Button
                   variant={circle.color === 'yellow' ? 'contained' : 'outlined'}
@@ -1152,7 +1152,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     fontSize: '0.6rem', py: 0.3
                   }}
                 >
-                  Yellow
+                  {t('controls.circleMode.yellow')}
                 </Button>
               </ButtonGroup>
             </Box>
@@ -1167,7 +1167,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               fullWidth
               sx={{ fontSize: '0.65rem', py: 0.3 }}
             >
-              Remove Circle
+              {t('controls.circleMode.removeCircle')}
             </Button>
           </>
         )}

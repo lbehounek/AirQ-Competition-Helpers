@@ -124,7 +124,20 @@
     "showOriginal": "Show Original",
     "showEdited": "Show Edited",
     "editPhoto": "Edit Photo {{label}}",
-    "photoLabel": "Photo {{label}}"
+    "photoLabel": "Photo {{label}}",
+    "zoomAndSharpness": "Zoom and Sharpness",
+    "circleOverlay": "Circle Overlay",
+    "circleMode": {
+      "off": "OFF",
+      "on": "ON",
+      "clickToPlace": "Click photo to place circle",
+      "radius": "Radius",
+      "color": "Color",
+      "white": "White",
+      "red": "Red", 
+      "yellow": "Yellow",
+      "removeCircle": "Remove Circle"
+    }
   },
   "session": {
     "created": "Session created {{time}}",

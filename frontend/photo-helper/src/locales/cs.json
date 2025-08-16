@@ -124,7 +124,20 @@
     "showOriginal": "Zobrazit originál",
     "showEdited": "Zobrazit upravené",
     "editPhoto": "Upravit fotografii {{label}}",
-    "photoLabel": "Fotografie {{label}}"
+    "photoLabel": "Fotografie {{label}}",
+    "zoomAndSharpness": "Přiblížení a ostrost",
+    "circleOverlay": "Kruhové označení",
+    "circleMode": {
+      "off": "VYPNUTO",
+      "on": "ZAPNUTO",
+      "clickToPlace": "Klikněte na fotografii pro umístění kruhu",
+      "radius": "Poloměr",
+      "color": "Barva",
+      "white": "Bílá",
+      "red": "Červená",
+      "yellow": "Žlutá",
+      "removeCircle": "Odstranit kruh"
+    }
   },
   "session": {
     "created": "Relace vytvořena {{time}}",
