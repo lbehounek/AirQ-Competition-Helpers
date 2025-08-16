@@ -63,6 +63,19 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   const totalPhotos = set1.photos.length + set2.photos.length;
   const turningPointLabels = generateTurningPointLabels(totalPhotos);
 
+  // Generate descriptive headings based on actual labels
+  const getGridHeading = (labels: string[], isSet1: boolean) => {
+    if (labels.length === 0) {
+      // Default headings when no photos
+      return isSet1 ? 'SP - TP8' : 'TP9 - FP';
+    }
+    if (labels.length === 1) return labels[0];
+    return `${labels[0]} - ${labels[labels.length - 1]}`;
+  };
+
+  const grid1Heading = getGridHeading(turningPointLabels.set1, true);
+  const grid2Heading = getGridHeading(turningPointLabels.set2, false);
+
   return (
     <Box>
       {/* Unified Drop Zone */}
@@ -78,46 +91,42 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
       </Paper>
 
       {/* Grid 1: Photos 1-9 (SP, TP1-TP8) */}
-      {set1.photos.length > 0 && (
-        <Paper elevation={3} sx={{ p: 4, mb: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="h6" color="primary" sx={{ fontWeight: 600 }}>
-              {t('turningpoint.page1')} (1-9)
-            </Typography>
-          </Box>
-          <PhotoGridApi
-            photoSet={set1}
-            setKey="set1"
-            onPhotoUpdate={(photoId, canvasState) => onPhotoUpdate('set1', photoId, canvasState)}
-            onPhotoRemove={(photoId) => onPhotoRemove('set1', photoId)}
-            onPhotoClick={(photo) => onPhotoClick(photo, 'set1')}
-            onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set1', fromIndex, toIndex)}
-            onFilesDropped={(files) => onFilesDropped(files)}
-            customLabels={turningPointLabels.set1}
-          />
-        </Paper>
-      )}
+      <Paper elevation={3} sx={{ p: 4, mb: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="h6" color="primary" sx={{ fontWeight: 600 }}>
+            {grid1Heading}
+          </Typography>
+        </Box>
+        <PhotoGridApi
+          photoSet={set1}
+          setKey="set1"
+          onPhotoUpdate={(photoId, canvasState) => onPhotoUpdate('set1', photoId, canvasState)}
+          onPhotoRemove={(photoId) => onPhotoRemove('set1', photoId)}
+          onPhotoClick={(photo) => onPhotoClick(photo, 'set1')}
+          onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set1', fromIndex, toIndex)}
+          onFilesDropped={(files) => onFilesDropped(files)}
+          customLabels={turningPointLabels.set1}
+        />
+      </Paper>
 
       {/* Grid 2: Photos 10-18 (TP9-TP16, FP) */}
-      {set2.photos.length > 0 && (
-        <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="h6" color="primary" sx={{ fontWeight: 600 }}>
-              {t('turningpoint.page2')} (10-18)
-            </Typography>
-          </Box>
-          <PhotoGridApi
-            photoSet={set2}
-            setKey="set2"
-            onPhotoUpdate={(photoId, canvasState) => onPhotoUpdate('set2', photoId, canvasState)}
-            onPhotoRemove={(photoId) => onPhotoRemove('set2', photoId)}
-            onPhotoClick={(photo) => onPhotoClick(photo, 'set2')}
-            onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set2', fromIndex, toIndex)}
-            onFilesDropped={(files) => onFilesDropped(files)}
-            customLabels={turningPointLabels.set2}
-          />
-        </Paper>
-      )}
+      <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="h6" color="primary" sx={{ fontWeight: 600 }}>
+            {grid2Heading}
+          </Typography>
+        </Box>
+        <PhotoGridApi
+          photoSet={set2}
+          setKey="set2"
+          onPhotoUpdate={(photoId, canvasState) => onPhotoUpdate('set2', photoId, canvasState)}
+          onPhotoRemove={(photoId) => onPhotoRemove('set2', photoId)}
+          onPhotoClick={(photo) => onPhotoClick(photo, 'set2')}
+          onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set2', fromIndex, toIndex)}
+          onFilesDropped={(files) => onFilesDropped(files)}
+          customLabels={turningPointLabels.set2}
+        />
+      </Paper>
     </Box>
   );
 };
