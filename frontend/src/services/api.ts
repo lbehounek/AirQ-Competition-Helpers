@@ -174,6 +174,24 @@ export class PhotoOrganizerApi {
   }
 
   /**
+   * Update session mode
+   */
+  async updateSessionMode(
+    sessionId: string,
+    mode: 'track' | 'turningpoint'
+  ): Promise<{ message: string; session: PhotoSession }> {
+    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/mode`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ mode }),
+    });
+
+    return handleResponse(response);
+  }
+
+  /**
    * Check if backend is available
    */
   async healthCheck(): Promise<{ message: string; status: string }> {

@@ -322,6 +322,20 @@ export const usePhotoSessionApi = () => {
     }
   }, [sessionId, backendAvailable, session]);
 
+  const updateSessionMode = useCallback(async (mode: 'track' | 'turningpoint') => {
+    if (!sessionId || !backendAvailable || !session) return;
+
+    try {
+      const response = await api.updateSessionMode(sessionId, mode);
+      setSession(response.session as ApiPhotoSession);
+      console.log(`✅ Session mode updated to ${mode}`);
+    } catch (err) {
+      const errorMessage = err instanceof ApiError ? err.message : 'Failed to update session mode';
+      setError(errorMessage);
+      console.error('❌ Session mode update failed:', err);
+    }
+  }, [sessionId, backendAvailable, session]);
+
   return {
     session,
     sessionId,
@@ -335,6 +349,7 @@ export const usePhotoSessionApi = () => {
     updatePhotoState,
     updateSetTitle,
     reorderPhotos,
+    updateSessionMode,
     resetSession,
     refreshSession,
     clearError,

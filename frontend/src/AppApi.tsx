@@ -34,11 +34,13 @@ import { PhotoEditorApi } from './components/PhotoEditorApi';
 import { PhotoControls } from './components/PhotoControls';
 import { AspectRatioSelector } from './components/AspectRatioSelector';
 import { LabelingSelector } from './components/LabelingSelector';
+import { ModeSelector } from './components/ModeSelector';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
 import { generatePDF } from './utils/pdfGenerator';
+import { generateTurningPointLabels } from './utils/imageProcessing';
 
 interface ApiPhoto {
   id: string;
@@ -75,6 +77,7 @@ function AppApi() {
     updatePhotoState,
     updateSetTitle,
     reorderPhotos,
+    updateSessionMode,
     resetSession,
     clearError,
     checkBackendHealth,
@@ -117,13 +120,28 @@ function AppApi() {
     const setPhotos = session?.sets[setKey].photos || [];
     const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
     
-    // Calculate label with continuous sequence across sets
+    // Calculate label based on mode
     let label: string;
-    if (setKey === 'set1') {
-      label = String.fromCharCode(65 + photoIndex); // A, B, C, etc.
+    if (session?.mode === 'turningpoint') {
+      // Turning point mode: SP, TP1, TP2, ..., FP
+      const set1Count = session.sets.set1.photos.length;
+      const set2Count = session.sets.set2.photos.length;
+      const totalPhotos = set1Count + set2Count;
+      const turningPointLabels = generateTurningPointLabels(totalPhotos);
+      
+      if (setKey === 'set1') {
+        label = turningPointLabels.set1[photoIndex] || 'X';
+      } else {
+        label = turningPointLabels.set2[photoIndex] || 'X';
+      }
     } else {
-      const set1Count = session?.sets.set1.photos.length || 0;
-      label = String.fromCharCode(65 + set1Count + photoIndex); // Continue from set1
+      // Track mode: A, B, C, etc.
+      if (setKey === 'set1') {
+        label = String.fromCharCode(65 + photoIndex); // A, B, C, etc.
+      } else {
+        const set1Count = session?.sets.set1.photos.length || 0;
+        label = String.fromCharCode(65 + set1Count + photoIndex); // Continue from set1
+      }
     }
 
     setSelectedPhoto({ 
@@ -227,23 +245,49 @@ function AppApi() {
     }
 
     try {
-      // Add labels to photos - Set 2 continues sequence from Set 1
-      const set1WithLabels = {
-        ...session.sets.set1,
-        photos: session.sets.set1.photos.map((photo, index) => ({
-          ...photo,
-          label: generateLabel(index) // Use dynamic labeling (letters or numbers) with dot
-        } as unknown as ApiPhoto & { label: string }))
-      };
+      let set1WithLabels, set2WithLabels;
 
-      const set1Count = session.sets.set1.photos.length;
-      const set2WithLabels = {
-        ...session.sets.set2,
-        photos: session.sets.set2.photos.map((photo, index) => ({
-          ...photo,
-          label: generateLabel(index, set1Count) // Continue from where Set 1 left off
-        } as unknown as ApiPhoto & { label: string }))
-      };
+      if (session.mode === 'turningpoint') {
+        // Turning point mode: use SP, TP1, TP2, ..., FP labels
+        const set1Count = session.sets.set1.photos.length;
+        const set2Count = session.sets.set2.photos.length;
+        const totalPhotos = set1Count + set2Count;
+        const turningPointLabels = generateTurningPointLabels(totalPhotos);
+
+        set1WithLabels = {
+          ...session.sets.set1,
+          photos: session.sets.set1.photos.map((photo, index) => ({
+            ...photo,
+            label: turningPointLabels.set1[index] || 'X'
+          } as unknown as ApiPhoto & { label: string }))
+        };
+
+        set2WithLabels = {
+          ...session.sets.set2,
+          photos: session.sets.set2.photos.map((photo, index) => ({
+            ...photo,
+            label: turningPointLabels.set2[index] || 'X'
+          } as unknown as ApiPhoto & { label: string }))
+        };
+      } else {
+        // Track mode: use A, B, C, etc. labels
+        set1WithLabels = {
+          ...session.sets.set1,
+          photos: session.sets.set1.photos.map((photo, index) => ({
+            ...photo,
+            label: generateLabel(index) // Use dynamic labeling (letters or numbers) with dot
+          } as unknown as ApiPhoto & { label: string }))
+        };
+
+        const set1Count = session.sets.set1.photos.length;
+        set2WithLabels = {
+          ...session.sets.set2,
+          photos: session.sets.set2.photos.map((photo, index) => ({
+            ...photo,
+            label: generateLabel(index, set1Count) // Continue from where Set 1 left off
+          } as unknown as ApiPhoto & { label: string }))
+        };
+      }
 
       await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio);
     } catch (error) {
@@ -414,6 +458,17 @@ function AppApi() {
         {/* Photo Configuration */}
         <Paper elevation={1} sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
           <Box sx={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {/* Photo Mode */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                {t('mode.title')}
+              </Typography>
+              <ModeSelector 
+                currentMode={session?.mode || 'track'} 
+                onModeChange={updateSessionMode}
+              />
+            </Box>
+
             {/* Photo Format */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
@@ -430,11 +485,12 @@ function AppApi() {
               <LabelingSelector />
             </Box>
 
-            {/* Shuffle Photos */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                {t('actions.title')}
-              </Typography>
+            {/* Shuffle Photos - Only show in track mode */}
+            {session?.mode === 'track' && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                  {t('actions.title')}
+                </Typography>
               <Card
                 onClick={handleShuffle}
                 sx={{
@@ -490,7 +546,8 @@ function AppApi() {
                   </Typography>
                 </CardContent>
               </Card>
-            </Box>
+              </Box>
+            )}
           </Box>
         </Paper>
 

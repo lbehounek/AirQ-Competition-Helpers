@@ -37,6 +37,17 @@
       }
     }
   },
+  "mode": {
+    "title": "Photo Mode:",
+    "track": {
+      "name": "Track Photos",
+      "description": "Standard navigation flight photos with randomizable order"
+    },
+    "turningpoint": {
+      "name": "Turning Point Photos", 
+      "description": "Sequential turning point photos (SP, TP1-TPx, FP)"
+    }
+  },
   "actions": {
     "title": "Actions:",
     "shuffle": {

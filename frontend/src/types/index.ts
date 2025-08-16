@@ -28,6 +28,7 @@ export interface PhotoSession {
   version: number;
   createdAt: Date;
   updatedAt: Date;
+  mode: 'track' | 'turningpoint';
   sets: {
     set1: PhotoSet;
     set2: PhotoSet;

@@ -52,6 +52,9 @@ class ReorderRequest(BaseModel):
     from_index: int   # Source position (0-8)  
     to_index: int     # Target position (0-8)
 
+class ModeUpdateRequest(BaseModel):
+    mode: str         # 'track' or 'turningpoint'
+
 class PhotoMetadata:
     def __init__(self, photo_id: str, filename: str, set_key: str, session_id: str):
         self.id = photo_id
@@ -87,6 +90,7 @@ class PhotoSession:
         self.created_at = datetime.now()
         self.updated_at = datetime.now()
         self.version = 1
+        self.mode = "track"  # "track" or "turningpoint"
         self.sets = {
             "set1": {"title": "", "photos": []},
             "set2": {"title": "", "photos": []}
@@ -98,6 +102,7 @@ class PhotoSession:
             "createdAt": self.created_at.isoformat(),
             "updatedAt": self.updated_at.isoformat(),
             "version": self.version,
+            "mode": self.mode,
             "sets": self.sets
         }
         
@@ -175,6 +180,8 @@ def load_session(session_id: str) -> Optional[PhotoSession]:
             session.created_at = datetime.fromisoformat(data["createdAt"])
             session.updated_at = datetime.fromisoformat(data["updatedAt"])
             session.version = data["version"]
+            # Migration: add mode field if it doesn't exist (backward compatibility)
+            session.mode = data.get("mode", "track")
             session.sets = data["sets"]
             sessions[session_id] = session
             return session
@@ -426,6 +433,27 @@ async def reorder_photos(session_id: str, reorder_data: ReorderRequest):
             "to_index": to_index,
             "type": "swap" if target_photo else "move"
         }
+    }
+
+@app.put("/api/sessions/{session_id}/mode")
+async def update_session_mode(session_id: str, mode_data: ModeUpdateRequest):
+    """Update session mode between 'track' and 'turningpoint'"""
+    session = load_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Validate mode
+    if mode_data.mode not in ["track", "turningpoint"]:
+        raise HTTPException(status_code=400, detail="Invalid mode. Must be 'track' or 'turningpoint'")
+    
+    session.mode = mode_data.mode
+    session.updated_at = datetime.now()
+    session.version += 1
+    save_session(session)
+    
+    return {
+        "message": f"Session mode updated to {mode_data.mode}",
+        "session": session.to_dict()
     }
 
 if __name__ == "__main__":

@@ -37,6 +37,17 @@
       }
     }
   },
+  "mode": {
+    "title": "Režim fotek:",
+    "track": {
+      "name": "Fotky trati",
+      "description": "Standardní fotky navigačního letu s možností náhodného pořadí"
+    },
+    "turningpoint": {
+      "name": "Fotky otočných bodů", 
+      "description": "Sekvenční fotky otočných bodů (SP, TP1-TPx, FP)"
+    }
+  },
   "actions": {
     "title": "Akce:",
     "shuffle": {
