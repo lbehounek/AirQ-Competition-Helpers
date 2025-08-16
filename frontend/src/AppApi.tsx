@@ -41,6 +41,7 @@ import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
 import { generatePDF } from './utils/pdfGenerator';
+import { generatePDFWithPdfMake } from './utils/pdfGeneratorPdfMake';
 import { generateTurningPointLabels } from './utils/imageProcessing';
 
 interface ApiPhoto {
@@ -292,7 +293,7 @@ function AppApi() {
         };
       }
 
-      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name);
+      await generatePDFWithPdfMake(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name);
     } catch (error) {
       console.error('PDF generation failed:', error);
       // Could add user notification here

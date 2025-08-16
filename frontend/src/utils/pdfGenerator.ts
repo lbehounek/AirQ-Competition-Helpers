@@ -1,8 +1,6 @@
 import jsPDF from 'jspdf';
 import { ASPECT_RATIO_OPTIONS } from '../contexts/AspectRatioContext';
-
-// Import font for Czech character support
-import 'jspdf/dist/polyfills.es.js';
+import { addNotoSansFont } from '../assets/fonts/NotoSans-Bold.js';
 
 interface ApiPhoto {
   id: string;
@@ -53,6 +51,9 @@ export const generatePDF = async (
     compress: true
   });
 
+  // Add custom font that supports Czech characters
+  addNotoSansFont(jsPDF);
+
   // Header space for metadata
   const headerHeight = 8; // Compact header space
   const headerSpacing = 3; // Small gap between header and photos
@@ -93,12 +94,10 @@ export const generatePDF = async (
     if (competitionName) {
       pdf.setFontSize(11);
       pdf.setTextColor(0, 0, 0);
-      pdf.setFont('helvetica', 'bold');
-      // Use direct text with proper font encoding
+      pdf.setFont('NotoSans', 'bold'); // Use custom font that supports Czech characters
       pdf.text(competitionName, blockStartX, headerY, { 
         align: 'left',
-        charSpace: 0, // Reduce character spacing
-        renderingMode: 'fill'
+        charSpace: 0 // Reduce character spacing
       });
     }
     
@@ -106,12 +105,10 @@ export const generatePDF = async (
     if (setTitle) {
       pdf.setFontSize(11);
       pdf.setTextColor(0, 0, 0);
-      pdf.setFont('helvetica', 'bold');
-      // Use direct text with proper font encoding
+      pdf.setFont('NotoSans', 'bold'); // Use custom font that supports Czech characters
       pdf.text(setTitle, blockStartX + totalGridWidth, headerY, { 
         align: 'right',
-        charSpace: 0, // Reduce character spacing
-        renderingMode: 'fill'
+        charSpace: 0 // Reduce character spacing
       });
     }
   };
