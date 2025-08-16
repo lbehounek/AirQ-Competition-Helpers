@@ -79,11 +79,20 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   
   // Create 9 grid slots (3x3)
   const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
-    // Use custom labels if provided (for turning point mode), otherwise use generated labels
-    const label = customLabels && customLabels[index] 
-      ? customLabels[index] 
-      : generateLabel(index, labelOffset); // Use dynamic labeling (letters or numbers) with dot
     const photo = photoSet.photos[index] || null;
+    
+    // Only show labels when there's a photo, or in track mode for empty slots
+    let label = '';
+    if (photo) {
+      // Photo exists - always show label
+      label = customLabels && customLabels[index] 
+        ? customLabels[index] 
+        : generateLabel(index, labelOffset);
+    } else if (!customLabels) {
+      // Empty slot in track mode - show label
+      label = generateLabel(index, labelOffset);
+    }
+    // Empty slot in turning point mode - no label (label stays empty string)
     
     return {
       id: `${setKey}-slot-${index}`,
@@ -380,17 +389,19 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
       ) : (
         <>
           <ImageIcon sx={{ fontSize: 28, mb: 1, opacity: 0.5 }} />
-          <Typography 
-            variant="h6" 
-            sx={{ 
-              fontWeight: 700, 
-              fontSize: '1.1rem',
-              color: 'text.secondary',
-              mb: 0.5
-            }}
-          >
-            {label}
-          </Typography>
+          {label && (
+            <Typography 
+              variant="h6" 
+              sx={{ 
+                fontWeight: 700, 
+                fontSize: '1.1rem',
+                color: 'text.secondary',
+                mb: 0.5
+              }}
+            >
+              {label}
+            </Typography>
+          )}
           <Typography variant="caption" sx={{ opacity: 0.7, textAlign: 'center', px: 1 }}>
             {t('upload.clickOrDrop')}
           </Typography>
