@@ -67,14 +67,14 @@ export const generatePDFWithPdfMake = async (
   const createPhotoGrid = (photoSet: PhotoSet, setKey: 'set1' | 'set2') => {
     const content = [];
     
-    // MASSIVE PHOTOS - FUCK EVERYTHING ELSE
-    const photoWidth = 250; // 250 points = ~88mm = 3.5 inches - HUGE!
+    // BALANCED MASSIVE PHOTOS WITH PROPER MARGINS
+    const photoWidth = 260; // 260 points = ~92mm = 3.6 inches - SWEET SPOT!
     const photoHeight = photoWidth / aspectRatio; // Maintain aspect ratio
     
-    const startX = 20; // Start position
-    const startY = 50; // Start position (after header)
-    const gapX = 10; // Gap between photos
-    const gapY = 10; // Gap between rows
+    const startX = 25; // Start position - proper left margin for printing
+    const startY = 40; // Start position (after header) - balanced spacing
+    const gapX = 8; // Gap between photos - tight but readable
+    const gapY = 8; // Gap between rows - tight but readable
     
     // Create 3x3 grid with absolute positioning
     for (let row = 0; row < 3; row++) {
@@ -119,15 +119,17 @@ export const generatePDFWithPdfMake = async (
         {
           text: competitionName || '',
           style: 'header',
-          alignment: 'left'
+          alignment: 'left',
+          margin: [10, 0, 0, 0] // Add left padding
         },
         {
           text: setTitle,
           style: 'header',
-          alignment: 'right'
+          alignment: 'right',
+          margin: [0, 0, 10, 0] // Add right padding
         }
       ],
-      margin: [0, 0, 0, 10]
+      margin: [0, 5, 0, 15] // Top and bottom spacing
     };
   };
 
@@ -135,7 +137,7 @@ export const generatePDFWithPdfMake = async (
   const docDefinition = {
     pageSize: 'A4',
     pageOrientation: 'landscape' as const,
-    pageMargins: [8, 8, 8, 8], // Minimal margins - 8mm all around
+    pageMargins: [15, 15, 15, 15], // Proper print margins - 15mm all around
     content: [] as any[],
     styles: {
       header: {
