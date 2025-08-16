@@ -807,17 +807,18 @@ function AppApi() {
           }}>
             {selectedPhoto && (
               <>
-                {/* Modal Header - Compact */}
+                {/* Modal Header - Ultra Compact (65-70% height) */}
                 <Box sx={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  p: 1.5, // Even more compact header
+                  p: 1, // Reduced from 1.5 to 1
                   borderBottom: '1px solid',
                   borderColor: 'divider',
-                  background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)'
+                  background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)',
+                  minHeight: '48px' // Force compact height
                 }}>
-                  <Typography variant="h5" sx={{ color: 'white', fontWeight: 600, fontSize: '1.2rem' }}>
+                  <Typography variant="h6" sx={{ color: 'white', fontWeight: 600, fontSize: '1rem', lineHeight: 1.2 }}>
                     {t('controls.editPhoto', { label: selectedPhoto.label })}
                   </Typography>
                   <IconButton
@@ -825,11 +826,12 @@ function AppApi() {
                     sx={{
                       color: 'white',
                       bgcolor: 'rgba(255, 255, 255, 0.2)',
-                      '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.3)' }
+                      '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.3)' },
+                      p: 0.75 // Smaller padding for compact button
                     }}
-                    size="large"
+                    size="medium"
                   >
-                    <Close />
+                    <Close fontSize="small" />
                   </IconButton>
                 </Box>
 
