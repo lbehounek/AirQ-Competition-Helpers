@@ -97,8 +97,8 @@ class PhotoSession:
             "set2": {"title": "", "photos": []}
         }
         self.turningpoint_sets = {
-            "set1": {"title": "", "photos": []},
-            "set2": {"title": "", "photos": []}
+            "set1": {"title": "SP - TPX", "photos": []},
+            "set2": {"title": "TPX - FP", "photos": []}
         }
     
     @property
@@ -204,9 +204,9 @@ def load_session(session_id: str) -> Optional[PhotoSession]:
                 session.track_sets = data["track_sets"]
                 session.turningpoint_sets = data["turningpoint_sets"]
             else:
-                # Old structure - migrate existing sets to track_sets, leave turningpoint_sets empty
+                # Old structure - migrate existing sets to track_sets, initialize turningpoint_sets with defaults
                 session.track_sets = data.get("sets", {"set1": {"title": "", "photos": []}, "set2": {"title": "", "photos": []}})
-                session.turningpoint_sets = {"set1": {"title": "", "photos": []}, "set2": {"title": "", "photos": []}}
+                session.turningpoint_sets = {"set1": {"title": "SP - TPX", "photos": []}, "set2": {"title": "TPX - FP", "photos": []}}
             
             sessions[session_id] = session
             return session

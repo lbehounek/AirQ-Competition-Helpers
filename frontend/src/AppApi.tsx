@@ -580,6 +580,7 @@ function AppApi() {
             onPhotoUpdate={handlePhotoUpdate}
             onPhotoRemove={handlePhotoRemove}
             onPhotoMove={handlePhotoMove}
+            onSetTitleUpdate={updateSetTitle}
             totalPhotoCount={stats.set1Photos + stats.set2Photos}
           />
         ) : (
