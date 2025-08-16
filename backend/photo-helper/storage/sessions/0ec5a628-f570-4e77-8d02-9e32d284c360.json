@@ -1,8 +1,8 @@
 {
   "id": "0ec5a628-f570-4e77-8d02-9e32d284c360",
   "createdAt": "2025-08-16T17:12:37.342736",
-  "updatedAt": "2025-08-16T22:13:40.481341",
-  "version": 617,
+  "updatedAt": "2025-08-16T22:28:06.339385",
+  "version": 648,
   "mode": "track",
   "competition_name": "Memori\u00e1l Zde\u0148ka B\u011bhounka 2024 - PINK",
   "sets": {
@@ -66,13 +66,20 @@
           "uploadedAt": "2025-08-16T17:12:45.839950",
           "canvasState": {
             "position": {
-              "x": 0,
-              "y": 0
+              "x": -52.11450119018559,
+              "y": -38.68149484252933
             },
-            "scale": 1.0,
+            "scale": 1.2100000000000002,
             "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "circle": {
+              "x": 121.64706420898438,
+              "y": 87.79043579101562,
+              "radius": 50,
+              "color": "white",
+              "visible": true
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/d5dec560-ddc8-4c75-97f5-3726813a278e"
         },
@@ -428,13 +435,20 @@
           "uploadedAt": "2025-08-16T17:12:45.839950",
           "canvasState": {
             "position": {
-              "x": 0,
-              "y": 0
+              "x": -52.11450119018559,
+              "y": -38.68149484252933
             },
-            "scale": 1.0,
+            "scale": 1.2100000000000002,
             "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "circle": {
+              "x": 121.64706420898438,
+              "y": 87.79043579101562,
+              "radius": 50,
+              "color": "white",
+              "visible": true
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/d5dec560-ddc8-4c75-97f5-3726813a278e"
         },

@@ -797,7 +797,7 @@ function AppApi() {
             transform: 'translate(-50%, -50%)',
             width: { xs: '95vw', sm: '90vw', md: '90vw', lg: '85vw' },
             maxWidth: '1400px',
-            maxHeight: '95vh', // Taller modal to accommodate all elements
+            maxHeight: '98vh', // Even taller modal - utilizing saved header space
             bgcolor: 'background.paper',
             borderRadius: 3,
             boxShadow: 24,
@@ -815,8 +815,8 @@ function AppApi() {
                   display: 'flex',
                   flexDirection: 'column',
                   overflow: 'hidden',
-                  height: '85vh', // Taller modal content
-                  maxHeight: '800px'
+                  height: '90vh', // Much taller content - utilizing saved header space
+                  maxHeight: '900px'
                 }}>
                   {/* Top Row: Photo (left) + Right Controls */}
                   <Box sx={{
