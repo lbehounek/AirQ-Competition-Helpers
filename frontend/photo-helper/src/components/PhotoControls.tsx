@@ -1053,45 +1053,39 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         </Box>
       </Box>
       
-      {/* Circle Overlay - Compact */}
+      {/* Circle Overlay - Ultra Compact */}
       <Box sx={{ mb: 1.5 }}>
-        <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.8rem' }}>
-          <RadioButtonUnchecked fontSize="small" color="primary" />
-          Circle
-        </Typography>
+        {/* Header with Toggle */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.75rem' }}>
+            <RadioButtonUnchecked fontSize="small" color="primary" />
+            Circle
+          </Typography>
+          <Button
+            variant={circleMode ? "contained" : "outlined"}
+            color="primary"
+            size="small"
+            onClick={handleCircleModeToggle}
+            sx={{ fontSize: '0.65rem', py: 0.2, px: 1, minHeight: '24px', minWidth: '40px' }}
+          >
+            {circleMode ? 'ON' : 'OFF'}
+          </Button>
+        </Box>
         
-        {/* Circle Mode Toggle */}
-        <Button
-          variant={circleMode ? "contained" : "outlined"}
-          color="primary"
-          size="small"
-          startIcon={circleMode ? <Circle fontSize="small" /> : <RadioButtonUnchecked fontSize="small" />}
-          onClick={handleCircleModeToggle}
-          fullWidth
-          sx={{ mb: 0.5, fontSize: '0.7rem', py: 0.25, minHeight: '28px' }}
-        >
-          {circleMode ? 'ON' : 'OFF'}
-        </Button>
-        
-        {circleMode && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 0.5, fontSize: '0.65rem' }}>
+        {circleMode && !circle && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 0.5, fontSize: '0.6rem' }}>
             Click photo to place
           </Typography>
         )}
 
-        {/* Circle Controls - Only show when circle exists */}
+        {/* Circle Controls - Inline when circle exists */}
         {circle && (
           <>
-            {/* Radius Control */}
-            <Box sx={{ mb: 0.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
-                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.65rem' }}>
-                  Radius
-                </Typography>
-                <Typography variant="caption" color="primary" fontWeight={600} sx={{ fontSize: '0.65rem' }}>
-                  {circle.radius}px
-                </Typography>
-              </Box>
+            {/* Radius + Value in one line */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.6rem', minWidth: '35px' }}>
+                Size:
+              </Typography>
               <Slider
                 value={circle.radius}
                 onChange={(_, value) => handleCircleRadiusChange(value as number)}
@@ -1100,16 +1094,19 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 step={5}
                 color="primary"
                 size="small"
-                sx={{ mb: 0.5, height: 20 }}
+                sx={{ flex: 1, height: 16 }}
               />
+              <Typography variant="caption" color="primary" fontWeight={600} sx={{ fontSize: '0.6rem', minWidth: '25px' }}>
+                {circle.radius}
+              </Typography>
             </Box>
 
-            {/* Color Selection - Compact */}
-            <Box sx={{ mb: 0.5 }}>
-              <Typography variant="caption" sx={{ mb: 0.25, fontWeight: 600, display: 'block', fontSize: '0.65rem' }}>
-                Color
+            {/* Color + Remove in one line */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.6rem', minWidth: '35px' }}>
+                Color:
               </Typography>
-              <ButtonGroup size="small" fullWidth>
+              <ButtonGroup size="small" sx={{ flex: 1 }}>
                 <Button
                   variant={circle.color === 'white' ? 'contained' : 'outlined'}
                   onClick={() => handleCircleColorChange('white')}
@@ -1118,7 +1115,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     color: circle.color === 'white' ? 'white' : 'text.primary',
                     borderColor: 'grey.400',
                     '&:hover': { bgcolor: 'grey.700', color: 'white' },
-                    fontSize: '0.6rem', py: 0.2, minHeight: '24px'
+                    fontSize: '0.55rem', py: 0.15, minHeight: '20px', minWidth: '20px'
                   }}
                 >
                   W
@@ -1127,7 +1124,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   variant={circle.color === 'red' ? 'contained' : 'outlined'}
                   color="error"
                   onClick={() => handleCircleColorChange('red')}
-                  sx={{ fontSize: '0.6rem', py: 0.2, minHeight: '24px' }}
+                  sx={{ fontSize: '0.55rem', py: 0.15, minHeight: '20px', minWidth: '20px' }}
                 >
                   R
                 </Button>
@@ -1139,26 +1136,21 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     color: circle.color === 'yellow' ? 'black' : 'text.primary',
                     borderColor: '#FFC107',
                     '&:hover': { bgcolor: '#FFB300', color: 'black' },
-                    fontSize: '0.6rem', py: 0.2, minHeight: '24px'
+                    fontSize: '0.55rem', py: 0.15, minHeight: '20px', minWidth: '20px'
                   }}
                 >
                   Y
                 </Button>
               </ButtonGroup>
+              <IconButton
+                color="error"
+                size="small"
+                onClick={handleRemoveCircle}
+                sx={{ minHeight: '20px', minWidth: '20px', p: 0.25 }}
+              >
+                <Clear fontSize="small" />
+              </IconButton>
             </Box>
-
-            {/* Remove Circle - Compact */}
-            <Button
-              variant="outlined"
-              color="error"
-              size="small"
-              startIcon={<Clear fontSize="small" />}
-              onClick={handleRemoveCircle}
-              fullWidth
-              sx={{ fontSize: '0.65rem', py: 0.2, minHeight: '26px' }}
-            >
-              Remove
-            </Button>
           </>
         )}
       </Box>
