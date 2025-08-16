@@ -665,7 +665,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           </Paper>
         </Box>
 
-        {/* Sharpness - 1/3 width */}
+        {/* Sharpness + Zoom - 1/3 width */}
         <Box sx={{ flex: '1 1 0', minWidth: 0 }}>
           <Paper elevation={1} sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -673,30 +673,83 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               {t('controls.sharpness')}
             </Typography>
             
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="body2" color="primary" fontWeight={600}>
-                {sharpness}
-              </Typography>
-              <Tooltip title={t('controls.resetSharpness')}>
-                <IconButton 
-                  size="small" 
-                  onClick={() => handleSharpnessChange(0)}
-                  sx={{ padding: 0.5 }}
-                >
-                  <Refresh fontSize="small" />
-                </IconButton>
-              </Tooltip>
+            {/* Sharpness Control */}
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" color="primary" fontWeight={600}>
+                  {sharpness}
+                </Typography>
+                <Tooltip title={t('controls.resetSharpness')}>
+                  <IconButton 
+                    size="small" 
+                    onClick={() => handleSharpnessChange(0)}
+                    sx={{ padding: 0.5 }}
+                  >
+                    <Refresh fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+              
+              <Slider
+                value={sharpness}
+                min={0}
+                max={100}
+                step={5}
+                onChange={(_, value) => handleSharpnessChange(value as number)}
+                color="primary"
+                size="small"
+              />
             </Box>
-            
-            <Slider
-              value={sharpness}
-              min={0}
-              max={100}
-              step={5}
-              onChange={(_, value) => handleSharpnessChange(value as number)}
-              color="primary"
-              size="small"
-            />
+
+            {/* Zoom Control */}
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ZoomIn fontSize="small" />
+                  {t('controls.zoom')}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="primary" fontWeight={600}>
+                    {Math.round(photo.canvasState.scale * 100)}%
+                  </Typography>
+                  <Tooltip title={t('controls.resetZoom')}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleScaleChange(1.0)}
+                      sx={{ padding: 0.5 }}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+              
+              <Slider
+                value={Math.max(1.0, photo.canvasState.scale)}
+                onChange={(_, value) => handleScaleChange(value as number)}
+                min={1.0}
+                max={3}
+                step={0.05}
+                color="primary"
+                size="small"
+                sx={{ mb: 2 }}
+              />
+              
+              {/* Quick scale buttons */}
+              <ButtonGroup size="small" variant="outlined" fullWidth>
+                {quickScaleOptions.map((option) => (
+                  <Button
+                    key={option.value}
+                    onClick={() => handleScaleChange(option.value)}
+                    variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
+                    size="small"
+                    sx={{ fontSize: '0.75rem', py: 0.5 }}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </ButtonGroup>
+            </Box>
           </Paper>
         </Box>
 
@@ -1102,43 +1155,6 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             </Button>
           </>
         )}
-      </Box>
-      {/* Zoom - Compact */}
-      <Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-          <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <ZoomIn fontSize="small" color="primary" />
-            {t('controls.zoom')}
-          </Typography>
-          <Typography variant="caption" color="primary" fontWeight={600}>
-            {Math.round(photo.canvasState.scale * 100)}%
-          </Typography>
-        </Box>
-        <Slider
-          value={Math.max(1.0, photo.canvasState.scale)}
-          onChange={(_, value) => handleScaleChange(value as number)}
-          min={1.0}
-          max={3}
-          step={0.05}
-          color="primary"
-          size="small"
-          sx={{ mb: 1 }}
-        />
-        
-        {/* Quick scale buttons */}
-        <ButtonGroup size="small" variant="outlined" fullWidth>
-          {quickScaleOptions.map((option) => (
-            <Button
-              key={option.value}
-              onClick={() => handleScaleChange(option.value)}
-              variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
-              size="small"
-              sx={{ fontSize: '0.7rem', py: 0.25 }}
-            >
-              {option.label}
-            </Button>
-          ))}
-        </ButtonGroup>
       </Box>
     </Box>
   );
