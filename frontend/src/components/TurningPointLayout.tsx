@@ -4,7 +4,6 @@ import { DropZone } from './DropZone';
 import { PhotoGridApi } from './PhotoGridApi';
 import { useI18n } from '../contexts/I18nContext';
 import { generateTurningPointLabels } from '../utils/imageProcessing';
-import { EditableHeading } from './EditableHeading';
 
 interface ApiPhoto {
   id: string;
@@ -43,7 +42,6 @@ interface TurningPointLayoutProps {
   onPhotoUpdate: (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => void;
   onPhotoRemove: (setKey: 'set1' | 'set2', photoId: string) => void;
   onPhotoMove: (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => void;
-  onSetTitleUpdate: (setKey: 'set1' | 'set2', title: string) => void;
   totalPhotoCount: number;
 }
 
@@ -57,7 +55,6 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   onPhotoUpdate,
   onPhotoRemove,
   onPhotoMove,
-  onSetTitleUpdate,
   totalPhotoCount
 }) => {
   const { t } = useI18n();
@@ -83,13 +80,9 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
       {/* Grid 1: Photos 1-9 (SP, TP1-TP8) */}
       <Paper elevation={3} sx={{ p: 4, mb: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
         <Box sx={{ mb: 2 }}>
-          <EditableHeading
-            value={set1.title}
-            defaultValue="SP - TPX"
-            onChange={(title) => onSetTitleUpdate('set1', title)}
-            variant="h6"
-            color="primary"
-          />
+          <Typography variant="h6" color="primary" sx={{ fontWeight: 600 }}>
+            {t('turningpoint.page1')}
+          </Typography>
         </Box>
         <PhotoGridApi
           photoSet={set1}
@@ -106,13 +99,9 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
       {/* Grid 2: Photos 10-18 (TP9-TP16, FP) */}
       <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
         <Box sx={{ mb: 2 }}>
-          <EditableHeading
-            value={set2.title}
-            defaultValue="TPX - FP"
-            onChange={(title) => onSetTitleUpdate('set2', title)}
-            variant="h6"
-            color="primary"
-          />
+          <Typography variant="h6" color="primary" sx={{ fontWeight: 600 }}>
+            {t('turningpoint.page2')}
+          </Typography>
         </Box>
         <PhotoGridApi
           photoSet={set2}
