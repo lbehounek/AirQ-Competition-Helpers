@@ -382,6 +382,20 @@ export const usePhotoSessionApi = () => {
     }
   }, [sessionId, backendAvailable, session, addPhotosToSet]);
 
+  const updateCompetitionName = useCallback(async (competitionName: string) => {
+    if (!sessionId || !backendAvailable || !session) return;
+
+    try {
+      const response = await api.updateCompetitionName(sessionId, competitionName);
+      setSession(response.session as ApiPhotoSession);
+      console.log(`✅ Competition name updated to: ${competitionName}`);
+    } catch (err) {
+      const errorMessage = err instanceof ApiError ? err.message : 'Failed to update competition name';
+      setError(errorMessage);
+      console.error('❌ Competition name update failed:', err);
+    }
+  }, [sessionId, backendAvailable, session]);
+
   return {
     session,
     sessionId,
@@ -397,6 +411,7 @@ export const usePhotoSessionApi = () => {
     updateSetTitle,
     reorderPhotos,
     updateSessionMode,
+    updateCompetitionName,
     resetSession,
     refreshSession,
     clearError,

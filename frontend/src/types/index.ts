@@ -29,6 +29,7 @@ export interface PhotoSession {
   createdAt: Date;
   updatedAt: Date;
   mode: 'track' | 'turningpoint';
+  competition_name: string;
   sets: {
     set1: PhotoSet;
     set2: PhotoSet;

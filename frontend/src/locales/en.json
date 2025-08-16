@@ -55,6 +55,11 @@
     "page1": "Page 1",
     "page2": "Page 2"
   },
+  "competition": {
+    "title": "Competition:",
+    "placeholder": "Enter competition name...",
+    "defaultName": "Competition Name"
+  },
   "actions": {
     "title": "Actions:",
     "shuffle": {

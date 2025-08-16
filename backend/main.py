@@ -55,6 +55,9 @@ class ReorderRequest(BaseModel):
 class ModeUpdateRequest(BaseModel):
     mode: str         # 'track' or 'turningpoint'
 
+class CompetitionUpdateRequest(BaseModel):
+    competition_name: str
+
 class PhotoMetadata:
     def __init__(self, photo_id: str, filename: str, set_key: str, session_id: str):
         self.id = photo_id
@@ -91,6 +94,7 @@ class PhotoSession:
         self.updated_at = datetime.now()
         self.version = 1
         self.mode = "track"  # "track" or "turningpoint"
+        self.competition_name = ""  # Competition identification
         # Separate storage for track and turning point photos
         self.track_sets = {
             "set1": {"title": "SP - TPX", "photos": []},
@@ -116,6 +120,7 @@ class PhotoSession:
             "updatedAt": self.updated_at.isoformat(),
             "version": self.version,
             "mode": self.mode,
+            "competition_name": self.competition_name,
             "sets": self.sets,  # Current sets based on mode (for frontend compatibility)
             "track_sets": self.track_sets,  # Save both sets to file
             "turningpoint_sets": self.turningpoint_sets
@@ -197,6 +202,7 @@ def load_session(session_id: str) -> Optional[PhotoSession]:
             session.version = data["version"]
             # Migration: add mode field if it doesn't exist (backward compatibility)
             session.mode = data.get("mode", "track")
+            session.competition_name = data.get("competition_name", "")
             
             # Migration: handle old session structure vs new separate sets structure
             if "track_sets" in data and "turningpoint_sets" in data:
@@ -482,6 +488,23 @@ async def update_session_mode(session_id: str, mode_data: ModeUpdateRequest):
     
     return {
         "message": f"Session mode updated to {mode_data.mode}",
+        "session": session.to_dict()
+    }
+
+@app.put("/api/sessions/{session_id}/competition")
+async def update_competition_name(session_id: str, competition_data: CompetitionUpdateRequest):
+    """Update competition name"""
+    session = load_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    session.competition_name = competition_data.competition_name
+    session.updated_at = datetime.now()
+    session.version += 1
+    save_session(session)
+    
+    return {
+        "message": "Competition name updated",
         "session": session.to_dict()
     }
 

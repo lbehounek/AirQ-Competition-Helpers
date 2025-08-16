@@ -192,6 +192,24 @@ export class PhotoOrganizerApi {
   }
 
   /**
+   * Update competition name
+   */
+  async updateCompetitionName(
+    sessionId: string,
+    competitionName: string
+  ): Promise<{ message: string; session: PhotoSession }> {
+    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/competition`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ competition_name: competitionName }),
+    });
+
+    return handleResponse(response);
+  }
+
+  /**
    * Check if backend is available
    */
   async healthCheck(): Promise<{ message: string; status: string }> {

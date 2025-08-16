@@ -80,6 +80,7 @@ function AppApi() {
     updateSetTitle,
     reorderPhotos,
     updateSessionMode,
+    updateCompetitionName,
     resetSession,
     clearError,
     checkBackendHealth,
@@ -550,6 +551,23 @@ function AppApi() {
               </Card>
               </Box>
             )}
+          </Box>
+        </Paper>
+
+        {/* Competition Name Input */}
+        <Paper elevation={1} sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+              {t('competition.title')}
+            </Typography>
+            <EditableHeading
+              value={session?.competition_name || ''}
+              defaultValue={t('competition.defaultName')}
+              onChange={updateCompetitionName}
+              variant="h6"
+              color="text.primary"
+              placeholder={t('competition.placeholder')}
+            />
           </Box>
         </Paper>
 

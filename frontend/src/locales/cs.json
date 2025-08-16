@@ -55,6 +55,11 @@
     "page1": "Stránka 1",
     "page2": "Stránka 2"
   },
+  "competition": {
+    "title": "Soutěž:",
+    "placeholder": "Zadejte název soutěže...",
+    "defaultName": "Název soutěže"
+  },
   "actions": {
     "title": "Akce:",
     "shuffle": {
