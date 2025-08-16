@@ -990,6 +990,115 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         </Box>
       </Box>
       
+      {/* Circle Overlay - Compact */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <RadioButtonUnchecked fontSize="small" color="primary" />
+          Circle Overlay
+        </Typography>
+        
+        {/* Circle Mode Toggle */}
+        <Button
+          variant={circleMode ? "contained" : "outlined"}
+          color="primary"
+          size="small"
+          startIcon={circleMode ? <Circle fontSize="small" /> : <RadioButtonUnchecked fontSize="small" />}
+          onClick={handleCircleModeToggle}
+          fullWidth
+          sx={{ mb: 1, fontSize: '0.75rem', py: 0.5 }}
+        >
+          {circleMode ? 'ON' : 'OFF'}
+        </Button>
+        
+        {circleMode && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1, fontSize: '0.7rem' }}>
+            Click photo to place circle
+          </Typography>
+        )}
+
+        {/* Circle Controls - Only show when circle exists */}
+        {circle && (
+          <>
+            {/* Radius Control */}
+            <Box sx={{ mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.7rem' }}>
+                  Radius
+                </Typography>
+                <Typography variant="caption" color="primary" fontWeight={600} sx={{ fontSize: '0.7rem' }}>
+                  {circle.radius}px
+                </Typography>
+              </Box>
+              <Slider
+                value={circle.radius}
+                onChange={(_, value) => handleCircleRadiusChange(value as number)}
+                min={10}
+                max={100}
+                step={5}
+                color="primary"
+                size="small"
+                sx={{ mb: 1 }}
+              />
+            </Box>
+
+            {/* Color Selection - Compact */}
+            <Box sx={{ mb: 1 }}>
+              <Typography variant="caption" sx={{ mb: 0.5, fontWeight: 600, display: 'block', fontSize: '0.7rem' }}>
+                Color
+              </Typography>
+              <ButtonGroup size="small" fullWidth>
+                <Button
+                  variant={circle.color === 'white' ? 'contained' : 'outlined'}
+                  onClick={() => handleCircleColorChange('white')}
+                  sx={{ 
+                    bgcolor: circle.color === 'white' ? 'grey.800' : 'transparent',
+                    color: circle.color === 'white' ? 'white' : 'text.primary',
+                    borderColor: 'grey.400',
+                    '&:hover': { bgcolor: 'grey.700', color: 'white' },
+                    fontSize: '0.65rem', py: 0.25
+                  }}
+                >
+                  W
+                </Button>
+                <Button
+                  variant={circle.color === 'red' ? 'contained' : 'outlined'}
+                  color="error"
+                  onClick={() => handleCircleColorChange('red')}
+                  sx={{ fontSize: '0.65rem', py: 0.25 }}
+                >
+                  R
+                </Button>
+                <Button
+                  variant={circle.color === 'yellow' ? 'contained' : 'outlined'}
+                  onClick={() => handleCircleColorChange('yellow')}
+                  sx={{ 
+                    bgcolor: circle.color === 'yellow' ? '#FFC107' : 'transparent',
+                    color: circle.color === 'yellow' ? 'black' : 'text.primary',
+                    borderColor: '#FFC107',
+                    '&:hover': { bgcolor: '#FFB300', color: 'black' },
+                    fontSize: '0.65rem', py: 0.25
+                  }}
+                >
+                  Y
+                </Button>
+              </ButtonGroup>
+            </Box>
+
+            {/* Remove Circle - Compact */}
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              startIcon={<Clear fontSize="small" />}
+              onClick={handleRemoveCircle}
+              fullWidth
+              sx={{ fontSize: '0.7rem', py: 0.25 }}
+            >
+              Remove
+            </Button>
+          </>
+        )}
+      </Box>
       {/* Zoom - Compact */}
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
