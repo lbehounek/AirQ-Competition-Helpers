@@ -28,7 +28,10 @@ import {
   CropFree,
   BlurOn,
   ColorLens,
-  AutoAwesome
+  AutoAwesome,
+  RadioButtonUnchecked,
+  Circle,
+  Clear
 } from '@mui/icons-material';
 import type { Photo } from '../types';
 import { useI18n } from '../contexts/I18nContext';
@@ -47,6 +50,13 @@ interface PhotoControlsProps {
         auto: boolean;
       };
       labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+      circle?: {
+        x: number;
+        y: number;
+        radius: number;
+        color: 'white' | 'red' | 'yellow';
+        visible: boolean;
+      };
     };
   };
   label: string;
@@ -55,6 +65,8 @@ interface PhotoControlsProps {
   mode?: 'full' | 'sidebar' | 'sliders' | 'compact-left' | 'compact-right';
   showOriginal?: boolean;
   onToggleOriginal?: () => void;
+  circleMode?: boolean;
+  onCircleClick?: (x: number, y: number) => void;
 }
 
 type LabelPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -66,11 +78,14 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   onRemove,
   mode = 'full',
   showOriginal = false,
-  onToggleOriginal
+  onToggleOriginal,
+  circleMode: externalCircleMode,
+  onCircleClick
 }) => {
   const { t } = useI18n();
   // Local state for immediate UI feedback
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
+  const [circleMode, setCircleMode] = useState(externalCircleMode || false);
 
   // Ensure we are viewing the edited version after any change
   const ensureEdited = () => {
@@ -82,11 +97,19 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   // Provide default values for new properties that might not exist in old sessions
   const sharpness = photo.canvasState.sharpness || 0;
   const whiteBalance = photo.canvasState.whiteBalance || { temperature: 0, tint: 0, auto: false };
+  const circle = photo.canvasState.circle || null;
 
   // Sync with photo state changes
   useEffect(() => {
     setLocalLabelPosition(photo.canvasState.labelPosition);
   }, [photo.canvasState.labelPosition]);
+
+  // Sync with external circle mode
+  useEffect(() => {
+    if (externalCircleMode !== undefined) {
+      setCircleMode(externalCircleMode);
+    }
+  }, [externalCircleMode]);
 
   const handleScaleChange = (newScale: number) => {
     ensureEdited();
@@ -212,6 +235,80 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     });
   };
 
+  // Circle overlay handlers
+  const handleCircleModeToggle = () => {
+    ensureEdited();
+    const newMode = !circleMode;
+    setCircleMode(newMode);
+    // If there's an external circle mode handler, call it
+    // This will be used by PhotoEditorApi to manage canvas interactions
+  };
+
+  const handleAddCircle = (x: number, y: number) => {
+    ensureEdited();
+    const newCircle = {
+      x,
+      y,
+      radius: 30, // Default radius
+      color: 'red' as const,
+      visible: true
+    };
+    onUpdate({
+      ...photo.canvasState,
+      circle: newCircle
+    });
+    // Notify parent component if callback is provided
+    if (onCircleClick) {
+      onCircleClick(x, y);
+    }
+  };
+
+  const handleCircleRadiusChange = (newRadius: number) => {
+    if (!circle) return;
+    ensureEdited();
+    onUpdate({
+      ...photo.canvasState,
+      circle: {
+        ...circle,
+        radius: newRadius
+      }
+    });
+  };
+
+  const handleCircleColorChange = (newColor: 'white' | 'red' | 'yellow') => {
+    if (!circle) return;
+    ensureEdited();
+    onUpdate({
+      ...photo.canvasState,
+      circle: {
+        ...circle,
+        color: newColor
+      }
+    });
+  };
+
+  const handleCirclePositionChange = (x: number, y: number) => {
+    if (!circle) return;
+    ensureEdited();
+    onUpdate({
+      ...photo.canvasState,
+      circle: {
+        ...circle,
+        x,
+        y
+      }
+    });
+  };
+
+  const handleRemoveCircle = () => {
+    ensureEdited();
+    onUpdate({
+      ...photo.canvasState,
+      circle: undefined
+    });
+    setCircleMode(false);
+  };
+
   const quickScaleOptions = [
     { label: '100%', value: 1.0 },
     { label: '125%', value: 1.25 },
@@ -326,6 +423,113 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           size="small"
           sx={{ width: '100%' }}
         />
+      </Paper>
+
+      {/* Circle Overlay */}
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <RadioButtonUnchecked color="primary" />
+          <Typography variant="h6">Circle Overlay</Typography>
+        </Box>
+        
+        {/* Circle Mode Toggle */}
+        <Box sx={{ mb: 2 }}>
+          <Button
+            variant={circleMode ? "contained" : "outlined"}
+            color="primary"
+            size="small"
+            startIcon={circleMode ? <Circle /> : <RadioButtonUnchecked />}
+            onClick={handleCircleModeToggle}
+            fullWidth
+            sx={{ mb: 2 }}
+          >
+            {circleMode ? 'Circle Mode: ON' : 'Circle Mode: OFF'}
+          </Button>
+          
+          {circleMode && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>
+              Click on the photo to place a circle
+            </Typography>
+          )}
+        </Box>
+
+        {/* Circle Controls - Only show when circle exists */}
+        {circle && (
+          <>
+            {/* Radius Control */}
+            <Box sx={{ mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Radius
+                </Typography>
+                <Typography variant="caption" color="primary" fontWeight={600}>
+                  {circle.radius}px
+                </Typography>
+              </Box>
+              <Slider
+                value={circle.radius}
+                onChange={(_, value) => handleCircleRadiusChange(value as number)}
+                min={10}
+                max={100}
+                step={5}
+                color="primary"
+                size="small"
+              />
+            </Box>
+
+            {/* Color Selection */}
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
+                Color
+              </Typography>
+              <ButtonGroup size="small" fullWidth>
+                <Button
+                  variant={circle.color === 'white' ? 'contained' : 'outlined'}
+                  onClick={() => handleCircleColorChange('white')}
+                  sx={{ 
+                    bgcolor: circle.color === 'white' ? 'grey.800' : 'transparent',
+                    color: circle.color === 'white' ? 'white' : 'text.primary',
+                    borderColor: 'grey.400',
+                    '&:hover': { bgcolor: 'grey.700', color: 'white' }
+                  }}
+                >
+                  White
+                </Button>
+                <Button
+                  variant={circle.color === 'red' ? 'contained' : 'outlined'}
+                  color="error"
+                  onClick={() => handleCircleColorChange('red')}
+                >
+                  Red
+                </Button>
+                <Button
+                  variant={circle.color === 'yellow' ? 'contained' : 'outlined'}
+                  onClick={() => handleCircleColorChange('yellow')}
+                  sx={{ 
+                    bgcolor: circle.color === 'yellow' ? '#FFC107' : 'transparent',
+                    color: circle.color === 'yellow' ? 'black' : 'text.primary',
+                    borderColor: '#FFC107',
+                    '&:hover': { bgcolor: '#FFB300', color: 'black' }
+                  }}
+                >
+                  Yellow
+                </Button>
+              </ButtonGroup>
+            </Box>
+
+            {/* Remove Circle */}
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              startIcon={<Clear />}
+              onClick={handleRemoveCircle}
+              fullWidth
+            >
+              Remove Circle
+            </Button>
+          </>
+        )}
       </Paper>
 
       {/* Zoom Control */}

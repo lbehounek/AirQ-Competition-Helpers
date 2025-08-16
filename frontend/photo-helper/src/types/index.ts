@@ -14,6 +14,13 @@ export interface Photo {
       auto: boolean; // Whether to use auto white balance
     };
     labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+    circle?: {
+      x: number;        // Position in base coordinates (0-300)
+      y: number;        // Position in base coordinates (0-225)
+      radius: number;   // Radius in pixels (base coordinates)
+      color: 'white' | 'red' | 'yellow';
+      visible: boolean;
+    };
   };
   label: string; // A, B, C, etc.
 }
