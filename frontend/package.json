@@ -17,7 +17,6 @@
     "@types/fabric": "^5.3.10",
     "fabric": "^6.7.1",
     "jspdf": "^3.0.1",
-    "jspdf-font": "^1.0.7",
     "pdfmake": "^0.2.20",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
