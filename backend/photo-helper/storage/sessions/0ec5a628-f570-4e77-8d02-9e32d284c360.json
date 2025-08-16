@@ -1,8 +1,8 @@
 {
   "id": "0ec5a628-f570-4e77-8d02-9e32d284c360",
   "createdAt": "2025-08-16T17:12:37.342736",
-  "updatedAt": "2025-08-16T22:28:32.637903",
-  "version": 658,
+  "updatedAt": "2025-08-16T22:32:11.196395",
+  "version": 721,
   "mode": "track",
   "competition_name": "Memori\u00e1l Zde\u0148ka B\u011bhounka 2024 - PINK",
   "sets": {
@@ -76,8 +76,8 @@
             "circle": {
               "x": 170.64706420898438,
               "y": 62.790435791015625,
-              "radius": 50,
-              "color": "white",
+              "radius": 60,
+              "color": "red",
               "visible": true
             }
           },
@@ -94,10 +94,17 @@
               "x": 0,
               "y": 0
             },
-            "scale": 1.0,
+            "scale": 1,
             "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "circle": {
+              "x": 196.14706420898438,
+              "y": 75.29046630859375,
+              "radius": 50,
+              "color": "red",
+              "visible": true
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/0dd530b7-12b6-4d16-9c7a-ab8e6f12d38b"
         },
@@ -130,10 +137,17 @@
               "x": 0,
               "y": 0
             },
-            "scale": 1.0,
+            "scale": 1,
             "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "circle": {
+              "x": 101.64706420898438,
+              "y": 82.7904052734375,
+              "radius": 30,
+              "color": "yellow",
+              "visible": true
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/7913f607-505c-4034-ae30-e2ce31dc8933"
         },
@@ -148,10 +162,17 @@
               "x": 0,
               "y": 0
             },
-            "scale": 1.0,
+            "scale": 1,
             "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "circle": {
+              "x": 88.14706420898438,
+              "y": 114.29046630859375,
+              "radius": 30,
+              "color": "white",
+              "visible": true
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/b507a338-0924-4605-a24d-fc05c850e9bc"
         },
@@ -445,8 +466,8 @@
             "circle": {
               "x": 170.64706420898438,
               "y": 62.790435791015625,
-              "radius": 50,
-              "color": "white",
+              "radius": 60,
+              "color": "red",
               "visible": true
             }
           },
@@ -463,10 +484,17 @@
               "x": 0,
               "y": 0
             },
-            "scale": 1.0,
+            "scale": 1,
             "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "circle": {
+              "x": 196.14706420898438,
+              "y": 75.29046630859375,
+              "radius": 50,
+              "color": "red",
+              "visible": true
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/0dd530b7-12b6-4d16-9c7a-ab8e6f12d38b"
         },
@@ -499,10 +527,17 @@
               "x": 0,
               "y": 0
             },
-            "scale": 1.0,
+            "scale": 1,
             "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "circle": {
+              "x": 101.64706420898438,
+              "y": 82.7904052734375,
+              "radius": 30,
+              "color": "yellow",
+              "visible": true
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/7913f607-505c-4034-ae30-e2ce31dc8933"
         },
@@ -517,10 +552,17 @@
               "x": 0,
               "y": 0
             },
-            "scale": 1.0,
+            "scale": 1,
             "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "circle": {
+              "x": 88.14706420898438,
+              "y": 114.29046630859375,
+              "radius": 30,
+              "color": "white",
+              "visible": true
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/b507a338-0924-4605-a24d-fc05c850e9bc"
         },

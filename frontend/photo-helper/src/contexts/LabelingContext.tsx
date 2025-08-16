@@ -38,9 +38,9 @@ export const LabelingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const position = index + offset;
     
     if (currentLabeling.id === 'numbers') {
-      return `${position + 1}.`; // Numbers start from 1, with dot
+      return `${position + 1}`; // Numbers start from 1, no dot
     } else {
-      return `${String.fromCharCode(65 + position)}.`; // Letters A, B, C... with dot
+      return `${String.fromCharCode(65 + position)}`; // Letters A, B, C... no dot
     }
   };
 
