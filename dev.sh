@@ -12,8 +12,8 @@ cleanup() {
 trap cleanup SIGINT SIGTERM EXIT
 
 # Start backend
-echo "🐍 Starting backend..."
-cd backend
+echo "🐍 Starting photo-helper backend..."
+cd backend/photo-helper
 
 # Setup Python environment
 [ ! -d "venv" ] && python3 -m venv venv
@@ -25,8 +25,8 @@ python run.py &
 echo "✅ Backend: http://localhost:8000"
 
 # Start frontend
-echo "⚛️ Starting frontend..."
-cd ../frontend
+echo "⚛️ Starting photo-helper frontend..."
+cd ../../frontend/photo-helper
 [ ! -d "node_modules" ] && npm install -q
 npm run dev &
 echo "✅ Frontend: http://localhost:5173"

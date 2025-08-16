@@ -1,0 +1,235 @@
+{
+  "id": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+  "createdAt": "2025-08-15T00:30:28.889949",
+  "updatedAt": "2025-08-15T09:45:16.393426",
+  "version": 207,
+  "sets": {
+    "set1": {
+      "title": "SP - TP6",
+      "photos": [
+        {
+          "id": "de6115b7-aba3-450b-9952-42f276b90426",
+          "filename": "7.jpg",
+          "setKey": "set1",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:45:15.401190",
+          "canvasState": {
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": 1.0,
+            "brightness": 0,
+            "contrast": 1.0,
+            "labelPosition": "bottom-left"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/de6115b7-aba3-450b-9952-42f276b90426"
+        },
+        {
+          "id": "0ecfb4bd-9d61-4450-b718-dedf7d5519b0",
+          "filename": "8.jpg",
+          "setKey": "set1",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:45:15.401446",
+          "canvasState": {
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": 1.0,
+            "brightness": 0,
+            "contrast": 1.0,
+            "labelPosition": "bottom-left"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/0ecfb4bd-9d61-4450-b718-dedf7d5519b0"
+        },
+        {
+          "id": "b23eebed-91f1-468c-a1f5-d9d01765628a",
+          "filename": "2.jpg",
+          "setKey": "set1",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:45:15.398842",
+          "canvasState": {
+            "position": {
+              "x": -64.50000000000003,
+              "y": 5.000000000000028
+            },
+            "scale": 1,
+            "brightness": 0,
+            "contrast": 1,
+            "labelPosition": "bottom-left"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/b23eebed-91f1-468c-a1f5-d9d01765628a"
+        },
+        {
+          "id": "d63bb009-d434-4003-a3b4-86dda40d95df",
+          "filename": "1.jpg",
+          "setKey": "set1",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:45:15.382228",
+          "canvasState": {
+            "position": {
+              "x": -31,
+              "y": -40
+            },
+            "scale": 1,
+            "brightness": 0,
+            "contrast": 1,
+            "labelPosition": "bottom-left"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/d63bb009-d434-4003-a3b4-86dda40d95df"
+        },
+        {
+          "id": "56d66b7e-f931-4cd0-afea-2fa1b7470c96",
+          "filename": "6.jpg",
+          "setKey": "set1",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:45:15.400843",
+          "canvasState": {
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": 1,
+            "brightness": 0,
+            "contrast": 1,
+            "labelPosition": "bottom-right"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/56d66b7e-f931-4cd0-afea-2fa1b7470c96"
+        },
+        {
+          "id": "b0c41b71-cb0b-4653-b058-21799135dd28",
+          "filename": "3.jpg",
+          "setKey": "set1",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:45:15.399586",
+          "canvasState": {
+            "position": {
+              "x": -233.5,
+              "y": 23.475270471113987
+            },
+            "scale": 1,
+            "brightness": 0,
+            "contrast": 1,
+            "labelPosition": "bottom-left"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/b0c41b71-cb0b-4653-b058-21799135dd28"
+        },
+        {
+          "id": "5d8a23af-ffcd-4974-9914-af27eb8697d4",
+          "filename": "9.jpg",
+          "setKey": "set1",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:45:15.402061",
+          "canvasState": {
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": 1.0,
+            "brightness": 0,
+            "contrast": 1.0,
+            "labelPosition": "bottom-left"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/5d8a23af-ffcd-4974-9914-af27eb8697d4"
+        },
+        {
+          "id": "f6f25a25-2c96-4b16-9367-021e05dcc4bf",
+          "filename": "4.jpg",
+          "setKey": "set1",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:45:15.400087",
+          "canvasState": {
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": 1.5915329347500005,
+            "brightness": 0,
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "sharpness": 30
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/f6f25a25-2c96-4b16-9367-021e05dcc4bf"
+        },
+        {
+          "id": "c55ce57a-399f-4556-a09d-21c31858bcf0",
+          "filename": "5.jpg",
+          "setKey": "set1",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:45:15.400404",
+          "canvasState": {
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": 1.0,
+            "brightness": 0,
+            "contrast": 1.0,
+            "labelPosition": "bottom-left"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/c55ce57a-399f-4556-a09d-21c31858bcf0"
+        }
+      ]
+    },
+    "set2": {
+      "title": "",
+      "photos": [
+        {
+          "id": "5dccea69-3256-4751-90ed-b584af2ce756",
+          "filename": "DSC_0094_Original.jpg",
+          "setKey": "set2",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:48:03.093088",
+          "canvasState": {
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": 1.0,
+            "brightness": 0,
+            "contrast": 1.0,
+            "labelPosition": "bottom-left"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/5dccea69-3256-4751-90ed-b584af2ce756"
+        },
+        {
+          "id": "93e22f1a-d9b7-4e3a-9584-5d2fd9eee7e2",
+          "filename": "circle-icon-symbol-design-illustration-vector.jpg",
+          "setKey": "set2",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T01:13:50.066902",
+          "canvasState": {
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": 1.0,
+            "brightness": 0,
+            "contrast": 1.0,
+            "labelPosition": "bottom-left"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/93e22f1a-d9b7-4e3a-9584-5d2fd9eee7e2"
+        },
+        {
+          "id": "aa37f162-fd18-4d38-9292-f91b472cc9f5",
+          "filename": "circle-icon-symbol-design-illustration-vector.jpg",
+          "setKey": "set2",
+          "sessionId": "4f6df2df-cacc-493e-b77b-c3986c6ace4f",
+          "uploadedAt": "2025-08-15T00:48:52.480823",
+          "canvasState": {
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "scale": 1.0,
+            "brightness": 0,
+            "contrast": 1.0,
+            "labelPosition": "bottom-left"
+          },
+          "url": "/api/photos/4f6df2df-cacc-493e-b77b-c3986c6ace4f/aa37f162-fd18-4d38-9292-f91b472cc9f5"
+        }
+      ]
+    }
+  }
+}
