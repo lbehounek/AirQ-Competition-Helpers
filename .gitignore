@@ -81,3 +81,9 @@ backend/storage/
 
 
 .vite
+
+deploy.conf
+public_html
+backend/photo-helper/venv/
+backend/photo-helper/.deps_installed
+backend/photo-helper/storage/
