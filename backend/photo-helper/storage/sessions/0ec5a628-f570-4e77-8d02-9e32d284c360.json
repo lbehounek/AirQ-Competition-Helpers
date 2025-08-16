@@ -1,8 +1,8 @@
 {
   "id": "0ec5a628-f570-4e77-8d02-9e32d284c360",
   "createdAt": "2025-08-16T17:12:37.342736",
-  "updatedAt": "2025-08-16T21:35:18.160103",
-  "version": 308,
+  "updatedAt": "2025-08-16T21:44:47.194742",
+  "version": 344,
   "mode": "track",
   "competition_name": "Memori\u00e1l Zde\u0148ka B\u011bhounka 2024 - PINK",
   "sets": {
@@ -35,14 +35,14 @@
           "uploadedAt": "2025-08-16T17:12:45.838459",
           "canvasState": {
             "position": {
-              "x": 0,
-              "y": 0
+              "x": -270.9370140526859,
+              "y": -64.61415472019374
             },
-            "scale": 1,
+            "scale": 1.771561000000001,
             "brightness": 0,
             "contrast": 1,
             "labelPosition": "bottom-left",
-            "sharpness": 0,
+            "sharpness": 30,
             "whiteBalance": {
               "temperature": 0,
               "tint": 0,
@@ -383,14 +383,14 @@
           "uploadedAt": "2025-08-16T17:12:45.838459",
           "canvasState": {
             "position": {
-              "x": 0,
-              "y": 0
+              "x": -270.9370140526859,
+              "y": -64.61415472019374
             },
-            "scale": 1,
+            "scale": 1.771561000000001,
             "brightness": 0,
             "contrast": 1,
             "labelPosition": "bottom-left",
-            "sharpness": 0,
+            "sharpness": 30,
             "whiteBalance": {
               "temperature": 0,
               "tint": 0,
