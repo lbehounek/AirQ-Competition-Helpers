@@ -42,6 +42,7 @@ interface PhotoGridApiProps {
   onFilesDropped?: (files: File[]) => void; // For uploading files to empty slots
   onPhotoMove?: (fromIndex: number, toIndex: number) => void; // For drag-and-drop reordering
   labelOffset?: number; // Offset for label sequence (e.g., set2 continues from where set1 left off)
+  customLabels?: string[]; // Custom labels to use instead of generated ones (for turning point mode)
 }
 
 interface GridSlot {
@@ -65,7 +66,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   onPhotoClick,
   onFilesDropped,
   onPhotoMove,
-  labelOffset = 0
+  labelOffset = 0,
+  customLabels
 }) => {
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
@@ -77,7 +79,10 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   
   // Create 9 grid slots (3x3)
   const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
-    const label = generateLabel(index, labelOffset); // Use dynamic labeling (letters or numbers) with dot
+    // Use custom labels if provided (for turning point mode), otherwise use generated labels
+    const label = customLabels && customLabels[index] 
+      ? customLabels[index] 
+      : generateLabel(index, labelOffset); // Use dynamic labeling (letters or numbers) with dot
     const photo = photoSet.photos[index] || null;
     
     return {

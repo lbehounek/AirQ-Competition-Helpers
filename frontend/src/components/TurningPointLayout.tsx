@@ -3,6 +3,7 @@ import { Box, Paper, Typography } from '@mui/material';
 import { DropZone } from './DropZone';
 import { PhotoGridApi } from './PhotoGridApi';
 import { useI18n } from '../contexts/I18nContext';
+import { generateTurningPointLabels } from '../utils/imageProcessing';
 
 interface ApiPhoto {
   id: string;
@@ -58,6 +59,10 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
 }) => {
   const { t } = useI18n();
 
+  // Calculate turning point labels
+  const totalPhotos = set1.photos.length + set2.photos.length;
+  const turningPointLabels = generateTurningPointLabels(totalPhotos);
+
   return (
     <Box>
       {/* Unified Drop Zone */}
@@ -96,6 +101,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
             onPhotoClick={(photo) => onPhotoClick(photo, 'set1')}
             onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set1', fromIndex, toIndex)}
             onFilesDropped={(files) => onFilesDropped(files)}
+            customLabels={turningPointLabels.set1}
           />
         </Paper>
       )}
@@ -116,6 +122,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
             onPhotoClick={(photo) => onPhotoClick(photo, 'set2')}
             onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set2', fromIndex, toIndex)}
             onFilesDropped={(files) => onFilesDropped(files)}
+            customLabels={turningPointLabels.set2}
           />
         </Paper>
       )}
