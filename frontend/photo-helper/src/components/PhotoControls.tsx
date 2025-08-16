@@ -138,32 +138,14 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     });
   };
 
-  // Debounced sharpness handler to reduce computational load
-  const debouncedSharpnessRef = useRef<NodeJS.Timeout>();
+  // Immediate sharpness handler - modern browsers handle this easily
   const handleSharpnessChange = useCallback((newSharpness: number) => {
     ensureEdited();
-    // Clear previous timeout
-    if (debouncedSharpnessRef.current) {
-      clearTimeout(debouncedSharpnessRef.current);
-    }
-    
-    // Set new timeout for debounced update
-    debouncedSharpnessRef.current = setTimeout(() => {
-      onUpdate({
-        ...photo.canvasState,
-        sharpness: newSharpness
-      });
-    }, 50); // 50ms delay - much more responsive
+    onUpdate({
+      ...photo.canvasState,
+      sharpness: newSharpness
+    });
   }, [onUpdate, photo.canvasState]);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (debouncedSharpnessRef.current) {
-        clearTimeout(debouncedSharpnessRef.current);
-      }
-    };
-  }, []);
 
   const handleWhiteBalanceTemperatureChange = (newTemperature: number) => {
     ensureEdited();

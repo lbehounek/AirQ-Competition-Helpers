@@ -1,8 +1,8 @@
 {
   "id": "0ec5a628-f570-4e77-8d02-9e32d284c360",
   "createdAt": "2025-08-16T17:12:37.342736",
-  "updatedAt": "2025-08-16T21:28:24.272257",
-  "version": 25,
+  "updatedAt": "2025-08-16T21:35:18.160103",
+  "version": 308,
   "mode": "track",
   "competition_name": "Memori\u00e1l Zde\u0148ka B\u011bhounka 2024 - PINK",
   "sets": {
@@ -38,10 +38,16 @@
               "x": 0,
               "y": 0
             },
-            "scale": 1.0,
+            "scale": 1,
             "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "sharpness": 0,
+            "whiteBalance": {
+              "temperature": 0,
+              "tint": 0,
+              "auto": false
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/0ccf2441-319c-4953-bf87-5d7a6d58dcb6"
         },
@@ -260,10 +266,15 @@
               "y": 0
             },
             "scale": 1,
-            "brightness": 0,
-            "contrast": 1,
+            "brightness": 18,
+            "contrast": 1.4,
             "labelPosition": "bottom-left",
-            "sharpness": 25
+            "sharpness": 60,
+            "whiteBalance": {
+              "temperature": -1,
+              "tint": 2,
+              "auto": false
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/34569bea-1da4-4ee8-abaa-72f756d74199"
         },
@@ -375,10 +386,16 @@
               "x": 0,
               "y": 0
             },
-            "scale": 1.0,
+            "scale": 1,
             "brightness": 0,
-            "contrast": 1.0,
-            "labelPosition": "bottom-left"
+            "contrast": 1,
+            "labelPosition": "bottom-left",
+            "sharpness": 0,
+            "whiteBalance": {
+              "temperature": 0,
+              "tint": 0,
+              "auto": false
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/0ccf2441-319c-4953-bf87-5d7a6d58dcb6"
         },
@@ -597,10 +614,15 @@
               "y": 0
             },
             "scale": 1,
-            "brightness": 0,
-            "contrast": 1,
+            "brightness": 18,
+            "contrast": 1.4,
             "labelPosition": "bottom-left",
-            "sharpness": 25
+            "sharpness": 60,
+            "whiteBalance": {
+              "temperature": -1,
+              "tint": 2,
+              "auto": false
+            }
           },
           "url": "/api/photos/0ec5a628-f570-4e77-8d02-9e32d284c360/34569bea-1da4-4ee8-abaa-72f756d74199"
         },
