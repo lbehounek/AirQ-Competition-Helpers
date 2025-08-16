@@ -91,10 +91,23 @@ class PhotoSession:
         self.updated_at = datetime.now()
         self.version = 1
         self.mode = "track"  # "track" or "turningpoint"
-        self.sets = {
+        # Separate storage for track and turning point photos
+        self.track_sets = {
             "set1": {"title": "", "photos": []},
             "set2": {"title": "", "photos": []}
         }
+        self.turningpoint_sets = {
+            "set1": {"title": "", "photos": []},
+            "set2": {"title": "", "photos": []}
+        }
+    
+    @property
+    def sets(self):
+        """Get the current sets based on mode"""
+        if self.mode == "turningpoint":
+            return self.turningpoint_sets
+        else:
+            return self.track_sets
         
     def to_dict(self):
         return {
@@ -103,7 +116,9 @@ class PhotoSession:
             "updatedAt": self.updated_at.isoformat(),
             "version": self.version,
             "mode": self.mode,
-            "sets": self.sets
+            "sets": self.sets,  # Current sets based on mode (for frontend compatibility)
+            "track_sets": self.track_sets,  # Save both sets to file
+            "turningpoint_sets": self.turningpoint_sets
         }
         
     def add_photo(self, photo: PhotoMetadata):
@@ -182,7 +197,17 @@ def load_session(session_id: str) -> Optional[PhotoSession]:
             session.version = data["version"]
             # Migration: add mode field if it doesn't exist (backward compatibility)
             session.mode = data.get("mode", "track")
-            session.sets = data["sets"]
+            
+            # Migration: handle old session structure vs new separate sets structure
+            if "track_sets" in data and "turningpoint_sets" in data:
+                # New structure - load both sets
+                session.track_sets = data["track_sets"]
+                session.turningpoint_sets = data["turningpoint_sets"]
+            else:
+                # Old structure - migrate existing sets to track_sets, leave turningpoint_sets empty
+                session.track_sets = data.get("sets", {"set1": {"title": "", "photos": []}, "set2": {"title": "", "photos": []}})
+                session.turningpoint_sets = {"set1": {"title": "", "photos": []}, "set2": {"title": "", "photos": []}}
+            
             sessions[session_id] = session
             return session
         except Exception as e:

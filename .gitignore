@@ -81,3 +81,8 @@ backend/storage/
 
 
 .vite
+
+.gitignore
+
+ukazky/
+deploy.conf
