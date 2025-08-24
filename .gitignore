@@ -81,12 +81,18 @@ pids
 *.tmp
 
 # Backend storage - runtime data, should not be in git
-backend/photo-helper/storage
+backend/storage/
+backend/photo-helper/storage/
 
-
+# Vite
 .vite
 
+# Project specific
 .gitignore
-
 ukazky/
 deploy.conf
+public_html
+
+# Backend photo-helper specific
+backend/photo-helper/venv/
+backend/photo-helper/.deps_installed
