@@ -445,6 +445,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [localPosition, setLocalPosition] = useState(photo.canvasState.position);
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
   const pendingUpdateRef = useRef<number | null>(null);
+  const lastMoveTimeRef = useRef<number>(0);
   
   // WebGL context management
   const webglManager = useWebGLContext();
@@ -656,6 +657,164 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     };
   }, [webglManager]);
 
+  // Document-level drag handling for better UX
+  useEffect(() => {
+    if (!isDragging || !canvasRef.current || !loadedImage) return;
+
+    // Throttled mouse move handler (60fps)
+    const handleDocumentMouseMove = (e: MouseEvent) => {
+      const now = Date.now();
+      if (now - lastMoveTimeRef.current < 16) return; // Throttle to ~60fps
+      lastMoveTimeRef.current = now;
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const rawX = e.clientX - rect.left;
+      const rawY = e.clientY - rect.top;
+      
+      // Option A: Clamp to canvas bounds for smooth edges
+      const x = Math.max(0, Math.min(rect.width, rawX));
+      const y = Math.max(0, Math.min(rect.height, rawY));
+
+      const deltaX = x - dragStart.x;
+      const deltaY = y - dragStart.y;
+
+      // Handle circle dragging
+      if (isDraggingCircle && photo.canvasState.circle) {
+        const scaleRatio = canvas.width / BASE_WIDTH;
+        const baseX = x / scaleRatio;
+        const baseY = y / scaleRatio;
+        
+        // Constrain circle to canvas bounds
+        const constrainedX = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH - photo.canvasState.circle.radius, baseX));
+        const constrainedY = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH / currentRatio.ratio - photo.canvasState.circle.radius, baseY));
+        
+        onUpdate({
+          ...photo.canvasState,
+          circle: {
+            ...photo.canvasState.circle,
+            x: constrainedX,
+            y: constrainedY
+          }
+        });
+        setDragStart({ x, y });
+        return;
+      }
+
+      // Convert deltas back to base coordinates for storage
+      const scaleRatio = canvas.width / BASE_WIDTH;
+      const baseDeltaX = deltaX / scaleRatio;
+      const baseDeltaY = deltaY / scaleRatio;
+      
+      // Calculate new position for each axis independently
+      const newPosition = {
+        x: localPosition.x + baseDeltaX,
+        y: localPosition.y + baseDeltaY
+      };
+
+      // Apply constraints in base coordinate system
+      const baseHeight = BASE_WIDTH / currentRatio.ratio;
+      const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, { width: BASE_WIDTH, height: baseHeight });
+      const minScaleX = BASE_WIDTH / croppedImage.width;
+      const minScaleY = baseHeight / croppedImage.height;
+      const minScale = Math.max(minScaleX, minScaleY);
+      const actualScale = Math.max(photo.canvasState.scale, minScale);
+      const scaledWidth = croppedImage.width * actualScale;
+      const scaledHeight = croppedImage.height * actualScale;
+
+      // Track which axes actually moved after constraints
+      let actualDeltaX = 0;
+      let actualDeltaY = 0;
+      
+      // Constrain X axis independently
+      if (scaledWidth > BASE_WIDTH) {
+        const maxX = scaledWidth - BASE_WIDTH;
+        const constrainedX = Math.max(-maxX, Math.min(0, newPosition.x));
+        actualDeltaX = constrainedX - localPosition.x;
+        newPosition.x = constrainedX;
+      } else {
+        newPosition.x = (BASE_WIDTH - scaledWidth) / 2;
+        actualDeltaX = 0;
+      }
+      
+      // Constrain Y axis independently
+      if (scaledHeight > baseHeight) {
+        const maxY = scaledHeight - baseHeight;
+        const constrainedY = Math.max(-maxY, Math.min(0, newPosition.y));
+        actualDeltaY = constrainedY - localPosition.y;
+        newPosition.y = constrainedY;
+      } else {
+        newPosition.y = (baseHeight - scaledHeight) / 2;
+        actualDeltaY = 0;
+      }
+
+      setLocalPosition(newPosition);
+      
+      // Only update dragStart for axes that actually moved
+      const newDragStart = {
+        x: actualDeltaX !== 0 ? x : dragStart.x,
+        y: actualDeltaY !== 0 ? y : dragStart.y
+      };
+      setDragStart(newDragStart);
+      
+      // Debounce API calls
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+      }
+      
+      pendingUpdateRef.current = setTimeout(() => {
+        onUpdate({ ...photo.canvasState, position: newPosition });
+      }, 30);
+    };
+
+    const handleDocumentMouseUp = () => {
+      if (pendingUpdateRef.current) {
+        clearTimeout(pendingUpdateRef.current);
+        onUpdate({ ...photo.canvasState, position: localPosition });
+      }
+      setIsDragging(false);
+      setIsDraggingCircle(false);
+      
+      // Restore text selection and cursor
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    // Prevent text selection and scrolling during drag
+    document.body.style.userSelect = 'none';
+    document.body.style.webkitUserSelect = 'none';
+    document.body.style.cursor = isDraggingCircle ? 'move' : 'grabbing';
+    
+    // Use pointer events for mouse and touch support (no added complexity)
+    document.addEventListener('pointermove', handleDocumentMouseMove as any);
+    document.addEventListener('pointerup', handleDocumentMouseUp);
+    document.addEventListener('pointercancel', handleDocumentMouseUp);
+    
+    // Prevent scrolling during drag
+    const preventScroll = (e: Event) => {
+      if (isDragging) e.preventDefault();
+    };
+    document.addEventListener('wheel', preventScroll, { passive: false });
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+
+    // Cleanup
+    return () => {
+      document.removeEventListener('pointermove', handleDocumentMouseMove as any);
+      document.removeEventListener('pointerup', handleDocumentMouseUp);
+      document.removeEventListener('pointercancel', handleDocumentMouseUp);
+      document.removeEventListener('wheel', preventScroll);
+      document.removeEventListener('touchmove', preventScroll);
+      
+      // Restore body styles
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+      document.body.style.cursor = '';
+    };
+  }, [isDragging, isDraggingCircle, dragStart, localPosition, loadedImage, photo.canvasState, currentRatio, onUpdate]);
+
   // Helper function to check if click is on circle
   const isClickOnCircle = (clickX: number, clickY: number): boolean => {
     if (!photo.canvasState.circle) return false;
@@ -685,6 +844,14 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const handleMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (size === 'grid') return; // No dragging in grid view
     if (!loadedImage || !photo?.canvasState) return;
+    
+    // Ignore if already dragging (prevents double-start race condition)
+    if (isDragging) return;
+    
+    // Clear any pending updates
+    if (pendingUpdateRef.current) {
+      clearTimeout(pendingUpdateRef.current);
+    }
 
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
@@ -723,118 +890,13 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     // Sync local position to current state to avoid stale position
     setLocalPosition(photo.canvasState.position);
     event.preventDefault();
+    
+    // Prevent browser's default drag-and-drop for images
+    event.nativeEvent.stopPropagation();
   };
 
-  const handleMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if ((!isDragging && !isDraggingCircle) || !loadedImage || !photo?.canvasState) return;
-
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    const deltaX = x - dragStart.x;
-    const deltaY = y - dragStart.y;
-
-    // Handle circle dragging
-    if (isDraggingCircle && photo.canvasState.circle) {
-      const baseCoords = canvasToBaseCoords(x, y);
-      // Constrain circle to canvas bounds
-      const constrainedX = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH - photo.canvasState.circle.radius, baseCoords.x));
-      const constrainedY = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH / currentRatio.ratio - photo.canvasState.circle.radius, baseCoords.y));
-      
-      onUpdate({
-        ...photo.canvasState,
-        circle: {
-          ...photo.canvasState.circle,
-          x: constrainedX,
-          y: constrainedY
-        }
-      });
-      setDragStart({ x, y });
-      return;
-    }
-
-    // Convert deltas back to base coordinates for storage
-    const scaleRatio = canvas.width / BASE_WIDTH;
-    const baseDeltaX = deltaX / scaleRatio;
-    const baseDeltaY = deltaY / scaleRatio;
-    
-    // Calculate new position for each axis independently
-    const newPosition = {
-      x: localPosition.x + baseDeltaX,
-      y: localPosition.y + baseDeltaY
-    };
-
-    // Apply constraints in base coordinate system
-    // Use base dimensions for cropping to match render logic
-    const baseHeight = BASE_WIDTH / currentRatio.ratio;
-    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, { width: BASE_WIDTH, height: baseHeight });
-    const minScaleX = BASE_WIDTH / croppedImage.width;
-    const minScaleY = baseHeight / croppedImage.height;
-    const minScale = Math.max(minScaleX, minScaleY);
-    const actualScale = Math.max(photo.canvasState.scale, minScale);
-    const scaledWidth = croppedImage.width * actualScale;
-    const scaledHeight = croppedImage.height * actualScale;
-
-    // Track which axes actually moved after constraints
-    let actualDeltaX = 0;
-    let actualDeltaY = 0;
-    
-    // Constrain X axis independently
-    if (scaledWidth > BASE_WIDTH) {
-      const maxX = scaledWidth - BASE_WIDTH;
-      const constrainedX = Math.max(-maxX, Math.min(0, newPosition.x));
-      actualDeltaX = constrainedX - localPosition.x;
-      newPosition.x = constrainedX;
-    } else {
-      // Center horizontally if image doesn't overflow
-      newPosition.x = (BASE_WIDTH - scaledWidth) / 2;
-      actualDeltaX = 0; // No movement allowed
-    }
-    
-    // Constrain Y axis independently
-    if (scaledHeight > baseHeight) {
-      const maxY = scaledHeight - baseHeight;
-      const constrainedY = Math.max(-maxY, Math.min(0, newPosition.y));
-      actualDeltaY = constrainedY - localPosition.y;
-      newPosition.y = constrainedY;
-    } else {
-      // Center vertically if image doesn't overflow
-      newPosition.y = (baseHeight - scaledHeight) / 2;
-      actualDeltaY = 0; // No movement allowed
-    }
-
-    setLocalPosition(newPosition);
-    
-    // Only update dragStart for axes that actually moved
-    // This allows continued movement on the free axis even when the other is constrained
-    const newDragStart = {
-      x: actualDeltaX !== 0 ? x : dragStart.x,
-      y: actualDeltaY !== 0 ? y : dragStart.y
-    };
-    setDragStart(newDragStart);
-    
-    // Debounce API calls - reduced to 30ms for more responsive feel
-    if (pendingUpdateRef.current) {
-      clearTimeout(pendingUpdateRef.current);
-    }
-    
-    pendingUpdateRef.current = setTimeout(() => {
-      onUpdate({ ...photo.canvasState, position: newPosition });
-    }, 30);
-  };
-
-  const handleMouseUp = () => {
-    if (isDragging) {
-      if (pendingUpdateRef.current) {
-        clearTimeout(pendingUpdateRef.current);
-      }
-      onUpdate({ ...photo.canvasState, position: localPosition });
-    }
-    setIsDragging(false);
-    setIsDraggingCircle(false);
-  };
+  // Note: handleMouseMove and handleMouseUp are now handled by document-level events in useEffect above
+  // This provides better UX as dragging continues even when mouse leaves the canvas
 
   const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
     if (size === 'grid') return; // Only allow zoom in modal view
@@ -971,10 +1033,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
           display: 'block'
         }}
         onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
+        onDragStart={(e) => e.preventDefault()} // Prevent browser's default image drag
       />
 
       {size === 'grid' && (
