@@ -412,10 +412,16 @@ function AppApi() {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
       <Container maxWidth="xl" sx={{ pt: 4 }}>
-        {/* Compact Header */}
-        <Paper elevation={2} sx={{ p: 2, mb: 3, background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
-          {/* Top Bar: Title left, Language right */}
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* Unified Header and Controls */}
+        <Paper elevation={2} sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
+          {/* Blue Header Section */}
+          <Box sx={{ 
+            p: 2, 
+            background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)',
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between' 
+          }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <FlightTakeoff sx={{ fontSize: 32, color: 'white', mr: 1.5 }} />
               <Typography variant="h5" component="h1" sx={{ color: 'white', fontWeight: 600 }}>
@@ -424,79 +430,82 @@ function AppApi() {
             </Box>
             <LanguageSwitcher compact />
           </Box>
-        </Paper>
 
-        {/* Compact Photo Configuration */}
-        <Paper elevation={1} sx={{ p: 1, mb: 2, borderRadius: 2 }}>
-          <Box sx={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
-            {/* Photo Mode */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                {t('mode.title')}
-              </Typography>
-              <ModeSelector 
-                currentMode={session?.mode || 'track'} 
-                onModeChange={updateSessionMode}
-                compact
-              />
-            </Box>
+          {/* White Content Section */}
+          <Box sx={{ bgcolor: 'background.paper' }}>
+            {/* Photo Configuration */}
+            <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Box sx={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+                {/* Photo Mode */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                    {t('mode.title')}
+                  </Typography>
+                  <ModeSelector 
+                    currentMode={session?.mode || 'track'} 
+                    onModeChange={updateSessionMode}
+                    compact
+                  />
+                </Box>
 
-            {/* Photo Format */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                {t('photoFormat.title')}
-              </Typography>
-              <AspectRatioSelector compact />
-            </Box>
+                {/* Photo Format */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                    {t('photoFormat.title')}
+                  </Typography>
+                  <AspectRatioSelector compact />
+                </Box>
 
-            {/* Photo Labels */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                {t('photoLabels.title')}
-              </Typography>
-              <LabelingSelector compact />
-            </Box>
+                {/* Photo Labels */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                    {t('photoLabels.title')}
+                  </Typography>
+                  <LabelingSelector compact />
+                </Box>
 
-            {/* Shuffle Photos - Only show in track mode */}
-            {session?.mode === 'track' && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                  {t('actions.title')}
-                </Typography>
-                <Button
-                  onClick={handleShuffle}
-                  disabled={loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1)}
-                  variant="outlined"
-                  size="small"
-                  startIcon={<Shuffle />}
-                  sx={{ 
-                    fontSize: '0.75rem',
-                    px: 1.5,
-                    py: 0.5,
-                    minWidth: 'auto'
-                  }}
-                >
-                  {t('actions.shuffle.name')}
-                </Button>
+                {/* Shuffle Photos - Only show in track mode */}
+                {session?.mode === 'track' && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                      {t('actions.title')}
+                    </Typography>
+                    <Button
+                      onClick={handleShuffle}
+                      disabled={loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1)}
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Shuffle />}
+                      sx={{ 
+                        fontSize: '0.75rem',
+                        px: 1.5,
+                        py: 0.5,
+                        minWidth: 'auto'
+                      }}
+                    >
+                      {t('actions.shuffle.name')}
+                    </Button>
+                  </Box>
+                )}
               </Box>
-            )}
-          </Box>
-        </Paper>
+            </Box>
 
-        {/* Competition Name Input */}
-        <Paper elevation={1} sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-              {t('competition.title')}
-            </Typography>
-            <EditableHeading
-              value={session?.competition_name || ''}
-              defaultValue={t('competition.defaultName')}
-              onChange={updateCompetitionName}
-              variant="h6"
-              color="text.primary"
-              placeholder={t('competition.placeholder')}
-            />
+            {/* Competition Name */}
+            <Box sx={{ p: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                  {t('competition.title')}
+                </Typography>
+                <EditableHeading
+                  value={session?.competition_name || ''}
+                  defaultValue={t('competition.defaultName')}
+                  onChange={updateCompetitionName}
+                  variant="h6"
+                  color="text.primary"
+                  placeholder={t('competition.placeholder')}
+                />
+              </Box>
+            </Box>
           </Box>
         </Paper>
 
