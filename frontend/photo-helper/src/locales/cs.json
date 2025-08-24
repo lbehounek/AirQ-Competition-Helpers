@@ -1,0 +1,188 @@
+{
+  "app": {
+    "title": "Foto Pomocník",
+    "subtitle": "Organizujte fotografie z navigačního letu do standardizovaných PDF rozvržení"
+  },
+  "navigation": {
+    "overview": "Přehled",
+    "statistics": "Statistiky"
+  },
+  "photoFormat": {
+    "title": "Formát fotografií:",
+    "aspectRatios": {
+      "3:2": {
+        "name": "3:2",
+        "description": "Standardní"
+      },
+      "4:3": {
+        "name": "4:3", 
+        "description": "Klasický"
+      },
+      "16:9": {
+        "name": "16:9",
+        "description": "Širokoúhlý"
+      }
+    }
+  },
+  "photoLabels": {
+    "title": "Popisky fotografií:",
+    "types": {
+      "letters": {
+        "name": "Písmena",
+        "description": "A, B, C..."
+      },
+      "numbers": {
+        "name": "Čísla", 
+        "description": "1, 2, 3..."
+      }
+    }
+  },
+  "mode": {
+    "title": "Režim fotek:",
+    "track": {
+      "name": "Fotky trati",
+      "description": "Standardní fotky navigačního letu s možností náhodného pořadí"
+    },
+    "turningpoint": {
+      "name": "Fotky otočných bodů", 
+      "description": "Sekvenční fotky otočných bodů (SP, TP1-TPx, FP)"
+    }
+  },
+  "turningpoint": {
+    "title": "Fotky otočných bodů",
+    "description": "{{count}}/{{max}} fotek nahráno",
+    "photos": "Fotky otočných bodů",
+    "page1": "Stránka 1",
+    "page2": "Stránka 2"
+  },
+  "competition": {
+    "title": "Soutěž:",
+    "placeholder": "Zadejte název soutěže...",
+    "defaultName": "Název soutěže"
+  },
+  "actions": {
+    "title": "Akce:",
+    "shuffle": {
+      "name": "Zamíchat",
+      "description": "Náhodné pořadí"
+    },
+    "generatePdf": "Vytvořit PDF",
+    "resetSession": "Obnovit relaci"
+  },
+  "sets": {
+    "set1": "Sada 1",
+    "set2": "Sada 2", 
+    "title": {
+      "placeholder": "Zadejte název pro {{setName}}..."
+    }
+  },
+  "upload": {
+    "dragDrop": "Přetáhněte fotografie sem",
+    "browse": "nebo klikněte pro procházení souborů",
+    "supported": "Podporované: JPEG, PNG (max {{maxSize}}MB každý)",
+    "clickOrDrop": "Klikněte nebo přetáhněte obrázky",
+    "dropImages": "Přetáhněte obrázky sem",
+    "maxFiles": "Maximálně {{count}} fotografií na sadu",
+    "currentCount": "{{current}}/{{max}} fotografií",
+    "processing": "Zpracovávání fotografií...",
+    "setFull": "{{setName}} je plná ({{current}}/{{max}} fotografií)",
+    "invalidFileType": "Neplatný typ souboru. Použijte pouze JPEG nebo PNG soubory.",
+    "dropPhotosHere": "Přetáhněte {{count}} {{photoText}} sem",
+    "photo": "fotografii",
+    "photos": "fotografií",
+    "slotsAvailable": "{{count}} {{slotText}} k dispozici",
+    "slot": "místo",
+    "slots": "míst"
+  },
+  "photo": {
+    "clickToEdit": "Klikněte pro úpravu",
+    "position": "Pozice {{position}}",
+    "loadingFailed": "Nepodařilo se načíst obrázek.",
+    "tryAgain": "Zkuste to znovu nebo nahrajte jiný soubor."
+  },
+  "controls": {
+    "imageAdjustments": "Úpravy obrázku",
+    "brightness": "Jas",
+    "contrast": "Kontrast", 
+    "sharpness": "Ostrost",
+    "whiteBalance": "Vyvážení bílé",
+    "temperature": "Teplota (Modrá ↔ Žlutá)",
+    "tint": "Odstín (Zelená ↔ Purpurová)",
+    "autoWhiteBalance": "Automatické vyvážení bílé",
+    "autoShort": "Auto",
+    "labelPosition": "Pozice popisku",
+    "resetAll": "Obnovit vše",
+    "preview": "Náhled",
+    "resetBrightness": "Obnovit jas",
+    "resetContrast": "Obnovit kontrast", 
+    "resetSharpness": "Obnovit ostrost",
+    "zoom": "Přiblížení",
+    "basicColor": "Základní barvy",
+    "resetZoom": "Obnovit přiblížení",
+    "resetTemperature": "Obnovit teplotu",
+    "resetTint": "Obnovit odstín",
+    "showOriginal": "Zobrazit originál",
+    "showEdited": "Zobrazit upravené",
+    "editPhoto": "Upravit fotografii {{label}}",
+    "photoLabel": "Fotografie {{label}}",
+    "zoomAndSharpness": "Přiblížení a ostrost",
+    "circleOverlay": "Kruhové označení",
+    "circleMode": {
+      "off": "VYPNUTO",
+      "on": "ZAPNUTO",
+      "clickToPlace": "Klikněte na fotografii pro umístění kruhu",
+      "radius": "Poloměr",
+      "color": "Barva",
+      "white": "Bílá",
+      "red": "Červená",
+      "yellow": "Žlutá",
+      "removeCircle": "Odstranit kruh"
+    }
+  },
+  "session": {
+    "created": "Relace vytvořena {{time}}",
+    "version": "Verze {{version}}",
+    "photos": "{{count}} fotografií",
+    "available": "{{count}} dostupných",
+    "loading": "Načítání dat relace...",
+    "connecting": "Připojování k backend serveru...",
+    "backendUnavailable": "Připojení k backend serveru selhalo",
+    "backendConnected": "Backend připojen",
+    "checkConnection": "Ujistěte se, že Python backend server běží.",
+    "retryConnection": "Opakovat připojení",
+    "sessionId": "ID relace: {{id}}",
+    "totalPhotos": "Celkem fotografií: {{count}}",
+    "setPhotos": "{{setName}}: {{current}}/{{max}}",
+    "noActiveSession": "Žádná aktivní relace",
+    "newSessionInfo": "Nová relace bude automaticky vytvořena při nahrání první fotografie.",
+    "preview": "Náhled",
+    "instructions": {
+      "title": "Vítejte v Foto Pomocníkovi!",
+      "subtitle": "Zde je návod, jak začít:",
+      "step1": "1. Nahrajte fotografie do Sady 1 a Sady 2 pomocí oblastí pro přetahování výše",
+      "step2": "2. Klikněte na libovolnou fotografii pro úpravu jasu, kontrastu, ořezu a pozice",
+      "step3": "3. Fotografie jsou automaticky označeny (A, B, C...) podle požadavků soutěže",
+      "step4": "4. Vygenerujte finální PDF, až budete připraveni - bude naformátováno pro tisk A4",
+      "tips": "💡 Tipy: Můžete přetahovat fotografie pro změnu pořadí a použít tlačítko zamíchat pro náhodné pořadí!"
+    }
+  },
+  "errors": {
+    "sessionNotFound": "Relace nenalezena",
+    "uploadFailed": "Nahrávání selhalo", 
+    "pdfGenerationFailed": "Vytvoření PDF selhalo",
+    "photoUpdateFailed": "Nepodařilo se aktualizovat fotografii",
+    "photoRemovalFailed": "Nepodařilo se odebrat fotografii",
+    "shuffleFailed": "Nepodařilo se zamíchat fotografie"
+  },
+  "common": {
+    "loading": "Načítání...",
+    "retry": "Opakovat",
+    "cancel": "Zrušit",
+    "close": "Zavřít",
+    "save": "Uložit",
+    "delete": "Smazat",
+    "edit": "Upravit",
+    "preview": "Náhled",
+    "selected": "Vybráno"
+  }
+}

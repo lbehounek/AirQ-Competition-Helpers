@@ -4,6 +4,7 @@ tmp/
 
 # Dependencies
 node_modules/
+venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -48,6 +49,9 @@ wheels/
 ehthumbs.db
 Thumbs.db
 
+# Build markers and artifacts
+.deps_installed
+
 # Logs
 logs
 *.log
@@ -78,6 +82,17 @@ pids
 
 # Backend storage - runtime data, should not be in git
 backend/storage/
+backend/photo-helper/storage/
 
-
+# Vite
 .vite
+
+# Project specific
+.gitignore
+ukazky/
+deploy.conf
+public_html
+
+# Backend photo-helper specific
+backend/photo-helper/venv/
+backend/photo-helper/.deps_installed
