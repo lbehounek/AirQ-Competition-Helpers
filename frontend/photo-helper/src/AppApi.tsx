@@ -28,6 +28,7 @@ import {
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
 import { DropZone } from './components/DropZone';
+import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
 import { EditableHeading } from './components/EditableHeading';
 import { PhotoEditorApi } from './components/PhotoEditorApi';
@@ -542,44 +543,50 @@ function AppApi() {
           <>
             {/* Set 1 Section */}
             <Box sx={{ mb: 6 }}>
-          {/* Set 1 Upload Area - Simple */}
-          <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-            <DropZone
-              onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
-              setName={t('sets.set1')}
-              currentPhotoCount={stats.set1Photos}
-              maxPhotos={9}
-              loading={loading}
-              error={error}
-            />
-          </Paper>
-
-          {/* Set 1 Photo Grid - Dominating Element */}
-          {stats.set1Photos > 0 && session && (
-            <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-              <Box sx={{ mb: 4 }}>
-                <EditableHeading
-                  value={session.sets.set1.title}
-                  defaultValue={t('sets.set1')}
-                  onChange={handleSet1TitleUpdate}
-                  variant="h4"
-                  color="primary"
-                />
-              </Box>
-              <PhotoGridApi
-                photoSet={session.sets.set1}
-                setKey="set1"
-                onPhotoUpdate={(photoId, canvasState) =>
-                  handlePhotoUpdate('set1', photoId, canvasState)
-                }
-                onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
-                onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
-                onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
-                onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
-              />
-            </Paper>
-          )}
-        </Box>
+              {stats.set1Photos === 0 ? (
+                /* Empty Set 1 - Show Grid-Sized DropZone */
+                <Paper elevation={3} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
+                  <Box sx={{ p: 4, pb: 2 }}>
+                    <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 4, textAlign: 'center' }}>
+                      {t('sets.set1')}
+                    </Typography>
+                  </Box>
+                  <GridSizedDropZone
+                    onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
+                    setName={t('sets.set1')}
+                    maxPhotos={9}
+                    loading={loading}
+                    error={error}
+                  />
+                </Paper>
+              ) : (
+                /* Set 1 has photos - Show normal grid */
+                session && (
+                  <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
+                    <Box sx={{ mb: 4 }}>
+                      <EditableHeading
+                        value={session.sets.set1.title}
+                        defaultValue={t('sets.set1')}
+                        onChange={handleSet1TitleUpdate}
+                        variant="h4"
+                        color="primary"
+                      />
+                    </Box>
+                    <PhotoGridApi
+                      photoSet={session.sets.set1}
+                      setKey="set1"
+                      onPhotoUpdate={(photoId, canvasState) =>
+                        handlePhotoUpdate('set1', photoId, canvasState)
+                      }
+                      onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
+                      onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
+                      onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
+                      onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
+                    />
+                  </Paper>
+                )
+              )}
+            </Box>
 
         {/* Horizontal Divider */}
         <Divider sx={{ my: 6, borderWidth: 2, '&::before, &::after': { borderWidth: '2px' } }}>
@@ -594,43 +601,49 @@ function AppApi() {
 
         {/* Set 2 Section */}
         <Box sx={{ mb: 6 }}>
-          {/* Set 2 Upload Area - Simple */}
-          <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
-            <DropZone
-              onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
-              setName={t('sets.set2')}
-              currentPhotoCount={stats.set2Photos}
-              maxPhotos={9}
-              loading={loading}
-              error={error}
-            />
-          </Paper>
-
-          {/* Set 2 Photo Grid - Dominating Element */}
-          {stats.set2Photos > 0 && session && (
-            <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-              <Box sx={{ mb: 4 }}>
-                <EditableHeading
-                  value={session.sets.set2.title}
-                  defaultValue={t('sets.set2')}
-                  onChange={(title) => updateSetTitle('set2', title)}
-                  variant="h4"
-                  color="primary"
-                />
+          {stats.set2Photos === 0 ? (
+            /* Empty Set 2 - Show Grid-Sized DropZone */
+            <Paper elevation={3} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
+              <Box sx={{ p: 4, pb: 2 }}>
+                <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 4, textAlign: 'center' }}>
+                  {t('sets.set2')}
+                </Typography>
               </Box>
-              <PhotoGridApi
-                photoSet={session.sets.set2}
-                setKey="set2"
-                labelOffset={session.sets.set1.photos.length} // Continue sequence from Set 1
-                onPhotoUpdate={(photoId, canvasState) =>
-                  handlePhotoUpdate('set2', photoId, canvasState)
-                }
-                onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
-                onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
-                onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
+              <GridSizedDropZone
                 onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
+                setName={t('sets.set2')}
+                maxPhotos={9}
+                loading={loading}
+                error={error}
               />
             </Paper>
+          ) : (
+            /* Set 2 has photos - Show normal grid */
+            session && (
+              <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
+                <Box sx={{ mb: 4 }}>
+                  <EditableHeading
+                    value={session.sets.set2.title}
+                    defaultValue={t('sets.set2')}
+                    onChange={(title) => updateSetTitle('set2', title)}
+                    variant="h4"
+                    color="primary"
+                  />
+                </Box>
+                <PhotoGridApi
+                  photoSet={session.sets.set2}
+                  setKey="set2"
+                  labelOffset={session.sets.set1.photos.length} // Continue sequence from Set 1
+                  onPhotoUpdate={(photoId, canvasState) =>
+                    handlePhotoUpdate('set2', photoId, canvasState)
+                  }
+                  onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
+                  onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
+                  onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
+                  onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
+                />
+              </Paper>
+            )
           )}
         </Box>
           </>
