@@ -508,7 +508,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Create a temporary canvas to analyze the image
     const tempCanvas = document.createElement('canvas');
-    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, canvasSize);
+    const baseHeight = BASE_WIDTH / currentRatio.ratio;
+    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, { width: BASE_WIDTH, height: baseHeight });
     tempCanvas.width = croppedImage.width;
     tempCanvas.height = croppedImage.height;
     const tempCtx = getCanvasContext(tempCanvas);
@@ -719,6 +720,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     // Normal photo dragging
     setIsDragging(true);
     setDragStart({ x, y });
+    // Sync local position to current state to avoid stale position
+    setLocalPosition(photo.canvasState.position);
     event.preventDefault();
   };
 
@@ -748,47 +751,78 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
           y: constrainedY
         }
       });
+      setDragStart({ x, y });
       return;
     }
 
     // Convert deltas back to base coordinates for storage
     const scaleRatio = canvas.width / BASE_WIDTH;
+    const baseDeltaX = deltaX / scaleRatio;
+    const baseDeltaY = deltaY / scaleRatio;
+    
+    // Calculate new position for each axis independently
     const newPosition = {
-      x: localPosition.x + (deltaX / scaleRatio),
-      y: localPosition.y + (deltaY / scaleRatio)
+      x: localPosition.x + baseDeltaX,
+      y: localPosition.y + baseDeltaY
     };
 
     // Apply constraints in base coordinate system
-    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, canvasSize);
+    // Use base dimensions for cropping to match render logic
+    const baseHeight = BASE_WIDTH / currentRatio.ratio;
+    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, { width: BASE_WIDTH, height: baseHeight });
     const minScaleX = BASE_WIDTH / croppedImage.width;
-    const minScaleY = canvasSize.height / croppedImage.height;
+    const minScaleY = baseHeight / croppedImage.height;
     const minScale = Math.max(minScaleX, minScaleY);
     const actualScale = Math.max(photo.canvasState.scale, minScale);
     const scaledWidth = croppedImage.width * actualScale;
     const scaledHeight = croppedImage.height * actualScale;
 
-    // Constrain in base coordinates (300x225)
+    // Track which axes actually moved after constraints
+    let actualDeltaX = 0;
+    let actualDeltaY = 0;
+    
+    // Constrain X axis independently
     if (scaledWidth > BASE_WIDTH) {
       const maxX = scaledWidth - BASE_WIDTH;
-      newPosition.x = Math.max(-maxX, Math.min(0, newPosition.x));
+      const constrainedX = Math.max(-maxX, Math.min(0, newPosition.x));
+      actualDeltaX = constrainedX - localPosition.x;
+      newPosition.x = constrainedX;
+    } else {
+      // Center horizontally if image doesn't overflow
+      newPosition.x = (BASE_WIDTH - scaledWidth) / 2;
+      actualDeltaX = 0; // No movement allowed
     }
     
-    if (scaledHeight > canvasSize.height) {
-      const maxY = scaledHeight - canvasSize.height;
-      newPosition.y = Math.max(-maxY, Math.min(0, newPosition.y));
+    // Constrain Y axis independently
+    if (scaledHeight > baseHeight) {
+      const maxY = scaledHeight - baseHeight;
+      const constrainedY = Math.max(-maxY, Math.min(0, newPosition.y));
+      actualDeltaY = constrainedY - localPosition.y;
+      newPosition.y = constrainedY;
+    } else {
+      // Center vertically if image doesn't overflow
+      newPosition.y = (baseHeight - scaledHeight) / 2;
+      actualDeltaY = 0; // No movement allowed
     }
 
     setLocalPosition(newPosition);
-    setDragStart({ x, y });
     
-    // Debounce API calls
+    // Only update dragStart for axes that actually moved
+    // This allows continued movement on the free axis even when the other is constrained
+    const newDragStart = {
+      x: actualDeltaX !== 0 ? x : dragStart.x,
+      y: actualDeltaY !== 0 ? y : dragStart.y
+    };
+    setDragStart(newDragStart);
+    
+    // Debounce API calls - reduced to 30ms for more responsive feel
     if (pendingUpdateRef.current) {
       clearTimeout(pendingUpdateRef.current);
     }
     
     pendingUpdateRef.current = setTimeout(() => {
       onUpdate({ ...photo.canvasState, position: newPosition });
-    }, 50);
+    }, 30);
   };
 
   const handleMouseUp = () => {
@@ -842,23 +876,31 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     };
 
     // Apply constraints in base coordinates
-    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, canvasSize);
+    // Use base dimensions for cropping to match render logic
+    const baseHeight = BASE_WIDTH / currentRatio.ratio;
+    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, { width: BASE_WIDTH, height: baseHeight });
     const minScaleX = BASE_WIDTH / croppedImage.width;
-    const minScaleY = canvasSize.height / croppedImage.height;
+    const minScaleY = baseHeight / croppedImage.height;
     const minScale = Math.max(minScaleX, minScaleY);
     const actualScale = Math.max(newScale, minScale);
     const scaledWidth = croppedImage.width * actualScale;
     const scaledHeight = croppedImage.height * actualScale;
 
-    // Constrain position
+    // Constrain position - both axes use base dimensions
     if (scaledWidth > BASE_WIDTH) {
       const maxX = scaledWidth - BASE_WIDTH;
       newPosition.x = Math.max(-maxX, Math.min(0, newPosition.x));
+    } else {
+      // Center horizontally if image doesn't overflow
+      newPosition.x = (BASE_WIDTH - scaledWidth) / 2;
     }
     
-    if (scaledHeight > canvasSize.height) {
-      const maxY = scaledHeight - canvasSize.height;
+    if (scaledHeight > baseHeight) {
+      const maxY = scaledHeight - baseHeight;
       newPosition.y = Math.max(-maxY, Math.min(0, newPosition.y));
+    } else {
+      // Center vertically if image doesn't overflow
+      newPosition.y = (baseHeight - scaledHeight) / 2;
     }
 
     // Update canvas state

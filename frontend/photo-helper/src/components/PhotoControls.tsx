@@ -124,29 +124,11 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     // If scale didn't actually change, don't update
     if (Math.abs(clampedScale - photo.canvasState.scale) < 0.01) return;
     
-    // Calculate center-based position adjustment for zoom
-    const oldScale = photo.canvasState.scale;
-    const scaleRatio = clampedScale / oldScale;
-    
-    // Base canvas dimensions - same as used in PhotoEditorApi
-    const canvasWidth = 300;
-    const canvasHeight = 225;
-    
-    // Calculate the center of the currently visible area
-    const visibleCenterX = -photo.canvasState.position.x + canvasWidth / 2;
-    const visibleCenterY = -photo.canvasState.position.y + canvasHeight / 2;
-    
-    // Calculate new position to keep the same center visible after scaling
-    const newPositionX = -(visibleCenterX * scaleRatio - canvasWidth / 2);
-    const newPositionY = -(visibleCenterY * scaleRatio - canvasHeight / 2);
-    
+    // Note: Position constraints are handled in PhotoEditorApi
+    // We just update the scale here and let the editor component handle positioning
     onUpdate({
       ...photo.canvasState,
-      scale: clampedScale,
-      position: {
-        x: newPositionX,
-        y: newPositionY
-      }
+      scale: clampedScale
     });
   };
 

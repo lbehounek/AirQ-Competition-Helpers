@@ -1,0 +1,483 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<kml xmlns:ns0="http://www.opengis.net/kml/2.2" xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom"><Document><Style id="leftCorridorStyle"><LineStyle><color>ff00ff00</color><width>2.0</width></LineStyle></Style><Style id="rightCorridorStyle"><LineStyle><color>ff00ff00</color><width>2.0</width></LineStyle></Style><Style id="distanceMarkerStyle"><LineStyle><color>ff0000ff</color><width>4.0</width></LineStyle></Style><Style id="originalTrackStyle"><LineStyle><color>ff00ffff</color><width>2.0</width></LineStyle></Style><ns0:Style id="myStyleLine">
+		<ns0:LineStyle>
+			<ns0:color>ff00ffff</ns0:color>
+			<ns0:width>2.0</ns0:width>
+		</ns0:LineStyle>
+	</ns0:Style>
+	<ns0:Style id="sh_target">
+		<ns0:IconStyle>
+			<ns0:color>ff00ffff</ns0:color>
+			<ns0:scale>0.8</ns0:scale>
+		<ns0:Icon>
+			<ns0:href>http://maps.google.com/mapfiles/kml/shapes/target.png</ns0:href>
+			</ns0:Icon>
+		</ns0:IconStyle>
+	<ns0:BalloonStyle>
+	</ns0:BalloonStyle>
+	<ns0:ListStyle>
+	</ns0:ListStyle>
+	</ns0:Style>
+	<ns0:Style id="sn_target">
+		<ns0:IconStyle>
+			<ns0:color>ff00ffff</ns0:color>
+			<ns0:scale>0.8</ns0:scale>
+		<ns0:Icon>
+			<ns0:href>http://maps.google.com/mapfiles/kml/shapes/target.png</ns0:href>
+			</ns0:Icon>
+		</ns0:IconStyle>
+	<ns0:BalloonStyle>
+	</ns0:BalloonStyle>
+	<ns0:ListStyle>
+	</ns0:ListStyle>
+	</ns0:Style>
+	<ns0:Style id="sn_ylw-pushpin">
+		<ns0:IconStyle>
+			<ns0:color>00ffffff</ns0:color>
+			<ns0:scale>1.1</ns0:scale>
+			<ns0:Icon>
+				<ns0:href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</ns0:href>
+			</ns0:Icon>
+			<ns0:hotSpot x="20" y="2" xunits="pixels" yunits="pixels" />
+		</ns0:IconStyle>
+	</ns0:Style>
+	<ns0:Style id="sh_ylw-pushpin">
+		<ns0:IconStyle>
+			<ns0:color>00ffffff</ns0:color>
+			<ns0:scale>1.3</ns0:scale>
+			<ns0:Icon>
+				<ns0:href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</ns0:href>
+			</ns0:Icon>
+			<ns0:hotSpot x="20" y="2" xunits="pixels" yunits="pixels" />
+		</ns0:IconStyle>
+	</ns0:Style>
+	<ns0:StyleMap id="msn_target">
+		<ns0:Pair>
+			<ns0:key>normal</ns0:key>
+			<ns0:styleUrl>#sn_target</ns0:styleUrl>
+		</ns0:Pair>
+			<ns0:Pair>
+			<ns0:key>highlight</ns0:key>
+			<ns0:styleUrl>#sh_target</ns0:styleUrl>
+		</ns0:Pair>
+	</ns0:StyleMap>
+	<ns0:StyleMap id="msn_ylw-pushpin">
+		<ns0:Pair>
+			<ns0:key>normal</ns0:key>
+			<ns0:styleUrl>#sn_ylw-pushpin</ns0:styleUrl>
+		</ns0:Pair>
+		<ns0:Pair>
+			<ns0:key>highlight</ns0:key>
+			<ns0:styleUrl>#sh_ylw-pushpin</ns0:styleUrl>
+		</ns0:Pair>
+	</ns0:StyleMap>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.12992,49.799635,0 14.996388,49.82263,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.996388,49.82263,0 14.85937,49.78865,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.85937,49.78865,0 14.854986,49.787619,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.850603,49.786587,0 14.84622,49.785555,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.841837,49.784523,0 14.837454,49.783491,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.833071,49.782459,0 14.828689,49.781427,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.824306,49.780394,0 14.819924,49.779361,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.815542,49.778328,0 14.811161,49.777295,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.806779,49.776262,0 14.802398,49.775229,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.798016,49.774195,0 14.793635,49.773161,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.789255,49.772127,0 14.784874,49.771093,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.780494,49.770059,0 14.776113,49.769025,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.771733,49.76799,0 14.767353,49.766955,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.762974,49.76592,0 14.758594,49.764885,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.754215,49.76385,0 14.749836,49.762815,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.749838,49.762815,0 14.634777,49.661419,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.634777,49.661419,0 14.802549,49.692514,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.802549,49.692514,0 14.839197,49.596255,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.839197,49.596255,0 15.086382,49.635212,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.086382,49.635212,0 15.021922,49.76028,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.021922,49.76028,0 15.028839,49.758366,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.035756,49.756452,0 15.042672,49.754537,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.049588,49.752621,0 15.056503,49.750706,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.063418,49.74879,0 15.070332,49.746873,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.077245,49.744956,0 15.084158,49.743039,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.091071,49.741121,0 15.097983,49.739203,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.104894,49.737284,0 15.111805,49.735365,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.118715,49.733446,0 15.125625,49.731526,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.132534,49.729606,0 15.139442,49.727685,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.14635,49.725764,0 15.153258,49.723843,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.160165,49.721921,0 15.167071,49.719998,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.173977,49.718075,0 15.180882,49.716152,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.187787,49.714229,0 15.194691,49.712304,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.194685,49.712306,0 15.197296,49.714339,0 15.199511,49.716397,0 15.201673,49.718478,0 15.203781,49.720583,0 15.205835,49.722711,0 15.207834,49.724861,0 15.209778,49.727032,0 15.211665,49.729224,0 15.213496,49.731437,0 15.21527,49.73367,0 15.216987,49.735922,0 15.218645,49.738192,0 15.220244,49.740481,0 15.221785,49.742787,0 15.223266,49.745109,0 15.224687,49.747448,0 15.226048,49.749802,0 15.227348,49.752171,0 15.228587,49.754554,0 15.229765,49.75695,0 15.230881,49.75936,0 15.231934,49.761781,0 15.232925,49.764214,0 15.233854,49.766658,0 15.234719,49.769112,0 15.235521,49.771576,0 15.236259,49.774048,0 15.236934,49.776529,0 15.237545,49.779017,0 15.238091,49.781511,0 15.238574,49.784012,0 15.238991,49.786518,0 15.239344,49.789029,0 15.239633,49.791544,0 15.239856,49.794062,0 15.240014,49.796583,0 15.240108,49.799106,0 15.240136,49.80163,0 15.2401,49.804154,0 15.239998,49.806678,0 15.239831,49.809202,0 15.239599,49.811724,0 15.239302,49.814243,0 15.23894,49.81676,0 15.238513,49.819273,0 15.238022,49.821781,0 15.237466,49.824285,0 15.236845,49.826782,0 15.23616,49.829273,0 15.23541,49.831758,0 15.234597,49.834234,0 15.233719,49.836701,0 15.232778,49.83916,0 15.231774,49.841608,0 15.230706,49.844046,0 15.229576,49.846473,0 15.228383,49.848887,0 15.227128,49.85129,0 15.225811,49.853678,0 15.224686,49.856053,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#msn_target</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>15.005147,49.800151,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.1332359077101,49.8076827199687,0 15.12992,49.799635,0 15.1266051918868,49.7915871858826,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.9997054839453,49.8306777199301,0 14.996388,49.82263,0 14.9930716170721,49.8145821858441,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.8547316485516,49.7964204527754,0 14.85937,49.78865,0 14.8640068610925,49.7808793615543,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.7443888945616,49.7703620761224,0 14.749838,49.762815,0 14.7552854068549,49.755267667708,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.6243980734175,49.6663398480363,0 14.634777,49.661419,0 14.6451538257516,49.656497223172,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.8060791533822,49.6845058715984,0 14.802549,49.692514,0 14.7990176856159,49.7005220215275,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>14.8267226456687,49.594263028265,0 14.839197,49.596255,0 14.8516723736755,49.598245629499,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.0893999862437,49.6271172620504,0 15.086382,49.635212,0 15.0833630128548,49.6433066598683,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.0341502542784,49.7629163715446,0 15.021922,49.76028,0 15.00969507493,49.757642343251,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.1848185908611,49.7176583419137,0 15.194685,49.712306,0 15.2045492329893,49.7069528189576,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.236708096594,49.8590985358344,0 15.224686,49.856053,0 15.2126654180592,49.8530062226797,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.2059648483799,49.810241432752,0 15.2034511716727,49.8094645538191,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:styleUrl>#myStyleLine</ns0:styleUrl>
+		<ns0:LineString>
+			<ns0:coordinates>15.1994870751043,49.8189704327499,0 15.1969729449582,49.818193553817,0 </ns0:coordinates>
+		</ns0:LineString>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>SP</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>15.12992</ns0:longitude>
+			<ns0:latitude>49.799635</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>15.13092,49.799635,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>TP 1</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>14.996388</ns0:longitude>
+			<ns0:latitude>49.82263</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>14.997388,49.82263,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>TP 2</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>14.85937</ns0:longitude>
+			<ns0:latitude>49.78865</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>14.86037,49.78865,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>TP 3</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>14.749838</ns0:longitude>
+			<ns0:latitude>49.762815</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>14.750838,49.762815,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>TP 4</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>14.634777</ns0:longitude>
+			<ns0:latitude>49.661419</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>14.635777,49.661419,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>TP 5</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>14.802549</ns0:longitude>
+			<ns0:latitude>49.692514</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>14.803549,49.692514,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>TP 6</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>14.839197</ns0:longitude>
+			<ns0:latitude>49.596255</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>14.840197,49.596255,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>TP 7</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>15.086382</ns0:longitude>
+			<ns0:latitude>49.635212</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>15.087382,49.635212,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>TP 8</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>15.021922</ns0:longitude>
+			<ns0:latitude>49.76028</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>15.022922,49.76028,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>TP 9</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>15.194685</ns0:longitude>
+			<ns0:latitude>49.712306</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>15.195685,49.712306,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+	<ns0:Placemark>
+		<ns0:name>FP</ns0:name>
+		<ns0:LookAt>
+			<ns0:longitude>15.224686</ns0:longitude>
+			<ns0:latitude>49.856053</ns0:latitude>
+		</ns0:LookAt>
+		<ns0:styleUrl>#msn_ylw-pushpin</ns0:styleUrl>
+		<ns0:Point>
+			<ns0:coordinates>15.225686,49.856053,0</ns0:coordinates>
+		</ns0:Point>
+	</ns0:Placemark>
+<Placemark><name>Left Corridor (300.0m) part 1</name><styleUrl>#leftCorridorStyle</styleUrl><LineString><coordinates>15.128842305306954,49.79702825631231,0.0 14.995313645133937,49.820023256312304,0.0</coordinates></LineString></Placemark><Placemark><name>Right Corridor (300.0m) part 1</name><styleUrl>#rightCorridorStyle</styleUrl><LineString><coordinates>15.13099775271431,49.802241743687695,0.0 14.997462412661958,49.82523674368769,0.0</coordinates></LineString></Placemark><Placemark><name>Left Corridor (300.0m) part 2</name><styleUrl>#leftCorridorStyle</styleUrl><LineString><coordinates>14.997887970008613,49.82011156916453,0.0 14.860873007511538,49.78613156916454,0.0</coordinates></LineString></Placemark><Placemark><name>Right Corridor (300.0m) part 2</name><styleUrl>#rightCorridorStyle</styleUrl><LineString><coordinates>14.994887951907963,49.82514843083546,0.0 14.857866914227786,49.79116843083546,0.0</coordinates></LineString></Placemark><Placemark><name>Left Corridor (300.0m) part 3</name><styleUrl>#leftCorridorStyle</styleUrl><LineString><coordinates>14.753203384287369,49.76121891682733,0.0 14.638142758596901,49.65982291682733,0.0</coordinates></LineString></Placemark><Placemark><name>Right Corridor (300.0m) part 3</name><styleUrl>#rightCorridorStyle</styleUrl><LineString><coordinates>14.746468504853702,49.76441108317267,0.0 14.631411130773992,49.663015083172674,0.0</coordinates></LineString></Placemark><Placemark><name>Left Corridor (300.0m) part 4</name><styleUrl>#leftCorridorStyle</styleUrl><LineString><coordinates>14.633629318428769,49.66401267427195,0.0 14.801405425742008,49.69510767427195,0.0</coordinates></LineString></Placemark><Placemark><name>Right Corridor (300.0m) part 4</name><styleUrl>#rightCorridorStyle</styleUrl><LineString><coordinates>14.635924620395038,49.65882532572805,0.0 14.803692513353155,49.68992032572805,0.0</coordinates></LineString></Placemark><Placemark><name>Left Corridor (300.0m) part 5</name><styleUrl>#leftCorridorStyle</styleUrl><LineString><coordinates>14.806598460115621,49.69315979245492,0.0 14.843242698531935,49.59690079245492,0.0</coordinates></LineString></Placemark><Placemark><name>Right Corridor (300.0m) part 5</name><styleUrl>#rightCorridorStyle</styleUrl><LineString><coordinates>14.798499593689316,49.691868207545085,0.0 14.835151355132744,49.59560920754508,0.0</coordinates></LineString></Placemark><Placemark><name>Left Corridor (300.0m) part 6</name><styleUrl>#leftCorridorStyle</styleUrl><LineString><coordinates>14.838213159363866,49.598876522506956,0.0 15.085404414580491,49.63783352250696,0.0</coordinates></LineString></Placemark><Placemark><name>Right Corridor (300.0m) part 6</name><styleUrl>#rightCorridorStyle</styleUrl><LineString><coordinates>14.840180787752304,49.59363347749304,0.0 15.087359532965063,49.632590477493046,0.0</coordinates></LineString></Placemark><Placemark><name>Left Corridor (300.0m) part 7</name><styleUrl>#leftCorridorStyle</styleUrl><LineString><coordinates>15.082430087548534,49.63435874260324,0.0 15.017965570333686,49.75942674260324,0.0</coordinates></LineString></Placemark><Placemark><name>Right Corridor (300.0m) part 7</name><styleUrl>#rightCorridorStyle</styleUrl><LineString><coordinates>15.090333981689664,49.636065257396766,0.0 15.02587849913359,49.761133257396764,0.0</coordinates></LineString></Placemark><Placemark><name>Left Corridor (300.0m) part 8</name><styleUrl>#leftCorridorStyle</styleUrl><LineString><coordinates>15.191476793619444,49.714024309506506,0.0 15.193970703068143,49.71597254427419,0.0 15.19606652490365,49.7179198449115,0.0 15.198189629848775,49.71996344557488,0.0 15.200259479280621,49.722030392522925,0.0 15.20227655981042,49.724120191126005,0.0 15.204239847309655,49.7262318343911,0.0 15.206148863490142,49.72836382440455,0.0 15.208001686097404,49.73051618763922,0.0 15.209799734788758,49.73268943278391,0.0 15.211541965911199,49.73488252180472,0.0 15.21322812910056,49.737094161223254,0.0 15.21485594256148,49.73932292441413,0.0 15.21642619206831,49.74157086786281,0.0 15.217939699039801,49.743835835254224,0.0 15.2193939026735,49.74611594025614,0.0 15.220789318810208,49.74841295657394,0.0 15.222125858882391,49.75072478898916,0.0 15.22340242855841,49.75305124192367,0.0 15.22461927496793,49.7553917961377,0.0 15.225776065906869,49.75774483420845,0.0 15.2268718284988,49.76011132326487,0.0 15.227905858965833,49.76248891801213,0.0 15.228879143232191,49.764878651328225,0.0 15.229791393027883,49.767278833011524,0.0 15.230640726664921,49.769688659514586,0.0 15.23142827550093,49.7721085600998,0.0 15.232153007767371,49.77453644936899,0.0 15.232815899529808,49.77697331272756,0.0 15.233415832548992,49.779416660049876,0.0 15.2339520091272,49.78186625619062,0.0 15.234426262352708,49.784322499660085,0.0 15.234835665729156,49.78678347262597,0.0 15.235182327159654,49.78925013034452,0.0 15.23546605320819,49.791720151890466,0.0 15.235684934379389,49.79419284029151,0.0 15.235840032251529,49.79666923176909,0.0 15.235932252213418,49.79914731609627,0.0 15.235959647438596,49.80162642174829,0.0 15.235924180751905,49.804105546763495,0.0 15.235823899766917,49.80658437071751,0.0 15.23565975833953,49.809063557577254,0.0 15.235431776520466,49.811540723482125,0.0 15.235139948051609,49.81401496516358,0.0 15.234784274821005,49.816487243952274,0.0 15.234364721483011,49.81895580387559,0.0 15.233882295678915,49.821419478100104,0.0 15.233336117659917,49.82387878120836,0.0 15.232726051180148,49.82633140950728,0.0 15.232053086712208,49.82877827673602,0.0 15.231316245365495,49.8312193486098,0.0 15.230517617657883,49.83365127944751,0.0 15.229655100496258,49.83607450493386,0.0 15.22873052968951,49.838490324517686,0.0 15.227744293160667,49.840894785635435,0.0 15.226695040903019,49.84328978017214,0.0 15.225584922201751,49.845673887082015,0.0 15.224412905731294,49.84804525050118,0.0 15.223179970480349,49.8504058385681,0.0 15.221842937949399,49.852830003904245,0.0 15.220690168763644,49.8552634371765,0.0</coordinates></LineString></Placemark><Placemark><name>Right Corridor (300.0m) part 8</name><styleUrl>#rightCorridorStyle</styleUrl><LineString><coordinates>15.197905092536162,49.71058369049351,0.0 15.200621185089421,49.712705455725825,0.0 15.20295536709257,49.71487415508851,0.0 15.205156263606636,49.71699255442512,0.0 15.207302415763515,49.71913560747708,0.0 15.209393336928867,49.721301808873996,0.0 15.211428051228484,49.723490165608894,0.0 15.213407036972164,49.72570017559545,0.0 15.215328216414111,49.72793181236079,0.0 15.217192169868476,49.73018456721609,0.0 15.218997940987354,49.73245747819528,0.0 15.22074578014898,49.73474983877676,0.0 15.222433969173998,49.73706107558586,0.0 15.224061722222606,49.73939113213719,0.0 15.22563021788062,49.74173816474577,0.0 15.227138017006334,49.74410205974386,0.0 15.22858460370671,49.74648304342607,0.0 15.229970066552305,49.748879211010845,0.0 15.231293499886311,49.75129075807633,0.0 15.232554656541884,49.75371620386231,0.0 15.233753868764927,49.75615516579155,0.0 15.234890109433197,49.75860867673514,0.0 15.235962082272632,49.76107308198788,0.0 15.236970801352571,49.76354934867178,0.0 15.237916554993596,49.76603716698848,0.0 15.23879722486657,49.76853534048543,0.0 15.239613679576488,49.771043439900204,0.0 15.240364950895438,49.77355955063102,0.0 15.241052062755644,49.776084687272416,0.0 15.241674133433976,49.77861733995013,0.0 15.242229960561867,49.78115574380938,0.0 15.242721711097829,49.78370150033992,0.0 15.243146311528815,49.78625252737403,0.0 15.243505653867166,49.78880786965548,0.0 15.243799931657959,49.791367848109545,0.0 15.244027054368008,49.793931159708485,0.0 15.244187960326812,49.796496768230924,0.0 15.244283744228971,49.79906468390373,0.0 15.244312352869573,49.80163357825173,0.0 15.24427582342073,49.8042024532365,0.0 15.244172108293194,49.806771629282494,0.0 15.24400225357073,49.80934044242274,0.0 15.24376623923244,49.811907276517886,0.0 15.243464071524935,49.81447103483641,0.0 15.243095748560304,49.81703275604775,0.0 15.242661305660354,49.81959019612441,0.0 15.242161735195019,49.822142521899885,0.0 15.241595916950416,49.82469121879165,0.0 15.240963987110847,49.827232590492734,0.0 15.240266955208245,49.829767723263984,0.0 15.239503800133065,49.83229665139019,0.0 15.238676431392511,49.8348167205525,0.0 15.23778295204108,49.83732749506614,0.0 15.236825526244381,49.83982967548232,0.0 15.235803766150973,49.84232121436457,0.0 15.2347170216952,49.844802219827855,0.0 15.23356714362209,49.847272112917985,0.0 15.232353163243046,49.849728749498816,0.0 15.231076101569766,49.8521741614319,0.0 15.229779131507,49.85452599609577,0.0 15.228681896361786,49.856842562823516,0.0</coordinates></LineString></Placemark><Placemark><name>5NM after SP</name><styleUrl>#distanceMarkerStyle</styleUrl><LineString><coordinates>15.004155454529705,49.818505408961734,0.0 15.006319050148853,49.823717655947846,0.0</coordinates></LineString></Placemark><Placemark><name>1NM after TP 1</name><styleUrl>#distanceMarkerStyle</styleUrl><LineString><coordinates>14.97378047686961,49.81414820189555,0.0 14.970787960815699,49.81918682955757,0.0</coordinates></LineString></Placemark><Placemark><name>1NM after TP 2</name><styleUrl>#distanceMarkerStyle</styleUrl><LineString><coordinates>14.83656462691949,49.78041000114667,0.0 14.833703351584349,49.785479800417065,0.0</coordinates></LineString></Placemark><Placemark><name>1NM after TP 4</name><styleUrl>#distanceMarkerStyle</styleUrl><LineString><coordinates>14.658355007178878,49.66861310585988,0.0 14.660659469354536,49.663427418710256,0.0</coordinates></LineString></Placemark><Placemark><name>1NM after TP 5</name><styleUrl>#distanceMarkerStyle</styleUrl><LineString><coordinates>14.812763803402541,49.67698990300458,0.0 14.804668117029532,49.67569704112994,0.0</coordinates></LineString></Placemark><Placemark><name>1NM after TP 6</name><styleUrl>#distanceMarkerStyle</styleUrl><LineString><coordinates>14.863166475284602,49.60283596595863,0.0 14.865147549993821,49.59759502309324,0.0</coordinates></LineString></Placemark><Placemark><name>1NM after TP 7</name><styleUrl>#distanceMarkerStyle</styleUrl><LineString><coordinates>15.074302962657422,49.65016230382329,0.0 15.082210552330194,49.65186662287582,0.0</coordinates></LineString></Placemark><Placemark><name>1NM after TP 8</name><styleUrl>#distanceMarkerStyle</styleUrl><LineString><coordinates>15.047263598426367,49.75620035673088,0.0 15.043975446496354,49.75124021357273,0.0</coordinates></LineString></Placemark></Document></kml>
