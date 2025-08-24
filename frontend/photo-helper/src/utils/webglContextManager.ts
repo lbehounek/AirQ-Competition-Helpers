@@ -20,7 +20,10 @@ class WebGLContextPool implements WebGLContextManager {
   
   constructor() {
     // Pre-warm the pool with one context for immediate availability
-    this.createContext();
+    const prewarmed = this.createContext();
+    if (prewarmed) {
+      this.availableContexts.push(prewarmed);
+    }
   }
 
   private createContext(): WebGLContext | null {

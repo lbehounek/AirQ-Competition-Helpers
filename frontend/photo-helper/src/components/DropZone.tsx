@@ -32,7 +32,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
   loading = false,
   error = null
 }) => {
-  const availableSlots = maxPhotos - currentPhotoCount;
+  const availableSlots = Math.max(0, maxPhotos - currentPhotoCount);
   const isDisabled = loading || availableSlots === 0;
   const { t } = useI18n();
 

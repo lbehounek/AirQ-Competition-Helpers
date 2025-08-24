@@ -47,6 +47,26 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 SESSION_EXPIRY_DAYS = 7
 MAX_PHOTOS_PER_SET = 9
 
+def secure_filename(filename: str) -> str:
+    """Return a secure version of a filename.
+
+    - Strips directory components
+    - Allows only letters, numbers, dash, underscore and dot
+    - Collapses spaces to underscores
+    - Ensures non-empty fallback
+    """
+    import re
+    # Drop any path components
+    filename = os.path.basename(filename or "")
+    # Normalize whitespace to underscores
+    filename = re.sub(r"\s+", "_", filename)
+    # Keep only safe characters
+    filename = re.sub(r"[^A-Za-z0-9._-]", "", filename)
+    # Prevent hidden or empty names
+    if not filename or set(filename) == {"."}:
+        filename = "file"
+    return filename
+
 class ReorderRequest(BaseModel):
     set_key: str      # 'set1' or 'set2'
     from_index: int   # Source position (0-8)  
@@ -164,12 +184,27 @@ sessions: Dict[str, PhotoSession] = {}
 
 def validate_image_file(file: UploadFile) -> bool:
     """Validate uploaded image file"""
-    if file.size > MAX_FILE_SIZE:
+    # Compute file size from underlying file object
+    try:
+        current_position = file.file.tell()
+    except Exception:
+        current_position = 0
+    try:
+        file.file.seek(0, os.SEEK_END)
+        computed_size = file.file.tell()
+    finally:
+        # Reset pointer for downstream consumers
+        try:
+            file.file.seek(current_position)
+        except Exception:
+            pass
+
+    if computed_size > MAX_FILE_SIZE:
         raise HTTPException(
-            status_code=413, 
+            status_code=413,
             detail=f"File too large. Max size: {MAX_FILE_SIZE // (1024*1024)}MB"
         )
-    
+
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -229,6 +264,10 @@ def load_session(session_id: str) -> Optional[PhotoSession]:
 async def root():
     return {"message": "AirQ Photo Organizer Backend", "status": "running"}
 
+@app.get("/api/health")
+async def health_check():
+    return {"message": "AirQ Photo Organizer Backend", "status": "running"}
+
 @app.post("/api/sessions")
 async def create_session():
     """Create a new photo session"""
@@ -264,40 +303,66 @@ async def upload_photos(
     session_photo_dir = PHOTOS_DIR / session_id
     session_photo_dir.mkdir(exist_ok=True)
     
+    # Preflight capacity check to avoid partial saves
+    current_count = len(session.sets[set_key]["photos"])
+    remaining_slots = MAX_PHOTOS_PER_SET - current_count
+    if len(files) > remaining_slots:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many photos for set {set_key}. Remaining slots: {remaining_slots}"
+        )
+
     uploaded_photos = []
-    
-    for file in files:
-        try:
+    written_paths = []
+
+    try:
+        for file in files:
             validate_image_file(file)
-            
+
             # Generate unique photo ID
             photo_id = str(uuid.uuid4())
-            photo = PhotoMetadata(photo_id, file.filename, set_key, session_id)
-            
+            safe_name = secure_filename(file.filename)
+            photo = PhotoMetadata(photo_id, safe_name, set_key, session_id)
+
+            # Ensure target path stays within the session photos directory
+            target_path = session_photo_dir / f"{photo_id}_{safe_name}"
+
             # Save file to disk
-            with open(photo.file_path, "wb") as buffer:
+            with open(target_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-            
+            written_paths.append(target_path)
+
             # Validate it's a real image by opening with PIL
             try:
-                with Image.open(photo.file_path) as img:
+                with Image.open(target_path) as img:
                     img.verify()
             except Exception:
-                # Delete invalid file
-                photo.file_path.unlink(missing_ok=True)
+                # Delete invalid file and abort
+                target_path.unlink(missing_ok=True)
                 raise HTTPException(status_code=400, detail=f"Invalid image file: {file.filename}")
-            
+
             # Add to session
             session.add_photo(photo)
             uploaded_photos.append(photo.to_dict())
-            
+
             logger.info(f"Uploaded photo {photo_id} to session {session_id}, set {set_key}")
-            
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to upload {file.filename}: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to upload {file.filename}")
+    except HTTPException:
+        # Cleanup any files written in this batch
+        for path in written_paths:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except Exception:
+                pass
+        raise
+    except Exception as e:
+        # Cleanup and return 500
+        for path in written_paths:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except Exception:
+                pass
+        logger.error(f"Failed to upload batch: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upload photos")
     
     save_session(session)
     
@@ -396,11 +461,14 @@ async def update_set_title(session_id: str, set_key: str, title: Dict[str, str])
 @app.put("/api/sessions/{session_id}/reorder")
 async def reorder_photos(session_id: str, reorder_data: ReorderRequest):
     """
-    Reorder photos in a set using metadata only - no photo files touched!
-    
-    Supports:
-    - Photo swapping (photo A ↔ photo B)
-    - Moving to empty slots (photo A → empty position)
+    Reorder photos with MOVE semantics (splice-like) using metadata only.
+
+    Behavior:
+    - Always MOVE the photo at from_index to to_index.
+    - Items between indices shift accordingly.
+    - Empty slots are preserved as gaps; the result is the same as
+      removing the item at from_index and inserting it at to_index in a
+      9-slot logical array, then compacting to remove gaps at the end.
     """
     session = load_session(session_id)
     if not session:
@@ -421,37 +489,33 @@ async def reorder_photos(session_id: str, reorder_data: ReorderRequest):
     if from_index == to_index:
         return {"message": "No change needed", "session": session.to_dict()}
     
-    # Get current photos array and extend to 9 slots
-    photos = session.sets[set_key].get("photos", [])
-    photo_slots = [None] * 9  # Create 9-slot array
-    
-    # Fill known positions
-    for i, photo in enumerate(photos):
+    # Build a 9-slot array representing grid positions
+    current = session.sets[set_key].get("photos", [])
+    slots = [None] * 9
+    for i, photo in enumerate(current):
         if i < 9:
-            photo_slots[i] = photo
-    
-    # Get source and target photos
-    source_photo = photo_slots[from_index]
-    target_photo = photo_slots[to_index]
-    
-    # Can't move from empty slot
-    if source_photo is None:
+            slots[i] = photo
+
+    # Validate there is a photo at from_index to move
+    moving = slots[from_index]
+    if moving is None:
         raise HTTPException(status_code=400, detail="Cannot move from empty position")
-    
-    # Perform the reorder operation
-    if target_photo is not None:
-        # Swap photos: A ↔ B
-        photo_slots[from_index] = target_photo
-        photo_slots[to_index] = source_photo
-        logger.info(f"Swapped photos: {from_index} ↔ {to_index}")
+
+    # Remove the moving item, create a compact list of existing items in order
+    compact: list = [p for i, p in enumerate(slots) if p is not None and i != from_index]
+
+    # Compute insertion index in the compact list based on move direction
+    # If moving forward (from_index < to_index), the compact list is shorter by one
+    # so we insert at to_index - 1; else insert at to_index
+    if from_index < to_index:
+        insert_idx = max(0, min(len(compact), to_index - 1))
     else:
-        # Move to empty: A → empty
-        photo_slots[from_index] = None
-        photo_slots[to_index] = source_photo
-        logger.info(f"Moved photo: {from_index} → {to_index}")
-    
-    # Update session with new order (filter out None values)
-    session.sets[set_key]["photos"] = [photo for photo in photo_slots if photo is not None]
+        insert_idx = max(0, min(len(compact), to_index))
+
+    compact.insert(insert_idx, moving)
+
+    # Persist back as a dense photos array (filtering out Nones)
+    session.sets[set_key]["photos"] = compact[:9]
     session.updated_at = datetime.now()
     session.version += 1
     
@@ -460,13 +524,13 @@ async def reorder_photos(session_id: str, reorder_data: ReorderRequest):
     
     logger.info(f"Photo reorder completed for session {session_id}, set {set_key}")
     return {
-        "message": "Photos reordered successfully",
+        "message": "Photos reordered successfully (move)",
         "session": session.to_dict(),
         "operation": {
             "set_key": set_key,
             "from_index": from_index,
             "to_index": to_index,
-            "type": "swap" if target_photo else "move"
+            "type": "move"
         }
     }
 

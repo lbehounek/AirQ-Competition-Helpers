@@ -1,9 +1,9 @@
 import pdfMake from 'pdfmake/build/pdfmake';
-// @ts-ignore
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 
-// Set up pdfMake with fonts - pdfFonts is the vfs object directly
-pdfMake.vfs = pdfFonts;
+// Wire pdfMake virtual file system
+// The vfs_fonts file exports the VFS object directly
+(pdfMake as any).vfs = pdfFonts;
 
 interface ApiPhoto {
   id: string;
@@ -63,7 +63,7 @@ export const generatePDF = async (
     }
   };
 
-  // Create photo grid for a set - FUCK TABLES, USE ABSOLUTE POSITIONING
+  // Create photo grid for a set - Use absolute positioning instead of table layout
   const createPhotoGrid = (photoSet: PhotoSet, setKey: 'set1' | 'set2') => {
     const content = [];
     

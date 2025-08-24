@@ -4,7 +4,7 @@
 
 import type { PhotoSession, Photo } from '../types';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta?.env?.VITE_API_BASE_URL || '';
 
 class ApiError extends Error {
   constructor(message: string, public status?: number, public response?: Response) {
@@ -214,7 +214,7 @@ export class PhotoOrganizerApi {
    */
   async healthCheck(): Promise<{ message: string; status: string }> {
     try {
-      const response = await fetch(`${this.baseUrl}/`);
+      const response = await fetch(`${this.baseUrl}/api/health`);
       return handleResponse(response);
     } catch (error) {
       throw new ApiError('Backend not available. Make sure the backend server is running.');

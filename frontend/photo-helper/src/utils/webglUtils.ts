@@ -22,7 +22,7 @@ const vertexShaderSource = `
   }
 `;
 
-// Fragment shader for sharpening effect
+// Fragment shader for sharpening effect (kept for reference; combined shader below supersedes)
 const sharpenFragmentShaderSource = `
   precision mediump float;
   uniform sampler2D u_image;
@@ -33,28 +33,22 @@ const sharpenFragmentShaderSource = `
   void main() {
     vec2 onePixel = vec2(1.0) / u_textureSize;
     
-    // Sample the center and surrounding pixels
     vec4 color = texture2D(u_image, v_texCoord);
     vec4 north = texture2D(u_image, v_texCoord + vec2(0.0, -onePixel.y));
     vec4 south = texture2D(u_image, v_texCoord + vec2(0.0, onePixel.y));
     vec4 east = texture2D(u_image, v_texCoord + vec2(onePixel.x, 0.0));
     vec4 west = texture2D(u_image, v_texCoord + vec2(-onePixel.x, 0.0));
     
-    // Apply sharpening kernel
-    // Center weight = 5 + sharpness, surrounding = -1 * sharpness/4
     float centerWeight = 1.0 + u_sharpness * 0.05;
     float edgeWeight = -u_sharpness * 0.0125;
     
-    vec4 sharpened = color * centerWeight + 
-                     (north + south + east + west) * edgeWeight;
-    
-    // Mix original and sharpened based on sharpness amount
+    vec4 sharpened = color * centerWeight + (north + south + east + west) * edgeWeight;
     float mixAmount = u_sharpness * 0.01;
     gl_FragColor = mix(color, sharpened, mixAmount);
   }
 `;
 
-// Fragment shader for combined effects (brightness, contrast, etc.)
+// Fragment shader for combined effects (brightness, contrast, white balance, sharpening)
 const combinedFragmentShaderSource = `
   precision mediump float;
   uniform sampler2D u_image;
@@ -62,32 +56,43 @@ const combinedFragmentShaderSource = `
   uniform float u_contrast;
   uniform float u_temperature;
   uniform float u_tint;
+  uniform float u_sharpness;
+  uniform vec2 u_textureSize;
   varying vec2 v_texCoord;
   
   void main() {
     vec4 color = texture2D(u_image, v_texCoord);
     
-    // Apply white balance (temperature and tint)
+    // White balance (temperature and tint)
     if (abs(u_temperature) > 0.01 || abs(u_tint) > 0.01) {
-      // Temperature: negative = blue, positive = yellow
       float tempAdjust = u_temperature * 0.015;
       color.r += tempAdjust;
       color.b -= tempAdjust;
-      
-      // Tint: negative = green, positive = magenta
       float tintAdjust = u_tint * 0.01;
       color.r += tintAdjust;
       color.g -= tintAdjust * 0.5;
       color.b += tintAdjust;
     }
     
-    // Apply contrast first, then brightness
+    // Contrast then brightness
     color.rgb = (color.rgb - 0.5) * u_contrast + 0.5;
     color.rgb += u_brightness * 0.01;
     
-    // Clamp values
-    color.rgb = clamp(color.rgb, 0.0, 1.0);
+    // Optional sharpening in texture space
+    if (u_sharpness > 0.0) {
+      vec2 onePixel = vec2(1.0) / u_textureSize;
+      vec4 north = texture2D(u_image, v_texCoord + vec2(0.0, -onePixel.y));
+      vec4 south = texture2D(u_image, v_texCoord + vec2(0.0, onePixel.y));
+      vec4 east = texture2D(u_image, v_texCoord + vec2(onePixel.x, 0.0));
+      vec4 west = texture2D(u_image, v_texCoord + vec2(-onePixel.x, 0.0));
+      float centerWeight = 1.0 + u_sharpness * 0.05;
+      float edgeWeight = -u_sharpness * 0.0125;
+      vec4 sharpened = color * centerWeight + (north + south + east + west) * edgeWeight;
+      float mixAmount = u_sharpness * 0.01;
+      color = mix(color, sharpened, mixAmount);
+    }
     
+    color.rgb = clamp(color.rgb, 0.0, 1.0);
     gl_FragColor = color;
   }
 `;
@@ -218,7 +223,11 @@ export function applyWebGLEffects(
     // Use the program
     gl.useProgram(program);
     
-    // Set viewport
+    // Ensure context size matches source to avoid scaling artifacts
+    if (canvas.width !== sourceCanvas.width || canvas.height !== sourceCanvas.height) {
+      canvas.width = sourceCanvas.width;
+      canvas.height = sourceCanvas.height;
+    }
     gl.viewport(0, 0, canvas.width, canvas.height);
     
     // Create texture from source canvas
@@ -253,13 +262,13 @@ export function applyWebGLEffects(
     const sharpnessLocation = gl.getUniformLocation(program, 'u_sharpness');
     const textureSizeLocation = gl.getUniformLocation(program, 'u_textureSize');
     
-    gl.uniform1i(imageLocation, 0);
-    gl.uniform1f(brightnessLocation, adjustments.brightness);
-    gl.uniform1f(contrastLocation, adjustments.contrast);
-    gl.uniform1f(temperatureLocation, adjustments.temperature);
-    gl.uniform1f(tintLocation, adjustments.tint);
-    gl.uniform1f(sharpnessLocation, adjustments.sharpness);
-    gl.uniform2f(textureSizeLocation, canvas.width, canvas.height);
+    if (imageLocation) gl.uniform1i(imageLocation, 0);
+    if (brightnessLocation) gl.uniform1f(brightnessLocation, adjustments.brightness);
+    if (contrastLocation) gl.uniform1f(contrastLocation, adjustments.contrast);
+    if (temperatureLocation) gl.uniform1f(temperatureLocation, adjustments.temperature);
+    if (tintLocation) gl.uniform1f(tintLocation, adjustments.tint);
+    if (sharpnessLocation) gl.uniform1f(sharpnessLocation, adjustments.sharpness);
+    if (textureSizeLocation) gl.uniform2f(textureSizeLocation, sourceCanvas.width, sourceCanvas.height);
     
     // Draw
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -305,9 +314,6 @@ export function isWebGLSupported(): boolean {
 
 // Factory function to create appropriate shader based on effects needed
 export function getFragmentShaderForEffects(includeSharpness: boolean = false): string {
-  if (includeSharpness) {
-    // If sharpness is needed, we need a separate pass or more complex shader
-    return sharpenFragmentShaderSource;
-  }
+  // Use the combined shader that supports all effects (including sharpening)
   return combinedFragmentShaderSource;
 }

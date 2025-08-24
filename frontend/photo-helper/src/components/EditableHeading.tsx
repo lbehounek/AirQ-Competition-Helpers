@@ -87,6 +87,7 @@ export const EditableHeading: React.FC<EditableHeadingProps> = ({
           size="small" 
           color="primary" 
           onClick={handleSave}
+          onMouseDown={(e) => e.preventDefault()}
           sx={{ p: 0.5 }}
         >
           <Check fontSize="small" />
@@ -94,6 +95,7 @@ export const EditableHeading: React.FC<EditableHeadingProps> = ({
         <IconButton 
           size="small" 
           onClick={handleCancel}
+          onMouseDown={(e) => e.preventDefault()}
           sx={{ p: 0.5 }}
         >
           <Close fontSize="small" />

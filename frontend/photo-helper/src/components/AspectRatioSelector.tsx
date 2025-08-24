@@ -61,7 +61,7 @@ export const AspectRatioSelector: React.FC<AspectRatioSelectorProps> = ({ compac
   }
 
   return (
-    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
+    <Box role="radiogroup" sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
       {ASPECT_RATIO_OPTIONS.map((option) => {
         const isSelected = currentRatio.id === option.id;
         
@@ -69,6 +69,15 @@ export const AspectRatioSelector: React.FC<AspectRatioSelectorProps> = ({ compac
           <Card
             key={option.id}
             onClick={() => handleCardClick(option)}
+            role="radio"
+            aria-checked={isSelected}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                if (e.key === ' ') e.preventDefault();
+                handleCardClick(option);
+              }
+            }}
             sx={{
               minWidth: 120,
               maxWidth: 140,
@@ -77,12 +86,12 @@ export const AspectRatioSelector: React.FC<AspectRatioSelectorProps> = ({ compac
               transition: 'all 0.2s ease-in-out',
               border: 2,
               borderColor: isSelected ? 'primary.main' : 'grey.300',
-              backgroundColor: isSelected ? 'primary.50' : 'background.paper',
+              backgroundColor: isSelected ? 'action.selected' : 'background.paper',
               transform: isSelected ? 'scale(1.02)' : 'scale(1)',
               boxShadow: isSelected ? 4 : 1,
               '&:hover': {
                 borderColor: isSelected ? 'primary.main' : 'primary.light',
-                backgroundColor: isSelected ? 'primary.50' : 'primary.25',
+                backgroundColor: isSelected ? 'action.selected' : 'action.hover',
                 transform: 'scale(1.02)',
                 boxShadow: 3
               }

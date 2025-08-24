@@ -161,7 +161,13 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
             {slot.photo ? (
               <Box
                 onClick={() => onPhotoClick && onPhotoClick(slot.photo!)}
-                sx={{ cursor: 'pointer', width: '100%', height: '100%', position: 'relative' }}
+                sx={{ 
+                  cursor: 'pointer', 
+                  width: '100%', 
+                  height: '100%', 
+                  position: 'relative',
+                  '&:hover .hover-overlay': { opacity: 1 }
+                }}
               >
                 <PhotoEditor
                   photo={slot.photo}
@@ -173,6 +179,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                 
                 {/* Hover overlay with delete button */}
                 <Box
+                  className="hover-overlay"
                   sx={{
                     position: 'absolute',
                     top: 0,
@@ -185,10 +192,7 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                     justifyContent: 'center',
                     opacity: 0,
                     transition: 'opacity 0.2s ease-in-out',
-                    pointerEvents: 'none',
-                    '&:hover': {
-                      opacity: 1
-                    }
+                    pointerEvents: 'none'
                   }}
                 >
                   {/* Delete button - top right corner, visible only on hover */}

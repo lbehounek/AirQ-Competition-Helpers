@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Typography, Paper, CircularProgress, IconButton } from '@mui/material';
+import { useTheme, alpha } from '@mui/material/styles';
 import { Image as ImageIcon, CloudUpload, Close } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { PhotoEditorApi } from './PhotoEditorApi';
@@ -69,6 +70,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   labelOffset = 0,
   customLabels
 }) => {
+  const theme = useTheme();
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
   const { t } = useI18n();
@@ -348,8 +350,10 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
     : 'grey.300';
   
   const bgColor = isDragActive 
-    ? (isDragAccept ? 'success.50' : (isDragReject ? 'error.50' : 'primary.50'))
-    : 'grey.50';
+    ? (isDragAccept 
+        ? alpha(theme.palette.success.main, 0.08)
+        : (isDragReject ? alpha(theme.palette.error.main, 0.08) : alpha(theme.palette.primary.main, 0.08)))
+    : theme.palette.grey[50];
 
   return (
     <Box
@@ -369,7 +373,7 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
         cursor: 'pointer',
         transition: 'all 0.2s ease-in-out',
         '&:hover': {
-          bgcolor: 'primary.50',
+          bgcolor: alpha(theme.palette.primary.main, 0.08),
           borderColor: 'primary.main',
           color: 'primary.main'
         }

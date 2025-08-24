@@ -222,6 +222,53 @@ export const usePhotoSession = (sessionId?: string) => {
   }, [currentSession, setCurrentSession]);
 
   /**
+   * Reorder photos within a set (swap or move). Keeps hook-managed persistence/state.
+   * Note: With current model (Photo[]), moving to an empty slot beyond current length
+   * is treated as moving to the end of the list.
+   */
+  const reorderSetPhotos = useCallback((
+    setKey: 'set1' | 'set2',
+    fromIndex: number,
+    toIndex: number
+  ) => {
+    const currentPhotos = currentSession.sets[setKey].photos;
+    if (
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= Math.min(9, currentPhotos.length) ||
+      toIndex >= 9
+    ) {
+      return;
+    }
+
+    const newPhotos = [...currentPhotos];
+
+    // If target is within current list length, perform swap/move via splice
+    if (toIndex < newPhotos.length) {
+      const [moved] = newPhotos.splice(fromIndex, 1);
+      newPhotos.splice(toIndex, 0, moved);
+    } else {
+      // Move to end if target beyond current length but within grid capacity
+      const [moved] = newPhotos.splice(fromIndex, 1);
+      newPhotos.push(moved);
+    }
+
+    const updatedSession = updateSessionVersion({
+      ...currentSession,
+      sets: {
+        ...currentSession.sets,
+        [setKey]: {
+          ...currentSession.sets[setKey],
+          photos: newPhotos
+        }
+      }
+    });
+
+    setCurrentSession(updatedSession);
+  }, [currentSession, setCurrentSession]);
+
+  /**
    * Reset session to empty state
    */
   const resetSession = useCallback(() => {
@@ -287,6 +334,7 @@ export const usePhotoSession = (sessionId?: string) => {
     removePhoto,
     updatePhotoState,
     updateSetTitle,
+    reorderSetPhotos,
     resetSession,
     loadSession,
     clearError,

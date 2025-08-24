@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { locales, DEFAULT_LOCALE } from '../locales';
+import { locales, DEFAULT_LOCALE, SUPPORTED_LOCALES } from '../locales';
 import type { Locale, Translation } from '../locales';
 
 interface I18nContextType {
@@ -32,10 +32,18 @@ interface I18nProviderProps {
 }
 
 export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
-  // Get initial locale from localStorage or use default
+  // Get initial locale from localStorage or use default (SSR-safe)
   const getInitialLocale = (): Locale => {
-    const stored = localStorage.getItem('app-locale');
-    return (stored as Locale) || DEFAULT_LOCALE;
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) {
+        return DEFAULT_LOCALE;
+      }
+      const stored = window.localStorage.getItem('app-locale');
+      const codes = SUPPORTED_LOCALES.map(l => l.code);
+      return stored && (codes as string[]).includes(stored) ? (stored as Locale) : DEFAULT_LOCALE;
+    } catch {
+      return DEFAULT_LOCALE;
+    }
   };
 
   const [locale, setLocaleState] = useState<Locale>(getInitialLocale);
@@ -47,9 +55,15 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
   }, [locale]);
 
   const setLocale = (newLocale: Locale) => {
-    setLocaleState(newLocale);
-    localStorage.setItem('app-locale', newLocale);
-    console.log(`🌍 Language changed to: ${newLocale}`);
+    const codes = SUPPORTED_LOCALES.map(l => l.code);
+    const safeLocale = (codes as string[]).includes(newLocale) ? newLocale : DEFAULT_LOCALE;
+    setLocaleState(safeLocale as Locale);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem('app-locale', safeLocale);
+      }
+    } catch {}
+    console.log(`🌍 Language changed to: ${safeLocale}`);
   };
 
   // Translation function with interpolation support

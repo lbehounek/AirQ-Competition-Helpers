@@ -46,7 +46,7 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ compact = fa
   }
 
   return (
-    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
+    <Box role="radiogroup" sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
       {SUPPORTED_LOCALES.map((lang) => {
         const isSelected = locale === lang.code;
         
@@ -54,6 +54,15 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ compact = fa
           <Card
             key={lang.code}
             onClick={() => handleLanguageClick(lang.code)}
+            role="radio"
+            aria-checked={isSelected}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                if (e.key === ' ') e.preventDefault();
+                handleLanguageClick(lang.code);
+              }
+            }}
             sx={{
               minWidth: 120,
               maxWidth: 140,
@@ -62,12 +71,12 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ compact = fa
               transition: 'all 0.2s ease-in-out',
               border: 2,
               borderColor: isSelected ? 'primary.main' : 'grey.300',
-              backgroundColor: isSelected ? 'primary.50' : 'background.paper',
+              backgroundColor: isSelected ? 'action.selected' : 'background.paper',
               transform: isSelected ? 'scale(1.02)' : 'scale(1)',
               boxShadow: isSelected ? 4 : 1,
               '&:hover': {
                 borderColor: isSelected ? 'primary.main' : 'primary.light',
-                backgroundColor: isSelected ? 'primary.50' : 'primary.25',
+                backgroundColor: isSelected ? 'action.selected' : 'action.hover',
                 transform: 'scale(1.02)',
                 boxShadow: 3
               }

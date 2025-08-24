@@ -184,12 +184,18 @@ export const constrainPosition = (
   const scaledWidth = imageSize.width * scale;
   const scaledHeight = imageSize.height * scale;
   
-  const maxX = canvasSize.width - scaledWidth;
-  const maxY = canvasSize.height - scaledHeight;
-  
+  const deltaX = canvasSize.width - scaledWidth;
+  const deltaY = canvasSize.height - scaledHeight;
+
+  // Clamp between lowerBound (min of 0 and delta) and upperBound (max of 0 and delta)
+  const minX = Math.min(0, deltaX);
+  const maxX = Math.max(0, deltaX);
+  const minY = Math.min(0, deltaY);
+  const maxY = Math.max(0, deltaY);
+
   return {
-    x: Math.min(0, Math.max(maxX, position.x)),
-    y: Math.min(0, Math.max(maxY, position.y))
+    x: Math.min(maxX, Math.max(minX, position.x)),
+    y: Math.min(maxY, Math.max(minY, position.y))
   };
 };
 

@@ -145,12 +145,12 @@ function AppApi() {
         label = turningPointLabels.set2[photoIndex] || 'X';
       }
     } else {
-      // Track mode: A, B, C, etc.
+      // Track mode: use labeling context (letters or numbers) with offset
       if (setKey === 'set1') {
-        label = String.fromCharCode(65 + photoIndex); // A, B, C, etc.
+        label = generateLabel(photoIndex);
       } else {
-        const set1Count = session?.sets.set1.photos.length || 0;
-        label = String.fromCharCode(65 + set1Count + photoIndex); // Continue from set1
+        const set1Count = session?.sets.set1?.photos?.length || 0;
+        label = generateLabel(photoIndex, set1Count); // Continue sequence from Set 1
       }
     }
 
@@ -214,11 +214,13 @@ function AppApi() {
       // Apply the new order by moving each photo to its shuffled position
       for (let i = 0; i < shuffled1.length; i++) {
         const currentPhoto = shuffled1[i];
-        const currentIndex = set1Photos.findIndex((p: any) => p.id === currentPhoto.id);
-        if (currentIndex !== i) {
-          await reorderPhotos('set1', currentIndex, i);
-          // Update the array to reflect the move for next iteration
-          [set1Photos[currentIndex], set1Photos[i]] = [set1Photos[i], set1Photos[currentIndex]];
+        const fromIndex = set1Photos.findIndex((p: any) => p.id === currentPhoto.id);
+        if (fromIndex !== i) {
+          await reorderPhotos('set1', fromIndex, i);
+          // Update the local array with move semantics
+          const [moved] = set1Photos.splice(fromIndex, 1);
+          const adjustedTo = fromIndex < i ? i - 1 : i;
+          set1Photos.splice(adjustedTo, 0, moved);
         }
       }
     }
@@ -234,11 +236,13 @@ function AppApi() {
       // Apply the new order by moving each photo to its shuffled position
       for (let i = 0; i < shuffled2.length; i++) {
         const currentPhoto = shuffled2[i];
-        const currentIndex = set2Photos.findIndex((p: any) => p.id === currentPhoto.id);
-        if (currentIndex !== i) {
-          await reorderPhotos('set2', currentIndex, i);
-          // Update the array to reflect the move for next iteration
-          [set2Photos[currentIndex], set2Photos[i]] = [set2Photos[i], set2Photos[currentIndex]];
+        const fromIndex = set2Photos.findIndex((p: any) => p.id === currentPhoto.id);
+        if (fromIndex !== i) {
+          await reorderPhotos('set2', fromIndex, i);
+          // Update the local array with move semantics
+          const [moved] = set2Photos.splice(fromIndex, 1);
+          const adjustedTo = fromIndex < i ? i - 1 : i;
+          set2Photos.splice(adjustedTo, 0, moved);
         }
       }
     }

@@ -461,7 +461,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   useEffect(() => {
     if (!photo.id) return;
 
-    const fullUrl = `http://localhost:8000/api/photos/${photo.sessionId || 'unknown'}/${photo.id}`;
+    const base = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
+    const fullUrl = `${base}/api/photos/${photo.sessionId || 'unknown'}/${photo.id}`;
     const img = new Image();
     img.crossOrigin = 'anonymous';
     

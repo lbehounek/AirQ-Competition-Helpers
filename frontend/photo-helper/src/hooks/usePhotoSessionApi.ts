@@ -27,7 +27,7 @@ export const usePhotoSessionApi = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backendAvailable, setBackendAvailable] = useState<boolean | null>(null); // null = checking
-  const [backendCheckTimeout, setBackendCheckTimeout] = useState<NodeJS.Timeout | null>(null);
+  const backendCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Use a ref to ensure we only initialize once
   const hasInitialized = useRef(false);
@@ -54,7 +54,7 @@ export const usePhotoSessionApi = () => {
       });
     }, 3000);
     
-    setBackendCheckTimeout(timeout);
+    backendCheckTimeoutRef.current = timeout;
     checkBackendHealth();
     
     return () => {
@@ -73,9 +73,9 @@ export const usePhotoSessionApi = () => {
     try {
       await api.healthCheck();
       // Clear any timeout if we get a response
-      if (backendCheckTimeout) {
-        clearTimeout(backendCheckTimeout);
-        setBackendCheckTimeout(null);
+      if (backendCheckTimeoutRef.current) {
+        clearTimeout(backendCheckTimeoutRef.current);
+        backendCheckTimeoutRef.current = null;
       }
       setBackendAvailable(true);
       setError(null);
@@ -272,50 +272,59 @@ export const usePhotoSessionApi = () => {
 
   const reorderPhotos = useCallback(async (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
     if (!sessionId || !backendAvailable || !session) return;
-    
-    // Immediate optimistic update for smooth UX
-    const newSession = { ...session };
-    const photos = [...newSession.sets[setKey].photos];
-    
-    // Ensure we have an array of 9 slots (some may be undefined)
-    const photoArray = new Array(9).fill(undefined);
-    photos.forEach((photo, index) => {
-      if (photo && index < 9) {
-        photoArray[index] = photo;
-      }
-    });
-    
-    // Get source and target photos
-    const sourcePhoto = photoArray[fromIndex];
-    const targetPhoto = photoArray[toIndex];
-    
-    if (!sourcePhoto) return; // Can't move from empty slot
-    
-    // Perform the swap or move
-    if (targetPhoto) {
-      // Swap photos
-      photoArray[fromIndex] = targetPhoto;
-      photoArray[toIndex] = sourcePhoto;
-    } else {
-      // Move to empty slot
-      photoArray[fromIndex] = undefined;
-      photoArray[toIndex] = sourcePhoto;
+
+    // Bounds and no-op checks
+    if (fromIndex === toIndex || fromIndex < 0 || fromIndex > 8 || toIndex < 0 || toIndex > 8) {
+      return;
     }
-    
-    // Update the session with the reordered photos (filter out undefined values)
-    newSession.sets[setKey].photos = photoArray.filter(photo => photo !== undefined);
-    
-    // Optimistic update - immediate UI response
+
+    // Capture immutable snapshot for revert
+    const previousSnapshot: ApiPhotoSession = JSON.parse(JSON.stringify(session));
+
+    // Clone only modified branch for optimistic update
+    const newSession: ApiPhotoSession = {
+      ...session,
+      sets: {
+        ...session.sets,
+        [setKey]: {
+          ...session.sets[setKey],
+          photos: [...session.sets[setKey].photos]
+        }
+      }
+    };
+
+    // Build 9-slot representation
+    const slots: (ApiPhoto | null)[] = Array(9).fill(null);
+    newSession.sets[setKey].photos.forEach((p, i) => {
+      if (i < 9) slots[i] = p as ApiPhoto;
+    });
+
+    const moving = slots[fromIndex];
+    if (!moving) return; // nothing to move
+
+    // Compact excluding fromIndex
+    const compact: ApiPhoto[] = [];
+    for (let i = 0; i < 9; i++) {
+      const p = slots[i];
+      if (p && i !== fromIndex) compact.push(p);
+    }
+
+    // Compute insertion index reflecting shift behavior
+    const insertIdx = fromIndex < toIndex ? Math.max(0, Math.min(compact.length, toIndex - 1)) : Math.max(0, Math.min(compact.length, toIndex));
+    compact.splice(insertIdx, 0, moving);
+
+    newSession.sets[setKey].photos = compact.slice(0, 9);
+
+    // Optimistic UI
     setSession(newSession);
-    
+
     try {
-      // Persist to backend
       const response = await api.reorderPhotos(sessionId, setKey, fromIndex, toIndex);
       setSession(response.session as ApiPhotoSession);
       console.log('✅ Photos reordered and persisted:', response.operation);
     } catch (err) {
-      // Revert optimistic update on error
-      setSession(session);
+      // Revert on error
+      setSession(previousSnapshot);
       const errorMessage = err instanceof ApiError ? err.message : 'Failed to reorder photos';
       setError(errorMessage);
       console.error('❌ Photo reorder failed:', err);

@@ -236,7 +236,9 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
    * Reset to default state
    */
   const handleReset = () => {
+    if (!photo?.canvasState) return;
     onUpdate({
+      ...photo.canvasState,
       position: { x: 0, y: 0 },
       scale: 1,
       brightness: 0,
