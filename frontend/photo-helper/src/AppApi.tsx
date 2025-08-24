@@ -245,6 +245,22 @@ function AppApi() {
     console.log('✨ Photo shuffle completed!');
   };
 
+  // Auto-prefill logic for track mode set titles
+  const handleSet1TitleUpdate = (title: string) => {
+    console.log('Set1 title updated to:', title);
+    updateSetTitle('set1', title);
+    
+    // Auto-prefill set2 title if set1 follows turning point pattern
+    const match = title.match(/^SP\s*-\s*TP(\d+)$/i);
+    console.log('Pattern match result:', match);
+    if (match) {
+      const tpNumber = match[1];
+      const newSet2Title = `TP${tpNumber} - FP`;
+      console.log('Auto-prefilling set2 title to:', newSet2Title);
+      updateSetTitle('set2', newSet2Title);
+    }
+  };
+
   const handleGeneratePDF = async () => {
     if (!session || !sessionId) {
       console.error('No session available for PDF generation');
@@ -536,7 +552,7 @@ function AppApi() {
                 <EditableHeading
                   value={session.sets.set1.title}
                   defaultValue={t('sets.set1')}
-                  onChange={(title) => updateSetTitle('set1', title)}
+                  onChange={handleSet1TitleUpdate}
                   variant="h4"
                   color="primary"
                 />
