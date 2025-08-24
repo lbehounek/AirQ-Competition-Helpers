@@ -4,18 +4,46 @@ import {
   Card,
   CardContent,
   Typography,
-  Chip
+  Chip,
+  ButtonGroup,
+  Button
 } from '@mui/material';
 
 import { useI18n } from '../contexts/I18nContext';
 import { SUPPORTED_LOCALES } from '../locales';
 
-export const LanguageSwitcher: React.FC = () => {
+interface LanguageSwitcherProps {
+  compact?: boolean;
+}
+
+export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ compact = false }) => {
   const { locale, setLocale } = useI18n();
 
   const handleLanguageClick = (newLocale: typeof locale) => {
     setLocale(newLocale);
   };
+
+  if (compact) {
+    return (
+      <ButtonGroup size="small" variant="outlined">
+        {SUPPORTED_LOCALES.map((lang) => (
+          <Button
+            key={lang.code}
+            onClick={() => handleLanguageClick(lang.code)}
+            variant={locale === lang.code ? 'contained' : 'outlined'}
+            sx={{ 
+              fontSize: '0.75rem',
+              px: 1.5,
+              py: 0.5,
+              minWidth: 'auto'
+            }}
+          >
+            {lang.flag} {lang.code.toUpperCase()}
+          </Button>
+        ))}
+      </ButtonGroup>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>

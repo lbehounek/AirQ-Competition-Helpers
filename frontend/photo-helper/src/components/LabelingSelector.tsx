@@ -51,7 +51,7 @@ export const LabelingSelector: React.FC<LabelingSelectorProps> = ({ compact = fa
               minWidth: 'auto'
             }}
           >
-            {t(`photoLabels.labelingTypes.${option.id}.name`)}
+            {t(`photoLabels.types.${option.id}.name`)}
           </Button>
         ))}
       </ButtonGroup>

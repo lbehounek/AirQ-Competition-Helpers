@@ -406,7 +406,7 @@ function AppApi() {
                 {t('app.title')}
               </Typography>
             </Box>
-            <LanguageSwitcher />
+            <LanguageSwitcher compact />
           </Box>
         </Paper>
 
@@ -443,65 +443,25 @@ function AppApi() {
 
             {/* Shuffle Photos - Only show in track mode */}
             {session?.mode === 'track' && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                   {t('actions.title')}
                 </Typography>
-              <Card
-                onClick={handleShuffle}
-                sx={{
-                  minWidth: 120,
-                  maxWidth: 140,
-                  height: 70,
-                  cursor: loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1) ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.2s ease-in-out',
-                  border: 2,
-                  borderColor: 'grey.300',
-                  backgroundColor: 'background.paper',
-                  opacity: loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1) ? 0.5 : 1,
-                  transform: 'scale(1)',
-                  boxShadow: 1,
-                  '&:hover': !loading && session && (session.sets.set1.photos.length > 1 || session.sets.set2.photos.length > 1) ? {
-                    borderColor: 'primary.light',
-                    backgroundColor: 'primary.25',
-                    transform: 'scale(1.02)',
-                    boxShadow: 3
-                  } : {}
-                }}
-              >
-                <CardContent sx={{ textAlign: 'center', py: 1, px: 1 }}>
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    mb: 0.25,
-                    color: 'text.secondary'
-                  }}>
-                    <Shuffle />
-                  </Box>
-                  
-                  <Typography 
-                    variant="subtitle2" 
-                    component="div" 
-                    sx={{ 
-                      fontWeight: 600,
-                      color: 'text.primary',
-                      mb: 0.1,
-                      fontSize: '0.875rem'
-                    }}
-                  >
-                    {t('actions.shuffle.name')}
-                  </Typography>
-                  
-                  <Typography 
-                    variant="caption" 
-                    color="text.secondary"
-                    sx={{ fontSize: '0.7rem', lineHeight: 1.2 }}
-                  >
-                    {t('actions.shuffle.description')}
-                  </Typography>
-                </CardContent>
-              </Card>
+                <Button
+                  onClick={handleShuffle}
+                  disabled={loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1)}
+                  variant="outlined"
+                  size="small"
+                  startIcon={<Shuffle />}
+                  sx={{ 
+                    fontSize: '0.75rem',
+                    px: 1.5,
+                    py: 0.5,
+                    minWidth: 'auto'
+                  }}
+                >
+                  {t('actions.shuffle.name')}
+                </Button>
               </Box>
             )}
           </Box>
