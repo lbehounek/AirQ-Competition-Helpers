@@ -118,6 +118,13 @@ function AppApi() {
 
   const stats = getSessionStats();
 
+  // Log relation ID to console (removed from UI)
+  useEffect(() => {
+    if (sessionId) {
+      console.log('Session ID:', sessionId);
+    }
+  }, [sessionId]);
+
   const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
     const setPhotos = session?.sets[setKey].photos || [];
     const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
@@ -389,100 +396,49 @@ function AppApi() {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
       <Container maxWidth="xl" sx={{ pt: 4 }}>
-        {/* Header */}
-        <Paper elevation={2} sx={{ p: 4, mb: 4, textAlign: 'center', background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
-            <FlightTakeoff sx={{ fontSize: 40, color: 'white', mr: 2 }} />
-            <Typography variant="h3" component="h1" sx={{ color: 'white', fontWeight: 600 }}>
-              {t('app.title')}
-            </Typography>
-          </Box>
-          <Typography variant="h6" sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 2 }}>
-            {t('app.subtitle')}
-          </Typography>
-          
-          {/* Language Switcher */}
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', mb: 1.5 }}>
-              Language / Jazyk
-            </Typography>
+        {/* Compact Header */}
+        <Paper elevation={2} sx={{ p: 2, mb: 3, background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
+          {/* Top Bar: Title left, Language right */}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <FlightTakeoff sx={{ fontSize: 32, color: 'white', mr: 1.5 }} />
+              <Typography variant="h5" component="h1" sx={{ color: 'white', fontWeight: 600 }}>
+                {t('app.title')}
+              </Typography>
+            </Box>
             <LanguageSwitcher />
-          </Box>
-          
-          {/* Session Info */}
-          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
-            <Chip
-              label={t('session.sessionId', { id: sessionId.substring(0, 8) + '...' })}
-              color="secondary"
-              variant="filled"
-              size="small"
-            />
-            <Chip
-              label={`🟢 ${t('session.backendConnected')}`}
-              color="success"
-              variant="filled"
-              size="small"
-            />
-          </Box>
-
-          {/* Session Stats */}
-          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, flexWrap: 'wrap' }}>
-            <Chip
-              label={t('session.totalPhotos', { count: `${stats.totalPhotos}/18` })}
-              color="secondary"
-              variant="filled"
-            />
-            <Chip
-              label={t('session.setPhotos', { setName: t('sets.set1'), current: stats.set1Photos, max: 9 })}
-              color={stats.set1Photos === 9 ? 'success' : 'default'}
-              variant="outlined"
-              sx={{ bgcolor: 'rgba(255, 255, 255, 0.9)' }}
-            />
-            <Chip
-              label={t('session.setPhotos', { setName: t('sets.set2'), current: stats.set2Photos, max: 9 })}
-              color={stats.set2Photos === 9 ? 'success' : 'default'}
-              variant="outlined"
-              sx={{ bgcolor: 'rgba(255, 255, 255, 0.9)' }}
-            />
-            {stats.isComplete && (
-              <Chip
-                icon={<CheckCircle />}
-                label="Complete"
-                color="success"
-                variant="filled"
-              />
-            )}
           </Box>
         </Paper>
 
-        {/* Photo Configuration */}
-        <Paper elevation={1} sx={{ p: 1.5, mb: 2, borderRadius: 2 }}>
-          <Box sx={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+        {/* Compact Photo Configuration */}
+        <Paper elevation={1} sx={{ p: 1, mb: 2, borderRadius: 2 }}>
+          <Box sx={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
             {/* Photo Mode */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                 {t('mode.title')}
               </Typography>
               <ModeSelector 
                 currentMode={session?.mode || 'track'} 
                 onModeChange={updateSessionMode}
+                compact
               />
             </Box>
 
             {/* Photo Format */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                 {t('photoFormat.title')}
               </Typography>
-              <AspectRatioSelector />
+              <AspectRatioSelector compact />
             </Box>
 
             {/* Photo Labels */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                 {t('photoLabels.title')}
               </Typography>
-              <LabelingSelector />
+              <LabelingSelector compact />
             </Box>
 
             {/* Shuffle Photos - Only show in track mode */}

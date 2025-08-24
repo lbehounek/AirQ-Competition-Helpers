@@ -4,11 +4,17 @@ import {
   Card,
   CardContent,
   Typography,
-  Chip
+  Chip,
+  ButtonGroup,
+  Button
 } from '@mui/material';
 import { AspectRatio, CameraAlt, PhotoCamera, Tv } from '@mui/icons-material';
 import { useAspectRatio, ASPECT_RATIO_OPTIONS } from '../contexts/AspectRatioContext';
 import { useI18n } from '../contexts/I18nContext';
+
+interface AspectRatioSelectorProps {
+  compact?: boolean;
+}
 
 const getFormatIcon = (id: string) => {
   switch (id) {
@@ -23,13 +29,36 @@ const getFormatIcon = (id: string) => {
   }
 };
 
-export const AspectRatioSelector: React.FC = () => {
+export const AspectRatioSelector: React.FC<AspectRatioSelectorProps> = ({ compact = false }) => {
   const { currentRatio, setAspectRatio } = useAspectRatio();
   const { t } = useI18n();
 
   const handleCardClick = (option: typeof ASPECT_RATIO_OPTIONS[0]) => {
     setAspectRatio(option);
   };
+
+  if (compact) {
+    return (
+      <ButtonGroup size="small" variant="outlined">
+        {ASPECT_RATIO_OPTIONS.map((option) => (
+          <Button
+            key={option.id}
+            onClick={() => handleCardClick(option)}
+            variant={currentRatio.id === option.id ? 'contained' : 'outlined'}
+            startIcon={getFormatIcon(option.id)}
+            sx={{ 
+              fontSize: '0.75rem',
+              px: 1.5,
+              py: 0.5,
+              minWidth: 'auto'
+            }}
+          >
+            {option.id}
+          </Button>
+        ))}
+      </ButtonGroup>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>

@@ -4,7 +4,9 @@ import {
   Card,
   CardContent,
   Typography,
-  Chip
+  Chip,
+  ButtonGroup,
+  Button
 } from '@mui/material';
 import { Route, TurnRight } from '@mui/icons-material';
 import { useI18n } from '../contexts/I18nContext';
@@ -12,6 +14,7 @@ import { useI18n } from '../contexts/I18nContext';
 interface ModeSelectorProps {
   currentMode: 'track' | 'turningpoint';
   onModeChange: (mode: 'track' | 'turningpoint') => void;
+  compact?: boolean;
 }
 
 const MODE_OPTIONS = [
@@ -29,12 +32,35 @@ const MODE_OPTIONS = [
   }
 ];
 
-export const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onModeChange }) => {
+export const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onModeChange, compact = false }) => {
   const { t } = useI18n();
 
   const handleCardClick = (option: typeof MODE_OPTIONS[0]) => {
     onModeChange(option.id);
   };
+
+  if (compact) {
+    return (
+      <ButtonGroup size="small" variant="outlined">
+        {MODE_OPTIONS.map((option) => (
+          <Button
+            key={option.id}
+            onClick={() => handleCardClick(option)}
+            variant={currentMode === option.id ? 'contained' : 'outlined'}
+            startIcon={option.icon}
+            sx={{ 
+              fontSize: '0.75rem',
+              px: 1.5,
+              py: 0.5,
+              minWidth: 'auto'
+            }}
+          >
+            {t(option.nameKey)}
+          </Button>
+        ))}
+      </ButtonGroup>
+    );
+  }
 
   return (
     <Box sx={{ mb: 3 }}>

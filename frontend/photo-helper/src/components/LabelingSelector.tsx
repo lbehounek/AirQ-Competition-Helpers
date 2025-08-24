@@ -4,11 +4,17 @@ import {
   Card,
   CardContent,
   Typography,
-  Chip
+  Chip,
+  ButtonGroup,
+  Button
 } from '@mui/material';
 import { Pin, Looks3, FormatListNumbered } from '@mui/icons-material';
 import { useLabeling, LABELING_OPTIONS } from '../contexts/LabelingContext';
 import { useI18n } from '../contexts/I18nContext';
+
+interface LabelingSelectorProps {
+  compact?: boolean;
+}
 
 const getLabelingIcon = (id: string) => {
   switch (id) {
@@ -21,13 +27,36 @@ const getLabelingIcon = (id: string) => {
   }
 };
 
-export const LabelingSelector: React.FC = () => {
+export const LabelingSelector: React.FC<LabelingSelectorProps> = ({ compact = false }) => {
   const { currentLabeling, setLabeling } = useLabeling();
   const { t } = useI18n();
 
   const handleCardClick = (option: typeof LABELING_OPTIONS[0]) => {
     setLabeling(option);
   };
+
+  if (compact) {
+    return (
+      <ButtonGroup size="small" variant="outlined">
+        {LABELING_OPTIONS.map((option) => (
+          <Button
+            key={option.id}
+            onClick={() => handleCardClick(option)}
+            variant={currentLabeling.id === option.id ? 'contained' : 'outlined'}
+            startIcon={getLabelingIcon(option.id)}
+            sx={{ 
+              fontSize: '0.75rem',
+              px: 1.5,
+              py: 0.5,
+              minWidth: 'auto'
+            }}
+          >
+            {t(`photoLabels.labelingTypes.${option.id}.name`)}
+          </Button>
+        ))}
+      </ButtonGroup>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
