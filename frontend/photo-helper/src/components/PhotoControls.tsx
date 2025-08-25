@@ -219,7 +219,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         auto: false,
       },
       labelPosition: 'bottom-left',
-      circle: undefined // Remove any existing circle
+      circle: null // Remove any existing circle - use null to ensure it's sent to backend
     });
     // Also disable circle mode if it's active
     if (circleMode) {
@@ -302,7 +302,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     ensureEdited();
     onUpdate({
       ...photo.canvasState,
-      circle: undefined
+      circle: null // Use null to ensure it's sent to backend
     });
     // Disable circle mode when circle is removed
     if (onCircleModeToggle && circleMode) {
