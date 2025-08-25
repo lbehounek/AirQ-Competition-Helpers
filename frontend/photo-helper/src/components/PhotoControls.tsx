@@ -585,7 +585,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             </Typography>
             
             {/* Zoom Control */}
-            <Box sx={{ mb: 3 }}>
+            <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem' }}>
                   <ZoomIn fontSize="small" />
@@ -615,7 +615,6 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 step={0.05}
                 color="primary"
                 size="small"
-                sx={{ mb: 2 }}
               />
             </Box>
 
@@ -664,7 +663,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             </Typography>
             
             {/* Brightness */}
-            <Box sx={{ mb: 3 }}>
+            <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem' }}>
                   <Brightness4 fontSize="small" />
@@ -693,7 +692,6 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 onChange={(_, value) => handleBrightnessChange(value as number)}
                 color="primary"
                 size="small"
-                sx={{ mb: 2 }}
               />
             </Box>
 
@@ -746,14 +744,14 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 onClick={handleAutoWhiteBalance}
                 color="primary"
                 size="small"
-                sx={{ minWidth: 'auto', px: 2 }}
+                sx={{ minWidth: 'auto', px: 1.5, py: 0.25, fontSize: '0.75rem' }}
               >
                 {t('controls.autoShort')}
               </Button>
             </Box>
 
             {/* Temperature Control - Below each other */}
-            <Box sx={{ mb: 3 }}>
+            <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" sx={{ fontSize: '1rem' }}>
                   {t('controls.temperature')}
