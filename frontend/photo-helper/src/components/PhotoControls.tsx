@@ -218,8 +218,17 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         tint: 0,
         auto: false,
       },
-      labelPosition: 'bottom-left'
+      labelPosition: 'bottom-left',
+      circle: undefined // Remove any existing circle
     });
+    // Also disable circle mode if it's active
+    if (circleMode) {
+      if (onCircleModeToggle) {
+        onCircleModeToggle();
+      } else {
+        setCircleMode(false);
+      }
+    }
   };
 
   // Circle overlay handlers
