@@ -373,7 +373,9 @@ const drawCircle = (canvas: HTMLCanvasElement, circle: { x: number; y: number; r
   
   // Set circle style based on color
   ctx.strokeStyle = circle.color;
-  ctx.lineWidth = 2; // Thinner circle line
+  // Scale line width based on canvas size for consistent visual proportion
+  // Base: 1px for 300px canvas, 2px for 600px canvas
+  ctx.lineWidth = Math.max(1, Math.round(canvas.width / 300));
   ctx.fillStyle = 'transparent';
   
   // Add outline for better visibility
@@ -414,7 +416,8 @@ const drawCirclePreview = (canvas: HTMLCanvasElement, circle: { x: number; y: nu
   // Set circle style - solid red with full opacity
   ctx.globalAlpha = circle.opacity || 1.0;
   ctx.strokeStyle = circle.color;
-  ctx.lineWidth = 2; // Thinner circle line
+  // Scale line width based on canvas size for consistent visual proportion
+  ctx.lineWidth = Math.max(1, Math.round(canvas.width / 300));
   ctx.fillStyle = 'transparent';
   
   // Add white shadow for better visibility (same as actual circle)
