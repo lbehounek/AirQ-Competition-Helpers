@@ -472,6 +472,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [circleMode, setCircleMode] = useState(externalCircleMode);
   const [isDraggingCircle, setIsDraggingCircle] = useState(false);
   const [circlePreview, setCirclePreview] = useState<{ x: number; y: number } | null>(null);
+  const [circleStartPos, setCircleStartPos] = useState<{ x: number; y: number } | null>(null);  // Track initial circle position for click vs drag
   
   // Use cached image loading
   const { image: loadedImage, error: imageError } = useCachedImage(
@@ -670,7 +671,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
   // Document-level drag handling for better UX
   useEffect(() => {
-    if (!isDragging || !canvasRef.current || !loadedImage) return;
+    if ((!isDragging && !isDraggingCircle) || !canvasRef.current || !loadedImage) return;
 
     // Throttled mouse move handler (60fps)
     const handleDocumentMouseMove = (e: MouseEvent) => {
@@ -710,6 +711,9 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
             y: constrainedY
           }
         });
+        
+        // Clear the start position since we're actually dragging now
+        setCircleStartPos(null);
         setDragStart({ x, y });
         return;
       }
@@ -781,12 +785,32 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     };
 
     const handleDocumentMouseUp = () => {
-      if (pendingUpdateRef.current) {
+      // Handle circle placement on click (no drag)
+      if (isDraggingCircle && circleStartPos && photo.canvasState.circle) {
+        // If circleStartPos is still set, it means we didn't drag
+        // Place the circle at the click position
+        const constrainedX = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH - photo.canvasState.circle.radius, circleStartPos.x));
+        const constrainedY = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH / currentRatio.ratio - photo.canvasState.circle.radius, circleStartPos.y));
+        
+        onUpdate({
+          ...photo.canvasState,
+          circle: {
+            ...photo.canvasState.circle,
+            x: constrainedX,
+            y: constrainedY
+          }
+        });
+      }
+      
+      // Handle normal photo drag
+      if (isDragging && pendingUpdateRef.current) {
         clearTimeout(pendingUpdateRef.current);
         onUpdate({ ...photo.canvasState, position: localPosition });
       }
+      
       setIsDragging(false);
       setIsDraggingCircle(false);
+      setCircleStartPos(null);
       
       // Restore text selection and cursor
       document.body.style.userSelect = '';
@@ -824,7 +848,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       document.body.style.webkitUserSelect = '';
       document.body.style.cursor = '';
     };
-  }, [isDragging, isDraggingCircle, dragStart, localPosition, loadedImage, photo.canvasState, currentRatio, onUpdate]);
+  }, [isDragging, isDraggingCircle, dragStart, localPosition, loadedImage, photo.canvasState, currentRatio, onUpdate, circleStartPos]);
 
   // Helper function to check if click is on circle
   const isClickOnCircle = (clickX: number, clickY: number): boolean => {
@@ -871,27 +895,28 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Check if in circle mode
     if (circleMode) {
-      // Place circle at click position
       const baseCoords = canvasToBaseCoords(x, y);
-      const newCircle = {
-        x: baseCoords.x,
-        y: baseCoords.y,
-        radius: photo.canvasState.circle?.radius || 55, // Use default radius of 55
-        color: photo.canvasState.circle?.color || 'red' as const,
-        visible: true
-      };
-      onUpdate({
-        ...photo.canvasState,
-        circle: newCircle
-      });
       
-      // Clear preview after placing
-      setCirclePreview(null);
-      
-      // If clicking on existing circle, prepare for potential dragging
-      if (photo.canvasState.circle && isClickOnCircle(x, y)) {
+      // If no circle exists yet, place it immediately
+      if (!photo.canvasState.circle) {
+        const newCircle = {
+          x: baseCoords.x,
+          y: baseCoords.y,
+          radius: 55, // Use default radius of 55
+          color: 'red' as const,
+          visible: true
+        };
+        onUpdate({
+          ...photo.canvasState,
+          circle: newCircle
+        });
+        // Clear preview after placing
+        setCirclePreview(null);
+      } else {
+        // Circle exists - prepare for click or drag
         setIsDraggingCircle(true);
         setDragStart({ x, y });
+        setCircleStartPos(baseCoords); // Remember where we clicked for potential instant placement
       }
       
       event.preventDefault();
