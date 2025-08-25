@@ -13,7 +13,7 @@ export const SUPPORTED_LOCALES: { code: Locale; name: string; flag: string }[] =
   { code: 'cs', name: 'Čeština', flag: '🇨🇿' }
 ];
 
-export const DEFAULT_LOCALE: Locale = 'en';
+export const DEFAULT_LOCALE: Locale = 'cs';
 
 export type TranslationKey = keyof typeof en;
 export type Translation = typeof en;

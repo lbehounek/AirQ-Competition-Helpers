@@ -317,8 +317,8 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
       </Box>
       <Box sx={{ display: 'flex', gap: 0.5 }}>
         <Button 
-          variant="outlined" 
-          color="warning" 
+          variant="contained" 
+          color="error" 
           size="small"
           startIcon={<Refresh fontSize="small" />}
           onClick={handleReset}
@@ -579,7 +579,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         {/* Zoom + Sharpness - 1/3 width - First position */}
         <Box sx={{ flex: '1 1 0', minWidth: 0 }}>
           <Paper elevation={1} sx={{ p: 3, height: '100%' }}>
-            <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.2rem' }}>
               <ZoomIn color="primary" />
               {t('controls.zoomAndSharpness')}
             </Typography>
@@ -587,12 +587,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             {/* Zoom Control */}
             <Box sx={{ mb: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem' }}>
                   <ZoomIn fontSize="small" />
                   {t('controls.zoom')}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="primary" fontWeight={600}>
+                  <Typography variant="body2" color="primary" fontWeight={600} sx={{ fontSize: '1rem' }}>
                     {Math.round(photo.canvasState.scale * 100)}%
                   </Typography>
                   <Tooltip title={t('controls.resetZoom')}>
@@ -617,21 +617,6 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 size="small"
                 sx={{ mb: 2 }}
               />
-              
-              {/* Quick scale buttons */}
-              <ButtonGroup size="small" variant="outlined" fullWidth>
-                {quickScaleOptions.map((option) => (
-                  <Button
-                    key={option.value}
-                    onClick={() => handleScaleChange(option.value)}
-                    variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
-                    size="small"
-                    sx={{ fontSize: '0.75rem', py: 0.5 }}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
-              </ButtonGroup>
             </Box>
 
             {/* Sharpness Control */}
