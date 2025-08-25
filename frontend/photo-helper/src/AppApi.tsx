@@ -786,7 +786,7 @@ function AppApi() {
 
                   {/* Bottom Row: Controls spanning full width - Taller */}
                   <Box sx={{
-                    flex: '0 0 45%', // Increased to 45% to fit 3 equal tiles comfortably
+                    flex: '0 0 38%', // Reduced to move cards down and give more space to photo
                     borderTop: '1px solid',
                     borderColor: 'divider',
                     bgcolor: 'background.paper',
