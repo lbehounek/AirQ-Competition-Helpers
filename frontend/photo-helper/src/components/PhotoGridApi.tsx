@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Typography, Paper, CircularProgress, IconButton } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import { Image as ImageIcon, CloudUpload, Close } from '@mui/icons-material';
@@ -8,6 +8,7 @@ import { isValidImageFile } from '../utils/imageProcessing';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useLabeling } from '../contexts/LabelingContext';
 import { useI18n } from '../contexts/I18nContext';
+import { getImageCache } from '../utils/imageCache';
 
 interface ApiPhoto {
   id: string;
@@ -78,6 +79,16 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  
+  // Preload images when photo set changes
+  useEffect(() => {
+    if (photoSet.photos.length > 0) {
+      const cache = getImageCache();
+      cache.preloadImages(photoSet.photos).catch(err => {
+        console.error('Failed to preload images:', err);
+      });
+    }
+  }, [photoSet.photos]);
   
   // Create 9 grid slots (3x3)
   const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
@@ -232,6 +243,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                 }}
               >
                 <PhotoEditorApi
+                  key={slot.photo.id} // Stable key based on photo ID to prevent remounting
                   photo={slot.photo}
                   label={slot.label}
                   onUpdate={(canvasState) => onPhotoUpdate(slot.photo!.id, canvasState)}
@@ -318,6 +330,7 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
   position,
   onFilesDropped
 }) => {
+  const theme = useTheme();
   const { t } = useI18n();
   const {
     getRootProps,

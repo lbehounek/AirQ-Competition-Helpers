@@ -10,6 +10,7 @@ import {
 import { useWebGLContext } from '../utils/webglContextManager';
 import { drawLabel, getCanvasContext } from '../utils/canvasUtils';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
+import { useCachedImage } from '../utils/imageCache';
 
 interface ApiPhoto {
   id: string;
@@ -436,10 +437,14 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
-  const [imageError, setImageError] = useState(false);
   const [circleMode, setCircleMode] = useState(externalCircleMode);
   const [isDraggingCircle, setIsDraggingCircle] = useState(false);
+  
+  // Use cached image loading
+  const { image: loadedImage, error: imageError } = useCachedImage(
+    photo.id,
+    photo.sessionId || 'unknown'
+  );
   
   // Local state for smooth dragging
   const [localPosition, setLocalPosition] = useState(photo.canvasState.position);
@@ -457,32 +462,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     ? getCanvasSize(600) // 2x scale for modal
     : getCanvasSize(300); // Base size for grid
 
-  // Load image
-  useEffect(() => {
-    if (!photo.id) return;
-
-    const base = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
-    const fullUrl = `${base}/api/photos/${photo.sessionId || 'unknown'}/${photo.id}`;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    
-    img.onload = () => {
-      setLoadedImage(img);
-      setImageError(false);
-    };
-    
-    img.onerror = () => {
-      setImageError(true);
-      setLoadedImage(null);
-    };
-    
-    img.src = fullUrl;
-    
-    return () => {
-      img.onload = null;
-      img.onerror = null;
-    };
-  }, [photo.id, photo.sessionId]);
+  // Image is now loaded via useCachedImage hook above
 
   // Sync local states when photo changes
   useEffect(() => {
