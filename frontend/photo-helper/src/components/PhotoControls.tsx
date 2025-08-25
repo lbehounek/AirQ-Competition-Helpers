@@ -693,6 +693,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 onChange={(_, value) => handleBrightnessChange(value as number)}
                 color="primary"
                 size="small"
+                sx={{ mb: 2 }}
               />
             </Box>
 
