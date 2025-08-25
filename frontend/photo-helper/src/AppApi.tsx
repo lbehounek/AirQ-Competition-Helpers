@@ -80,6 +80,7 @@ function AppApi() {
     updatePhotoState,
     updateSetTitle,
     reorderPhotos,
+    shufflePhotos,
     updateSessionMode,
     updateCompetitionName,
     resetSession,
@@ -194,58 +195,10 @@ function AppApi() {
   const handleShuffle = async () => {
     if (!session) return;
     
-    // Shuffle function using Fisher-Yates algorithm
-    const shuffleArray = (array: any[]) => {
-      const shuffled = [...array];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      return shuffled;
-    };
-
     console.log('🎲 Shuffling photos in both sets...');
     
-    // Shuffle Set 1 if it has photos
-    if (session.sets.set1.photos.length > 1) {
-      const set1Photos = [...session.sets.set1.photos];
-      const shuffled1 = shuffleArray(set1Photos);
-      
-      // Apply the new order by moving each photo to its shuffled position
-      for (let i = 0; i < shuffled1.length; i++) {
-        const currentPhoto = shuffled1[i];
-        const fromIndex = set1Photos.findIndex((p: any) => p.id === currentPhoto.id);
-        if (fromIndex !== i) {
-          await reorderPhotos('set1', fromIndex, i);
-          // Update the local array with move semantics
-          const [moved] = set1Photos.splice(fromIndex, 1);
-          const adjustedTo = fromIndex < i ? i - 1 : i;
-          set1Photos.splice(adjustedTo, 0, moved);
-        }
-      }
-    }
-
-    // Small delay between sets for better UX
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Shuffle Set 2 if it has photos  
-    if (session.sets.set2.photos.length > 1) {
-      const set2Photos = [...session.sets.set2.photos];
-      const shuffled2 = shuffleArray(set2Photos);
-      
-      // Apply the new order by moving each photo to its shuffled position
-      for (let i = 0; i < shuffled2.length; i++) {
-        const currentPhoto = shuffled2[i];
-        const fromIndex = set2Photos.findIndex((p: any) => p.id === currentPhoto.id);
-        if (fromIndex !== i) {
-          await reorderPhotos('set2', fromIndex, i);
-          // Update the local array with move semantics
-          const [moved] = set2Photos.splice(fromIndex, 1);
-          const adjustedTo = fromIndex < i ? i - 1 : i;
-          set2Photos.splice(adjustedTo, 0, moved);
-        }
-      }
-    }
+    // Shuffle both sets in a single state update (no flickering, both sets update!)
+    await shufflePhotos('both');
 
     console.log('✨ Photo shuffle completed!');
   };
