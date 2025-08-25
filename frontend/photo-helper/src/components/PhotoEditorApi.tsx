@@ -411,16 +411,19 @@ const drawCirclePreview = (canvas: HTMLCanvasElement, circle: { x: number; y: nu
   
   ctx.save();
   
-  // Set circle style with transparency
-  ctx.globalAlpha = circle.opacity || 0.5;
+  // Set circle style - solid red with full opacity
+  ctx.globalAlpha = circle.opacity || 1.0;
   ctx.strokeStyle = circle.color;
   ctx.lineWidth = 3;
   ctx.fillStyle = 'transparent';
   
-  // Add dashed line for preview
-  ctx.setLineDash([5, 5]);
+  // Add white shadow for better visibility (same as actual circle)
+  ctx.shadowColor = 'white';
+  ctx.shadowBlur = 1;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
   
-  // Draw the circle
+  // Draw the circle (solid, no dashing)
   ctx.beginPath();
   ctx.arc(canvasX, canvasY, canvasRadius, 0, 2 * Math.PI);
   ctx.stroke();
@@ -641,8 +644,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         x: circlePreview.x,
         y: circlePreview.y,
         radius: 55, // Default radius
-        color: 'red',
-        opacity: 0.5 // Semi-transparent for preview
+        color: 'red' // Full opacity - exactly like the final circle
       };
       drawCirclePreview(tempCanvas, previewCircle, scaleRatio);
     }
