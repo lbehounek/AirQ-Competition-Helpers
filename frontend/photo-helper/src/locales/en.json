@@ -128,8 +128,7 @@
     "zoomAndSharpness": "Zoom and Sharpness",
     "circleOverlay": "Circle Overlay",
     "circleMode": {
-      "off": "OFF",
-      "on": "ON",
+      "add": "Add Circle",
       "clickToPlace": "Click photo to place circle",
       "radius": "Radius",
       "color": "Color",

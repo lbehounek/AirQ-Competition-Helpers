@@ -223,13 +223,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   };
 
   // Circle overlay handlers
-  const handleCircleModeToggle = () => {
+  const handleAddCircleClick = () => {
     ensureEdited();
+    // Enable circle mode
     if (onCircleModeToggle) {
       onCircleModeToggle();
     } else {
-      // Fallback to local state if no external handler
-      setCircleMode(!circleMode);
+      setCircleMode(true);
     }
   };
 
@@ -295,7 +295,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
       ...photo.canvasState,
       circle: undefined
     });
-    setCircleMode(false);
+    // Disable circle mode when circle is removed
+    if (onCircleModeToggle && circleMode) {
+      onCircleModeToggle();
+    } else {
+      setCircleMode(false);
+    }
   };
 
   const quickScaleOptions = [
@@ -421,26 +426,28 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           <Typography variant="h6">Circle Overlay</Typography>
         </Box>
         
-        {/* Circle Mode Toggle */}
-        <Box sx={{ mb: 2 }}>
-          <Button
-            variant={circleMode ? "contained" : "outlined"}
-            color="primary"
-            size="small"
-            startIcon={circleMode ? <Circle /> : <RadioButtonUnchecked />}
-            onClick={handleCircleModeToggle}
-            fullWidth
-            sx={{ mb: 2 }}
-          >
-            {circleMode ? 'Circle Mode: ON' : 'Circle Mode: OFF'}
-          </Button>
-          
-          {circleMode && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>
-              Click on the photo to place a circle
-            </Typography>
-          )}
-        </Box>
+        {/* Add Circle Button - Only show when no circle exists */}
+        {!circle && (
+          <Box sx={{ mb: 2 }}>
+            <Button
+              variant="outlined"
+              color="primary"
+              size="small"
+              startIcon={<RadioButtonUnchecked />}
+              onClick={handleAddCircleClick}
+              fullWidth
+              sx={{ mb: 2 }}
+            >
+              Add Circle
+            </Button>
+            
+            {circleMode && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>
+                Click on the photo to place a circle
+              </Typography>
+            )}
+          </Box>
+        )}
 
         {/* Circle Controls - Only show when circle exists */}
         {circle && (
@@ -1014,37 +1021,34 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         </Box>
       </Box>
       
-      {/* Circle Overlay - Compact with Toggle Switch */}
+      {/* Circle Overlay */}
       <Box sx={{ mt: 3, mb: 2 }}>
         <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.8rem' }}>
           <RadioButtonUnchecked fontSize="small" color="primary" />
           {t('controls.circleOverlay')}
         </Typography>
         
-        {/* Circle Mode Toggle Switch */}
-        <ButtonGroup size="small" fullWidth sx={{ mb: 1 }}>
-          <Button
-            variant={!circleMode ? 'contained' : 'outlined'}
-            color={!circleMode ? 'primary' : 'inherit'}
-            onClick={() => { if (circleMode) handleCircleModeToggle(); }}
-            sx={{ fontSize: '0.7rem', py: 0.4 }}
-          >
-            {t('controls.circleMode.off')}
-          </Button>
-          <Button
-            variant={circleMode ? 'contained' : 'outlined'}
-            color={circleMode ? 'primary' : 'inherit'}
-            onClick={() => { if (!circleMode) handleCircleModeToggle(); }}
-            sx={{ fontSize: '0.7rem', py: 0.4 }}
-          >
-            {t('controls.circleMode.on')}
-          </Button>
-        </ButtonGroup>
-        
-        {circleMode && !circle && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1, fontSize: '0.65rem' }}>
-            {t('controls.circleMode.clickToPlace')}
-          </Typography>
+        {/* Add Circle Button - Only show when no circle exists */}
+        {!circle && (
+          <>
+            <Button
+              variant="outlined"
+              color="primary"
+              size="small"
+              fullWidth
+              onClick={handleAddCircleClick}
+              startIcon={<RadioButtonUnchecked />}
+              sx={{ mb: 1, fontSize: '0.7rem', py: 0.4 }}
+            >
+              {t('controls.circleMode.add')}
+            </Button>
+            
+            {circleMode && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1, fontSize: '0.65rem' }}>
+                {t('controls.circleMode.clickToPlace')}
+              </Typography>
+            )}
+          </>
         )}
 
         {/* Circle Controls - Only show when circle exists */}

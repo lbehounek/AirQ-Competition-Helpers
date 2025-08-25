@@ -128,8 +128,7 @@
     "zoomAndSharpness": "Přiblížení a ostrost",
     "circleOverlay": "Kruhové označení",
     "circleMode": {
-      "off": "VYPNUTO",
-      "on": "ZAPNUTO",
+      "add": "Přidat kruh",
       "clickToPlace": "Klikněte na fotografii pro umístění kruhu",
       "radius": "Poloměr",
       "color": "Barva",
