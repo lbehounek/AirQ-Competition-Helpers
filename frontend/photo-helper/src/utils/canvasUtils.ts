@@ -115,8 +115,8 @@ export const drawLabel = (
       break;
   }
   
-  // Draw label with stroke for better visibility
-  ctx.strokeText(label, x, y);
+  // Draw label without stroke for cleaner appearance
+  // ctx.strokeText(label, x, y); // Removed black outline
   ctx.fillText(label, x, y);
 };
 
