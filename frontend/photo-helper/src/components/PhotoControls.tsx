@@ -238,7 +238,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     const newCircle = {
       x,
       y,
-      radius: 30, // Default radius
+      radius: 55, // Default radius
       color: 'red' as const,
       visible: true
     };
