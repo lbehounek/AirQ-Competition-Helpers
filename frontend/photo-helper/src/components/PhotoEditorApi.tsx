@@ -473,6 +473,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [isDraggingCircle, setIsDraggingCircle] = useState(false);
   const [circlePreview, setCirclePreview] = useState<{ x: number; y: number } | null>(null);
   const [circleStartPos, setCircleStartPos] = useState<{ x: number; y: number } | null>(null);  // Track initial circle position for click vs drag
+  const [localCirclePosition, setLocalCirclePosition] = useState<{ x: number; y: number } | null>(null);  // Local circle position for smooth dragging
   
   // Use cached image loading
   const { image: loadedImage, error: imageError } = useCachedImage(
@@ -635,7 +636,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     // Draw circle overlay if it exists
     if (photo.canvasState.circle && photo.canvasState.circle.visible) {
       const scaleRatio = canvasSize.width / BASE_WIDTH;
-      drawCircle(tempCanvas, photo.canvasState.circle, scaleRatio);
+      // Use local position during dragging for smooth feedback
+      const circleToRender = isDraggingCircle && localCirclePosition 
+        ? { ...photo.canvasState.circle, x: localCirclePosition.x, y: localCirclePosition.y }
+        : photo.canvasState.circle;
+      drawCircle(tempCanvas, circleToRender, scaleRatio);
     }
     
     // Draw circle preview if in circle mode without existing circle
@@ -657,7 +662,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     if (ctx) {
       ctx.drawImage(tempCanvas, 0, 0);
     }
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, currentRatio, showOriginal, circleMode, circlePreview]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview]);
 
   useEffect(() => {
     renderCanvas();
@@ -673,11 +678,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   useEffect(() => {
     if ((!isDragging && !isDraggingCircle) || !canvasRef.current || !loadedImage) return;
 
-    // Throttled mouse move handler (60fps)
+    // Mouse move handler - no throttling for smoother movement
     const handleDocumentMouseMove = (e: MouseEvent) => {
-      const now = Date.now();
-      if (now - lastMoveTimeRef.current < 16) return; // Throttle to ~60fps
-      lastMoveTimeRef.current = now;
 
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -703,14 +705,23 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         const constrainedX = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH - photo.canvasState.circle.radius, baseX));
         const constrainedY = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH / currentRatio.ratio - photo.canvasState.circle.radius, baseY));
         
-        onUpdate({
-          ...photo.canvasState,
-          circle: {
-            ...photo.canvasState.circle,
-            x: constrainedX,
-            y: constrainedY
-          }
-        });
+        // Update local position immediately for smooth visual feedback
+        setLocalCirclePosition({ x: constrainedX, y: constrainedY });
+        
+        // Debounce the actual state update to reduce re-renders
+        if (pendingUpdateRef.current) {
+          clearTimeout(pendingUpdateRef.current);
+        }
+        pendingUpdateRef.current = setTimeout(() => {
+          onUpdate({
+            ...photo.canvasState,
+            circle: {
+              ...photo.canvasState.circle,
+              x: constrainedX,
+              y: constrainedY
+            }
+          });
+        }, 16); // Update every ~16ms (60fps)
         
         // Clear the start position since we're actually dragging now
         setCircleStartPos(null);
@@ -785,21 +796,35 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     };
 
     const handleDocumentMouseUp = () => {
-      // Handle circle placement on click (no drag)
-      if (isDraggingCircle && circleStartPos && photo.canvasState.circle) {
-        // If circleStartPos is still set, it means we didn't drag
-        // Place the circle at the click position
-        const constrainedX = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH - photo.canvasState.circle.radius, circleStartPos.x));
-        const constrainedY = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH / currentRatio.ratio - photo.canvasState.circle.radius, circleStartPos.y));
-        
-        onUpdate({
-          ...photo.canvasState,
-          circle: {
-            ...photo.canvasState.circle,
-            x: constrainedX,
-            y: constrainedY
+      // Handle circle placement
+      if (isDraggingCircle) {
+        if (circleStartPos && photo.canvasState.circle) {
+          // If circleStartPos is still set, it means we didn't drag - instant placement
+          const constrainedX = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH - photo.canvasState.circle.radius, circleStartPos.x));
+          const constrainedY = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH / currentRatio.ratio - photo.canvasState.circle.radius, circleStartPos.y));
+          
+          onUpdate({
+            ...photo.canvasState,
+            circle: {
+              ...photo.canvasState.circle,
+              x: constrainedX,
+              y: constrainedY
+            }
+          });
+        } else if (localCirclePosition && photo.canvasState.circle) {
+          // We were dragging - apply final position
+          if (pendingUpdateRef.current) {
+            clearTimeout(pendingUpdateRef.current);
           }
-        });
+          onUpdate({
+            ...photo.canvasState,
+            circle: {
+              ...photo.canvasState.circle,
+              x: localCirclePosition.x,
+              y: localCirclePosition.y
+            }
+          });
+        }
       }
       
       // Handle normal photo drag
@@ -811,6 +836,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       setIsDragging(false);
       setIsDraggingCircle(false);
       setCircleStartPos(null);
+      setLocalCirclePosition(null);
       
       // Restore text selection and cursor
       document.body.style.userSelect = '';
@@ -848,7 +874,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       document.body.style.webkitUserSelect = '';
       document.body.style.cursor = '';
     };
-  }, [isDragging, isDraggingCircle, dragStart, localPosition, loadedImage, photo.canvasState, currentRatio, onUpdate, circleStartPos]);
+  }, [isDragging, isDraggingCircle, dragStart, localPosition, loadedImage, photo.canvasState, currentRatio, onUpdate, circleStartPos, localCirclePosition]);
 
   // Helper function to check if click is on circle
   const isClickOnCircle = (clickX: number, clickY: number): boolean => {
@@ -917,6 +943,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         setIsDraggingCircle(true);
         setDragStart({ x, y });
         setCircleStartPos(baseCoords); // Remember where we clicked for potential instant placement
+        setLocalCirclePosition({ x: photo.canvasState.circle.x, y: photo.canvasState.circle.y }); // Initialize local position
       }
       
       event.preventDefault();
