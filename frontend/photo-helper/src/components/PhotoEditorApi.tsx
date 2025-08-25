@@ -454,7 +454,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   
   // WebGL context management
   const webglManager = useWebGLContext();
-  const webglContextRef = useRef<WebGLContext | null>(null);
   const [webglSupported, setWebglSupported] = useState<boolean>(false);
 
   // Dynamic canvas dimensions based on aspect ratio
@@ -588,7 +587,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       localPosition,
       localLabelPosition,
       isDragging,
-      webglContextRef.current,
+      null, // WebGL context will be requested on-demand in renderCanvas
       webglManager,
       currentRatio.ratio,
       BASE_WIDTH / currentRatio.ratio,  // Always use BASE dimensions for consistent cropping
@@ -614,29 +613,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     renderCanvas();
   }, [renderCanvas]);
 
-  // Initialize WebGL support detection and context
+  // Initialize WebGL support detection
   useEffect(() => {
     const supported = isWebGLSupported();
     setWebglSupported(supported);
-    
-    // Request a WebGL context from the pool for this component
-    if (supported && !webglContextRef.current) {
-      const context = webglManager.requestContext();
-      webglContextRef.current = context;
-      
-      if (!context) {
-        console.warn('No WebGL context available from pool');
-      }
-    }
-    
-    // Cleanup on unmount - return context to pool
-    return () => {
-      if (webglContextRef.current) {
-        webglManager.releaseContext(webglContextRef.current);
-        webglContextRef.current = null;
-      }
-    };
-  }, [webglManager]);
+  }, []);
 
   // Document-level drag handling for better UX
   useEffect(() => {
