@@ -399,6 +399,35 @@ const drawCircle = (canvas: HTMLCanvasElement, circle: { x: number; y: number; r
   ctx.restore();
 };
 
+// Draw semi-transparent circle preview
+const drawCirclePreview = (canvas: HTMLCanvasElement, circle: { x: number; y: number; radius: number; color: string; opacity?: number }, scaleRatio: number) => {
+  const ctx = getCanvasContext(canvas);
+  if (!ctx || !circle) return;
+  
+  // Convert from base coordinates to canvas coordinates
+  const canvasX = circle.x * scaleRatio;
+  const canvasY = circle.y * scaleRatio;
+  const canvasRadius = circle.radius * scaleRatio;
+  
+  ctx.save();
+  
+  // Set circle style with transparency
+  ctx.globalAlpha = circle.opacity || 0.5;
+  ctx.strokeStyle = circle.color;
+  ctx.lineWidth = 3;
+  ctx.fillStyle = 'transparent';
+  
+  // Add dashed line for preview
+  ctx.setLineDash([5, 5]);
+  
+  // Draw the circle
+  ctx.beginPath();
+  ctx.arc(canvasX, canvasY, canvasRadius, 0, 2 * Math.PI);
+  ctx.stroke();
+  
+  ctx.restore();
+};
+
 export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   photo,
   label,
@@ -439,6 +468,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [circleMode, setCircleMode] = useState(externalCircleMode);
   const [isDraggingCircle, setIsDraggingCircle] = useState(false);
+  const [circlePreview, setCirclePreview] = useState<{ x: number; y: number } | null>(null);
   
   // Use cached image loading
   const { image: loadedImage, error: imageError } = useCachedImage(
@@ -474,6 +504,10 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   // Sync with external circle mode
   useEffect(() => {
     setCircleMode(externalCircleMode);
+    // Clear preview when mode changes
+    if (!externalCircleMode) {
+      setCirclePreview(null);
+    }
   }, [externalCircleMode]);
 
   // Update local position when scale changes
@@ -599,6 +633,19 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       const scaleRatio = canvasSize.width / BASE_WIDTH;
       drawCircle(tempCanvas, photo.canvasState.circle, scaleRatio);
     }
+    
+    // Draw circle preview if in circle mode without existing circle
+    if (circleMode && !photo.canvasState.circle && circlePreview) {
+      const scaleRatio = canvasSize.width / BASE_WIDTH;
+      const previewCircle = {
+        x: circlePreview.x,
+        y: circlePreview.y,
+        radius: 55, // Default radius
+        color: 'red',
+        opacity: 0.5 // Semi-transparent for preview
+      };
+      drawCirclePreview(tempCanvas, previewCircle, scaleRatio);
+    }
 
     // Atomically update the visible canvas - no distortion flash
     canvas.width = canvasSize.width;
@@ -607,7 +654,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     if (ctx) {
       ctx.drawImage(tempCanvas, 0, 0);
     }
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, currentRatio, showOriginal]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, webglManager, currentRatio, showOriginal, circleMode, circlePreview]);
 
   useEffect(() => {
     renderCanvas();
@@ -822,12 +869,12 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Check if in circle mode
     if (circleMode) {
-      // Always place/move circle to click position in circle mode
+      // Place circle at click position
       const baseCoords = canvasToBaseCoords(x, y);
       const newCircle = {
         x: baseCoords.x,
         y: baseCoords.y,
-        radius: photo.canvasState.circle?.radius || 30,
+        radius: photo.canvasState.circle?.radius || 55, // Use default radius of 55
         color: photo.canvasState.circle?.color || 'red' as const,
         visible: true
       };
@@ -835,6 +882,9 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         ...photo.canvasState,
         circle: newCircle
       });
+      
+      // Clear preview after placing
+      setCirclePreview(null);
       
       // If clicking on existing circle, prepare for potential dragging
       if (photo.canvasState.circle && isClickOnCircle(x, y)) {
@@ -859,6 +909,27 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
   // Note: handleMouseMove and handleMouseUp are now handled by document-level events in useEffect above
   // This provides better UX as dragging continues even when mouse leaves the canvas
+
+  // Handle mouse move for circle preview
+  const handleCanvasMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (size === 'grid') return; // No preview in grid view
+    if (!circleMode || photo.canvasState.circle) return; // Only show preview when in circle mode without existing circle
+    
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    const baseCoords = canvasToBaseCoords(x, y);
+    setCirclePreview(baseCoords);
+  };
+  
+  // Clear preview when mouse leaves canvas
+  const handleCanvasMouseLeave = () => {
+    if (circleMode && !photo.canvasState.circle) {
+      setCirclePreview(null);
+    }
+  };
 
   const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
     if (size === 'grid') return; // Only allow zoom in modal view
@@ -995,6 +1066,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
           display: 'block'
         }}
         onMouseDown={handleMouseDown}
+        onMouseMove={handleCanvasMouseMove}
+        onMouseLeave={handleCanvasMouseLeave}
         onWheel={handleWheel}
         onDragStart={(e) => e.preventDefault()} // Prevent browser's default image drag
       />

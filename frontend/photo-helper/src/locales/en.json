@@ -129,7 +129,7 @@
     "circleOverlay": "Circle Overlay",
     "circleMode": {
       "add": "Add Circle",
-      "clickToPlace": "Click photo to place circle",
+      "clickToPlace": "Move mouse over photo and click to place",
       "radius": "Radius",
       "color": "Color",
       "white": "White",
