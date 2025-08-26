@@ -1,37 +1,10 @@
 import React from 'react';
 import { Box, Paper, Typography } from '@mui/material';
-import { DropZone } from './DropZone';
 import { GridSizedDropZone } from './GridSizedDropZone';
 import { PhotoGridApi } from './PhotoGridApi';
 import { useI18n } from '../contexts/I18nContext';
 import { generateTurningPointLabels } from '../utils/imageProcessing';
-
-interface ApiPhoto {
-  id: string;
-  url: string;
-  filename: string;
-  canvasState: {
-    position: { x: number; y: number };
-    scale: number;
-    brightness: number;
-    contrast: number;
-    sharpness: number;
-    whiteBalance: {
-      temperature: number;
-      tint: number;
-      auto: boolean;
-    };
-    labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-  };
-  label: string;
-  sessionId: string;
-  uploadedAt: string;
-}
-
-interface ApiPhotoSet {
-  title: string;
-  photos: ApiPhoto[];
-}
+import type { ApiPhoto, ApiPhotoSet } from '../types/api';
 
 interface TurningPointLayoutProps {
   set1: ApiPhotoSet;

@@ -1,40 +1,18 @@
 import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 
+import type { ApiPhoto, ApiPhotoSet } from '../types/api';
+
 // Wire pdfMake virtual file system
 // The vfs_fonts file exports the VFS object directly
 (pdfMake as any).vfs = pdfFonts;
-
-interface ApiPhoto {
-  id: string;
-  url: string;
-  filename: string;
-  canvasState: {
-    position: { x: number; y: number };
-    scale: number;
-    brightness: number;
-    contrast: number;
-    sharpness: number;
-    whiteBalance: {
-      temperature: number;
-      tint: number;
-      auto: boolean;
-    };
-    labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-  };
-}
-
-interface PhotoSet {
-  title: string;
-  photos: (ApiPhoto & { label: string })[];
-}
 
 /**
  * Generate PDF using pdfMake with proper Czech character support
  */
 export const generatePDF = async (
-  set1: PhotoSet,
-  set2: PhotoSet,
+  set1: ApiPhotoSet,
+  set2: ApiPhotoSet,
   sessionId: string,
   aspectRatio = 4/3,
   competitionName?: string

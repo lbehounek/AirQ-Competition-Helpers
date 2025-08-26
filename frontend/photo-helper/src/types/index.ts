@@ -20,7 +20,7 @@ export interface Photo {
       radius: number;   // Radius in pixels (base coordinates)
       color: 'white' | 'red' | 'yellow';
       visible: boolean;
-    };
+    } | null;
   };
   label: string; // A, B, C, etc.
 }

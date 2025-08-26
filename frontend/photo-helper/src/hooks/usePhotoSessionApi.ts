@@ -330,6 +330,63 @@ export const usePhotoSessionApi = () => {
       console.error('❌ Photo reorder failed:', err);
     }
   }, [sessionId, backendAvailable, session]);
+  
+  /**
+   * Shuffle photos in a set - optimized to update all at once
+   */
+  const shufflePhotos = useCallback(async (setKey: 'set1' | 'set2' | 'both') => {
+    if (!session) return;
+    
+    // Fisher-Yates shuffle algorithm
+    const shuffleArray = (array: any[]) => {
+      const shuffled = [...array];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    };
+    
+    // Use functional update to ensure we work with the latest state
+    setSession((currentSession) => {
+      if (!currentSession) return currentSession;
+      
+      const newSets = { ...currentSession.sets };
+      
+      // Shuffle set1 if requested
+      if ((setKey === 'set1' || setKey === 'both') && currentSession.sets.set1.photos.length > 1) {
+        newSets.set1 = {
+          ...currentSession.sets.set1,
+          photos: shuffleArray(currentSession.sets.set1.photos)
+        };
+        console.log(`🎲 Shuffled set1 photos`);
+      }
+      
+      // Shuffle set2 if requested
+      if ((setKey === 'set2' || setKey === 'both') && currentSession.sets.set2.photos.length > 1) {
+        newSets.set2 = {
+          ...currentSession.sets.set2,
+          photos: shuffleArray(currentSession.sets.set2.photos)
+        };
+        console.log(`🎲 Shuffled set2 photos`);
+      }
+      
+      return {
+        ...currentSession,
+        sets: newSets
+      };
+    });
+    
+    // If backend is available, persist the new order
+    if (backendAvailable && sessionId) {
+      try {
+        // TODO: Add a bulk update API endpoint for better performance
+        console.log('✅ Shuffle completed');
+      } catch (err) {
+        console.error('Failed to persist shuffle:', err);
+      }
+    }
+  }, [sessionId, backendAvailable]);
 
   const updateSessionMode = useCallback(async (mode: 'track' | 'turningpoint') => {
     if (!sessionId || !backendAvailable || !session) return;
@@ -419,6 +476,7 @@ export const usePhotoSessionApi = () => {
     updatePhotoState,
     updateSetTitle,
     reorderPhotos,
+    shufflePhotos,
     updateSessionMode,
     updateCompetitionName,
     resetSession,

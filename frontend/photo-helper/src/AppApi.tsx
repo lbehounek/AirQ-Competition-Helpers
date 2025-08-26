@@ -43,26 +43,7 @@ import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
 import { generatePDF } from './utils/pdfGenerator';
 import { generateTurningPointLabels } from './utils/imageProcessing';
-
-interface ApiPhoto {
-  id: string;
-  url: string;
-  filename: string;
-  canvasState: {
-    position: { x: number; y: number };
-    scale: number;
-    brightness: number;
-    contrast: number;
-    sharpness: number;
-    whiteBalance: {
-      temperature: number;
-      tint: number;
-      auto: boolean;
-    };
-    labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-  };
-  label: string;
-}
+import type { ApiPhoto, ApiPhotoSet } from './types/api';
 
 // Configurable delay before showing loading text (in milliseconds)
 const LOADING_TEXT_DELAY = 3000; // 3 seconds
@@ -80,6 +61,7 @@ function AppApi() {
     updatePhotoState,
     updateSetTitle,
     reorderPhotos,
+    shufflePhotos,
     updateSessionMode,
     updateCompetitionName,
     resetSession,
@@ -194,58 +176,10 @@ function AppApi() {
   const handleShuffle = async () => {
     if (!session) return;
     
-    // Shuffle function using Fisher-Yates algorithm
-    const shuffleArray = (array: any[]) => {
-      const shuffled = [...array];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      return shuffled;
-    };
-
     console.log('🎲 Shuffling photos in both sets...');
     
-    // Shuffle Set 1 if it has photos
-    if (session.sets.set1.photos.length > 1) {
-      const set1Photos = [...session.sets.set1.photos];
-      const shuffled1 = shuffleArray(set1Photos);
-      
-      // Apply the new order by moving each photo to its shuffled position
-      for (let i = 0; i < shuffled1.length; i++) {
-        const currentPhoto = shuffled1[i];
-        const fromIndex = set1Photos.findIndex((p: any) => p.id === currentPhoto.id);
-        if (fromIndex !== i) {
-          await reorderPhotos('set1', fromIndex, i);
-          // Update the local array with move semantics
-          const [moved] = set1Photos.splice(fromIndex, 1);
-          const adjustedTo = fromIndex < i ? i - 1 : i;
-          set1Photos.splice(adjustedTo, 0, moved);
-        }
-      }
-    }
-
-    // Small delay between sets for better UX
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Shuffle Set 2 if it has photos  
-    if (session.sets.set2.photos.length > 1) {
-      const set2Photos = [...session.sets.set2.photos];
-      const shuffled2 = shuffleArray(set2Photos);
-      
-      // Apply the new order by moving each photo to its shuffled position
-      for (let i = 0; i < shuffled2.length; i++) {
-        const currentPhoto = shuffled2[i];
-        const fromIndex = set2Photos.findIndex((p: any) => p.id === currentPhoto.id);
-        if (fromIndex !== i) {
-          await reorderPhotos('set2', fromIndex, i);
-          // Update the local array with move semantics
-          const [moved] = set2Photos.splice(fromIndex, 1);
-          const adjustedTo = fromIndex < i ? i - 1 : i;
-          set2Photos.splice(adjustedTo, 0, moved);
-        }
-      }
-    }
+    // Shuffle both sets in a single state update (no flickering, both sets update!)
+    await shufflePhotos('both');
 
     console.log('✨ Photo shuffle completed!');
   };
@@ -833,7 +767,7 @@ function AppApi() {
 
                   {/* Bottom Row: Controls spanning full width - Taller */}
                   <Box sx={{
-                    flex: '0 0 45%', // Increased to 45% to fit 3 equal tiles comfortably
+                    flex: '0 0 38%', // Reduced to move cards down and give more space to photo
                     borderTop: '1px solid',
                     borderColor: 'divider',
                     bgcolor: 'background.paper',

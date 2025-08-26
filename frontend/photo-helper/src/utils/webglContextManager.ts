@@ -14,16 +14,21 @@ export interface WebGLContextManager {
 class WebGLContextPool implements WebGLContextManager {
   private activeContexts = new Set<WebGLContext>();
   private availableContexts: WebGLContext[] = [];
-  private readonly maxContexts = 6; // Conservative limit to avoid browser limits
+  private readonly maxContexts = 8; // Increased slightly but still safe
   private readonly contextWidth = 800;  // Standard processing size
   private readonly contextHeight = 600; // Standard processing size
   
   constructor() {
-    // Pre-warm the pool with one context for immediate availability
-    const prewarmed = this.createContext();
-    if (prewarmed) {
-      this.availableContexts.push(prewarmed);
+    // Pre-warm the pool with multiple contexts for immediate availability
+    // This prevents the initial rush of context creation when photos first load
+    const prewarmCount = 3;
+    for (let i = 0; i < prewarmCount; i++) {
+      const context = this.createContext();
+      if (context) {
+        this.availableContexts.push(context);
+      }
     }
+    console.log(`WebGL context pool initialized with ${this.availableContexts.length} pre-warmed contexts`);
   }
 
   private createContext(): WebGLContext | null {
@@ -61,6 +66,7 @@ class WebGLContextPool implements WebGLContextManager {
     if (this.availableContexts.length > 0) {
       const context = this.availableContexts.pop()!;
       this.activeContexts.add(context);
+      // console.log(`Reusing WebGL context. Active: ${this.activeContexts.size}, Available: ${this.availableContexts.length}`);
       return context;
     }
 
@@ -68,10 +74,12 @@ class WebGLContextPool implements WebGLContextManager {
     const newContext = this.createContext();
     if (newContext) {
       this.activeContexts.add(newContext);
+      // console.log(`Created new WebGL context. Active: ${this.activeContexts.size}, Available: ${this.availableContexts.length}`);
       return newContext;
     }
 
     // No contexts available
+    console.warn(`No WebGL contexts available. Active: ${this.activeContexts.size}, Pool limit: ${this.maxContexts}`);
     return null;
   }
 
@@ -85,7 +93,7 @@ class WebGLContextPool implements WebGLContextManager {
     
     // Keep context available for reuse rather than destroying it immediately
     // This reduces context creation/destruction cycles
-    if (this.availableContexts.length < 2) { // Keep max 2 contexts in reserve
+    if (this.availableContexts.length < 4) { // Keep more contexts in reserve for quick reuse
       this.availableContexts.push(context);
     } else {
       // If we have enough in reserve, clean up this one
