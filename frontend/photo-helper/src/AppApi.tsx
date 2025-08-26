@@ -43,26 +43,7 @@ import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
 import { generatePDF } from './utils/pdfGenerator';
 import { generateTurningPointLabels } from './utils/imageProcessing';
-
-interface ApiPhoto {
-  id: string;
-  url: string;
-  filename: string;
-  canvasState: {
-    position: { x: number; y: number };
-    scale: number;
-    brightness: number;
-    contrast: number;
-    sharpness: number;
-    whiteBalance: {
-      temperature: number;
-      tint: number;
-      auto: boolean;
-    };
-    labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-  };
-  label: string;
-}
+import type { ApiPhoto, ApiPhotoSet } from './types/api';
 
 // Configurable delay before showing loading text (in milliseconds)
 const LOADING_TEXT_DELAY = 3000; // 3 seconds

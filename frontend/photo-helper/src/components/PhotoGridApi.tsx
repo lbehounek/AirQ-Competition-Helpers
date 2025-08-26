@@ -9,32 +9,7 @@ import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useLabeling } from '../contexts/LabelingContext';
 import { useI18n } from '../contexts/I18nContext';
 import { getImageCache } from '../utils/imageCache';
-
-interface ApiPhoto {
-  id: string;
-  sessionId: string; // Added for proper type safety with image cache
-  url: string;
-  filename: string;
-  canvasState: {
-    position: { x: number; y: number };
-    scale: number;
-    brightness: number;
-    contrast: number;
-    sharpness: number;
-    whiteBalance: {
-      temperature: number;
-      tint: number;
-      auto: boolean;
-    };
-    labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-  };
-  label: string;
-}
-
-interface ApiPhotoSet {
-  title: string;
-  photos: ApiPhoto[];
-}
+import type { ApiPhoto, ApiPhotoSet } from '../types/api';
 
 interface PhotoGridApiProps {
   photoSet: ApiPhotoSet;

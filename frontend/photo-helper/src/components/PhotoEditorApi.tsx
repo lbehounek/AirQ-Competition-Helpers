@@ -11,15 +11,7 @@ import { useWebGLContext } from '../utils/webglContextManager';
 import { drawLabel, getCanvasContext } from '../utils/canvasUtils';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useCachedImage } from '../utils/imageCache';
-
-interface ApiPhoto {
-  id: string;
-  sessionId: string; // Required for proper type safety with image cache
-  url?: string;
-  filename: string;
-  canvasState: Photo['canvasState'];
-  label: string;
-}
+import type { ApiPhoto } from '../types/api';
 
 interface PhotoEditorApiProps {
   photo: ApiPhoto;

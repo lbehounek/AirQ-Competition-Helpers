@@ -57,7 +57,7 @@ interface PhotoControlsProps {
         radius: number;
         color: 'white' | 'red' | 'yellow';
         visible: boolean;
-      };
+      } | null;
     };
   };
   label: string;
@@ -69,7 +69,6 @@ interface PhotoControlsProps {
   onToggleOriginal?: () => void;
   circleMode?: boolean;
   onCircleModeToggle?: () => void;
-  onCircleClick?: (x: number, y: number) => void;
 }
 
 type LabelPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -84,8 +83,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   showOriginal = false,
   onToggleOriginal,
   circleMode: externalCircleMode,
-  onCircleModeToggle,
-  onCircleClick
+  onCircleModeToggle
 }) => {
   const { t } = useI18n();
   // Local state for immediate UI feedback
@@ -239,25 +237,6 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
       onCircleModeToggle();
     } else {
       setCircleMode(true);
-    }
-  };
-
-  const handleAddCircle = (x: number, y: number) => {
-    ensureEdited();
-    const newCircle = {
-      x,
-      y,
-      radius: 55, // Default radius
-      color: 'red' as const,
-      visible: true
-    };
-    onUpdate({
-      ...photo.canvasState,
-      circle: newCircle
-    });
-    // Notify parent component if callback is provided
-    if (onCircleClick) {
-      onCircleClick(x, y);
     }
   };
 
