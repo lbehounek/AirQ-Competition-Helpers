@@ -365,7 +365,7 @@ function AppApi() {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-      <Container maxWidth="xl" sx={{ pt: 4 }}>
+      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
         {/* Unified Header and Controls */}
         <Paper elevation={2} sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
           {/* Blue Header Section */}
@@ -617,7 +617,7 @@ function AppApi() {
               return (
                 <Box sx={{ 
                   display: 'flex', 
-                  gap: 3,
+                  gap: 2, // Reduced gap from 3 to 2
                   mb: 6,
                   alignItems: 'flex-start'
                 }}>
@@ -625,28 +625,6 @@ function AppApi() {
                   <Box sx={{ flex: 1 }}>
                     {Set1Component}
                   </Box>
-
-                  {/* Vertical Divider */}
-                  <Divider 
-                    orientation="vertical" 
-                    flexItem 
-                    sx={{ 
-                      borderWidth: 2,
-                      borderColor: 'primary.main',
-                      mx: 1
-                    }}
-                  >
-                    <Chip
-                      label="×"
-                      size="small"
-                      color="primary"
-                      sx={{ 
-                        fontSize: '1.2rem',
-                        fontWeight: 600,
-                        my: 2
-                      }}
-                    />
-                  </Divider>
 
                   {/* Set 2 - Right Side */}
                   <Box sx={{ flex: 1 }}>
