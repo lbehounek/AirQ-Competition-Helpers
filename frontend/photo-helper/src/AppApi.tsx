@@ -81,7 +81,7 @@ function AppApi() {
   const { t } = useI18n();
   const { setLayoutMode, layoutMode } = useLayoutMode();
   const theme = useTheme();
-  const isLargeScreen = useMediaQuery(theme.breakpoints.up('xl')); // xl = 1536px by default
+  const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg')); // lg = 1200px by default
   
   // State to track if we should show loading text
   const [showLoadingText, setShowLoadingText] = useState(false);
@@ -389,10 +389,16 @@ function AppApi() {
           <Box sx={{ bgcolor: 'background.paper' }}>
             {/* Photo Configuration */}
             <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Box sx={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+              <Box sx={{ 
+                display: 'flex', 
+                gap: { xs: 2, sm: 3, md: 4 }, 
+                alignItems: { xs: 'stretch', md: 'center' }, 
+                justifyContent: 'center',
+                flexWrap: 'wrap'
+              }}>
                 {/* Photo Mode */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, gap: 1, flexDirection: { xs: 'column', md: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>
                     {t('mode.title')}
                   </Typography>
                   <ModeSelector 
@@ -403,8 +409,8 @@ function AppApi() {
                 </Box>
 
                 {/* Layout Mode (Portrait/Landscape) */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, gap: 1, flexDirection: { xs: 'column', md: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>
                     {t('layout.title')}
                   </Typography>
                   <LayoutModeSelector 
@@ -418,16 +424,16 @@ function AppApi() {
                 </Box>
 
                 {/* Photo Format */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, gap: 1, flexDirection: { xs: 'column', md: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>
                     {t('photoFormat.title')}
                   </Typography>
                   <AspectRatioSelector compact />
                 </Box>
 
                 {/* Photo Labels */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, gap: 1, flexDirection: { xs: 'column', md: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>
                     {t('photoLabels.title')}
                   </Typography>
                   <LabelingSelector compact />
@@ -435,8 +441,8 @@ function AppApi() {
 
                 {/* Shuffle Photos - Only show in track mode */}
                 {session?.mode === 'track' && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                  <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, gap: 1, flexDirection: { xs: 'column', md: 'row' } }}>
+                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>
                       {t('actions.title')}
                     </Typography>
                     <Button
