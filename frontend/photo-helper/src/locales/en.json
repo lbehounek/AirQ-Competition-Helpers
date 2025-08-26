@@ -126,6 +126,7 @@
     "editPhoto": "Edit Photo {{label}}",
     "photoLabel": "Photo {{label}}",
     "zoomAndSharpness": "Zoom and Sharpness",
+    "closeEditor": "Close editor",
     "circleOverlay": "Circle Overlay",
     "circleMode": {
       "add": "Add Circle",

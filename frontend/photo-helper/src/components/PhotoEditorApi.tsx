@@ -14,8 +14,8 @@ import { useCachedImage } from '../utils/imageCache';
 
 interface ApiPhoto {
   id: string;
+  sessionId: string; // Required for proper type safety with image cache
   url?: string;
-  sessionId?: string;
   filename: string;
   canvasState: Photo['canvasState'];
   label: string;
@@ -278,7 +278,7 @@ const renderPhotoOnCanvas = (
           
           // Apply tint
           data[i] = Math.max(0, Math.min(255, data[i] + mTint));     // Red (magenta)
-          data[i + 1] = Math.max(0, Math.min(255, data[i + 1] - gTint + gTint)); // Green
+          data[i + 1] = Math.max(0, Math.min(255, data[i + 1] - gTint)); // Green (fixed: removed +gTint that canceled out -gTint)
           data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + mTint)); // Blue (magenta)
         }
       }
@@ -481,7 +481,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   // Use cached image loading
   const { image: loadedImage, error: imageError } = useCachedImage(
     photo.id,
-    photo.sessionId || 'unknown'
+    photo.sessionId
   );
   
   // Local state for smooth dragging

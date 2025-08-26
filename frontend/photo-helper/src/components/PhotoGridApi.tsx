@@ -12,6 +12,7 @@ import { getImageCache } from '../utils/imageCache';
 
 interface ApiPhoto {
   id: string;
+  sessionId: string; // Added for proper type safety with image cache
   url: string;
   filename: string;
   canvasState: {
@@ -71,7 +72,6 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   labelOffset = 0,
   customLabels
 }) => {
-  const theme = useTheme();
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
   const { t } = useI18n();
@@ -327,7 +327,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
 const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
   label,
-  position,
+  position: _position,
   onFilesDropped
 }) => {
   const theme = useTheme();

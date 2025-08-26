@@ -28,8 +28,10 @@ class ImageCacheManager {
 
     // Load the image
     console.log(`📥 Loading image for ${photoId}`);
-    const base = (import.meta as any)?.env?.VITE_API_BASE_URL || '';
-    const url = `${base}/api/photos/${sessionId}/${photoId}`;
+    const base = ((import.meta as any)?.env?.VITE_API_BASE_URL || '').replace(/\/$/, ''); // Remove trailing slash
+    const encodedSessionId = encodeURIComponent(sessionId);
+    const encodedPhotoId = encodeURIComponent(photoId);
+    const url = `${base}/api/photos/${encodedSessionId}/${encodedPhotoId}`;
     
     const img = await this.loadImage(url);
     
@@ -88,7 +90,7 @@ class ImageCacheManager {
    */
   async preloadImages(photos: Array<{ id: string; sessionId: string }>) {
     const promises = photos.map(photo => 
-      this.getImage(photo.id, photo.sessionId || 'unknown').catch(err => {
+      this.getImage(photo.id, photo.sessionId).catch(err => {
         console.error(`Failed to preload image ${photo.id}:`, err);
         return null;
       })

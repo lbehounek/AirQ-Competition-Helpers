@@ -340,7 +340,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         >
           {t('controls.resetAll')}
         </Button>
-        <Tooltip title="Close editor">
+        <Tooltip title={t('controls.closeEditor')}>
           <IconButton onClick={onClose} color="primary" size="small">
             <Close fontSize="small" />
           </IconButton>
@@ -432,7 +432,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
       <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <RadioButtonUnchecked color="primary" />
-          <Typography variant="h6">Circle Overlay</Typography>
+          <Typography variant="h6">{t('controls.circleOverlay')}</Typography>
         </Box>
         
         {/* Add Circle Button - Only show when no circle exists */}
@@ -447,7 +447,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               fullWidth
               sx={{ mb: 2 }}
             >
-              Add Circle
+              {t('controls.circleMode.add')}
             </Button>
             
             {circleMode && (
@@ -465,7 +465,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  Radius
+                  {t('controls.circleMode.radius')}
                 </Typography>
                 <Typography variant="caption" color="primary" fontWeight={600}>
                   {circle.radius}px
@@ -485,7 +485,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             {/* Color Selection */}
             <Box sx={{ mb: 2 }}>
               <Typography variant="body2" sx={{ mb: 1, fontWeight: 600 }}>
-                Color
+                {t('controls.circleMode.color')}
               </Typography>
               <ButtonGroup size="small" fullWidth>
                 <Button
@@ -498,14 +498,14 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     '&:hover': { bgcolor: 'grey.700', color: 'white' }
                   }}
                 >
-                  White
+                  {t('controls.circleMode.white')}
                 </Button>
                 <Button
                   variant={circle.color === 'red' ? 'contained' : 'outlined'}
                   color="error"
                   onClick={() => handleCircleColorChange('red')}
                 >
-                  Red
+                  {t('controls.circleMode.red')}
                 </Button>
                 <Button
                   variant={circle.color === 'yellow' ? 'contained' : 'outlined'}
@@ -517,7 +517,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     '&:hover': { bgcolor: '#FFB300', color: 'black' }
                   }}
                 >
-                  Yellow
+                  {t('controls.circleMode.yellow')}
                 </Button>
               </ButtonGroup>
             </Box>
@@ -531,7 +531,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               onClick={handleRemoveCircle}
               fullWidth
             >
-              Remove Circle
+              {t('controls.circleMode.removeCircle')}
             </Button>
           </>
         )}
@@ -1192,13 +1192,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <ZoomIn fontSize="small" />
-                  Zoom
+                  {t('controls.zoom')}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography variant="body2" color="primary" fontWeight={600}>
                     {Math.round(photo.canvasState.scale * 100)}%
                   </Typography>
-                  <Tooltip title="Reset zoom">
+                  <Tooltip title={t('controls.resetZoom')}>
                     <IconButton 
                       size="small" 
                       onClick={() => handleScaleChange(1.0)}
