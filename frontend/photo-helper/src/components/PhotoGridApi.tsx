@@ -96,6 +96,9 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
     };
   });
 
+  // How many files can still be added to this set (respects 10 in portrait, 9 in landscape)
+  const maxFilesRemaining = Math.max(0, layoutConfig.maxPhotosPerSet - photoSet.photos.length);
+
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
