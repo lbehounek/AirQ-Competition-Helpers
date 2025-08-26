@@ -35,6 +35,7 @@ interface PhotoGridSlotEmptyProps {
   label: string;
   position: number;
   onFilesDropped?: (files: File[]) => void;
+  maxFilesRemaining?: number;
 }
 
 export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
@@ -68,6 +69,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   
   // Import the layout mode hook
   const { layoutConfig } = useLayoutMode();
+  const maxFilesRemaining = Math.max(0, layoutConfig.maxPhotosPerSet - photoSet.photos.length);
   
   // Create grid slots based on layout mode (9 for landscape, 10 for portrait)
   const gridSlots: GridSlot[] = Array.from({ length: layoutConfig.slots }, (_, index) => {
@@ -291,6 +293,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                 label={slot.label}
                 position={slot.index + 1}
                 onFilesDropped={onFilesDropped}
+                maxFilesRemaining={maxFilesRemaining}
               />
             )}
           </Paper>;
@@ -304,7 +307,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
   label,
   position: _position,
-  onFilesDropped
+  onFilesDropped,
+  maxFilesRemaining
 }) => {
   const theme = useTheme();
   const { t } = useI18n();
@@ -319,7 +323,7 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png']
     },
-    maxFiles: 9, // Allow multiple files for easier bulk upload
+    maxFiles: maxFilesRemaining ?? 9, // Respect layout-dependent remaining capacity
     onDrop: (acceptedFiles, rejectedFiles) => {
       console.log('Drop event - Accepted:', acceptedFiles, 'Rejected:', rejectedFiles);
       

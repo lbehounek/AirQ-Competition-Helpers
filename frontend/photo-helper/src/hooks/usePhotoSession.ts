@@ -103,10 +103,12 @@ export const usePhotoSession = (sessionId?: string) => {
 
     try {
       const currentSet = currentSession.sets[setKey];
-      const availableSlots = 9 - currentSet.photos.length;
+      // Allow 10 photos per set in portrait layout
+      const maxPerSet = (currentSession.layoutMode === 'portrait') ? 10 : 9;
+      const availableSlots = maxPerSet - currentSet.photos.length;
       
       if (files.length > availableSlots) {
-        throw new Error(`Can only add ${availableSlots} more photos to this set (max 9 per set)`);
+        throw new Error(`Can only add ${availableSlots} more photos to this set (max ${maxPerSet} per set)`);
       }
 
       const newPhotos: Photo[] = [];
@@ -232,12 +234,13 @@ export const usePhotoSession = (sessionId?: string) => {
     toIndex: number
   ) => {
     const currentPhotos = currentSession.sets[setKey].photos;
+    const gridCapacity = (currentSession.layoutMode === 'portrait') ? 10 : 9;
     if (
       fromIndex === toIndex ||
       fromIndex < 0 ||
       toIndex < 0 ||
-      fromIndex >= Math.min(9, currentPhotos.length) ||
-      toIndex >= 9
+      fromIndex >= Math.min(gridCapacity, currentPhotos.length) ||
+      toIndex >= gridCapacity
     ) {
       return;
     }
@@ -306,14 +309,15 @@ export const usePhotoSession = (sessionId?: string) => {
   const getSessionStats = useCallback(() => {
     const set1Count = currentSession.sets.set1.photos.length;
     const set2Count = currentSession.sets.set2.photos.length;
+    const maxPerSet = (currentSession.layoutMode === 'portrait') ? 10 : 9;
     
     return {
       set1Photos: set1Count,
       set2Photos: set2Count,
       totalPhotos: set1Count + set2Count,
-      set1Available: 9 - set1Count,
-      set2Available: 9 - set2Count,
-      isComplete: set1Count === 9 && set2Count === 9
+      set1Available: maxPerSet - set1Count,
+      set2Available: maxPerSet - set2Count,
+      isComplete: set1Count === maxPerSet && set2Count === maxPerSet
     };
   }, [currentSession]);
 
