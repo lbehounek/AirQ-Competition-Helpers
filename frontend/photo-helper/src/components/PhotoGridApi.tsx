@@ -166,15 +166,9 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
           // Removed outer grid border (redundant)
           border: 'none',
           boxShadow: 0,
-          // Portrait (2x5): make ~30% larger than previous cap and responsive
-          // - Small/Medium screens: cap around ~680-720px for ~30% larger cells
-          // - XL (side-by-side): allow full width of parent column
-          maxWidth: layoutConfig.columns === 2 
-            ? { xs: '100%', sm: 680, md: 720, xl: '100%' } 
-            : '100%',
-          mx: layoutConfig.columns === 2 
-            ? { xs: 'auto', xl: 'unset' }
-            : 'unset'
+          // Expand to fill parent width in all cases
+          maxWidth: '100%',
+          mx: 'unset'
         }}>
         {gridSlots.map((slot) => {
           const isDragOver = dragOverIndex === slot.index;
@@ -192,12 +186,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
               sx={{
                 aspectRatio: currentRatio.cssRatio,
                 bgcolor: slot.photo ? 'background.paper' : 'grey.50',
-                border: '2px solid',
-                borderColor: isDragOver 
-                  ? 'success.main' // Green border when drag over
-                  : slot.photo 
-                    ? 'primary.main' 
-                    : 'grey.300',
+                // Remove tile borders for a cleaner look; rely on spacing and hover glows
+                border: 'none',
                 borderRadius: 0, // Rectangular to match PDF output
                 overflow: 'hidden',
                 position: 'relative',
@@ -211,9 +201,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                     ? '0 0 12px rgba(33, 150, 243, 0.4)' // Blue glow for photos
                     : 'none',
                 '&:hover': slot.photo ? {
-                  borderColor: 'primary.main',
-                  boxShadow: '0 0 12px rgba(33, 150, 243, 0.4)', // Blue glow effect
-                  // Remove transform to prevent movement
+                  boxShadow: '0 0 12px rgba(33, 150, 243, 0.4)'
                 } : {}
               }}
             >

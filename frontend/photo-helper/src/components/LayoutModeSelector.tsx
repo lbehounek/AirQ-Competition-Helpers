@@ -18,14 +18,16 @@ import { useI18n } from '../contexts/I18nContext';
 
 interface LayoutModeSelectorProps {
   compact?: boolean;
-  currentPhotoCount?: number;
+  set1Count?: number;
+  set2Count?: number;
   onModeChangeStart?: () => void;
   onModeChangeComplete?: (newMode: 'landscape' | 'portrait') => void;
 }
 
 export const LayoutModeSelector: React.FC<LayoutModeSelectorProps> = ({
   compact = false,
-  currentPhotoCount = 0,
+  set1Count = 0,
+  set2Count = 0,
   onModeChangeStart,
   onModeChangeComplete
 }) => {
@@ -37,8 +39,8 @@ export const LayoutModeSelector: React.FC<LayoutModeSelectorProps> = ({
   const handleModeChange = (_event: React.MouseEvent<HTMLElement>, newMode: 'landscape' | 'portrait' | null) => {
     if (!newMode || newMode === layoutMode) return;
 
-    // Check if switching from portrait to landscape with 10 photos
-    if (layoutMode === 'portrait' && newMode === 'landscape' && currentPhotoCount > 9) {
+    // Warn only if at least one set has 10 photos (would lose the 10th slot)
+    if (layoutMode === 'portrait' && newMode === 'landscape' && (set1Count >= 10 || set2Count >= 10)) {
       setPendingMode(newMode);
       setShowWarningDialog(true);
       return;

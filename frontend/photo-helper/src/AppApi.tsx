@@ -415,7 +415,8 @@ function AppApi() {
                   </Typography>
                   <LayoutModeSelector 
                     compact 
-                    currentPhotoCount={stats.totalPhotos}
+                    set1Count={session?.sets.set1.photos.length || 0}
+                    set2Count={session?.sets.set2.photos.length || 0}
                     onModeChangeComplete={(newMode) => {
                       // Sync with session when layout mode changes
                       updateLayoutMode(newMode);
