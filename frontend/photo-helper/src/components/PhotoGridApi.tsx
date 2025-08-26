@@ -144,9 +144,9 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
           minHeight: 400,
           bgcolor: 'background.paper',
           borderRadius: 2,
-          border: '2px solid',
-          borderColor: 'primary.light',
-          boxShadow: 1,
+          // Removed outer grid border (redundant)
+          border: 'none',
+          boxShadow: 0,
           p: 4
         }}>
           <CircularProgress size={48} color="primary" sx={{ mb: 2 }} />
@@ -163,9 +163,9 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
           p: 2,
           bgcolor: 'background.paper',
           borderRadius: 2,
-          border: '2px solid',
-          borderColor: 'primary.light',
-          boxShadow: 1,
+          // Removed outer grid border (redundant)
+          border: 'none',
+          boxShadow: 0,
           // Portrait (2x5): make ~30% larger than previous cap and responsive
           // - Small/Medium screens: cap around ~680-720px for ~30% larger cells
           // - XL (side-by-side): allow full width of parent column

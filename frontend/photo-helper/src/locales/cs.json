@@ -8,7 +8,7 @@
     "statistics": "Statistiky"
   },
   "photoFormat": {
-    "title": "Formát fotografií:",
+    "title": "Formát fotografií",
     "aspectRatios": {
       "3:2": {
         "name": "3:2",
@@ -47,7 +47,7 @@
     }
   },
   "photoLabels": {
-    "title": "Popisky fotografií:",
+    "title": "Popisky fotografií",
     "types": {
       "letters": {
         "name": "Písmena",
@@ -60,7 +60,7 @@
     }
   },
   "mode": {
-    "title": "Režim fotek:",
+    "title": "Režim fotek",
     "track": {
       "name": "Fotky trati",
       "description": "Standardní fotky navigačního letu s možností náhodného pořadí"
@@ -78,12 +78,12 @@
     "page2": "Stránka 2"
   },
   "competition": {
-    "title": "Soutěž:",
+    "title": "Soutěž",
     "placeholder": "Zadejte název soutěže...",
     "defaultName": "Název soutěže"
   },
   "actions": {
-    "title": "Akce:",
+    "title": "Akce",
     "shuffle": {
       "name": "Zamíchat",
       "description": "Náhodné pořadí"

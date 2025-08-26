@@ -8,7 +8,7 @@
     "statistics": "Statistics"
   },
   "photoFormat": {
-    "title": "Photo Format:",
+    "title": "Photo Format",
     "aspectRatios": {
       "3:2": {
         "name": "3:2",
@@ -47,7 +47,7 @@
     }
   },
   "photoLabels": {
-    "title": "Photo Labels:",
+    "title": "Photo Labels",
     "types": {
       "letters": {
         "name": "Letters",
@@ -60,7 +60,7 @@
     }
   },
   "mode": {
-    "title": "Photo Mode:",
+    "title": "Photo Mode",
     "track": {
       "name": "Track Photos",
       "description": "Standard navigation flight photos with randomizable order"
@@ -78,12 +78,12 @@
     "page2": "Page 2"
   },
   "competition": {
-    "title": "Competition:",
+    "title": "Competition",
     "placeholder": "Enter competition name...",
     "defaultName": "Competition Name"
   },
   "actions": {
-    "title": "Actions:",
+    "title": "Actions",
     "shuffle": {
       "name": "Shuffle",
       "description": "Randomize order"
