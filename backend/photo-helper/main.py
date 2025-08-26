@@ -45,7 +45,10 @@ SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 SESSION_EXPIRY_DAYS = 7
-MAX_PHOTOS_PER_SET = 9
+
+def get_max_photos_per_set(layout_mode: str = 'landscape') -> int:
+    """Get maximum photos per set based on layout mode"""
+    return 10 if layout_mode == 'portrait' else 9
 
 def secure_filename(filename: str) -> str:
     """Return a secure version of a filename.
@@ -74,6 +77,9 @@ class ReorderRequest(BaseModel):
 
 class ModeUpdateRequest(BaseModel):
     mode: str         # 'track' or 'turningpoint'
+
+class LayoutModeUpdateRequest(BaseModel):
+    layout_mode: str  # 'landscape' or 'portrait'
 
 class CompetitionUpdateRequest(BaseModel):
     competition_name: str
@@ -114,6 +120,7 @@ class PhotoSession:
         self.updated_at = datetime.now()
         self.version = 1
         self.mode = "track"  # "track" or "turningpoint"
+        self.layout_mode = "landscape"  # "landscape" or "portrait"
         self.competition_name = ""  # Competition identification
         # Separate storage for track and turning point photos
         self.track_sets = {
@@ -140,6 +147,7 @@ class PhotoSession:
             "updatedAt": self.updated_at.isoformat(),
             "version": self.version,
             "mode": self.mode,
+            "layoutMode": self.layout_mode,
             "competition_name": self.competition_name,
             "sets": self.sets,  # Current sets based on mode (for frontend compatibility)
             "track_sets": self.track_sets,  # Save both sets to file
@@ -148,10 +156,11 @@ class PhotoSession:
         
     def add_photo(self, photo: PhotoMetadata):
         set_photos = self.sets[photo.set_key]["photos"]
-        if len(set_photos) >= MAX_PHOTOS_PER_SET:
+        max_photos = get_max_photos_per_set(self.layout_mode)
+        if len(set_photos) >= max_photos:
             raise HTTPException(
                 status_code=400, 
-                detail=f"Set {photo.set_key} is full (max {MAX_PHOTOS_PER_SET} photos)"
+                detail=f"Set {photo.set_key} is full (max {max_photos} photos)"
             )
         
         set_photos.append(photo.to_dict())
@@ -237,6 +246,7 @@ def load_session(session_id: str) -> Optional[PhotoSession]:
             session.version = data["version"]
             # Migration: add mode field if it doesn't exist (backward compatibility)
             session.mode = data.get("mode", "track")
+            session.layout_mode = data.get("layoutMode", "landscape")
             session.competition_name = data.get("competition_name", "")
             
             # Migration: handle old session structure vs new separate sets structure
@@ -305,7 +315,8 @@ async def upload_photos(
     
     # Preflight capacity check to avoid partial saves
     current_count = len(session.sets[set_key]["photos"])
-    remaining_slots = MAX_PHOTOS_PER_SET - current_count
+    max_photos = get_max_photos_per_set(session.layout_mode)
+    remaining_slots = max_photos - current_count
     if len(files) > remaining_slots:
         raise HTTPException(
             status_code=400,
@@ -482,18 +493,22 @@ async def reorder_photos(session_id: str, reorder_data: ReorderRequest):
     if set_key not in ["set1", "set2"]:
         raise HTTPException(status_code=400, detail="Invalid set_key. Must be 'set1' or 'set2'")
     
+    # Get max slots based on layout mode
+    max_photos = get_max_photos_per_set(session.layout_mode)
+    max_index = max_photos - 1
+    
     # Validate indices
-    if from_index < 0 or from_index > 8 or to_index < 0 or to_index > 8:
-        raise HTTPException(status_code=400, detail="Invalid indices. Must be 0-8")
+    if from_index < 0 or from_index > max_index or to_index < 0 or to_index > max_index:
+        raise HTTPException(status_code=400, detail=f"Invalid indices. Must be 0-{max_index}")
     
     if from_index == to_index:
         return {"message": "No change needed", "session": session.to_dict()}
     
-    # Build a 9-slot array representing grid positions
+    # Build slot array representing grid positions
     current = session.sets[set_key].get("photos", [])
-    slots = [None] * 9
+    slots = [None] * max_photos
     for i, photo in enumerate(current):
-        if i < 9:
+        if i < max_photos:
             slots[i] = photo
 
     # Validate there is a photo at from_index to move
@@ -552,6 +567,27 @@ async def update_session_mode(session_id: str, mode_data: ModeUpdateRequest):
     
     return {
         "message": f"Session mode updated to {mode_data.mode}",
+        "session": session.to_dict()
+    }
+
+@app.put("/api/sessions/{session_id}/layout-mode")
+async def update_layout_mode(session_id: str, layout_data: LayoutModeUpdateRequest):
+    """Update session layout mode between 'landscape' and 'portrait'"""
+    session = load_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Validate layout mode
+    if layout_data.layout_mode not in ["landscape", "portrait"]:
+        raise HTTPException(status_code=400, detail="Invalid layout mode. Must be 'landscape' or 'portrait'")
+    
+    session.layout_mode = layout_data.layout_mode
+    session.updated_at = datetime.now()
+    session.version += 1
+    save_session(session)
+    
+    return {
+        "message": f"Session layout mode updated to {layout_data.layout_mode}",
         "session": session.to_dict()
     }
 

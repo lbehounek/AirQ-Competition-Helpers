@@ -40,6 +40,15 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   // Calculate turning point labels
   const totalPhotos = set1.photos.length + set2.photos.length;
   const turningPointLabels = generateTurningPointLabels(totalPhotos, layoutMode);
+  
+  // Debug logging
+  console.log('🔍 TurningPointLayout Debug:', {
+    layoutMode,
+    totalPhotos,
+    set1Count: set1.photos.length,
+    set2Count: set2.photos.length,
+    turningPointLabels
+  });
 
   return (
     <Box>

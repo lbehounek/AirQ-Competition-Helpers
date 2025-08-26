@@ -407,21 +407,12 @@ export const usePhotoSessionApi = () => {
     if (!sessionId || !backendAvailable || !session) return;
 
     try {
-      // Update the session with new layout mode
-      const updatedSession = {
-        ...session,
-        layoutMode
-      };
-      setSession(updatedSession);
-      
-      // Try to persist to backend if available
-      if (backendAvailable) {
-        // Note: Backend API may need to be updated to support layoutMode
-        // For now, we just update the local state
-        console.log(`✅ Layout mode updated to ${layoutMode}`);
-      }
+      // Update the session via backend API
+      const response = await api.updateLayoutMode(sessionId, layoutMode);
+      setSession(response.session as ApiPhotoSession);
+      console.log('✅ Layout mode updated:', layoutMode);
     } catch (err) {
-      const errorMessage = 'Failed to update layout mode';
+      const errorMessage = err instanceof ApiError ? err.message : 'Failed to update layout mode';
       setError(errorMessage);
       console.error('❌ Layout mode update failed:', err);
     }
