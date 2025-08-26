@@ -30,23 +30,13 @@ export const getCanvasContext = (canvas: any): CanvasRenderingContext2D | null =
  * @param aspectRatio - The aspect ratio for photos
  */
 export const getCanvasSettings = (layoutMode: 'landscape' | 'portrait' = 'landscape', aspectRatio: number = 4/3): CanvasSettings => {
-  if (layoutMode === 'portrait') {
-    // Wider canvases for 2-column layout
-    const width = 360;
-    return {
-      width,
-      height: Math.round(width / aspectRatio),
-      aspectRatio
-    };
-  } else {
-    // Standard landscape mode settings
-    const width = 240;
-    return {
-      width,
-      height: Math.round(width / aspectRatio),
-      aspectRatio
-    };
-  }
+  // Use consistent canvas size for both modes
+  const width = 240;
+  return {
+    width,
+    height: Math.round(width / aspectRatio),
+    aspectRatio
+  };
 };
 
 /**

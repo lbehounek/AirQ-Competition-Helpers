@@ -39,8 +39,8 @@ const LAYOUT_CONFIGS: Record<LayoutMode, Omit<LayoutConfig, 'mode'>> = {
     rows: 5,
     gridXs: 6, // 12/2 = 6 columns in Material-UI grid
     maxPhotosPerSet: 10,
-    canvasWidth: 360, // Wider for 2-column layout
-    canvasHeight: (aspectRatio: number) => Math.round(360 / aspectRatio),
+    canvasWidth: 240, // Same size as landscape for consistency
+    canvasHeight: (aspectRatio: number) => Math.round(240 / aspectRatio),
     pdfOrientation: 'portrait'
   }
 };
