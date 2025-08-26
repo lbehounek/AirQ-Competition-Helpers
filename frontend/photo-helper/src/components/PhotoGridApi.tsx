@@ -165,7 +165,16 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
           borderRadius: 2,
           border: '2px solid',
           borderColor: 'primary.light',
-          boxShadow: 1
+          boxShadow: 1,
+          // Portrait (2x5): make ~30% larger than previous cap and responsive
+          // - Small/Medium screens: cap around ~680-720px for ~30% larger cells
+          // - XL (side-by-side): allow full width of parent column
+          maxWidth: layoutConfig.columns === 2 
+            ? { xs: '100%', sm: 680, md: 720, xl: '100%' } 
+            : '100%',
+          mx: layoutConfig.columns === 2 
+            ? { xs: 'auto', xl: 'unset' }
+            : 'unset'
         }}>
         {gridSlots.map((slot) => {
           const isDragOver = dragOverIndex === slot.index;

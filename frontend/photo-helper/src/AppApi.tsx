@@ -641,16 +641,7 @@ function AppApi() {
                     {Set1Component}
                   </Box>
 
-                  {/* Horizontal Divider */}
-                  <Divider sx={{ my: 6, borderWidth: 2, '&::before, &::after': { borderWidth: '2px' } }}>
-                    <Chip
-                      label={t('sets.set2')}
-                      size="medium"
-                      color="primary"
-                      variant="filled"
-                      sx={{ px: 3, py: 1, fontSize: '1rem', fontWeight: 600 }}
-                    />
-                  </Divider>
+                  {/* Removed horizontal divider for cleaner look */}
 
                   {/* Set 2 Section */}
                   <Box sx={{ mb: 6 }}>
