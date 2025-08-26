@@ -88,18 +88,6 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
     }
     // Empty slot in turning point mode - no label (label stays empty string)
     
-    // Debug logging for slot 9 (10th slot) when customLabels exist
-    if (index === 9 && customLabels) {
-      console.log(`🔍 PhotoGridApi Debug - Slot ${index}:`, {
-        setKey,
-        customLabels: customLabels,
-        customLabelAtIndex: customLabels[index],
-        photo: photo ? `${photo.filename}` : 'empty',
-        finalLabel: label,
-        layoutMode: layoutConfig
-      });
-    }
-    
     return {
       id: `${setKey}-slot-${index}`,
       index,

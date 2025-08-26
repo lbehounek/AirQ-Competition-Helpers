@@ -39,8 +39,8 @@
       "tooltip": "Rozložení na výšku s 10 fotkami na stránku"
     },
     "warning": {
-      "title": "Upozornění na změnu rozložení",
-      "message": "Přepnutí z režimu na výšku do režimu na šířku odstraní 10. fotku z každé sady. Tuto akci nelze vrátit zpět.",
+      "title": "Oznámení o změně rozložení",
+      "message": "Přepnutí do režimu na šířku skryje 10. fotku z každé sady. Fotky nebudou smazány a znovu se zobrazí při přepnutí zpět do režimu na výšku.",
       "confirm": "Chcete pokračovat?",
       "cancel": "Zrušit",
       "proceed": "Přepnout na šířku"

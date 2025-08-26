@@ -39,8 +39,8 @@
       "tooltip": "Portrait layout with 10 photos per page"
     },
     "warning": {
-      "title": "Layout Change Warning",
-      "message": "Switching from portrait to landscape mode will remove the 10th photo from each set. This action cannot be undone.",
+      "title": "Layout Change Notice",
+      "message": "Switching to landscape mode will hide the 10th photo from each set. The photos will not be deleted and will reappear when you switch back to portrait mode.",
       "confirm": "Do you want to proceed?",
       "cancel": "Cancel",
       "proceed": "Switch to Landscape"
