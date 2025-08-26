@@ -274,7 +274,8 @@ export const usePhotoSessionApi = () => {
     if (!sessionId || !backendAvailable || !session) return;
 
     // Bounds and no-op checks
-    if (fromIndex === toIndex || fromIndex < 0 || fromIndex > 8 || toIndex < 0 || toIndex > 8) {
+    const gridCapacity = (session.layoutMode === 'portrait') ? 10 : 9;
+    if (fromIndex === toIndex || fromIndex < 0 || fromIndex >= gridCapacity || toIndex < 0 || toIndex >= gridCapacity) {
       return;
     }
 
@@ -293,10 +294,10 @@ export const usePhotoSessionApi = () => {
       }
     };
 
-    // Build 9-slot representation
-    const slots: (ApiPhoto | null)[] = Array(9).fill(null);
+    // Build slot representation based on capacity
+    const slots: (ApiPhoto | null)[] = Array(gridCapacity).fill(null);
     newSession.sets[setKey].photos.forEach((p, i) => {
-      if (i < 9) slots[i] = p as ApiPhoto;
+      if (i < gridCapacity) slots[i] = p as ApiPhoto;
     });
 
     const moving = slots[fromIndex];
@@ -304,7 +305,7 @@ export const usePhotoSessionApi = () => {
 
     // Compact excluding fromIndex
     const compact: ApiPhoto[] = [];
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < gridCapacity; i++) {
       const p = slots[i];
       if (p && i !== fromIndex) compact.push(p);
     }
@@ -313,7 +314,7 @@ export const usePhotoSessionApi = () => {
     const insertIdx = fromIndex < toIndex ? Math.max(0, Math.min(compact.length, toIndex - 1)) : Math.max(0, Math.min(compact.length, toIndex));
     compact.splice(insertIdx, 0, moving);
 
-    newSession.sets[setKey].photos = compact.slice(0, 9);
+    newSession.sets[setKey].photos = compact.slice(0, gridCapacity);
 
     // Optimistic UI
     setSession(newSession);
@@ -434,6 +435,7 @@ export const usePhotoSessionApi = () => {
       const set1Count = session.sets.set1.photos.length;
       const set2Count = session.sets.set2.photos.length;
       const totalCount = set1Count + set2Count;
+      const gridCapacity = (session.layoutMode === 'portrait') ? 10 : 9;
       
       // Check if we can add all files
       if (totalCount + files.length > 18) {
@@ -447,7 +449,7 @@ export const usePhotoSessionApi = () => {
       
       for (let i = 0; i < files.length; i++) {
         const currentSet1Count = set1Count + filesToSet1.length;
-        if (currentSet1Count < 9) {
+        if (currentSet1Count < gridCapacity) {
           filesToSet1.push(files[i]);
         } else {
           filesToSet2.push(files[i]);
