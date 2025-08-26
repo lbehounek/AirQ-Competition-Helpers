@@ -5,6 +5,7 @@ import { PhotoGridApi } from './PhotoGridApi';
 import { useI18n } from '../contexts/I18nContext';
 import { generateTurningPointLabels } from '../utils/imageProcessing';
 import type { ApiPhoto, ApiPhotoSet } from '../types/api';
+import { useLayoutMode } from '../contexts/LayoutModeContext';
 
 interface TurningPointLayoutProps {
   set1: ApiPhotoSet;
@@ -32,10 +33,11 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   totalPhotoCount
 }) => {
   const { t } = useI18n();
+  const { layoutMode } = useLayoutMode();
 
   // Calculate turning point labels
   const totalPhotos = set1.photos.length + set2.photos.length;
-  const turningPointLabels = generateTurningPointLabels(totalPhotos);
+  const turningPointLabels = generateTurningPointLabels(totalPhotos, layoutMode);
 
   return (
     <Box>

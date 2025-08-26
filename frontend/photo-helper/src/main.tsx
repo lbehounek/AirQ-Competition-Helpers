@@ -9,6 +9,7 @@ import { theme } from './theme'
 import { AspectRatioProvider } from './contexts/AspectRatioContext'
 import { LabelingProvider } from './contexts/LabelingContext'
 import { I18nProvider } from './contexts/I18nContext'
+import { LayoutModeProvider } from './contexts/LayoutModeContext'
 
 // Choose which version to use:
 // - App: localStorage version (original)
@@ -23,7 +24,9 @@ createRoot(document.getElementById('root')!).render(
       <I18nProvider>
         <AspectRatioProvider>
           <LabelingProvider>
-            <AppComponent />
+            <LayoutModeProvider>
+              <AppComponent />
+            </LayoutModeProvider>
           </LabelingProvider>
         </AspectRatioProvider>
       </I18nProvider>

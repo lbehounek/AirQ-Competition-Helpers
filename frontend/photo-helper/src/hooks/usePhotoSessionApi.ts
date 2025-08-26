@@ -402,6 +402,30 @@ export const usePhotoSessionApi = () => {
     }
   }, [sessionId, backendAvailable, session]);
 
+  const updateLayoutMode = useCallback(async (layoutMode: 'landscape' | 'portrait') => {
+    if (!sessionId || !backendAvailable || !session) return;
+
+    try {
+      // Update the session with new layout mode
+      const updatedSession = {
+        ...session,
+        layoutMode
+      };
+      setSession(updatedSession);
+      
+      // Try to persist to backend if available
+      if (backendAvailable) {
+        // Note: Backend API may need to be updated to support layoutMode
+        // For now, we just update the local state
+        console.log(`✅ Layout mode updated to ${layoutMode}`);
+      }
+    } catch (err) {
+      const errorMessage = 'Failed to update layout mode';
+      setError(errorMessage);
+      console.error('❌ Layout mode update failed:', err);
+    }
+  }, [sessionId, backendAvailable, session]);
+
   const addPhotosToTurningPoint = useCallback(async (files: File[]) => {
     if (!sessionId || !backendAvailable || !session) return;
 
@@ -478,6 +502,7 @@ export const usePhotoSessionApi = () => {
     reorderPhotos,
     shufflePhotos,
     updateSessionMode,
+    updateLayoutMode,
     updateCompetitionName,
     resetSession,
     refreshSession,

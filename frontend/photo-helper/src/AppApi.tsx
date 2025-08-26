@@ -38,9 +38,11 @@ import { LabelingSelector } from './components/LabelingSelector';
 import { ModeSelector } from './components/ModeSelector';
 import { TurningPointLayout } from './components/TurningPointLayout';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
+import { LayoutModeSelector } from './components/LayoutModeSelector';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
+import { useLayoutMode } from './contexts/LayoutModeContext';
 import { generatePDF } from './utils/pdfGenerator';
 import { generateTurningPointLabels } from './utils/imageProcessing';
 import type { ApiPhoto, ApiPhotoSet } from './types/api';
@@ -63,6 +65,7 @@ function AppApi() {
     reorderPhotos,
     shufflePhotos,
     updateSessionMode,
+    updateLayoutMode,
     updateCompetitionName,
     resetSession,
     clearError,
@@ -74,6 +77,7 @@ function AppApi() {
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
   const { t } = useI18n();
+  const { setLayoutMode } = useLayoutMode();
   
   // State to track if we should show loading text
   const [showLoadingText, setShowLoadingText] = useState(false);
@@ -108,6 +112,13 @@ function AppApi() {
     }
   }, [sessionId]);
 
+  // Sync layout mode with session
+  useEffect(() => {
+    if (session?.layoutMode) {
+      setLayoutMode(session.layoutMode);
+    }
+  }, [session?.layoutMode, setLayoutMode]);
+
   const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
     const setPhotos = session?.sets[setKey].photos || [];
     const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
@@ -119,7 +130,7 @@ function AppApi() {
       const set1Count = session.sets.set1.photos.length;
       const set2Count = session.sets.set2.photos.length;
       const totalPhotos = set1Count + set2Count;
-      const turningPointLabels = generateTurningPointLabels(totalPhotos);
+      const turningPointLabels = generateTurningPointLabels(totalPhotos, session.layoutMode || 'landscape');
       
       if (setKey === 'set1') {
         label = turningPointLabels.set1[photoIndex] || 'X';
@@ -214,7 +225,7 @@ function AppApi() {
         const set1Count = session.sets.set1.photos.length;
         const set2Count = session.sets.set2.photos.length;
         const totalPhotos = set1Count + set2Count;
-        const turningPointLabels = generateTurningPointLabels(totalPhotos);
+        const turningPointLabels = generateTurningPointLabels(totalPhotos, session.layoutMode || 'landscape');
 
         set1WithLabels = {
           ...session.sets.set1,
@@ -251,7 +262,7 @@ function AppApi() {
         };
       }
 
-      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name);
+      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape');
     } catch (error) {
       console.error('PDF generation failed:', error);
       // Could add user notification here
@@ -384,6 +395,21 @@ function AppApi() {
                     currentMode={session?.mode || 'track'} 
                     onModeChange={updateSessionMode}
                     compact
+                  />
+                </Box>
+
+                {/* Layout Mode (Portrait/Landscape) */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                    {t('layout.title')}
+                  </Typography>
+                  <LayoutModeSelector 
+                    compact 
+                    currentPhotoCount={stats.totalPhotos}
+                    onModeChangeComplete={(newMode) => {
+                      // Sync with session when layout mode changes
+                      updateLayoutMode(newMode);
+                    }}
                   />
                 </Box>
 

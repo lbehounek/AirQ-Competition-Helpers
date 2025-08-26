@@ -36,6 +36,7 @@ export interface PhotoSession {
   createdAt: Date;
   updatedAt: Date;
   mode: 'track' | 'turningpoint';
+  layoutMode?: 'landscape' | 'portrait'; // Optional for backward compatibility
   competition_name: string;
   sets: {
     set1: PhotoSet;

@@ -8,6 +8,7 @@ import { isValidImageFile } from '../utils/imageProcessing';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useLabeling } from '../contexts/LabelingContext';
 import { useI18n } from '../contexts/I18nContext';
+import { useLayoutMode } from '../contexts/LayoutModeContext';
 import { getImageCache } from '../utils/imageCache';
 import type { ApiPhoto, ApiPhotoSet } from '../types/api';
 
@@ -65,8 +66,11 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
     }
   }, [photoSet.photos]);
   
-  // Create 9 grid slots (3x3)
-  const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
+  // Import the layout mode hook
+  const { layoutConfig } = useLayoutMode();
+  
+  // Create grid slots based on layout mode (9 for landscape, 10 for portrait)
+  const gridSlots: GridSlot[] = Array.from({ length: layoutConfig.slots }, (_, index) => {
     const photo = photoSet.photos[index] || null;
     
     // Only show labels when there's a photo, or in track mode for empty slots
@@ -151,10 +155,10 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
           </Typography>
         </Box>
       ) : (
-        /* 3x3 Photo Grid */
+        /* Dynamic Photo Grid (3x3 or 2x5 based on layout) */
         <Box sx={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateColumns: `repeat(${layoutConfig.columns}, 1fr)`,
           gap: 2,
           p: 2,
           bgcolor: 'background.paper',

@@ -5,6 +5,7 @@ import type { PhotoSet } from '../types';
 import { PhotoEditor } from './PhotoEditor';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useLabeling } from '../contexts/LabelingContext';
+import { useLayoutMode } from '../contexts/LayoutModeContext';
 
 interface PhotoGridProps {
   photoSet: PhotoSet;
@@ -30,8 +31,11 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   
-  // Create array of 9 slots (3x3 grid)
-  const gridSlots = Array.from({ length: 9 }, (_, index) => {
+  // Import layout mode
+  const { layoutConfig } = useLayoutMode();
+  
+  // Create array of slots based on layout mode (9 for landscape, 10 for portrait)
+  const gridSlots = Array.from({ length: layoutConfig.slots }, (_, index) => {
     const photo = photoSet.photos[index] || null;
     const label = generateLabel(index); // Use dynamic labeling (letters or numbers) with dot
     
@@ -104,10 +108,10 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
           </Typography>
         </Box>
       ) : (
-        /* 3x3 Photo Grid */
+        /* Dynamic Photo Grid (3x3 or 2x5 based on layout) */
         <Box sx={{ 
           display: 'grid', 
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateColumns: `repeat(${layoutConfig.columns}, 1fr)`,
           gap: 2,
           p: 2,
           bgcolor: 'background.paper',

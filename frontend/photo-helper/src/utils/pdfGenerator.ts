@@ -15,7 +15,8 @@ export const generatePDF = async (
   set2: ApiPhotoSet,
   sessionId: string,
   aspectRatio = 4/3,
-  competitionName?: string
+  competitionName?: string,
+  layoutMode: 'landscape' | 'portrait' = 'landscape'
 ): Promise<void> => {
   
   // Helper function to get canvas data URL for a photo
@@ -45,19 +46,41 @@ export const generatePDF = async (
   const createPhotoGrid = (photoSet: PhotoSet, setKey: 'set1' | 'set2') => {
     const content = [];
     
-    // BALANCED MASSIVE PHOTOS WITH PROPER MARGINS
-    const photoWidth = 260; // 260 points = ~92mm = 3.6 inches - SWEET SPOT!
-    const photoHeight = photoWidth / aspectRatio; // Maintain aspect ratio
+    let photoWidth: number;
+    let photoHeight: number;
+    let startX: number;
+    let startY: number;
+    let gapX: number;
+    let gapY: number;
+    let cols: number;
+    let rows: number;
     
-    const startX = 25; // Start position - proper left margin for printing
-    const startY = 40; // Start position (after header) - balanced spacing
-    const gapX = 8; // Gap between photos - tight but readable
-    const gapY = 8; // Gap between rows - tight but readable
+    if (layoutMode === 'portrait') {
+      // Portrait mode: 2x5 grid
+      photoWidth = 190; // Narrower for 2 columns in portrait A4
+      photoHeight = photoWidth / aspectRatio;
+      startX = 30; // Centered positioning for 2 columns
+      startY = 45; // Start position after header
+      gapX = 20; // More horizontal space between 2 columns
+      gapY = 8; // Tighter vertical spacing for 5 rows
+      cols = 2;
+      rows = 5;
+    } else {
+      // Landscape mode: 3x3 grid
+      photoWidth = 260; // 260 points = ~92mm = 3.6 inches - SWEET SPOT!
+      photoHeight = photoWidth / aspectRatio;
+      startX = 25; // Start position - proper left margin for printing
+      startY = 40; // Start position (after header) - balanced spacing
+      gapX = 8; // Gap between photos - tight but readable
+      gapY = 8; // Gap between rows - tight but readable
+      cols = 3;
+      rows = 3;
+    }
     
-    // Create 3x3 grid with absolute positioning
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 3; col++) {
-        const index = row * 3 + col;
+    // Create grid with absolute positioning
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const index = row * cols + col;
         const photo = photoSet.photos[index];
         
         const x = startX + col * (photoWidth + gapX);
@@ -114,7 +137,7 @@ export const generatePDF = async (
   // Document definition
   const docDefinition = {
     pageSize: 'A4',
-    pageOrientation: 'landscape' as const,
+    pageOrientation: layoutMode as ('landscape' | 'portrait'),
     pageMargins: [15, 15, 15, 15], // Proper print margins - 15mm all around
     content: [] as any[],
     styles: {

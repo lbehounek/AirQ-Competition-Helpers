@@ -24,6 +24,28 @@
       }
     }
   },
+  "layout": {
+    "title": "Layout",
+    "landscape": {
+      "name": "Landscape",
+      "short": "3×3",
+      "description": "9 photos (3×3 grid)",
+      "tooltip": "Landscape layout with 9 photos per page"
+    },
+    "portrait": {
+      "name": "Portrait", 
+      "short": "2×5",
+      "description": "10 photos (2×5 grid)",
+      "tooltip": "Portrait layout with 10 photos per page"
+    },
+    "warning": {
+      "title": "Layout Change Warning",
+      "message": "Switching from portrait to landscape mode will remove the 10th photo from each set. This action cannot be undone.",
+      "confirm": "Do you want to proceed?",
+      "cancel": "Cancel",
+      "proceed": "Switch to Landscape"
+    }
+  },
   "photoLabels": {
     "title": "Photo Labels:",
     "types": {

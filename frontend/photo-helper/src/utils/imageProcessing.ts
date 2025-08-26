@@ -122,7 +122,7 @@ export const generatePhotoLabels = (): string[] => {
 /**
  * Generate turning point labels: SP, TP1, TP2, ..., FP
  */
-export const generateTurningPointLabels = (totalPhotos: number): { set1: string[], set2: string[] } => {
+export const generateTurningPointLabels = (totalPhotos: number, layoutMode: 'landscape' | 'portrait' = 'landscape'): { set1: string[], set2: string[] } => {
   if (totalPhotos === 0) return { set1: [], set2: [] };
   if (totalPhotos === 1) return { set1: ['SP'], set2: [] };
   
@@ -132,10 +132,11 @@ export const generateTurningPointLabels = (totalPhotos: number): { set1: string[
   }
   labels.push('FP');
   
-  // Distribute: first 9 to set1, remaining to set2
+  // Distribute based on layout mode
+  const splitPoint = layoutMode === 'portrait' ? 10 : 9;
   return {
-    set1: labels.slice(0, 9),
-    set2: labels.slice(9)
+    set1: labels.slice(0, splitPoint),
+    set2: labels.slice(splitPoint)
   };
 };
 

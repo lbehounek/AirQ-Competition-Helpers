@@ -24,6 +24,28 @@
       }
     }
   },
+  "layout": {
+    "title": "Rozložení",
+    "landscape": {
+      "name": "Na šířku",
+      "short": "3×3",
+      "description": "9 fotek (mřížka 3×3)",
+      "tooltip": "Rozložení na šířku s 9 fotkami na stránku"
+    },
+    "portrait": {
+      "name": "Na výšku", 
+      "short": "2×5",
+      "description": "10 fotek (mřížka 2×5)",
+      "tooltip": "Rozložení na výšku s 10 fotkami na stránku"
+    },
+    "warning": {
+      "title": "Upozornění na změnu rozložení",
+      "message": "Přepnutí z režimu na výšku do režimu na šířku odstraní 10. fotku z každé sady. Tuto akci nelze vrátit zpět.",
+      "confirm": "Chcete pokračovat?",
+      "cancel": "Zrušit",
+      "proceed": "Přepnout na šířku"
+    }
+  },
   "photoLabels": {
     "title": "Popisky fotografií:",
     "types": {
