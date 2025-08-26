@@ -397,8 +397,8 @@ function AppApi() {
                 flexWrap: 'wrap'
               }}>
                 {/* Photo Mode */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, gap: 1, flexDirection: { xs: 'column', md: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
                     {t('mode.title')}
                   </Typography>
                   <ModeSelector 
@@ -409,8 +409,8 @@ function AppApi() {
                 </Box>
 
                 {/* Layout Mode (Portrait/Landscape) */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, gap: 1, flexDirection: { xs: 'column', md: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
                     {t('layout.title')}
                   </Typography>
                   <LayoutModeSelector 
@@ -424,16 +424,16 @@ function AppApi() {
                 </Box>
 
                 {/* Photo Format */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, gap: 1, flexDirection: { xs: 'column', md: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
                     {t('photoFormat.title')}
                   </Typography>
                   <AspectRatioSelector compact />
                 </Box>
 
                 {/* Photo Labels */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, gap: 1, flexDirection: { xs: 'column', md: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
                     {t('photoLabels.title')}
                   </Typography>
                   <LabelingSelector compact />
@@ -441,8 +441,8 @@ function AppApi() {
 
                 {/* Shuffle Photos - Only show in track mode */}
                 {session?.mode === 'track' && (
-                  <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, gap: 1, flexDirection: { xs: 'column', md: 'row' } }}>
-                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem' }}>
+                  <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
                       {t('actions.title')}
                     </Typography>
                     <Button
