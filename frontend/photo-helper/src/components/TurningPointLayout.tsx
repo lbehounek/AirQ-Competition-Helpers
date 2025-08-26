@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Paper, Typography } from '@mui/material';
+import { Box, Paper, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { GridSizedDropZone } from './GridSizedDropZone';
 import { PhotoGridApi } from './PhotoGridApi';
 import { useI18n } from '../contexts/I18nContext';
@@ -34,6 +34,8 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
 }) => {
   const { t } = useI18n();
   const { layoutMode } = useLayoutMode();
+  const theme = useTheme();
+  const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
 
   // Calculate turning point labels
   const totalPhotos = set1.photos.length + set2.photos.length;
@@ -59,45 +61,64 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
         </Paper>
       ) : (
         /* Has photos - Show both grids */
-        <>
-          {/* Grid 1: Photos 1-9 (SP, TP1-TP8) */}
-          <Paper elevation={3} sx={{ p: 4, mb: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="h6" color="primary" sx={{ fontWeight: 600 }}>
-                {t('turningpoint.page1')}
-              </Typography>
-            </Box>
-            <PhotoGridApi
-              photoSet={set1}
-              setKey="set1"
-              onPhotoUpdate={(photoId, canvasState) => onPhotoUpdate('set1', photoId, canvasState)}
-              onPhotoRemove={(photoId) => onPhotoRemove('set1', photoId)}
-              onPhotoClick={(photo) => onPhotoClick(photo, 'set1')}
-              onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set1', fromIndex, toIndex)}
-              onFilesDropped={(files) => onFilesDropped(files)}
-              customLabels={turningPointLabels.set1}
-            />
-          </Paper>
+        (() => {
+          const Set1 = (
+            <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="h6" color="primary" sx={{ fontWeight: 600, textAlign: 'center' }}>
+                  {t('turningpoint.page1')}
+                </Typography>
+              </Box>
+              <PhotoGridApi
+                photoSet={set1}
+                setKey="set1"
+                onPhotoUpdate={(photoId, canvasState) => onPhotoUpdate('set1', photoId, canvasState)}
+                onPhotoRemove={(photoId) => onPhotoRemove('set1', photoId)}
+                onPhotoClick={(photo) => onPhotoClick(photo, 'set1')}
+                onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set1', fromIndex, toIndex)}
+                onFilesDropped={(files) => onFilesDropped(files)}
+                customLabels={turningPointLabels.set1}
+              />
+            </Paper>
+          );
 
-          {/* Grid 2: Photos 10-18 (TP9-TP16, FP) */}
-          <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="h6" color="primary" sx={{ fontWeight: 600 }}>
-                {t('turningpoint.page2')}
-              </Typography>
-            </Box>
-            <PhotoGridApi
-              photoSet={set2}
-              setKey="set2"
-              onPhotoUpdate={(photoId, canvasState) => onPhotoUpdate('set2', photoId, canvasState)}
-              onPhotoRemove={(photoId) => onPhotoRemove('set2', photoId)}
-              onPhotoClick={(photo) => onPhotoClick(photo, 'set2')}
-              onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set2', fromIndex, toIndex)}
-              onFilesDropped={(files) => onFilesDropped(files)}
-              customLabels={turningPointLabels.set2}
-            />
-          </Paper>
-        </>
+          const Set2 = (
+            <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="h6" color="primary" sx={{ fontWeight: 600, textAlign: 'center' }}>
+                  {t('turningpoint.page2')}
+                </Typography>
+              </Box>
+              <PhotoGridApi
+                photoSet={set2}
+                setKey="set2"
+                onPhotoUpdate={(photoId, canvasState) => onPhotoUpdate('set2', photoId, canvasState)}
+                onPhotoRemove={(photoId) => onPhotoRemove('set2', photoId)}
+                onPhotoClick={(photo) => onPhotoClick(photo, 'set2')}
+                onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set2', fromIndex, toIndex)}
+                onFilesDropped={(files) => onFilesDropped(files)}
+                customLabels={turningPointLabels.set2}
+              />
+            </Paper>
+          );
+
+          const shouldSideBySide = isLargeScreen && layoutMode === 'portrait';
+          if (shouldSideBySide) {
+            return (
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', mb: 4 }}>
+                <Box sx={{ flex: 1 }}>{Set1}</Box>
+                <Box sx={{ flex: 1 }}>{Set2}</Box>
+              </Box>
+            );
+          }
+
+          return (
+            <>
+              <Box sx={{ mb: 4 }}>{Set1}</Box>
+              <Box>{Set2}</Box>
+            </>
+          );
+        })()
       )}
     </Box>
   );
