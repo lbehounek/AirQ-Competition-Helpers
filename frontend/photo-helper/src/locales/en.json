@@ -8,7 +8,7 @@
     "statistics": "Statistics"
   },
   "photoFormat": {
-    "title": "Photo Format:",
+    "title": "Photo Format",
     "aspectRatios": {
       "3:2": {
         "name": "3:2",
@@ -24,8 +24,30 @@
       }
     }
   },
+  "layout": {
+    "title": "Layout",
+    "landscape": {
+      "name": "Landscape",
+      "short": "3×3",
+      "description": "9 photos (3×3 grid)",
+      "tooltip": "Landscape layout with 9 photos per page"
+    },
+    "portrait": {
+      "name": "Portrait", 
+      "short": "2×5",
+      "description": "10 photos (2×5 grid)",
+      "tooltip": "Portrait layout with 10 photos per page"
+    },
+    "warning": {
+      "title": "Layout Change Notice",
+      "message": "Switching to landscape mode will hide the 10th photo from each set. The photos will not be deleted and will reappear when you switch back to portrait mode.",
+      "confirm": "Do you want to proceed?",
+      "cancel": "Cancel",
+      "proceed": "Switch to Landscape"
+    }
+  },
   "photoLabels": {
-    "title": "Photo Labels:",
+    "title": "Photo Labels",
     "types": {
       "letters": {
         "name": "Letters",
@@ -38,7 +60,7 @@
     }
   },
   "mode": {
-    "title": "Photo Mode:",
+    "title": "Photo Mode",
     "track": {
       "name": "Track Photos",
       "description": "Standard navigation flight photos with randomizable order"
@@ -56,12 +78,12 @@
     "page2": "Page 2"
   },
   "competition": {
-    "title": "Competition:",
+    "title": "Competition",
     "placeholder": "Enter competition name...",
     "defaultName": "Competition Name"
   },
   "actions": {
-    "title": "Actions:",
+    "title": "Actions",
     "shuffle": {
       "name": "Shuffle",
       "description": "Randomize order"

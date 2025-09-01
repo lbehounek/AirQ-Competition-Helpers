@@ -28,6 +28,7 @@ import { PhotoGrid } from './components/PhotoGrid';
 import { TitleInput } from './components/TitleInput';
 import { PhotoEditor } from './components/PhotoEditor';
 import { PhotoControls } from './components/PhotoControls';
+import { useLayoutMode } from './contexts/LayoutModeContext';
 import type { Photo } from './types';
 
 function App() {
@@ -44,6 +45,7 @@ function App() {
     clearError,
     getSessionStats
   } = usePhotoSession();
+  const { layoutMode, layoutConfig } = useLayoutMode();
 
   const [selectedPhoto, setSelectedPhoto] = useState<{
     photo: Photo;
@@ -122,8 +124,8 @@ function App() {
               sx={{ bgcolor: 'rgba(255, 255, 255, 0.9)' }}
             />
             <Chip 
-              label={`Set 2: ${stats.set2Photos}/9`} 
-              color={stats.set2Photos === 9 ? 'success' : 'default'} 
+              label={`Set 2: ${stats.set2Photos}/${layoutConfig.maxPhotosPerSet}`} 
+              color={stats.set2Photos === layoutConfig.maxPhotosPerSet ? 'success' : 'default'} 
               variant="outlined" 
               sx={{ bgcolor: 'rgba(255, 255, 255, 0.9)' }}
             />
@@ -166,8 +168,8 @@ function App() {
                 placeholder="Enter title for Set 1..."
               />
               <Chip 
-                label={`${stats.set1Photos}/9`} 
-                color={stats.set1Photos === 9 ? 'success' : 'primary'} 
+                label={`${stats.set1Photos}/${layoutConfig.maxPhotosPerSet}`} 
+                color={stats.set1Photos >= layoutConfig.maxPhotosPerSet ? 'success' : 'primary'} 
                 variant={stats.set1Photos > 0 ? 'filled' : 'outlined'}
                 size="medium"
               />
@@ -176,7 +178,7 @@ function App() {
               onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
               setName="Set 1"
               currentPhotoCount={stats.set1Photos}
-              maxPhotos={9}
+              maxPhotos={layoutConfig.maxPhotosPerSet}
               loading={loading}
               error={error}
             />
@@ -228,8 +230,8 @@ function App() {
                 placeholder="Enter title for Set 2..."
               />
               <Chip 
-                label={`${stats.set2Photos}/9`} 
-                color={stats.set2Photos === 9 ? 'success' : 'primary'} 
+                label={`${stats.set2Photos}/${layoutConfig.maxPhotosPerSet}`} 
+                color={stats.set2Photos >= layoutConfig.maxPhotosPerSet ? 'success' : 'primary'} 
                 variant={stats.set2Photos > 0 ? 'filled' : 'outlined'}
                 size="medium"
               />
@@ -238,7 +240,7 @@ function App() {
               onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
               setName="Set 2"
               currentPhotoCount={stats.set2Photos}
-              maxPhotos={9}
+              maxPhotos={layoutConfig.maxPhotosPerSet}
               loading={loading}
               error={error}
             />

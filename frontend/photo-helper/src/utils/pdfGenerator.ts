@@ -15,7 +15,8 @@ export const generatePDF = async (
   set2: ApiPhotoSet,
   sessionId: string,
   aspectRatio = 4/3,
-  competitionName?: string
+  competitionName?: string,
+  layoutMode: 'landscape' | 'portrait' = 'landscape'
 ): Promise<void> => {
   
   // Helper function to get canvas data URL for a photo
@@ -45,19 +46,93 @@ export const generatePDF = async (
   const createPhotoGrid = (photoSet: PhotoSet, setKey: 'set1' | 'set2') => {
     const content = [];
     
-    // BALANCED MASSIVE PHOTOS WITH PROPER MARGINS
-    const photoWidth = 260; // 260 points = ~92mm = 3.6 inches - SWEET SPOT!
-    const photoHeight = photoWidth / aspectRatio; // Maintain aspect ratio
+    let photoWidth: number;
+    let photoHeight: number;
+    let startX: number;
+    let startY: number;
+    let gapX: number;
+    let gapY: number;
+    let cols: number;
+    let rows: number;
     
-    const startX = 25; // Start position - proper left margin for printing
-    const startY = 40; // Start position (after header) - balanced spacing
-    const gapX = 8; // Gap between photos - tight but readable
-    const gapY = 8; // Gap between rows - tight but readable
+    if (layoutMode === 'portrait') {
+      // Portrait mode: 2x5 grid - Maximized for A4 (595 x 842 points)
+      // Page dimensions: 595 width x 842 height
+      // Usable area with 15pt margins: 565 x 812 points
+      
+      // Maximize photo size for 2 columns
+      const pageWidth = 595;
+      const pageHeight = 842;
+      const margin = 10;
+      const headerSpace = 30;
+      const minGapX = 10; // Minimum gap between columns
+      const minGapY = 8; // Minimum gap between rows
+      
+      // Calculate maximum photo width
+      const availableWidth = pageWidth - (2 * margin);
+      photoWidth = Math.floor((availableWidth - minGapX) / 2);
+      photoHeight = photoWidth / aspectRatio;
+      
+      // Check if height fits and adjust if necessary
+      const neededHeight = (photoHeight * 5) + (minGapY * 4) + headerSpace;
+      if (neededHeight > pageHeight - (2 * margin)) {
+        // Height doesn't fit, recalculate based on height constraint
+        const availableHeight = pageHeight - (2 * margin) - headerSpace;
+        photoHeight = Math.floor((availableHeight - (minGapY * 4)) / 5);
+        photoWidth = photoHeight * aspectRatio;
+      }
+      
+      // Center the grid on the page
+      const totalWidth = (photoWidth * 2) + minGapX;
+      startX = (pageWidth - totalWidth) / 2;
+      startY = headerSpace + margin;
+      gapX = minGapX;
+      gapY = minGapY;
+      
+      cols = 2;
+      rows = 5;
+    } else {
+      // Landscape mode: 3x3 grid - Maximized for A4 (842 x 595 points)
+      // Page dimensions: 842 width x 595 height
+      // Usable area with 15pt margins: 812 x 565 points
+      
+      // Maximize photo size for 3 columns
+      const pageWidth = 842;
+      const pageHeight = 595;
+      const margin = 10;
+      const headerSpace = 30;
+      const minGapX = 8; // Minimum gap between columns
+      const minGapY = 8; // Minimum gap between rows
+      
+      // Calculate maximum photo width
+      const availableWidth = pageWidth - (2 * margin);
+      photoWidth = Math.floor((availableWidth - (minGapX * 2)) / 3);
+      photoHeight = photoWidth / aspectRatio;
+      
+      // Check if height fits and adjust if necessary
+      const neededHeight = (photoHeight * 3) + (minGapY * 2) + headerSpace;
+      if (neededHeight > pageHeight - (2 * margin)) {
+        // Height doesn't fit, recalculate based on height constraint
+        const availableHeight = pageHeight - (2 * margin) - headerSpace;
+        photoHeight = Math.floor((availableHeight - (minGapY * 2)) / 3);
+        photoWidth = photoHeight * aspectRatio;
+      }
+      
+      // Center the grid on the page
+      const totalWidth = (photoWidth * 3) + (minGapX * 2);
+      startX = (pageWidth - totalWidth) / 2;
+      startY = headerSpace + margin;
+      gapX = minGapX;
+      gapY = minGapY;
+      
+      cols = 3;
+      rows = 3;
+    }
     
-    // Create 3x3 grid with absolute positioning
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 3; col++) {
-        const index = row * 3 + col;
+    // Create grid with absolute positioning
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const index = row * cols + col;
         const photo = photoSet.photos[index];
         
         const x = startX + col * (photoWidth + gapX);
@@ -107,15 +182,15 @@ export const generatePDF = async (
           margin: [0, 0, 10, 0] // Add right padding
         }
       ],
-      margin: [0, 5, 0, 15] // Top and bottom spacing
+      margin: [0, 5, 0, 10] // Compact header to maximize photo space
     };
   };
 
   // Document definition
   const docDefinition = {
     pageSize: 'A4',
-    pageOrientation: 'landscape' as const,
-    pageMargins: [15, 15, 15, 15], // Proper print margins - 15mm all around
+    pageOrientation: layoutMode as ('landscape' | 'portrait'),
+    pageMargins: [10, 10, 10, 10], // Very minimal margins to maximize photo area
     content: [] as any[],
     styles: {
       header: {

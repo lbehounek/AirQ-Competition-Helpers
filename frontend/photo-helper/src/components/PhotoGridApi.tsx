@@ -8,6 +8,7 @@ import { isValidImageFile } from '../utils/imageProcessing';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useLabeling } from '../contexts/LabelingContext';
 import { useI18n } from '../contexts/I18nContext';
+import { useLayoutMode } from '../contexts/LayoutModeContext';
 import { getImageCache } from '../utils/imageCache';
 import type { ApiPhoto, ApiPhotoSet } from '../types/api';
 
@@ -34,6 +35,7 @@ interface PhotoGridSlotEmptyProps {
   label: string;
   position: number;
   onFilesDropped?: (files: File[]) => void;
+  maxFilesRemaining?: number;
 }
 
 export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
@@ -65,8 +67,12 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
     }
   }, [photoSet.photos]);
   
-  // Create 9 grid slots (3x3)
-  const gridSlots: GridSlot[] = Array.from({ length: 9 }, (_, index) => {
+  // Import the layout mode hook
+  const { layoutConfig } = useLayoutMode();
+  const maxFilesRemaining = Math.max(0, layoutConfig.maxPhotosPerSet - photoSet.photos.length);
+  
+  // Create grid slots based on layout mode (9 for landscape, 10 for portrait)
+  const gridSlots: GridSlot[] = Array.from({ length: layoutConfig.slots }, (_, index) => {
     const photo = photoSet.photos[index] || null;
     
     // Only show labels when there's a photo, or in track mode for empty slots
@@ -90,6 +96,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
     };
   });
 
+  
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
@@ -140,9 +147,9 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
           minHeight: 400,
           bgcolor: 'background.paper',
           borderRadius: 2,
-          border: '2px solid',
-          borderColor: 'primary.light',
-          boxShadow: 1,
+          // Removed outer grid border (redundant)
+          border: 'none',
+          boxShadow: 0,
           p: 4
         }}>
           <CircularProgress size={48} color="primary" sx={{ mb: 2 }} />
@@ -151,17 +158,20 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
           </Typography>
         </Box>
       ) : (
-        /* 3x3 Photo Grid */
+        /* Dynamic Photo Grid (3x3 or 2x5 based on layout) */
         <Box sx={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateColumns: `repeat(${layoutConfig.columns}, 1fr)`,
           gap: 2,
           p: 2,
           bgcolor: 'background.paper',
           borderRadius: 2,
-          border: '2px solid',
-          borderColor: 'primary.light',
-          boxShadow: 1
+          // Removed outer grid border (redundant)
+          border: 'none',
+          boxShadow: 0,
+          // Expand to fill parent width in all cases
+          maxWidth: '100%',
+          mx: 'unset'
         }}>
         {gridSlots.map((slot) => {
           const isDragOver = dragOverIndex === slot.index;
@@ -179,12 +189,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
               sx={{
                 aspectRatio: currentRatio.cssRatio,
                 bgcolor: slot.photo ? 'background.paper' : 'grey.50',
-                border: '2px solid',
-                borderColor: isDragOver 
-                  ? 'success.main' // Green border when drag over
-                  : slot.photo 
-                    ? 'primary.main' 
-                    : 'grey.300',
+                // Remove tile borders for a cleaner look; rely on spacing and hover glows
+                border: 'none',
                 borderRadius: 0, // Rectangular to match PDF output
                 overflow: 'hidden',
                 position: 'relative',
@@ -198,9 +204,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                     ? '0 0 12px rgba(33, 150, 243, 0.4)' // Blue glow for photos
                     : 'none',
                 '&:hover': slot.photo ? {
-                  borderColor: 'primary.main',
-                  boxShadow: '0 0 12px rgba(33, 150, 243, 0.4)', // Blue glow effect
-                  // Remove transform to prevent movement
+                  boxShadow: '0 0 12px rgba(33, 150, 243, 0.4)'
                 } : {}
               }}
             >
@@ -290,6 +294,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                 label={slot.label}
                 position={slot.index + 1}
                 onFilesDropped={onFilesDropped}
+                maxFilesRemaining={maxFilesRemaining}
               />
             )}
           </Paper>;
@@ -303,7 +308,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
   label,
   position: _position,
-  onFilesDropped
+  onFilesDropped,
+  maxFilesRemaining
 }) => {
   const theme = useTheme();
   const { t } = useI18n();
@@ -318,7 +324,7 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png']
     },
-    maxFiles: 9, // Allow multiple files for easier bulk upload
+    maxFiles: maxFilesRemaining ?? 9, // Respect layout-dependent remaining capacity
     onDrop: (acceptedFiles, rejectedFiles) => {
       console.log('Drop event - Accepted:', acceptedFiles, 'Rejected:', rejectedFiles);
       

@@ -8,7 +8,7 @@
     "statistics": "Statistiky"
   },
   "photoFormat": {
-    "title": "Formát fotografií:",
+    "title": "Formát fotografií",
     "aspectRatios": {
       "3:2": {
         "name": "3:2",
@@ -24,8 +24,30 @@
       }
     }
   },
+  "layout": {
+    "title": "Rozložení",
+    "landscape": {
+      "name": "Na šířku",
+      "short": "3×3",
+      "description": "9 fotek (mřížka 3×3)",
+      "tooltip": "Rozložení na šířku s 9 fotkami na stránku"
+    },
+    "portrait": {
+      "name": "Na výšku", 
+      "short": "2×5",
+      "description": "10 fotek (mřížka 2×5)",
+      "tooltip": "Rozložení na výšku s 10 fotkami na stránku"
+    },
+    "warning": {
+      "title": "Oznámení o změně rozložení",
+      "message": "Přepnutí do režimu na šířku skryje 10. fotku z každé sady. Fotky nebudou smazány a znovu se zobrazí při přepnutí zpět do režimu na výšku.",
+      "confirm": "Chcete pokračovat?",
+      "cancel": "Zrušit",
+      "proceed": "Přepnout na šířku"
+    }
+  },
   "photoLabels": {
-    "title": "Popisky fotografií:",
+    "title": "Popisky fotografií",
     "types": {
       "letters": {
         "name": "Písmena",
@@ -38,7 +60,7 @@
     }
   },
   "mode": {
-    "title": "Režim fotek:",
+    "title": "Režim fotek",
     "track": {
       "name": "Fotky trati",
       "description": "Standardní fotky navigačního letu s možností náhodného pořadí"
@@ -56,12 +78,12 @@
     "page2": "Stránka 2"
   },
   "competition": {
-    "title": "Soutěž:",
+    "title": "Soutěž",
     "placeholder": "Zadejte název soutěže...",
     "defaultName": "Název soutěže"
   },
   "actions": {
-    "title": "Akce:",
+    "title": "Akce",
     "shuffle": {
       "name": "Zamíchat",
       "description": "Náhodné pořadí"

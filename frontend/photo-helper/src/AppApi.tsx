@@ -14,7 +14,9 @@ import {
   Fade,
   CircularProgress,
   Card,
-  CardContent
+  CardContent,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -38,9 +40,11 @@ import { LabelingSelector } from './components/LabelingSelector';
 import { ModeSelector } from './components/ModeSelector';
 import { TurningPointLayout } from './components/TurningPointLayout';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
+import { LayoutModeSelector } from './components/LayoutModeSelector';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
+import { useLayoutMode } from './contexts/LayoutModeContext';
 import { generatePDF } from './utils/pdfGenerator';
 import { generateTurningPointLabels } from './utils/imageProcessing';
 import type { ApiPhoto, ApiPhotoSet } from './types/api';
@@ -63,6 +67,7 @@ function AppApi() {
     reorderPhotos,
     shufflePhotos,
     updateSessionMode,
+    updateLayoutMode,
     updateCompetitionName,
     resetSession,
     clearError,
@@ -74,6 +79,9 @@ function AppApi() {
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
   const { t } = useI18n();
+  const { setLayoutMode, layoutMode } = useLayoutMode();
+  const theme = useTheme();
+  const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg')); // lg = 1200px by default
   
   // State to track if we should show loading text
   const [showLoadingText, setShowLoadingText] = useState(false);
@@ -108,6 +116,13 @@ function AppApi() {
     }
   }, [sessionId]);
 
+  // Sync layout mode with session
+  useEffect(() => {
+    if (session?.layoutMode) {
+      setLayoutMode(session.layoutMode);
+    }
+  }, [session?.layoutMode, setLayoutMode]);
+
   const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
     const setPhotos = session?.sets[setKey].photos || [];
     const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
@@ -119,7 +134,7 @@ function AppApi() {
       const set1Count = session.sets.set1.photos.length;
       const set2Count = session.sets.set2.photos.length;
       const totalPhotos = set1Count + set2Count;
-      const turningPointLabels = generateTurningPointLabels(totalPhotos);
+      const turningPointLabels = generateTurningPointLabels(totalPhotos, session.layoutMode || 'landscape');
       
       if (setKey === 'set1') {
         label = turningPointLabels.set1[photoIndex] || 'X';
@@ -214,7 +229,7 @@ function AppApi() {
         const set1Count = session.sets.set1.photos.length;
         const set2Count = session.sets.set2.photos.length;
         const totalPhotos = set1Count + set2Count;
-        const turningPointLabels = generateTurningPointLabels(totalPhotos);
+        const turningPointLabels = generateTurningPointLabels(totalPhotos, session.layoutMode || 'landscape');
 
         set1WithLabels = {
           ...session.sets.set1,
@@ -251,7 +266,7 @@ function AppApi() {
         };
       }
 
-      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name);
+      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape');
     } catch (error) {
       console.error('PDF generation failed:', error);
       // Could add user notification here
@@ -350,7 +365,7 @@ function AppApi() {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-      <Container maxWidth="xl" sx={{ pt: 4 }}>
+      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
         {/* Unified Header and Controls */}
         <Paper elevation={2} sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
           {/* Blue Header Section */}
@@ -374,10 +389,16 @@ function AppApi() {
           <Box sx={{ bgcolor: 'background.paper' }}>
             {/* Photo Configuration */}
             <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Box sx={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+              <Box sx={{ 
+                display: 'flex', 
+                gap: { xs: 2, sm: 3, md: 4 }, 
+                alignItems: { xs: 'stretch', md: 'center' }, 
+                justifyContent: 'center',
+                flexWrap: 'wrap'
+              }}>
                 {/* Photo Mode */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
                     {t('mode.title')}
                   </Typography>
                   <ModeSelector 
@@ -387,17 +408,33 @@ function AppApi() {
                   />
                 </Box>
 
+                {/* Layout Mode (Portrait/Landscape) */}
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                    {t('layout.title')}
+                  </Typography>
+                  <LayoutModeSelector 
+                    compact 
+                    set1Count={session?.sets.set1.photos.length || 0}
+                    set2Count={session?.sets.set2.photos.length || 0}
+                    onModeChangeComplete={(newMode) => {
+                      // Sync with session when layout mode changes
+                      updateLayoutMode(newMode);
+                    }}
+                  />
+                </Box>
+
                 {/* Photo Format */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
                     {t('photoFormat.title')}
                   </Typography>
                   <AspectRatioSelector compact />
                 </Box>
 
                 {/* Photo Labels */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
                     {t('photoLabels.title')}
                   </Typography>
                   <LabelingSelector compact />
@@ -405,8 +442,8 @@ function AppApi() {
 
                 {/* Shuffle Photos - Only show in track mode */}
                 {session?.mode === 'track' && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                  <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
                       {t('actions.title')}
                     </Typography>
                     <Button
@@ -478,113 +515,149 @@ function AppApi() {
             totalPhotoCount={stats.set1Photos + stats.set2Photos}
           />
         ) : (
-          <>
-            {/* Set 1 Section */}
-            <Box sx={{ mb: 6 }}>
-              {stats.set1Photos === 0 ? (
-                /* Empty Set 1 - Show Grid-Sized DropZone */
-                <Paper elevation={3} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-                  <Box sx={{ p: 4, pb: 2 }}>
-                    <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 4, textAlign: 'center' }}>
-                      {t('sets.set1')}
-                    </Typography>
-                  </Box>
-                  <GridSizedDropZone
-                    onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
-                    setName={t('sets.set1')}
-                    maxPhotos={9}
-                    loading={loading}
-                    error={error}
-                  />
-                </Paper>
-              ) : (
-                /* Set 1 has photos - Show normal grid */
-                session && (
-                  <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-                    <Box sx={{ mb: 4 }}>
-                      <EditableHeading
-                        value={session.sets.set1.title}
-                        defaultValue={t('sets.set1')}
-                        onChange={handleSet1TitleUpdate}
-                        variant="h4"
-                        color="primary"
-                      />
+          /* Track Mode - Responsive Layout */
+          (() => {
+            // Determine if we should show side-by-side layout
+            const shouldShowSideBySide = isLargeScreen && layoutMode === 'portrait';
+
+            // Create reusable set components
+            const Set1Component = (
+              <Box sx={{ width: '100%' }}>
+                {stats.set1Photos === 0 ? (
+                  /* Empty Set 1 - Show Grid-Sized DropZone */
+                  <Paper elevation={3} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'primary.light', height: '100%' }}>
+                    <Box sx={{ p: 4, pb: 2 }}>
+                      <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 4, textAlign: 'center' }}>
+                        {t('sets.set1')}
+                      </Typography>
                     </Box>
-                    <PhotoGridApi
-                      photoSet={session.sets.set1}
-                      setKey="set1"
-                      onPhotoUpdate={(photoId, canvasState) =>
-                        handlePhotoUpdate('set1', photoId, canvasState)
-                      }
-                      onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
-                      onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
-                      onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
+                    <GridSizedDropZone
                       onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
+                      setName={t('sets.set1')}
+                      maxPhotos={layoutMode === 'portrait' ? 10 : 9}
+                      loading={loading}
+                      error={error}
                     />
                   </Paper>
-                )
-              )}
-            </Box>
-
-        {/* Horizontal Divider */}
-        <Divider sx={{ my: 6, borderWidth: 2, '&::before, &::after': { borderWidth: '2px' } }}>
-          <Chip
-            label={t('sets.set2')}
-            size="medium"
-            color="primary"
-            variant="filled"
-            sx={{ px: 3, py: 1, fontSize: '1rem', fontWeight: 600 }}
-          />
-        </Divider>
-
-        {/* Set 2 Section */}
-        <Box sx={{ mb: 6 }}>
-          {stats.set2Photos === 0 ? (
-            /* Empty Set 2 - Show Grid-Sized DropZone */
-            <Paper elevation={3} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-              <Box sx={{ p: 4, pb: 2 }}>
-                <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 4, textAlign: 'center' }}>
-                  {t('sets.set2')}
-                </Typography>
+                ) : (
+                  /* Set 1 has photos - Show normal grid */
+                  session && (
+                    <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
+                      <Box sx={{ mb: 4 }}>
+                        <EditableHeading
+                          value={session.sets.set1.title}
+                          defaultValue={t('sets.set1')}
+                          onChange={handleSet1TitleUpdate}
+                          variant="h4"
+                          color="primary"
+                        />
+                      </Box>
+                      <PhotoGridApi
+                        photoSet={session.sets.set1}
+                        setKey="set1"
+                        onPhotoUpdate={(photoId, canvasState) =>
+                          handlePhotoUpdate('set1', photoId, canvasState)
+                        }
+                        onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
+                        onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
+                        onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
+                        onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
+                      />
+                    </Paper>
+                  )
+                )}
               </Box>
-              <GridSizedDropZone
-                onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
-                setName={t('sets.set2')}
-                maxPhotos={9}
-                loading={loading}
-                error={error}
-              />
-            </Paper>
-          ) : (
-            /* Set 2 has photos - Show normal grid */
-            session && (
-              <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
-                <Box sx={{ mb: 4 }}>
-                  <EditableHeading
-                    value={session.sets.set2.title}
-                    defaultValue={t('sets.set2')}
-                    onChange={(title) => updateSetTitle('set2', title)}
-                    variant="h4"
-                    color="primary"
-                  />
+            );
+
+            const Set2Component = (
+              <Box sx={{ width: '100%' }}>
+                {stats.set2Photos === 0 ? (
+                  /* Empty Set 2 - Show Grid-Sized DropZone */
+                  <Paper elevation={3} sx={{ borderRadius: 3, border: '1px solid', borderColor: 'primary.light', height: '100%' }}>
+                    <Box sx={{ p: 4, pb: 2 }}>
+                      <Typography variant="h4" color="primary" sx={{ fontWeight: 600, mb: 4, textAlign: 'center' }}>
+                        {t('sets.set2')}
+                      </Typography>
+                    </Box>
+                    <GridSizedDropZone
+                      onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
+                      setName={t('sets.set2')}
+                      maxPhotos={layoutMode === 'portrait' ? 10 : 9}
+                      loading={loading}
+                      error={error}
+                    />
+                  </Paper>
+                ) : (
+                  /* Set 2 has photos - Show normal grid */
+                  session && (
+                    <Paper elevation={3} sx={{ p: 4, borderRadius: 3, border: '1px solid', borderColor: 'primary.light' }}>
+                      <Box sx={{ mb: 4 }}>
+                        <EditableHeading
+                          value={session.sets.set2.title}
+                          defaultValue={t('sets.set2')}
+                          onChange={(title) => updateSetTitle('set2', title)}
+                          variant="h4"
+                          color="primary"
+                        />
+                      </Box>
+                      <PhotoGridApi
+                        photoSet={session.sets.set2}
+                        setKey="set2"
+                        labelOffset={session.sets.set1.photos.length} // Continue sequence from Set 1
+                        onPhotoUpdate={(photoId, canvasState) =>
+                          handlePhotoUpdate('set2', photoId, canvasState)
+                        }
+                        onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
+                        onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
+                        onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
+                        onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
+                      />
+                    </Paper>
+                  )
+                )}
+              </Box>
+            );
+
+            // Render based on layout mode
+            if (shouldShowSideBySide) {
+              // Side-by-side layout for large screens in portrait mode
+              return (
+                <Box sx={{ 
+                  display: 'flex', 
+                  gap: 2, // Reduced gap from 3 to 2
+                  mb: 6,
+                  alignItems: 'flex-start'
+                }}>
+                  {/* Set 1 - Left Side */}
+                  <Box sx={{ flex: 1 }}>
+                    {Set1Component}
+                  </Box>
+
+                  {/* Set 2 - Right Side */}
+                  <Box sx={{ flex: 1 }}>
+                    {Set2Component}
+                  </Box>
                 </Box>
-                <PhotoGridApi
-                  photoSet={session.sets.set2}
-                  setKey="set2"
-                  labelOffset={session.sets.set1.photos.length} // Continue sequence from Set 1
-                  onPhotoUpdate={(photoId, canvasState) =>
-                    handlePhotoUpdate('set2', photoId, canvasState)
-                  }
-                  onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
-                  onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
-                  onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
-                  onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
-                />
-              </Paper>
-            )
-          )}
-        </Box>
-          </>
+              );
+            } else {
+              // Stacked layout for small screens or landscape mode
+              return (
+                <>
+                  {/* Set 1 Section */}
+                  <Box sx={{ mb: 6 }}>
+                    {Set1Component}
+                  </Box>
+
+                  {/* Removed horizontal divider for cleaner look */}
+
+                  {/* Set 2 Section */}
+                  <Box sx={{ mb: 6 }}>
+                    {Set2Component}
+                  </Box>
+                </>
+              );
+            }
+          })()
         )}
 
         {/* Action Buttons - Centered and Prominent */}

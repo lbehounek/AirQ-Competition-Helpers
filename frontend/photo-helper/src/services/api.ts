@@ -192,6 +192,24 @@ export class PhotoOrganizerApi {
   }
 
   /**
+   * Update layout mode
+   */
+  async updateLayoutMode(
+    sessionId: string,
+    layoutMode: 'landscape' | 'portrait'
+  ): Promise<{ message: string; session: PhotoSession }> {
+    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/layout-mode`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ layout_mode: layoutMode }),
+    });
+
+    return handleResponse(response);
+  }
+
+  /**
    * Update competition name
    */
   async updateCompetitionName(

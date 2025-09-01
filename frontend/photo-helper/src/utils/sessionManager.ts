@@ -20,6 +20,9 @@ export const createNewSession = (): PhotoSession => {
     version: 1,
     createdAt: now,
     updatedAt: now,
+    mode: 'track', // Default mode
+    layoutMode: 'landscape', // Default to landscape layout
+    competition_name: '', // Empty competition name
     sets: {
       set1: createEmptyPhotoSet(),
       set2: createEmptyPhotoSet()
@@ -103,6 +106,26 @@ export const validateSession = (session: any): session is PhotoSession => {
     Array.isArray(session.sets.set1.photos) &&
     Array.isArray(session.sets.set2.photos)
   );
+};
+
+/**
+ * Migrate session to latest version
+ */
+export const migrateSession = (session: Partial<PhotoSession>): PhotoSession => {
+  const now = new Date();
+  return {
+    id: session.id ?? generateSessionId(),
+    version: (typeof session.version === 'number' ? session.version : 1),
+    createdAt: session.createdAt ?? now,
+    updatedAt: session.updatedAt ?? now,
+    mode: session.mode ?? 'track',
+    layoutMode: session.layoutMode ?? 'landscape',
+    competition_name: session.competition_name ?? '',
+    sets: {
+      set1: session.sets?.set1 ?? createEmptyPhotoSet(),
+      set2: session.sets?.set2 ?? createEmptyPhotoSet()
+    }
+  };
 };
 
 /**
