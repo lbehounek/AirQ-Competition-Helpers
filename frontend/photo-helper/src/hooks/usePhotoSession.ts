@@ -105,10 +105,15 @@ export const usePhotoSession = (sessionId?: string) => {
       const currentSet = currentSession.sets[setKey];
       // Allow 10 photos per set in portrait layout
       const maxPerSet = (currentSession.layoutMode === 'portrait') ? 10 : 9;
-      const availableSlots = maxPerSet - currentSet.photos.length;
+      const rawAvailableSlots = maxPerSet - currentSet.photos.length;
+      const availableSlots = Math.max(0, rawAvailableSlots);
       
       if (files.length > availableSlots) {
-        throw new Error(`Can only add ${availableSlots} more photos to this set (max ${maxPerSet} per set)`);
+        throw new Error(
+          rawAvailableSlots < 0
+            ? 'Cannot add photos: one or more photos are hidden due to switching to landscape. Delete photos or switch back to portrait to free visible slots.'
+            : `Can only add ${availableSlots} more photos to this set (max ${maxPerSet} per set)`
+        );
       }
 
       const newPhotos: Photo[] = [];
@@ -310,14 +315,22 @@ export const usePhotoSession = (sessionId?: string) => {
     const set1Count = currentSession.sets.set1.photos.length;
     const set2Count = currentSession.sets.set2.photos.length;
     const maxPerSet = (currentSession.layoutMode === 'portrait') ? 10 : 9;
-    
+
+    const visibleSet1 = Math.min(set1Count, maxPerSet);
+    const visibleSet2 = Math.min(set2Count, maxPerSet);
+    const set1Available = Math.max(0, maxPerSet - visibleSet1);
+    const set2Available = Math.max(0, maxPerSet - visibleSet2);
+
     return {
       set1Photos: set1Count,
       set2Photos: set2Count,
       totalPhotos: set1Count + set2Count,
-      set1Available: maxPerSet - set1Count,
-      set2Available: maxPerSet - set2Count,
-      isComplete: set1Count === maxPerSet && set2Count === maxPerSet
+      set1Available,
+      set2Available,
+      isComplete: visibleSet1 === maxPerSet && visibleSet2 === maxPerSet,
+      visibleSet1,
+      visibleSet2,
+      visibleTotal: visibleSet1 + visibleSet2
     };
   }, [currentSession]);
 

@@ -111,25 +111,21 @@ export const validateSession = (session: any): session is PhotoSession => {
 /**
  * Migrate session to latest version
  */
-export const migrateSession = (session: PhotoSession): PhotoSession => {
-  let migrated = { ...session };
-  
-  // Add layoutMode if missing (backward compatibility)
-  if (!migrated.layoutMode) {
-    migrated.layoutMode = 'landscape';
-  }
-  
-  // Add mode if missing
-  if (!migrated.mode) {
-    migrated.mode = 'track';
-  }
-  
-  // Add competition_name if missing
-  if (!migrated.competition_name) {
-    migrated.competition_name = '';
-  }
-  
-  return migrated;
+export const migrateSession = (session: Partial<PhotoSession>): PhotoSession => {
+  const now = new Date();
+  return {
+    id: session.id ?? generateSessionId(),
+    version: (typeof session.version === 'number' ? session.version : 1),
+    createdAt: session.createdAt ?? now,
+    updatedAt: session.updatedAt ?? now,
+    mode: session.mode ?? 'track',
+    layoutMode: session.layoutMode ?? 'landscape',
+    competition_name: session.competition_name ?? '',
+    sets: {
+      set1: session.sets?.set1 ?? createEmptyPhotoSet(),
+      set2: session.sets?.set2 ?? createEmptyPhotoSet()
+    }
+  };
 };
 
 /**

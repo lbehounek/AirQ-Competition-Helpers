@@ -111,13 +111,18 @@ export const LayoutModeSelector: React.FC<LayoutModeSelectorProps> = ({
         </ToggleButtonGroup>
 
         {/* Warning Dialog */}
-        <Dialog open={showWarningDialog} onClose={handleCancelSwitch}>
-          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Dialog 
+          open={showWarningDialog} 
+          onClose={handleCancelSwitch}
+          aria-labelledby="layout-warning-title"
+          aria-describedby="layout-warning-desc"
+        >
+          <DialogTitle id="layout-warning-title" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Warning color="warning" />
             {t('layout.warning.title')}
           </DialogTitle>
           <DialogContent>
-            <DialogContentText>
+            <DialogContentText id="layout-warning-desc">
               {t('layout.warning.message')}
             </DialogContentText>
             <DialogContentText sx={{ mt: 2, fontWeight: 600 }}>
@@ -178,13 +183,18 @@ export const LayoutModeSelector: React.FC<LayoutModeSelectorProps> = ({
       </Box>
 
       {/* Warning Dialog (same as compact) */}
-      <Dialog open={showWarningDialog} onClose={handleCancelSwitch}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Dialog 
+        open={showWarningDialog} 
+        onClose={handleCancelSwitch}
+        aria-labelledby="layout-warning-title-full"
+        aria-describedby="layout-warning-desc-full"
+      >
+        <DialogTitle id="layout-warning-title-full" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Warning color="warning" />
           {t('layout.warning.title')}
         </DialogTitle>
         <DialogContent>
-          <DialogContentText>
+          <DialogContentText id="layout-warning-desc-full">
             {t('layout.warning.message')}
           </DialogContentText>
           <DialogContentText sx={{ mt: 2, fontWeight: 600 }}>

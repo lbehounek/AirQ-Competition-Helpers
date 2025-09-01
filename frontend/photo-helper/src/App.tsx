@@ -169,7 +169,7 @@ function App() {
               />
               <Chip 
                 label={`${stats.set1Photos}/${layoutConfig.maxPhotosPerSet}`} 
-                color={stats.set1Photos === layoutConfig.maxPhotosPerSet ? 'success' : 'primary'} 
+                color={stats.set1Photos >= layoutConfig.maxPhotosPerSet ? 'success' : 'primary'} 
                 variant={stats.set1Photos > 0 ? 'filled' : 'outlined'}
                 size="medium"
               />
@@ -231,7 +231,7 @@ function App() {
               />
               <Chip 
                 label={`${stats.set2Photos}/${layoutConfig.maxPhotosPerSet}`} 
-                color={stats.set2Photos === layoutConfig.maxPhotosPerSet ? 'success' : 'primary'} 
+                color={stats.set2Photos >= layoutConfig.maxPhotosPerSet ? 'success' : 'primary'} 
                 variant={stats.set2Photos > 0 ? 'filled' : 'outlined'}
                 size="medium"
               />

@@ -504,7 +504,7 @@ async def reorder_photos(session_id: str, reorder_data: ReorderRequest):
     if from_index == to_index:
         return {"message": "No change needed", "session": session.to_dict()}
     
-    # Build slot array representing grid positions
+    # Build slot array representing visible grid positions; preserve overflow items
     current = session.sets[set_key].get("photos", [])
     slots = [None] * max_photos
     for i, photo in enumerate(current):
@@ -529,8 +529,10 @@ async def reorder_photos(session_id: str, reorder_data: ReorderRequest):
 
     compact.insert(insert_idx, moving)
 
-    # Persist back as a dense photos array (filtering out Nones)
-    session.sets[set_key]["photos"] = compact[:9]
+    # Persist back as a dense photos array for visible slots and append any overflow unchanged
+    visible = compact[:max_photos]
+    overflow = current[max_photos:]
+    session.sets[set_key]["photos"] = visible + overflow
     session.updated_at = datetime.now()
     session.version += 1
     
