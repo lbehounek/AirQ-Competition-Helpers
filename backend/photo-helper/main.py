@@ -316,7 +316,8 @@ async def upload_photos(
     # Preflight capacity check to avoid partial saves
     current_count = len(session.sets[set_key]["photos"])
     max_photos = get_max_photos_per_set(session.layout_mode)
-    remaining_slots = max_photos - current_count
+    # Clamp remaining slots to avoid negative values when overflow exists (e.g., after portrait→landscape)
+    remaining_slots = max(0, max_photos - current_count)
     if len(files) > remaining_slots:
         raise HTTPException(
             status_code=400,
