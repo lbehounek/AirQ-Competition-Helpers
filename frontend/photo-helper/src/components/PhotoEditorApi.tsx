@@ -406,20 +406,7 @@ const drawCircle = (canvas: HTMLCanvasElement, circle: { x: number; y: number; r
   ctx.lineWidth = Math.max(1, Math.round(canvas.width / 300));
   ctx.fillStyle = 'transparent';
   
-  // Add outline for better visibility
-  if (circle.color === 'white') {
-    // White circle with black outline
-    ctx.shadowColor = 'black';
-    ctx.shadowBlur = 2;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 1;
-  } else {
-    // Colored circles with white outline
-    ctx.shadowColor = 'white';
-    ctx.shadowBlur = 1;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-  }
+  // No shadow effects - clean circle appearance
   
   // Draw the circle
   ctx.beginPath();
@@ -448,11 +435,7 @@ const drawCirclePreview = (canvas: HTMLCanvasElement, circle: { x: number; y: nu
   ctx.lineWidth = Math.max(1, Math.round(canvas.width / 300));
   ctx.fillStyle = 'transparent';
   
-  // Add white shadow for better visibility (same as actual circle)
-  ctx.shadowColor = 'white';
-  ctx.shadowBlur = 1;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
+  // No shadow effects - clean circle preview appearance
   
   // Draw the circle (solid, no dashing)
   ctx.beginPath();
