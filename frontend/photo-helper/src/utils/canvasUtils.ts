@@ -96,8 +96,8 @@ export const drawLabel = (
   }
   
   // Scale font size based on canvas size to maintain consistent visual appearance
-  // Base font size for 300x225 canvas, scale proportionally
-  const baseFontSize = 48;
+  // Base font size for 300x225 canvas, scale proportionally (reduced by 30% from 48px)
+  const baseFontSize = 34;
   const baseCanvasWidth = 300;
   const scaleFactor = canvas.width / baseCanvasWidth;
   const fontSize = Math.round(baseFontSize * scaleFactor);
