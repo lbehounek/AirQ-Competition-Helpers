@@ -3,7 +3,7 @@ import { Document, Page, Text, Image, View, pdf, StyleSheet } from '@react-pdf/r
 import type { ApiPhotoSet } from '../types/api';
 
 /**
- * Generate PDF using @react-pdf/renderer with proper text rotation support
+ * Clean PDF generation with @react-pdf/renderer
  */
 export const generatePDF = async (
   set1: ApiPhotoSet,
@@ -14,22 +14,19 @@ export const generatePDF = async (
   layoutMode: 'landscape' | 'portrait' = 'landscape'
 ): Promise<void> => {
   
-  // Helper function to get canvas data URL for a photo
+  // Get canvas data URL for a photo
   const getPhotoDataUrl = (photoId: string, setKey: 'set1' | 'set2'): string | null => {
     try {
-      // Find the canvas element using the correct data attributes
       const canvasElement = document.querySelector(`canvas[data-photo-id="${photoId}"][data-set-key="${setKey}"]`) as HTMLCanvasElement;
       if (canvasElement) {
         return canvasElement.toDataURL('image/jpeg', 0.9);
       }
       
-      // Fallback: try just photo-id
       const fallbackCanvas = document.querySelector(`canvas[data-photo-id="${photoId}"]`) as HTMLCanvasElement;
       if (fallbackCanvas) {
         return fallbackCanvas.toDataURL('image/jpeg', 0.9);
       }
       
-      console.warn(`Canvas not found for photo ${photoId} in set ${setKey}`);
       return null;
     } catch (error) {
       console.warn(`Failed to get canvas data for photo ${photoId}:`, error);
@@ -37,258 +34,215 @@ export const generatePDF = async (
     }
   };
 
-  // Calculate layout dimensions
-  const getLayoutDimensions = () => {
+  // Clean layout calculations
+  const calculateLayout = () => {
     if (layoutMode === 'portrait') {
-      // Portrait mode: 2x5 grid - A4 (595 x 842 points)
+      // A4 Portrait: 595 x 842 points
       const pageWidth = 595;
       const pageHeight = 842;
       const margin = 5;
-      const leftReserved = 20; // Space for rotated header
-      const gapSize = 2.83; // 1mm in points (72/25.4 ≈ 2.83)
-      const minGapX = Math.round(gapSize);
-      const minGapY = Math.round(gapSize);
+      const textWidth = 15; // Width for rotated text along left edge
+      const gap = 2.83; // 1mm in points
       
-      // Calculate photo dimensions
-      const availableWidth = pageWidth - (2 * margin) - leftReserved;
-      let photoWidth = Math.floor((availableWidth - minGapX) / 2);
-      let photoHeight = photoWidth / aspectRatio;
-      
-      // Check height constraint
+      // Available space for photos
+      const availableWidth = pageWidth - (2 * margin) - textWidth;
       const availableHeight = pageHeight - (2 * margin);
-      const neededHeight = (photoHeight * 5) + (minGapY * 4);
-      if (neededHeight > availableHeight) {
-        photoHeight = Math.floor((availableHeight - (minGapY * 4)) / 5);
-        photoWidth = photoHeight * aspectRatio;
-      }
       
-      // Position calculations
-      const totalWidth = (photoWidth * 2) + minGapX;
-      const startX = leftReserved + (pageWidth - leftReserved - totalWidth) / 2;
-      const startY = margin;
+      // Calculate photo size for 2x5 grid
+      const photoWidth = Math.floor((availableWidth - gap) / 2);
+      const photoHeight = Math.floor((availableHeight - (4 * gap)) / 5);
+      
+      // Ensure aspect ratio
+      const correctedHeight = Math.min(photoHeight, photoWidth / aspectRatio);
+      const correctedWidth = correctedHeight * aspectRatio;
+      
+      // Center the grid
+      const totalWidth = (correctedWidth * 2) + gap;
+      const totalHeight = (correctedHeight * 5) + (gap * 4);
+      
+      const startX = textWidth + margin + (availableWidth - totalWidth) / 2;
+      const startY = margin + (availableHeight - totalHeight) / 2;
       
       return {
-        pageWidth, pageHeight, photoWidth, photoHeight,
-        startX, startY, gapX: minGapX, gapY: minGapY,
-        cols: 2, rows: 5, leftReserved
+        photoWidth: correctedWidth,
+        photoHeight: correctedHeight,
+        startX,
+        startY,
+        gap,
+        cols: 2,
+        rows: 5,
+        textX: 5, // Text position at left edge
+        textY: pageHeight / 2 // Center vertically
       };
     } else {
-      // Landscape mode: 3x3 grid - A4 (842 x 595 points)
+      // A4 Landscape: 842 x 595 points  
       const pageWidth = 842;
       const pageHeight = 595;
-      const margin = 5;
-      const headerSpace = 20;
-      const gapSize = 2.83; // 1mm in points
-      const minGapX = Math.round(gapSize);
-      const minGapY = Math.round(gapSize);
+      const margin = 10;
+      const headerHeight = 25;
+      const gap = 2.83; // 1mm in points
       
-      // Calculate photo dimensions
+      // Available space for photos
       const availableWidth = pageWidth - (2 * margin);
-      let photoWidth = Math.floor((availableWidth - (minGapX * 2)) / 3);
-      let photoHeight = photoWidth / aspectRatio;
+      const availableHeight = pageHeight - (2 * margin) - headerHeight;
       
-      // Check height constraint
-      const neededHeight = (photoHeight * 3) + (minGapY * 2) + headerSpace;
-      if (neededHeight > pageHeight - (2 * margin)) {
-        const availableHeight = pageHeight - (2 * margin) - headerSpace;
-        photoHeight = Math.floor((availableHeight - (minGapY * 2)) / 3);
-        photoWidth = photoHeight * aspectRatio;
-      }
+      // Calculate photo size for 3x3 grid
+      const photoWidth = Math.floor((availableWidth - (2 * gap)) / 3);
+      const photoHeight = Math.floor((availableHeight - (2 * gap)) / 3);
       
-      // Position calculations
-      const totalWidth = (photoWidth * 3) + (minGapX * 2);
-      const startX = (pageWidth - totalWidth) / 2;
-      const startY = headerSpace + margin;
+      // Ensure aspect ratio
+      const correctedHeight = Math.min(photoHeight, photoWidth / aspectRatio);
+      const correctedWidth = correctedHeight * aspectRatio;
+      
+      // Center the grid
+      const totalWidth = (correctedWidth * 3) + (gap * 2);
+      const startX = margin + (availableWidth - totalWidth) / 2;
+      const startY = margin + headerHeight;
       
       return {
-        pageWidth, pageHeight, photoWidth, photoHeight,
-        startX, startY, gapX: minGapX, gapY: minGapY,
-        cols: 3, rows: 3, leftReserved: 0
+        photoWidth: correctedWidth,
+        photoHeight: correctedHeight,
+        startX,
+        startY,
+        gap,
+        cols: 3,
+        rows: 3,
+        headerY: margin + 5
       };
     }
   };
 
-  const layout = getLayoutDimensions();
+  const layout = calculateLayout();
 
-  // Styles for the PDF
+  // Styles
   const styles = StyleSheet.create({
     page: {
-      paddingTop: 5,
-      paddingBottom: 5,
-      paddingLeft: 5,
-      paddingRight: 5,
       backgroundColor: '#ffffff',
     },
-
-    horizontalHeader: {
-      fontSize: 12,
-      fontWeight: 'bold',
-      color: '#000000',
-      marginBottom: 10,
-      textAlign: 'center',
-    },
-    headerLeft: {
-      textAlign: 'left',
-    },
-    headerRight: {
-      textAlign: 'right',
-    },
-    photoContainer: {
+    rotatedText: {
       position: 'absolute',
+      left: layout.textX,
+      top: layout.textY,
+      fontSize: 12,
+      fontFamily: 'Helvetica-Bold',
+      color: '#000000',
+      transform: 'rotate(-90deg)',
+      transformOrigin: 'left center',
     },
-    photo: {
-      objectFit: 'contain',
-    },
-    headerRow: {
+    horizontalHeader: {
+      position: 'absolute',
+      top: layout.headerY,
+      left: 10,
+      right: 10,
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginBottom: 5,
+    },
+    headerText: {
+      fontSize: 12,
+      fontFamily: 'Helvetica-Bold',
+      color: '#000000',
     }
   });
 
-  // Create photo grid elements
-  const createPhotoGrid = (photoSet: ApiPhotoSet, setKey: 'set1' | 'set2') => {
-    const photoElements = [];
+  // Create a single page
+  const createPage = (photoSet: ApiPhotoSet, setTitle: string, pageKey: string) => {
+    const elements = [];
     
+    // Add header/title
+    if (layoutMode === 'portrait') {
+      // Rotated text on left edge
+      const headerText = `${competitionName || ''} • ${setTitle}`;
+      elements.push(
+        React.createElement(Text, {
+          key: `header-${pageKey}`,
+          style: styles.rotatedText
+        }, headerText)
+      );
+    } else {
+      // Horizontal header
+      elements.push(
+        React.createElement(View, {
+          key: `header-${pageKey}`,
+          style: styles.horizontalHeader
+        }, [
+          React.createElement(Text, {
+            key: 'comp-name',
+            style: styles.headerText
+          }, competitionName || ''),
+          React.createElement(Text, {
+            key: 'set-title', 
+            style: styles.headerText
+          }, setTitle)
+        ])
+      );
+    }
+    
+    // Add photos
     for (let row = 0; row < layout.rows; row++) {
       for (let col = 0; col < layout.cols; col++) {
         const index = row * layout.cols + col;
         const photo = photoSet.photos[index];
         
         if (photo) {
-          const dataUrl = getPhotoDataUrl(photo.id, setKey);
+          const dataUrl = getPhotoDataUrl(photo.id, pageKey === 'set1' ? 'set1' : 'set2');
           if (dataUrl) {
-            const x = layout.startX + col * (layout.photoWidth + layout.gapX);
-            const y = layout.startY + row * (layout.photoHeight + layout.gapY);
+            const x = layout.startX + col * (layout.photoWidth + layout.gap);
+            const y = layout.startY + row * (layout.photoHeight + layout.gap);
             
-            photoElements.push(
-              React.createElement(View, {
-                key: `${setKey}-${photo.id}`,
-                style: [
-                  styles.photoContainer,
-                  {
-                    left: x,
-                    top: y,
-                    width: layout.photoWidth,
-                    height: layout.photoHeight,
-                  }
-                ]
-              },
-                React.createElement(Image, {
-                  src: dataUrl,
-                  style: [
-                    styles.photo,
-                    {
-                      width: layout.photoWidth,
-                      height: layout.photoHeight,
-                    }
-                  ]
-                })
-              )
+            elements.push(
+              React.createElement(Image, {
+                key: `photo-${pageKey}-${index}`,
+                src: dataUrl,
+                style: {
+                  position: 'absolute',
+                  left: x,
+                  top: y,
+                  width: layout.photoWidth,
+                  height: layout.photoHeight,
+                }
+              })
             );
           }
         }
       }
     }
     
-    return photoElements;
+    return React.createElement(Page, {
+      key: pageKey,
+      size: 'A4',
+      orientation: layoutMode,
+      style: styles.page
+    }, elements);
   };
 
-  // Create page header
-  const createPageHeader = (setTitle: string) => {
-    const headerText = `${competitionName || ''} • ${setTitle}`;
-    
-    if (layoutMode === 'portrait') {
-      // Rotated header on left edge for portrait mode - final attempt with transform
-      return React.createElement(View, {
-        style: {
-          position: 'absolute',
-          left: 8,
-          top: 300,
-          width: 200,
-          height: 20,
-        }
-      },
-        React.createElement(Text, {
-          style: {
-            fontSize: 12,
-            fontWeight: 'bold',
-            color: '#000000',
-            transform: 'rotate(90deg)',
-          }
-        }, headerText)
-      );
-    } else {
-      // Horizontal header for landscape mode
-      return React.createElement(View, {
-        style: styles.headerRow
-      }, [
-        React.createElement(Text, {
-          key: 'left',
-          style: [styles.horizontalHeader, styles.headerLeft]
-        }, competitionName || ''),
-        React.createElement(Text, {
-          key: 'right', 
-          style: [styles.horizontalHeader, styles.headerRight]
-        }, setTitle)
-      ]);
-    }
-  };
+  // Create document
+  const pages = [];
+  
+  if (set1.photos.length > 0) {
+    pages.push(createPage(set1, set1.title, 'set1'));
+  }
+  
+  if (set2.photos.length > 0) {
+    pages.push(createPage(set2, set2.title, 'set2'));
+  }
+  
+  console.log(`Clean PDF: Creating ${pages.length} pages`);
+  
+  const pdfDocument = React.createElement(Document, {}, pages);
 
-  // Create the PDF document structure
-  const createPDFDocument = () => {
-    const pages = [];
-
-    // Set 1 Page
-    if (set1.photos.length > 0) {
-      pages.push(
-        React.createElement(Page, {
-          key: 'set1-page',
-          size: 'A4',
-          orientation: layoutMode,
-          style: styles.page
-        }, [
-          createPageHeader(set1.title),
-          ...createPhotoGrid(set1, 'set1')
-        ])
-      );
-    }
-
-    // Set 2 Page
-    if (set2.photos.length > 0) {
-      pages.push(
-        React.createElement(Page, {
-          key: 'set2-page',
-          size: 'A4',
-          orientation: layoutMode,
-          style: styles.page
-        }, [
-          createPageHeader(set2.title),
-          ...createPhotoGrid(set2, 'set2')
-        ])
-      );
-    }
-
-    return React.createElement(Document, {}, pages);
-  };
-
-  // Generate and download PDF
+  // Generate and download
   try {
-    const pdfDocument = createPDFDocument();
     const blob = await pdf(pdfDocument).toBlob();
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
     const url = URL.createObjectURL(blob);
     
-    // Create download link
     const link = document.createElement('a');
     link.href = url;
     link.download = `navigation-photos-${timestamp}.pdf`;
     link.click();
     
-    // Clean up
     URL.revokeObjectURL(url);
-    
-    console.log('PDF generated successfully');
+    console.log('Clean PDF generated successfully');
   } catch (error) {
     console.error('PDF generation failed:', error);
     throw error;
