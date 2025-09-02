@@ -27,7 +27,12 @@ interface PhotoEditorApiProps {
 // UNIFIED RENDERING SYSTEM - Same logic for grid and modal
 const BASE_WIDTH = 300;
 
-const cropImageToAspectRatio = (image: HTMLImageElement, targetAspect: number, canvasSize: { width: number; height: number }): HTMLCanvasElement => {
+const cropImageToAspectRatio = (
+  image: HTMLImageElement,
+  targetAspect: number,
+  canvasSize: { width: number; height: number },
+  normalizedOffset?: { x: number; y: number } // -1..1 per axis
+): HTMLCanvasElement => {
   const canvas = document.createElement('canvas');
   const ctx = getCanvasContext(canvas);
   if (!ctx) {
@@ -46,11 +51,36 @@ const cropImageToAspectRatio = (image: HTMLImageElement, targetAspect: number, c
   if (imageAspect > targetAspect) {
     // Image is wider than target - crop width (keep full height)
     sourceWidth = Math.round(image.height * targetAspect);
-    sourceX = Math.round((image.width - sourceWidth) / 2);
+    const centerX = (image.width - sourceWidth) / 2;
+    if (normalizedOffset && typeof normalizedOffset.x === 'number') {
+      const halfRangeSource = (image.width - sourceWidth) / 2;
+      const clampedNorm = Math.max(-1, Math.min(1, normalizedOffset.x));
+      const deltaSource = clampedNorm * halfRangeSource;
+      sourceX = Math.round(centerX + deltaSource);
+    } else {
+      sourceX = Math.round(centerX);
+    }
   } else if (imageAspect < targetAspect) {
     // Image is taller than target - crop height (keep full width)  
     sourceHeight = Math.round(image.width / targetAspect);
-    sourceY = Math.round((image.height - sourceHeight) / 2);
+    const centerY = (image.height - sourceHeight) / 2;
+    if (normalizedOffset && typeof normalizedOffset.y === 'number') {
+      const halfRangeSource = (image.height - sourceHeight) / 2;
+      const clampedNorm = Math.max(-1, Math.min(1, normalizedOffset.y));
+      const deltaSource = clampedNorm * halfRangeSource;
+      sourceY = Math.round(centerY + deltaSource);
+      console.log('🖼️ CROP: Applying Y offset:', { 
+        normalizedOffsetY: normalizedOffset.y, 
+        clampedNorm, 
+        centerY, 
+        halfRangeSource, 
+        deltaSource, 
+        finalSourceY: sourceY 
+      });
+    } else {
+      sourceY = Math.round(centerY);
+      console.log('🖼️ CROP: No Y offset, using center:', { centerY, finalSourceY: sourceY });
+    }
   }
   
   // Set canvas to the exact dimensions expected by calling code
@@ -89,25 +119,29 @@ const renderPhotoOnCanvas = (
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  // Crop to current aspect ratio
-  const croppedImage = cropImageToAspectRatio(image, aspectRatio, { width: BASE_WIDTH, height: baseHeight });
-  
-  // Calculate minimum scale based on BASE dimensions (not current canvas)
-  // This ensures consistent scaling across different canvas sizes
-  const minScaleX = BASE_WIDTH / croppedImage.width;
-  const minScaleY = baseHeight / croppedImage.height;
-  const minScale = Math.max(minScaleX, minScaleY);
-  const actualScale = Math.max(canvasState.scale, minScale);
-  
-  // Calculate scaled dimensions IN BASE COORDINATES
-  const scaledWidth = croppedImage.width * actualScale;
-  const scaledHeight = croppedImage.height * actualScale;
-  
-  // Use position (dragging position takes priority)
+  // Use provided basePosition (dragging position takes priority)
   const basePosition = isDragging && localPosition ? localPosition : canvasState.position;
   
-  // Convert from base coordinates (300x225) to current canvas size
-  // This ensures the same VIEW is shown regardless of canvas size
+  // For viewport-style aspect ratio, we work with the original image dimensions
+  // and use canvas clipping to show only the desired aspect ratio portion
+  
+  // Calculate the minimum scale needed to fill the canvas (based on target aspect ratio)
+  const canvasAspect = canvas.width / canvas.height;
+  const imageAspect = image.width / image.height;
+  
+  // Calculate scale to fit original image to base dimensions
+  const baseScaleX = BASE_WIDTH / image.width;
+  const baseScaleY = baseHeight / image.height;
+  const baseMinScale = Math.max(baseScaleX, baseScaleY);
+  
+  // Apply user's scale on top of the base scale
+  const actualScale = Math.max(canvasState.scale * baseMinScale, baseMinScale);
+  
+  // Calculate scaled dimensions of the original image in BASE COORDINATES
+  const scaledWidth = image.width * actualScale;
+  const scaledHeight = image.height * actualScale;
+  
+  // Convert from base coordinates to current canvas size
   const scaleRatio = canvas.width / BASE_WIDTH;
   
   // Scale position for display
@@ -118,11 +152,12 @@ const renderPhotoOnCanvas = (
   const displayWidth = scaledWidth * scaleRatio;
   const displayHeight = scaledHeight * scaleRatio;
   
-  // Apply constraints using display dimensions
+  // Apply constraints using original image dimensions (allowing viewport panning)
   if (displayWidth > canvas.width) {
     const maxX = displayWidth - canvas.width;
     x = Math.max(-maxX, Math.min(0, x));
   } else {
+    // Center when image is smaller than canvas
     x = (canvas.width - displayWidth) / 2;
   }
   
@@ -130,6 +165,7 @@ const renderPhotoOnCanvas = (
     const maxY = displayHeight - canvas.height;
     y = Math.max(-maxY, Math.min(0, y));
   } else {
+    // Center when image is smaller than canvas
     y = (canvas.height - displayHeight) / 2;
   }
   
@@ -139,13 +175,13 @@ const renderPhotoOnCanvas = (
   tempCanvas.height = Math.ceil(displayHeight);
   const tempCtx = getCanvasContext(tempCanvas);
   if (!tempCtx) {
-    // Fallback: just draw without effects
-    ctx.drawImage(croppedImage, x, y, displayWidth, displayHeight);
+    // Fallback: just draw without effects using original image
+    ctx.drawImage(image, x, y, displayWidth, displayHeight);
     return;
   }
   
-  // Draw the image to temp canvas
-  tempCtx.drawImage(croppedImage, 0, 0, displayWidth, displayHeight);
+  // Draw the original image to temp canvas
+  tempCtx.drawImage(image, 0, 0, displayWidth, displayHeight);
   
   // Skip processing if showing original
   const sharpness = canvasState.sharpness || 0;
@@ -729,46 +765,53 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       const baseDeltaX = deltaX / scaleRatio;
       const baseDeltaY = deltaY / scaleRatio;
       
+      // console.log('🖱️ Mouse drag event:', { deltaX, deltaY, baseDeltaX, baseDeltaY });
+      
       // Calculate new position for each axis independently
       const newPosition = {
         x: localPosition.x + baseDeltaX,
         y: localPosition.y + baseDeltaY
       };
 
-      // Apply constraints in base coordinate system
+      // Apply constraints in base coordinate system using original image dimensions
       const baseHeight = BASE_WIDTH / currentRatio.ratio;
-      const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, { width: BASE_WIDTH, height: baseHeight });
-      const minScaleX = BASE_WIDTH / croppedImage.width;
-      const minScaleY = baseHeight / croppedImage.height;
-      const minScale = Math.max(minScaleX, minScaleY);
-      const actualScale = Math.max(photo.canvasState.scale, minScale);
-      const scaledWidth = croppedImage.width * actualScale;
-      const scaledHeight = croppedImage.height * actualScale;
+      
+      // Calculate scale to fit original image to base dimensions
+      const baseScaleX = BASE_WIDTH / loadedImage.width;
+      const baseScaleY = baseHeight / loadedImage.height;
+      const baseMinScale = Math.max(baseScaleX, baseScaleY);
+      
+      // Apply user's scale on top of the base scale
+      const actualScale = Math.max(photo.canvasState.scale * baseMinScale, baseMinScale);
+      const scaledWidth = loadedImage.width * actualScale;
+      const scaledHeight = loadedImage.height * actualScale;
 
       // Track which axes actually moved after constraints
       let actualDeltaX = 0;
       let actualDeltaY = 0;
       
-      // Constrain X axis independently
+      // Constrain X axis for viewport-style panning
       if (scaledWidth > BASE_WIDTH) {
         const maxX = scaledWidth - BASE_WIDTH;
         const constrainedX = Math.max(-maxX, Math.min(0, newPosition.x));
         actualDeltaX = constrainedX - localPosition.x;
         newPosition.x = constrainedX;
       } else {
+        // Center when image is smaller than canvas
         newPosition.x = (BASE_WIDTH - scaledWidth) / 2;
-        actualDeltaX = 0;
+        actualDeltaX = newPosition.x - localPosition.x;
       }
       
-      // Constrain Y axis independently
+      // Constrain Y axis for viewport-style panning
       if (scaledHeight > baseHeight) {
         const maxY = scaledHeight - baseHeight;
         const constrainedY = Math.max(-maxY, Math.min(0, newPosition.y));
         actualDeltaY = constrainedY - localPosition.y;
         newPosition.y = constrainedY;
       } else {
+        // Center when image is smaller than canvas
         newPosition.y = (baseHeight - scaledHeight) / 2;
-        actualDeltaY = 0;
+        actualDeltaY = newPosition.y - localPosition.y;
       }
 
       setLocalPosition(newPosition);
@@ -780,7 +823,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       };
       setDragStart(newDragStart);
       
-      // Debounce API calls
+      // Update position with debouncing for smooth dragging
       if (pendingUpdateRef.current) {
         clearTimeout(pendingUpdateRef.current);
       }

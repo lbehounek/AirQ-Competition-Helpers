@@ -190,6 +190,7 @@ export const getCanvasMousePosition = (
 
 /**
  * Constrain position to keep image within canvas bounds
+ * For viewport-style aspect ratio cropping, use original image dimensions
  */
 export const constrainPosition = (
   position: { x: number; y: number },
@@ -199,6 +200,34 @@ export const constrainPosition = (
 ): { x: number; y: number } => {
   const scaledWidth = imageSize.width * scale;
   const scaledHeight = imageSize.height * scale;
+  
+  const deltaX = canvasSize.width - scaledWidth;
+  const deltaY = canvasSize.height - scaledHeight;
+
+  // Clamp between lowerBound (min of 0 and delta) and upperBound (max of 0 and delta)
+  const minX = Math.min(0, deltaX);
+  const maxX = Math.max(0, deltaX);
+  const minY = Math.min(0, deltaY);
+  const maxY = Math.max(0, deltaY);
+
+  return {
+    x: Math.min(maxX, Math.max(minX, position.x)),
+    y: Math.min(maxY, Math.max(minY, position.y))
+  };
+};
+
+/**
+ * Constrain position for viewport-style aspect ratio cropping
+ * Uses original image dimensions to allow panning beyond initially visible area
+ */
+export const constrainPositionForViewport = (
+  position: { x: number; y: number },
+  originalImageSize: { width: number; height: number },
+  canvasSize: { width: number; height: number },
+  scale: number = 1
+): { x: number; y: number } => {
+  const scaledWidth = originalImageSize.width * scale;
+  const scaledHeight = originalImageSize.height * scale;
   
   const deltaX = canvasSize.width - scaledWidth;
   const deltaY = canvasSize.height - scaledHeight;
