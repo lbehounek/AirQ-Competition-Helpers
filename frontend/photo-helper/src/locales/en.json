@@ -144,6 +144,7 @@
     "resetTemperature": "Reset temperature",
     "resetTint": "Reset tint",
     "resetWhiteBalance": "Reset white balance",
+    "applyToAll": "Apply to All",
     "showOriginal": "Show Original",
     "showEdited": "Show Edited",
     "editPhoto": "Edit Photo {{label}}",

@@ -72,6 +72,7 @@ interface PhotoControlsProps {
   onToggleOriginal?: () => void;
   circleMode?: boolean;
   onCircleModeToggle?: () => void;
+  onApplyToAll?: (setting: string, value: any) => void; // Apply setting to all photos
 }
 
 type LabelPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -199,6 +200,8 @@ interface SliderWithControlsProps {
   formatDisplay?: (value: number) => string;
   parseInput?: (input: string) => number | null;
   resetButton?: React.ReactNode;
+  onApplyToAll?: (value: number) => void;
+  settingName?: string;
 }
 
 const SliderWithControls: React.FC<SliderWithControlsProps> = ({
@@ -214,8 +217,11 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
   label,
   formatDisplay,
   parseInput,
-  resetButton
+  resetButton,
+  onApplyToAll,
+  settingName
 }) => {
+  const { t } = useI18n();
   const handleDecrement = () => {
     const newValue = Math.max(min, value - step);
     if (newValue !== value) {
@@ -232,12 +238,18 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
 
   return (
     <Box sx={{ ...sx }}>
-      {/* Label, centered value, and reset button on single line */}
+      {/* Label, centered value, apply to all button, and reset button on single line */}
       {label && (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, position: 'relative' }}>
-          <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {label}
-          </Typography>
+          {typeof label === 'string' ? (
+            <Typography variant="body2">
+              {label}
+            </Typography>
+          ) : (
+            <Box component="div" sx={{ fontSize: '0.875rem', fontWeight: 400 }}>
+              {label}
+            </Box>
+          )}
           <Box sx={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
             <EditableValueDisplay
               value={value}
@@ -249,6 +261,23 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
             />
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {onApplyToAll && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => onApplyToAll(value)}
+                disabled={disabled}
+                sx={{ 
+                  fontSize: '0.7rem', 
+                  px: 1, 
+                  py: 0.25,
+                  minWidth: 'auto',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {t('controls.applyToAll')}
+              </Button>
+            )}
             {resetButton}
           </Box>
         </Box>
@@ -306,7 +335,8 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   showOriginal = false,
   onToggleOriginal,
   circleMode: externalCircleMode,
-  onCircleModeToggle
+  onCircleModeToggle,
+  onApplyToAll
 }) => {
   const { t } = useI18n();
   // Local state for immediate UI feedback
@@ -845,6 +875,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     </IconButton>
                   </Tooltip>
                 }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('scale', value) : undefined}
                 formatDisplay={(value) => `${Math.round(value * 100)}%`}
                 parseInput={(input) => {
                   const num = parseFloat(input.replace(/[^\d.]/g, ''));
@@ -880,6 +911,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     </IconButton>
                   </Tooltip>
                 }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('sharpness', value) : undefined}
                 formatDisplay={(value) => String(value)}
                 parseInput={(input) => {
                   const num = parseFloat(input.replace(/[^\d]/g, ''));
@@ -925,6 +957,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     </IconButton>
                   </Tooltip>
                 }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('brightness', value) : undefined}
                 formatDisplay={(value) => value > 0 ? `+${value}` : String(value)}
                 parseInput={(input) => {
                   const num = parseFloat(input.replace(/[^\d.-]/g, ''));
@@ -960,6 +993,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     </IconButton>
                   </Tooltip>
                 }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('contrast', value) : undefined}
                 formatDisplay={(value) => `${Math.round(value * 100)}%`}
                 parseInput={(input) => {
                   const num = parseFloat(input.replace(/[^\d.]/g, ''));
@@ -1029,6 +1063,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     </IconButton>
                   </Tooltip>
                 }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('whiteBalance.temperature', value) : undefined}
                 formatDisplay={(value) => String(value)}
                 parseInput={(input) => {
                   const num = parseFloat(input.replace(/[^\d.-]/g, ''));
@@ -1070,6 +1105,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     </IconButton>
                   </Tooltip>
                 }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('whiteBalance.tint', value) : undefined}
                 formatDisplay={(value) => String(value)}
                 parseInput={(input) => {
                   const num = parseFloat(input.replace(/[^\d.-]/g, ''));
@@ -1428,15 +1464,21 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
 
             {/* Scale/Zoom Control */}
             <Box sx={{ mb: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <ZoomIn fontSize="small" />
-                  {t('controls.zoom')}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="primary" fontWeight={600}>
-                    {Math.round(photo.canvasState.scale * 100)}%
-                  </Typography>
+              <SliderWithControls
+                value={Math.max(1.0, photo.canvasState.scale)}
+                onChange={handleScaleChange}
+                min={1.0}
+                max={3}
+                step={0.05}
+                color="primary"
+                size="small"
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ZoomIn fontSize="small" />
+                    {t('controls.zoom')}
+                  </Box>
+                }
+                resetButton={
                   <Tooltip title={t('controls.resetZoom')}>
                     <IconButton 
                       size="small" 
@@ -1446,17 +1488,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                       <Refresh fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                </Box>
-              </Box>
-              
-              <SliderWithControls
-                value={Math.max(1.0, photo.canvasState.scale)}
-                onChange={handleScaleChange}
-                min={1.0}
-                max={3}
-                step={0.05}
-                color="primary"
-                size="small"
+                }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('scale', value) : undefined}
+                formatDisplay={(value) => `${Math.round(value * 100)}%`}
+                parseInput={(input) => {
+                  const num = parseFloat(input.replace(/[^\d.]/g, ''));
+                  return isNaN(num) ? null : num / 100;
+                }}
                 sx={{ mb: 1 }}
               />
               
@@ -1479,15 +1517,21 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
 
             {/* Brightness Control */}
             <Box sx={{ mb: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Brightness4 fontSize="small" />
-                  {t('controls.brightness')}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="primary" fontWeight={600}>
-                    {photo.canvasState.brightness > 0 ? '+' : ''}{photo.canvasState.brightness}
-                  </Typography>
+              <SliderWithControls
+                value={photo.canvasState.brightness}
+                onChange={handleBrightnessChange}
+                min={-100}
+                max={100}
+                step={1}
+                color="primary"
+                size="small"
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Brightness4 fontSize="small" />
+                    {t('controls.brightness')}
+                  </Box>
+                }
+                resetButton={
                   <Tooltip title={t('controls.resetBrightness')}>
                     <IconButton 
                       size="small" 
@@ -1497,30 +1541,33 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                       <Refresh fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                </Box>
-              </Box>
-              <SliderWithControls
-                value={photo.canvasState.brightness}
-                onChange={handleBrightnessChange}
-                min={-100}
-                max={100}
-                step={1}
-                color="primary"
-                size="small"
+                }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('brightness', value) : undefined}
+                formatDisplay={(value) => value > 0 ? `+${value}` : String(value)}
+                parseInput={(input) => {
+                  const num = parseFloat(input.replace(/[^\d.-]/g, ''));
+                  return isNaN(num) ? null : num;
+                }}
               />
             </Box>
 
             {/* Contrast Control */}
             <Box sx={{ mb: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Contrast fontSize="small" />
-                  {t('controls.contrast')}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="primary" fontWeight={600}>
-                    {Math.round(photo.canvasState.contrast * 100)}%
-                  </Typography>
+              <SliderWithControls
+                value={photo.canvasState.contrast}
+                onChange={handleContrastChange}
+                min={0.5}
+                max={2}
+                step={0.01}
+                color="primary"
+                size="small"
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Contrast fontSize="small" />
+                    {t('controls.contrast')}
+                  </Box>
+                }
+                resetButton={
                   <Tooltip title={t('controls.resetContrast')}>
                     <IconButton 
                       size="small" 
@@ -1530,30 +1577,33 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                       <Refresh fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                </Box>
-              </Box>
-              <SliderWithControls
-                value={photo.canvasState.contrast}
-                onChange={handleContrastChange}
-                min={0.5}
-                max={2}
-                step={0.01}
-                color="primary"
-                size="small"
+                }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('contrast', value) : undefined}
+                formatDisplay={(value) => `${Math.round(value * 100)}%`}
+                parseInput={(input) => {
+                  const num = parseFloat(input.replace(/[^\d.]/g, ''));
+                  return isNaN(num) ? null : num / 100;
+                }}
               />
             </Box>
 
             {/* Sharpness Control */}
             <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <BlurOn fontSize="small" />
-                  {t('controls.sharpness')}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="primary" fontWeight={600}>
-                    {sharpness}
-                  </Typography>
+              <SliderWithControls
+                value={sharpness}
+                onChange={handleSharpnessChange}
+                min={0}
+                max={100}
+                step={5}
+                color="primary"
+                size="small"
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <BlurOn fontSize="small" />
+                    {t('controls.sharpness')}
+                  </Box>
+                }
+                resetButton={
                   <Tooltip title={t('controls.resetSharpness')}>
                     <IconButton 
                       size="small" 
@@ -1563,16 +1613,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                       <Refresh fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                </Box>
-              </Box>
-              <SliderWithControls
-                value={sharpness}
-                onChange={handleSharpnessChange}
-                min={0}
-                max={100}
-                step={5}
-                color="primary"
-                size="small"
+                }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('sharpness', value) : undefined}
+                formatDisplay={(value) => String(value)}
+                parseInput={(input) => {
+                  const num = parseFloat(input.replace(/[^\d]/g, ''));
+                  return isNaN(num) ? null : num;
+                }}
               />
             </Box>
           </Paper>
@@ -1612,14 +1659,17 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
 
             {/* Temperature Control */}
             <Box sx={{ mb: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">
-                  {t('controls.temperature')}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="primary" fontWeight={600}>
-                    {whiteBalance.temperature}
-                  </Typography>
+              <SliderWithControls
+                value={whiteBalance.temperature}
+                onChange={handleWhiteBalanceTemperatureChange}
+                min={-50}
+                max={50}
+                step={1}
+                color="primary"
+                size="small"
+                disabled={whiteBalance.auto}
+                label={t('controls.temperature')}
+                resetButton={
                   <Tooltip title={t('controls.resetTemperature')}>
                     <IconButton 
                       size="small" 
@@ -1630,17 +1680,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                       <Refresh fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                </Box>
-              </Box>
-              <SliderWithControls
-                value={whiteBalance.temperature}
-                onChange={handleWhiteBalanceTemperatureChange}
-                min={-50}
-                max={50}
-                step={1}
-                color="primary"
-                size="small"
-                disabled={whiteBalance.auto}
+                }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('whiteBalance.temperature', value) : undefined}
+                formatDisplay={(value) => String(value)}
+                parseInput={(input) => {
+                  const num = parseFloat(input.replace(/[^\d.-]/g, ''));
+                  return isNaN(num) ? null : num;
+                }}
                 sx={{
                   '& .MuiSlider-track': {
                     background: 'linear-gradient(90deg, #4FC3F7 0%, #FFE082 100%)'
@@ -1651,26 +1697,6 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
 
             {/* Tint Control */}
             <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">
-                  {t('controls.tint')}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" color="primary" fontWeight={600}>
-                    {whiteBalance.tint}
-                  </Typography>
-                                      <Tooltip title={t('controls.resetTint')}>
-                    <IconButton 
-                      size="small" 
-                      onClick={() => handleWhiteBalanceTintChange(0)}
-                      sx={{ padding: 0.5 }}
-                      disabled={whiteBalance.auto}
-                    >
-                      <Refresh fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              </Box>
               <SliderWithControls
                 value={whiteBalance.tint}
                 onChange={handleWhiteBalanceTintChange}
@@ -1680,6 +1706,25 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 color="primary"
                 size="small"
                 disabled={whiteBalance.auto}
+                label={t('controls.tint')}
+                resetButton={
+                  <Tooltip title={t('controls.resetTint')}>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleWhiteBalanceTintChange(0)}
+                      sx={{ padding: 0.5 }}
+                      disabled={whiteBalance.auto}
+                    >
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                }
+                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('whiteBalance.tint', value) : undefined}
+                formatDisplay={(value) => String(value)}
+                parseInput={(input) => {
+                  const num = parseFloat(input.replace(/[^\d.-]/g, ''));
+                  return isNaN(num) ? null : num;
+                }}
                 sx={{
                   '& .MuiSlider-track': {
                     background: 'linear-gradient(90deg, #81C784 0%, #E91E63 100%)'

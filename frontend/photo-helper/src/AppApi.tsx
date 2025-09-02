@@ -834,6 +834,44 @@ function AppApi() {
                         onToggleOriginal={() => setShowOriginal(!showOriginal)}
                         circleMode={circleMode}
                         onCircleModeToggle={() => setCircleMode(!circleMode)}
+                        onApplyToAll={(setting, value) => {
+                          // Apply the setting to all photos in the session
+                          if (!session) return;
+                          
+                          (['set1', 'set2'] as const).forEach(setKey => {
+                            session.sets[setKey].photos.forEach((photo: any) => {
+                              if (photo.id !== selectedPhoto.photo.id) { // Skip current photo
+                                const currentState = { ...photo.canvasState };
+                                
+                                // Apply the setting based on the setting name
+                                if (setting === 'scale') {
+                                  currentState.scale = value;
+                                } else if (setting === 'brightness') {
+                                  currentState.brightness = value;
+                                } else if (setting === 'contrast') {
+                                  currentState.contrast = value;
+                                } else if (setting === 'sharpness') {
+                                  currentState.sharpness = value;
+                                } else if (setting === 'whiteBalance.temperature') {
+                                  currentState.whiteBalance = { 
+                                    ...currentState.whiteBalance, 
+                                    temperature: value, 
+                                    auto: false 
+                                  };
+                                } else if (setting === 'whiteBalance.tint') {
+                                  currentState.whiteBalance = { 
+                                    ...currentState.whiteBalance, 
+                                    tint: value, 
+                                    auto: false 
+                                  };
+                                }
+                                
+                                // Update the photo state
+                                updatePhotoState(setKey as 'set1' | 'set2', photo.id, currentState);
+                              }
+                            });
+                          });
+                        }}
                       />
                     </Box>
                   </Box>
@@ -861,6 +899,44 @@ function AppApi() {
                       mode="sliders"
                       showOriginal={showOriginal}
                       onToggleOriginal={() => setShowOriginal(!showOriginal)}
+                      onApplyToAll={(setting, value) => {
+                        // Apply the setting to all photos in the session
+                        if (!session) return;
+                        
+                        (['set1', 'set2'] as const).forEach(setKey => {
+                          session.sets[setKey].photos.forEach((photo: any) => {
+                            if (photo.id !== selectedPhoto.photo.id) { // Skip current photo
+                              const currentState = { ...photo.canvasState };
+                              
+                              // Apply the setting based on the setting name
+                              if (setting === 'scale') {
+                                currentState.scale = value;
+                              } else if (setting === 'brightness') {
+                                currentState.brightness = value;
+                              } else if (setting === 'contrast') {
+                                currentState.contrast = value;
+                              } else if (setting === 'sharpness') {
+                                currentState.sharpness = value;
+                              } else if (setting === 'whiteBalance.temperature') {
+                                currentState.whiteBalance = { 
+                                  ...currentState.whiteBalance, 
+                                  temperature: value, 
+                                  auto: false 
+                                };
+                              } else if (setting === 'whiteBalance.tint') {
+                                currentState.whiteBalance = { 
+                                  ...currentState.whiteBalance, 
+                                  tint: value, 
+                                  auto: false 
+                                };
+                              }
+                              
+                              // Update the photo state
+                              updatePhotoState(setKey as 'set1' | 'set2', photo.id, currentState);
+                            }
+                          });
+                        });
+                      }}
                     />
                   </Box>
                 </Box>

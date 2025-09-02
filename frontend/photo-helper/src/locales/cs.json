@@ -144,6 +144,7 @@
     "resetTemperature": "Obnovit teplotu",
     "resetTint": "Obnovit odstín",
     "resetWhiteBalance": "Obnovit vyvážení bílé",
+    "applyToAll": "Použít na vše",
     "showOriginal": "Zobrazit originál",
     "showEdited": "Zobrazit upravené",
     "editPhoto": "Upravit fotografii {{label}}",
