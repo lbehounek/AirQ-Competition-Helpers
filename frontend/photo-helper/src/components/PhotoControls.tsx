@@ -85,6 +85,7 @@ interface EditableValueDisplayProps {
   max: number;
   formatDisplay?: (value: number) => string;
   parseInput?: (input: string) => number | null;
+  step?: number; // Add step prop for wheel handling
   sx?: any;
 }
 
@@ -98,6 +99,7 @@ const EditableValueDisplay: React.FC<EditableValueDisplayProps> = ({
     const parsed = parseFloat(input.replace(/[^\d.-]/g, ''));
     return isNaN(parsed) ? null : parsed;
   },
+  step = 1, // Default step for wheel handling
   sx
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -122,6 +124,18 @@ const EditableValueDisplay: React.FC<EditableValueDisplayProps> = ({
       handleSubmit();
     } else if (e.key === 'Escape') {
       setIsEditing(false);
+    }
+  };
+
+  const handleWheel = (event: React.WheelEvent) => {
+    if (isEditing) return; // Don't handle wheel when editing
+    
+    event.preventDefault(); // Prevent page scrolling
+    const delta = event.deltaY > 0 ? -step : step; // Scroll down = decrease, scroll up = increase
+    const newValue = Math.max(min, Math.min(max, value + delta));
+    
+    if (newValue !== value) {
+      onChange(newValue);
     }
   };
 
@@ -159,6 +173,7 @@ const EditableValueDisplay: React.FC<EditableValueDisplayProps> = ({
       color="primary"
       fontWeight={600}
       onClick={handleClick}
+      onWheel={handleWheel}
       sx={{
         cursor: 'pointer',
         userSelect: 'none',
@@ -236,6 +251,18 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
     }
   };
 
+  const handleWheel = (event: React.WheelEvent) => {
+    if (disabled) return;
+    
+    event.preventDefault(); // Prevent page scrolling
+    const delta = event.deltaY > 0 ? -step : step; // Scroll down = decrease, scroll up = increase
+    const newValue = Math.max(min, Math.min(max, value + delta));
+    
+    if (newValue !== value) {
+      onChange(newValue);
+    }
+  };
+
   return (
     <Box sx={{ ...sx }}>
       {/* Label, centered value, apply to all button, and reset button on single line */}
@@ -258,6 +285,7 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
               max={max}
               formatDisplay={formatDisplay}
               parseInput={parseInput}
+              step={step}
             />
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -306,6 +334,7 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
           color={color}
           size={size}
           disabled={disabled}
+          onWheel={handleWheel}
           sx={{ flex: 1 }}
         />
         <IconButton
