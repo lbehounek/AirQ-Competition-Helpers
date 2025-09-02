@@ -58,34 +58,36 @@ export const generatePDF = async (
     if (layoutMode === 'portrait') {
       // Portrait mode: 2x5 grid - Maximized for A4 (595 x 842 points)
       // Page dimensions: 595 width x 842 height
-      // Usable area with 15pt margins: 565 x 812 points
+      // Rotated header on left edge to maximize photo space
       
-      // Maximize photo size for 2 columns
       const pageWidth = 595;
       const pageHeight = 842;
-      const margin = 10;
-      const headerSpace = 30;
-      const minGapX = 10; // Minimum gap between columns
-      const minGapY = 8; // Minimum gap between rows
+      const margin = 5; // Small margin for printer safety
+      const headerSpace = 0; // No top header space needed
+      const gapSize = 2.83; // 1mm in points (72/25.4 ≈ 2.83)
+      const minGapX = Math.round(gapSize); // 1mm gap between columns
+      const minGapY = Math.round(gapSize); // 1mm gap between rows
+      const leftReserved = 20; // Space reserved for rotated header on left edge
       
-      // Calculate maximum photo width
-      const availableWidth = pageWidth - (2 * margin);
+      // Calculate maximum photo width using available space
+      const availableWidth = pageWidth - (2 * margin) - leftReserved;
       photoWidth = Math.floor((availableWidth - minGapX) / 2);
       photoHeight = photoWidth / aspectRatio;
       
       // Check if height fits and adjust if necessary
-      const neededHeight = (photoHeight * 5) + (minGapY * 4) + headerSpace;
-      if (neededHeight > pageHeight - (2 * margin)) {
+      const availableHeight = pageHeight - (2 * margin);
+      let neededHeight = (photoHeight * 5) + (minGapY * 4);
+      if (neededHeight > availableHeight) {
         // Height doesn't fit, recalculate based on height constraint
-        const availableHeight = pageHeight - (2 * margin) - headerSpace;
         photoHeight = Math.floor((availableHeight - (minGapY * 4)) / 5);
         photoWidth = photoHeight * aspectRatio;
+        neededHeight = (photoHeight * 5) + (minGapY * 4); // Recalculate needed height
       }
       
-      // Center the grid on the page
+      // Position grid to maximize space usage
       const totalWidth = (photoWidth * 2) + minGapX;
-      startX = (pageWidth - totalWidth) / 2;
-      startY = headerSpace + margin;
+      startX = leftReserved + (pageWidth - leftReserved - totalWidth) / 2;
+      startY = margin; // Start from top margin
       gapX = minGapX;
       gapY = minGapY;
       
@@ -94,15 +96,14 @@ export const generatePDF = async (
     } else {
       // Landscape mode: 3x3 grid - Maximized for A4 (842 x 595 points)
       // Page dimensions: 842 width x 595 height
-      // Usable area with 15pt margins: 812 x 565 points
       
-      // Maximize photo size for 3 columns
       const pageWidth = 842;
       const pageHeight = 595;
-      const margin = 10;
-      const headerSpace = 30;
-      const minGapX = 8; // Minimum gap between columns
-      const minGapY = 8; // Minimum gap between rows
+      const margin = 5; // Reduced margin for more space
+      const headerSpace = 20; // Reduced header space
+      const gapSize = 2.83; // 1mm in points (72/25.4 ≈ 2.83)
+      const minGapX = Math.round(gapSize); // 1mm gap between columns
+      const minGapY = Math.round(gapSize); // 1mm gap between rows
       
       // Calculate maximum photo width
       const availableWidth = pageWidth - (2 * margin);
@@ -167,34 +168,70 @@ export const generatePDF = async (
 
   // Create header with competition name and set title
   const createHeader = (setTitle: string) => {
-    return {
-      columns: [
+    if (layoutMode === 'portrait') {
+      // Portrait mode: rotated header on left edge - trying different pdfMake syntax
+      const headerText = `${competitionName || ''} • ${setTitle}`;
+      return [
         {
-          text: competitionName || '',
-          style: 'header',
-          alignment: 'left',
-          margin: [10, 0, 0, 0] // Add left padding
-        },
-        {
-          text: setTitle,
-          style: 'header',
-          alignment: 'right',
-          margin: [0, 0, 10, 0] // Add right padding
+          canvas: [
+            {
+              type: 'line',
+              x1: 0, y1: 0, x2: 0, y2: 0, // Dummy line to establish canvas
+              lineWidth: 0
+            },
+            {
+              type: 'text',
+              x: 12,
+              y: 421,
+              text: headerText,
+              options: {
+                fontSize: 12,
+                bold: true,
+                color: 'black',
+                angle: -90 // Try negative angle for proper rotation
+              }
+            }
+          ]
         }
-      ],
-      margin: [0, 5, 0, 10] // Compact header to maximize photo space
-    };
+      ];
+    } else {
+      // Landscape mode: traditional horizontal header
+      return [
+        {
+          columns: [
+            {
+              text: competitionName || '',
+              style: 'header',
+              alignment: 'left',
+              margin: [5, 0, 0, 0]
+            },
+            {
+              text: setTitle,
+              style: 'header',
+              alignment: 'right',
+              margin: [0, 0, 5, 0]
+            }
+          ],
+          margin: [0, 2, 0, 5]
+        }
+      ];
+    }
   };
 
   // Document definition
   const docDefinition = {
     pageSize: 'A4',
     pageOrientation: layoutMode as ('landscape' | 'portrait'),
-    pageMargins: [10, 10, 10, 10], // Very minimal margins to maximize photo area
+    pageMargins: [5, 5, 5, 5], // Minimal margins for printer compatibility
     content: [] as any[],
     styles: {
       header: {
         fontSize: 12,
+        bold: true,
+        color: '#000000'
+      },
+      headerCompact: {
+        fontSize: 10,
         bold: true,
         color: '#000000'
       }
@@ -203,7 +240,7 @@ export const generatePDF = async (
 
   // Add Set 1 page
   if (set1.photos.length > 0) {
-    docDefinition.content.push(createHeader(set1.title));
+    docDefinition.content.push(...createHeader(set1.title));
     docDefinition.content.push(...createPhotoGrid(set1, 'set1'));
   }
 
@@ -212,7 +249,7 @@ export const generatePDF = async (
     if (docDefinition.content.length > 0) {
       docDefinition.content.push({ text: '', pageBreak: 'before' });
     }
-    docDefinition.content.push(createHeader(set2.title));
+    docDefinition.content.push(...createHeader(set2.title));
     docDefinition.content.push(...createPhotoGrid(set2, 'set2'));
   }
 
