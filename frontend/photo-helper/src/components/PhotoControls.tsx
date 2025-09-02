@@ -32,7 +32,9 @@ import {
   RadioButtonUnchecked,
   Circle,
   Clear,
-  Close
+  Close,
+  Add,
+  Remove
 } from '@mui/icons-material';
 import type { Photo } from '../types';
 import { useI18n } from '../contexts/I18nContext';
@@ -72,6 +74,85 @@ interface PhotoControlsProps {
 }
 
 type LabelPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
+// Reusable slider component with plus/minus buttons
+interface SliderWithControlsProps {
+  value: number;
+  onChange: (value: number) => void;
+  min: number;
+  max: number;
+  step: number;
+  color?: 'primary' | 'secondary';
+  size?: 'small' | 'medium';
+  disabled?: boolean;
+  sx?: any;
+}
+
+const SliderWithControls: React.FC<SliderWithControlsProps> = ({
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  color = 'primary',
+  size = 'small',
+  disabled = false,
+  sx
+}) => {
+  const handleDecrement = () => {
+    const newValue = Math.max(min, value - step);
+    if (newValue !== value) {
+      onChange(newValue);
+    }
+  };
+
+  const handleIncrement = () => {
+    const newValue = Math.min(max, value + step);
+    if (newValue !== value) {
+      onChange(newValue);
+    }
+  };
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ...sx }}>
+      <IconButton
+        size="small"
+        onClick={handleDecrement}
+        disabled={disabled || value <= min}
+        sx={{ 
+          width: 24, 
+          height: 24,
+          '&:hover': { bgcolor: 'primary.light', color: 'white' }
+        }}
+      >
+        <Remove fontSize="small" />
+      </IconButton>
+      <Slider
+        value={value}
+        onChange={(_, newValue) => onChange(newValue as number)}
+        min={min}
+        max={max}
+        step={step}
+        color={color}
+        size={size}
+        disabled={disabled}
+        sx={{ flex: 1 }}
+      />
+      <IconButton
+        size="small"
+        onClick={handleIncrement}
+        disabled={disabled || value >= max}
+        sx={{ 
+          width: 24, 
+          height: 24,
+          '&:hover': { bgcolor: 'primary.light', color: 'white' }
+        }}
+      >
+        <Add fontSize="small" />
+      </IconButton>
+    </Box>
+  );
+};
 
 export const PhotoControls: React.FC<PhotoControlsProps> = ({
   photo,
@@ -450,9 +531,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   {circle.radius}px
                 </Typography>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={circle.radius}
-                onChange={(_, value) => handleCircleRadiusChange(value as number)}
+                onChange={handleCircleRadiusChange}
                 min={10}
                 max={100}
                 step={5}
@@ -538,9 +619,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           </Tooltip>
         </Box>
         
-        <Slider
+        <SliderWithControls
           value={Math.max(1.0, photo.canvasState.scale)}
-          onChange={(_, value) => handleScaleChange(value as number)}
+          onChange={handleScaleChange}
           min={1.0}
           max={3}
           step={0.05}
@@ -602,9 +683,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 </Box>
               </Box>
               
-              <Slider
+              <SliderWithControls
                 value={Math.max(1.0, photo.canvasState.scale)}
-                onChange={(_, value) => handleScaleChange(value as number)}
+                onChange={handleScaleChange}
                 min={1.0}
                 max={3}
                 step={0.05}
@@ -636,12 +717,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 </Box>
               </Box>
               
-              <Slider
+              <SliderWithControls
                 value={sharpness}
+                onChange={handleSharpnessChange}
                 min={0}
                 max={100}
                 step={5}
-                onChange={(_, value) => handleSharpnessChange(value as number)}
                 color="primary"
                 size="small"
               />
@@ -679,12 +760,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   </Tooltip>
                 </Box>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={photo.canvasState.brightness}
+                onChange={handleBrightnessChange}
                 min={-100}
                 max={100}
                 step={1}
-                onChange={(_, value) => handleBrightnessChange(value as number)}
                 color="primary"
                 size="small"
               />
@@ -712,12 +793,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   </Tooltip>
                 </Box>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={photo.canvasState.contrast}
+                onChange={handleContrastChange}
                 min={0.5}
                 max={2}
-                step={0.1}
-                onChange={(_, value) => handleContrastChange(value as number)}
+                step={0.01}
                 color="primary"
                 size="small"
               />
@@ -767,12 +848,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   </Tooltip>
                 </Box>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={whiteBalance.temperature}
-                min={-100}
-                max={100}
-                step={5}
-                onChange={(_, value) => handleWhiteBalanceTemperatureChange(value as number)}
+                onChange={handleWhiteBalanceTemperatureChange}
+                min={-50}
+                max={50}
+                step={1}
                 color="primary"
                 size="small"
                 disabled={whiteBalance.auto}
@@ -806,12 +887,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   </Tooltip>
                 </Box>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={whiteBalance.tint}
-                min={-100}
-                max={100}
-                step={5}
-                onChange={(_, value) => handleWhiteBalanceTintChange(value as number)}
+                onChange={handleWhiteBalanceTintChange}
+                min={-50}
+                max={50}
+                step={1}
                 color="primary"
                 size="small"
                 disabled={whiteBalance.auto}
@@ -910,9 +991,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             {Math.round(photo.canvasState.scale * 100)}%
           </Typography>
         </Box>
-        <Slider
+        <SliderWithControls
           value={Math.max(1.0, photo.canvasState.scale)}
-          onChange={(_, value) => handleScaleChange(value as number)}
+          onChange={handleScaleChange}
           min={1.0}
           max={3}
           step={0.05}
@@ -1052,9 +1133,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   {circle.radius}px
                 </Typography>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={circle.radius}
-                onChange={(_, value) => handleCircleRadiusChange(value as number)}
+                onChange={handleCircleRadiusChange}
                 min={10}
                 max={100}
                 step={5}
@@ -1189,9 +1270,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 </Box>
               </Box>
               
-              <Slider
+              <SliderWithControls
                 value={Math.max(1.0, photo.canvasState.scale)}
-                onChange={(_, value) => handleScaleChange(value as number)}
+                onChange={handleScaleChange}
                 min={1.0}
                 max={3}
                 step={0.05}
@@ -1239,12 +1320,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   </Tooltip>
                 </Box>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={photo.canvasState.brightness}
+                onChange={handleBrightnessChange}
                 min={-100}
                 max={100}
                 step={1}
-                onChange={(_, value) => handleBrightnessChange(value as number)}
                 color="primary"
                 size="small"
               />
@@ -1272,12 +1353,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   </Tooltip>
                 </Box>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={photo.canvasState.contrast}
+                onChange={handleContrastChange}
                 min={0.5}
                 max={2}
-                step={0.1}
-                onChange={(_, value) => handleContrastChange(value as number)}
+                step={0.01}
                 color="primary"
                 size="small"
               />
@@ -1305,12 +1386,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   </Tooltip>
                 </Box>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={sharpness}
+                onChange={handleSharpnessChange}
                 min={0}
                 max={100}
                 step={5}
-                onChange={(_, value) => handleSharpnessChange(value as number)}
                 color="primary"
                 size="small"
               />
@@ -1363,12 +1444,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   </Tooltip>
                 </Box>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={whiteBalance.temperature}
-                min={-100}
-                max={100}
-                step={5}
-                onChange={(_, value) => handleWhiteBalanceTemperatureChange(value as number)}
+                onChange={handleWhiteBalanceTemperatureChange}
+                min={-50}
+                max={50}
+                step={1}
                 color="primary"
                 size="small"
                 disabled={whiteBalance.auto}
@@ -1402,12 +1483,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   </Tooltip>
                 </Box>
               </Box>
-              <Slider
+              <SliderWithControls
                 value={whiteBalance.tint}
-                min={-100}
-                max={100}
-                step={5}
-                onChange={(_, value) => handleWhiteBalanceTintChange(value as number)}
+                onChange={handleWhiteBalanceTintChange}
+                min={-50}
+                max={50}
+                step={1}
                 color="primary"
                 size="small"
                 disabled={whiteBalance.auto}
