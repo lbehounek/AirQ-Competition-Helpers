@@ -875,7 +875,6 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     </IconButton>
                   </Tooltip>
                 }
-                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('scale', value) : undefined}
                 formatDisplay={(value) => `${Math.round(value * 100)}%`}
                 parseInput={(input) => {
                   const num = parseFloat(input.replace(/[^\d.]/g, ''));
@@ -1489,7 +1488,6 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                     </IconButton>
                   </Tooltip>
                 }
-                onApplyToAll={onApplyToAll ? (value) => onApplyToAll('scale', value) : undefined}
                 formatDisplay={(value) => `${Math.round(value * 100)}%`}
                 parseInput={(input) => {
                   const num = parseFloat(input.replace(/[^\d.]/g, ''));
