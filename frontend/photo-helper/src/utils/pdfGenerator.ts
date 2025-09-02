@@ -119,16 +119,7 @@ export const generatePDF = async (
       paddingRight: 5,
       backgroundColor: '#ffffff',
     },
-    rotatedHeader: {
-      position: 'absolute',
-      left: 8,
-      top: 421, // Center vertically
-      fontSize: 12,
-      fontWeight: 'bold',
-      color: '#000000',
-      transform: 'rotate(90deg)',
-      transformOrigin: 'left center',
-    },
+
     horizontalHeader: {
       fontSize: 12,
       fontWeight: 'bold',
@@ -208,10 +199,25 @@ export const generatePDF = async (
     const headerText = `${competitionName || ''} • ${setTitle}`;
     
     if (layoutMode === 'portrait') {
-      // Rotated header on left edge for portrait mode
-      return React.createElement(Text, {
-        style: styles.rotatedHeader
-      }, headerText);
+      // Rotated header on left edge for portrait mode - final attempt with transform
+      return React.createElement(View, {
+        style: {
+          position: 'absolute',
+          left: 8,
+          top: 300,
+          width: 200,
+          height: 20,
+        }
+      },
+        React.createElement(Text, {
+          style: {
+            fontSize: 12,
+            fontWeight: 'bold',
+            color: '#000000',
+            transform: 'rotate(90deg)',
+          }
+        }, headerText)
+      );
     } else {
       // Horizontal header for landscape mode
       return React.createElement(View, {
