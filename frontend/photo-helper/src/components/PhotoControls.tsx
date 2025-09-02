@@ -415,6 +415,18 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     });
   };
 
+  const handleResetWhiteBalance = () => {
+    ensureEdited();
+    onUpdate({
+      ...photo.canvasState,
+      whiteBalance: {
+        temperature: 0,
+        tint: 0,
+        auto: false
+      }
+    });
+  };
+
   const handleLabelPositionChange = (position: LabelPosition) => {
     ensureEdited();
     // Update local state immediately for instant UI feedback
@@ -967,15 +979,26 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 {t('controls.whiteBalance')}
               </Typography>
               
-              <Button
-                variant={whiteBalance.auto ? "contained" : "outlined"}
-                onClick={handleAutoWhiteBalance}
-                color="primary"
-                size="small"
-                sx={{ minWidth: 'auto', px: 1.5, py: 0.25, fontSize: '0.75rem' }}
-              >
-                {t('controls.autoShort')}
-              </Button>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Button
+                  variant={whiteBalance.auto ? "contained" : "outlined"}
+                  onClick={handleAutoWhiteBalance}
+                  color="primary"
+                  size="small"
+                  sx={{ minWidth: 'auto', px: 1.5, py: 0.25, fontSize: '0.75rem' }}
+                >
+                  {t('controls.autoShort')}
+                </Button>
+                <Tooltip title={t('controls.resetWhiteBalance')}>
+                  <IconButton 
+                    size="small" 
+                    onClick={handleResetWhiteBalance}
+                    sx={{ padding: 0.5 }}
+                  >
+                    <Refresh fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
             </Box>
 
             {/* Temperature Control - Below each other */}
@@ -1563,17 +1586,26 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               {t('controls.whiteBalance')}
             </Typography>
 
-            {/* Auto White Balance Button */}
-            <Box sx={{ mb: 3 }}>
+            {/* Auto White Balance Button and Reset */}
+            <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Button
                 variant={whiteBalance.auto ? "contained" : "outlined"}
                 startIcon={<AutoAwesome />}
                 onClick={handleAutoWhiteBalance}
-                fullWidth
                 color="primary"
+                sx={{ flex: 1 }}
               >
                 {t('controls.autoWhiteBalance')}
               </Button>
+              <Tooltip title="Reset white balance">
+                <IconButton 
+                  size="small" 
+                  onClick={handleResetWhiteBalance}
+                  sx={{ padding: 0.5 }}
+                >
+                  <Refresh fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </Box>
 
             <Divider sx={{ my: 2 }} />
