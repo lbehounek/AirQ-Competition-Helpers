@@ -1,6 +1,88 @@
 import React from 'react';
-import { Document, Page, Text, Image, View, pdf, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, Image, pdf, StyleSheet } from '@react-pdf/renderer';
 import type { ApiPhotoSet } from '../types/api';
+
+// Polyfill Buffer for @react-pdf/renderer
+import { Buffer } from 'buffer';
+if (typeof globalThis.Buffer === 'undefined') {
+  globalThis.Buffer = Buffer;
+}
+
+// Brilliant workaround: Render text as image to bypass @react-pdf/renderer Unicode issues
+
+interface TextImageResult {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+const createTextImage = (text: string, isRotated: boolean = true): TextImageResult | null => {
+  if (!text.trim()) return null;
+  
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    // High-resolution rendering constants
+    const PIXEL_RATIO = 3; // 3x resolution for crisp PDF text
+    const FONT_SIZE = 14;
+    const FONT_FAMILY = 'Arial, sans-serif'; // Excellent Unicode support
+    const HORIZONTAL_PADDING = 40;
+    const VERTICAL_PADDING = 12;
+    const MIN_ROTATED_HEIGHT = 400; // Minimum height for rotated text
+    
+    // Configure font for text measurement
+    ctx.font = `bold ${FONT_SIZE}px ${FONT_FAMILY}`;
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000000';
+    
+    // Measure text dimensions
+    const metrics = ctx.measureText(text);
+    const textWidth = Math.ceil(metrics.width);
+    const textHeight = Math.ceil(FONT_SIZE * 1.4);
+    
+    // Calculate logical canvas dimensions
+    const logicalWidth = isRotated 
+      ? textHeight + VERTICAL_PADDING
+      : textWidth + HORIZONTAL_PADDING;
+    
+    const logicalHeight = isRotated
+      ? Math.max(textWidth + HORIZONTAL_PADDING, MIN_ROTATED_HEIGHT)
+      : textHeight + VERTICAL_PADDING;
+    
+    // Set high-resolution canvas size
+    canvas.width = logicalWidth * PIXEL_RATIO;
+    canvas.height = logicalHeight * PIXEL_RATIO;
+    ctx.scale(PIXEL_RATIO, PIXEL_RATIO);
+    
+    // Configure high-quality text rendering
+    ctx.font = `bold ${FONT_SIZE}px ${FONT_FAMILY}`;
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    // Draw text with rotation if needed
+    if (isRotated) {
+      ctx.translate(logicalWidth / 2, logicalHeight / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(text, 0, 0);
+    } else {
+      ctx.fillText(text, logicalWidth / 2, logicalHeight / 2);
+    }
+    
+    return {
+      dataUrl: canvas.toDataURL('image/png', 1.0),
+      width: logicalWidth,
+      height: logicalHeight
+    };
+  } catch (error) {
+    console.error('Failed to create text image:', error);
+    return null;
+  }
+};
 
 /**
  * Clean PDF generation with @react-pdf/renderer
@@ -114,33 +196,10 @@ export const generatePDF = async (
 
   const layout = calculateLayout();
 
-  // Styles
+  // Simplified styles - no more text styling needed!
   const styles = StyleSheet.create({
     page: {
       backgroundColor: '#ffffff',
-    },
-    rotatedText: {
-      position: 'absolute',
-      left: layout.textX,
-      top: layout.textY,
-      fontSize: 12,
-      fontFamily: 'Helvetica-Bold',
-      color: '#000000',
-      transform: 'rotate(-90deg)',
-      transformOrigin: 'left center',
-    },
-    horizontalHeader: {
-      position: 'absolute',
-      top: layout.headerY,
-      left: 10,
-      right: 10,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-    },
-    headerText: {
-      fontSize: 12,
-      fontFamily: 'Helvetica-Bold',
-      color: '#000000',
     }
   });
 
@@ -150,31 +209,64 @@ export const generatePDF = async (
     
     // Add header/title
     if (layoutMode === 'portrait') {
-      // Rotated text on left edge
+      // Create rotated text as image - perfect Czech character support!
       const headerText = `${competitionName || ''} • ${setTitle}`;
-      elements.push(
-        React.createElement(Text, {
-          key: `header-${pageKey}`,
-          style: styles.rotatedText
-        }, headerText)
-      );
+      const headerImage = createTextImage(headerText, true);
+      if (headerImage) {
+        // Calculate positioning to center along left edge
+        const pageHeight = 842; // A4 portrait height
+        const topPosition = (pageHeight - headerImage.height) / 2; // Center vertically
+        
+        elements.push(
+          React.createElement(Image, {
+            key: `header-${pageKey}`,
+            src: headerImage.dataUrl,
+            style: {
+              position: 'absolute',
+              left: 2, // Close to left edge
+              top: topPosition,
+              width: headerImage.width, // Use actual canvas width
+              height: headerImage.height, // Use actual canvas height
+            }
+          })
+        );
+      }
     } else {
-      // Horizontal header
-      elements.push(
-        React.createElement(View, {
-          key: `header-${pageKey}`,
-          style: styles.horizontalHeader
-        }, [
-          React.createElement(Text, {
-            key: 'comp-name',
-            style: styles.headerText
-          }, competitionName || ''),
-          React.createElement(Text, {
-            key: 'set-title', 
-            style: styles.headerText
-          }, setTitle)
-        ])
-      );
+      // Horizontal header as images
+      const competitionImage = createTextImage(competitionName || '', false);
+      const setTitleImage = createTextImage(setTitle, false);
+      
+      if (competitionImage) {
+        elements.push(
+          React.createElement(Image, {
+            key: `comp-name-${pageKey}`,
+            src: competitionImage.dataUrl,
+            style: {
+              position: 'absolute',
+              left: 10,
+              top: layout.headerY || 10,
+              width: competitionImage.width,
+              height: competitionImage.height,
+            }
+          })
+        );
+      }
+      
+      if (setTitleImage) {
+        elements.push(
+          React.createElement(Image, {
+            key: `set-title-${pageKey}`,
+            src: setTitleImage.dataUrl,
+            style: {
+              position: 'absolute',
+              right: 10,
+              top: layout.headerY || 10,
+              width: setTitleImage.width,
+              height: setTitleImage.height,
+            }
+          })
+        );
+      }
     }
     
     // Add photos
@@ -226,8 +318,6 @@ export const generatePDF = async (
     pages.push(createPage(set2, set2.title, 'set2'));
   }
   
-  console.log(`Clean PDF: Creating ${pages.length} pages`);
-  
   const pdfDocument = React.createElement(Document, {}, pages);
 
   // Generate and download
@@ -242,7 +332,6 @@ export const generatePDF = async (
     link.click();
     
     URL.revokeObjectURL(url);
-    console.log('Clean PDF generated successfully');
   } catch (error) {
     console.error('PDF generation failed:', error);
     throw error;
