@@ -1,3 +1,4 @@
+import React from 'react'
 import Map, { Layer, Source } from '@vis.gl/react-maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
@@ -34,9 +35,23 @@ export function MapProviderView(props: {
           {ov.type === 'fill' && (
             <Layer id={`${ov.id}-fill`} type="fill" paint={{ 'fill-color': '#1d4ed8', 'fill-opacity': 0.25, ...(ov.paint || {}) }} layout={ov.layout ?? {}} />
           )}
-          {ov.type === 'circle' && (
-            <Layer id={`${ov.id}-circle`} type="circle" paint={{ 'circle-color': '#ef4444', 'circle-radius': 4, ...(ov.paint || {}) }} layout={ov.layout ?? {}} />
-          )}
+          {ov.type === 'circle' && [
+            <Layer key={`${ov.id}-circle`} id={`${ov.id}-circle`} type="circle" paint={{ 'circle-color': '#ef4444', 'circle-radius': 4, ...(ov.paint || {}) }} layout={ov.layout ?? {}} />,
+            <Layer 
+              key={`${ov.id}-labels`}
+              id={`${ov.id}-labels`} 
+              type="symbol" 
+              paint={{ 'text-color': '#000000', 'text-halo-color': '#ffffff', 'text-halo-width': 2 }} 
+              layout={{ 
+                'text-field': ['get', 'name'], 
+                'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'], 
+                'text-size': 12, 
+                'text-offset': [0, -2],
+                'text-anchor': 'bottom',
+                ...(ov.layout ?? {}) 
+              }} 
+            />
+          ]}
         </Source>
       ))}
     </Map>

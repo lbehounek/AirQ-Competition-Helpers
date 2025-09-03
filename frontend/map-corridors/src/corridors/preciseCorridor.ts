@@ -155,8 +155,8 @@ export function generateLeftRightCorridor(track: LonLatAlt[], corridorDistanceM 
   }
 }
 
-export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }> } {
-  const out: { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }> } = { tps: [] }
+export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt } {
+  const out: { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt } = { tps: [] }
   function scan(g: any) {
     if (!g) return
     if (g.type === 'FeatureCollection') {
@@ -169,6 +169,7 @@ export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ 
         const p = geom as Point
         const c = p.coordinates as LonLatAlt
         if (name === 'SP') out.sp = c
+        else if (name === 'FP') out.fp = c
         else if (name.startsWith('TP ')) out.tps.push({ name, coord: c })
       }
     }
@@ -223,28 +224,41 @@ export function buildGateAtPoint(center: LonLatAlt, localBearingDeg: number, cor
   return lineString([left as Position, right as Position], { role: 'gate', color: 'red' })
 }
 
-export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300): { left?: Feature<LineString>, right?: Feature<LineString>, gates: Feature<LineString>[] } {
+export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300): { left?: Feature<LineString>, right?: Feature<LineString>, gates: Feature<LineString>[], points: Feature<Point>[] } {
   const track = buildContinuousTrack(input)
   const gates: Feature<LineString>[] = []
+  const points: Feature<Point>[] = []
   let left: Feature<LineString> | undefined
   let right: Feature<LineString> | undefined
   if (track.length >= 2) {
     const lr = generateLeftRightCorridor(track, corridorDistanceM)
     if (lr) { left = lr.left; right = lr.right }
   }
-  const { sp, tps } = findNamedPoints(input)
+  const { sp, tps, fp } = findNamedPoints(input)
   const NM = 1852
+  
+  // Add SP point label
   if (sp) {
+    points.push(point([sp[0], sp[1]], { name: 'SP', role: 'waypoint' }) as Feature<Point>)
     const idx = nearestTrackIndex(track, sp)
     const p = pointAtDistanceAlongTrack(track, idx, 5 * NM)
     if (p) gates.push(buildGateAtPoint(p.point, p.bearing, corridorDistanceM))
   }
+  
+  // Add TP point labels and gates 1NM AFTER each TP
   for (const tp of tps) {
+    points.push(point([tp.coord[0], tp.coord[1]], { name: tp.name, role: 'waypoint' }) as Feature<Point>)
     const idx = nearestTrackIndex(track, tp.coord)
     const p = pointAtDistanceAlongTrack(track, idx, 1 * NM)
     if (p) gates.push(buildGateAtPoint(p.point, p.bearing, corridorDistanceM))
   }
-  return { left, right, gates }
+  
+  // Add FP point label (no gate after FP)
+  if (fp) {
+    points.push(point([fp[0], fp[1]], { name: 'FP', role: 'waypoint' }) as Feature<Point>)
+  }
+  
+  return { left, right, gates, points }
 }
 
 

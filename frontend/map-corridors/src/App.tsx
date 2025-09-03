@@ -19,6 +19,7 @@ function App() {
   const [leftCorr, setLeftCorr] = useState<GeoJSON | null>(null)
   const [rightCorr, setRightCorr] = useState<GeoJSON | null>(null)
   const [gates, setGates] = useState<GeoJSON | null>(null)
+  const [points, setPoints] = useState<GeoJSON | null>(null)
 
   const providerConfig = useMemo(() => mapProviders[provider], [provider])
 
@@ -30,12 +31,13 @@ function App() {
     setGeojson(parsed)
     // Remove buffer corridor computation since we only use precise corridors
     try {
-      const { left, right, gates } = buildPreciseCorridorsAndGates(parsed, 300)
+      const { left, right, gates, points } = buildPreciseCorridorsAndGates(parsed, 300)
       setLeftCorr(left || null)
       setRightCorr(right || null)
       setGates(gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null)
+      setPoints(points && points.length ? ({ type: 'FeatureCollection', features: points } as any) : null)
     } catch {
-      setLeftCorr(null); setRightCorr(null); setGates(null)
+      setLeftCorr(null); setRightCorr(null); setGates(null); setPoints(null)
     }
   }, [])
 
@@ -82,7 +84,7 @@ function App() {
               leftCorr ? { id: 'left-corr', data: leftCorr, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               rightCorr ? { id: 'right-corr', data: rightCorr, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               gates ? { id: 'gates', data: gates, type: 'line' as const, paint: { 'line-color': '#ff0000', 'line-width': 4 } } : null,
-              // Remove fill buffer from display to avoid confusion with precise corridors
+              points ? { id: 'waypoints', data: points, type: 'circle' as const, paint: { 'circle-color': '#0066ff', 'circle-radius': 6, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } } : null,
             ].filter(Boolean) as any}
           />
         </Box>
