@@ -157,11 +157,13 @@ function App() {
             providerConfig={providerConfig}
             geojsonOverlays={[
               geojson ? { id: 'uploaded-geojson', data: geojson, type: 'line' as const, paint: { 'line-color': '#888', 'line-width': 2 } } : null,
-              // Use segmented corridors instead of continuous ones
+              // Segmented corridor borders in green
               leftSegments ? { id: 'left-segments', data: leftSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               rightSegments ? { id: 'right-segments', data: rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
-              gates ? { id: 'gates', data: gates, type: 'line' as const, paint: { 'line-color': '#ff0000', 'line-width': 4 } } : null,
-              points ? { id: 'waypoints', data: points, type: 'circle' as const, paint: { 'circle-color': '#0066ff', 'circle-radius': 6, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } } : null,
+              // Render gates with same green styling so "red lines" become corridor borders
+              gates ? { id: 'gates', data: gates, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
+              // Waypoint labels only, no points
+              points ? { id: 'waypoints', data: points, type: 'circle' as const, paint: { 'circle-opacity': 0 } } : null,
             ].filter(Boolean) as any}
           />
         </Box>

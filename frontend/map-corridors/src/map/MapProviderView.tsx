@@ -105,7 +105,7 @@ export function MapProviderView(props: {
             <Layer id={`${ov.id}-fill`} type="fill" paint={{ 'fill-color': '#1d4ed8', 'fill-opacity': 0.25, ...(ov.paint || {}) }} layout={ov.layout ?? {}} />
           )}
           {ov.type === 'circle' && [
-            <Layer key={`${ov.id}-circle`} id={`${ov.id}-circle`} type="circle" paint={{ 'circle-color': '#ef4444', 'circle-radius': 4, ...(ov.paint || {}) }} layout={ov.layout ?? {}} />,
+            // Render labels only (hide marker dots)
             <Layer 
               key={`${ov.id}-labels`}
               id={`${ov.id}-labels`} 
