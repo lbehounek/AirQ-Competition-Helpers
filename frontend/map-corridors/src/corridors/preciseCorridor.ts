@@ -330,8 +330,8 @@ export function generateSegmentedCorridors(
   }
   
   // Step 3: Define corridor segments using exact snapped gate points (Gate → next TP)
-  // Combine two heuristics to detect dashed TP→TP pairs
-  const dashedPairs = detectDashedConnectorPairs(originalInput, waypoints.tps)
+  // Dashed TP pairs detection removed in cleanup; rely on continuity and main-track-only build
+  const dashedPairs = new Set<number>()
 
   const isContinuousMainSpan = (fromIdx: number, toIdx: number): boolean => {
     if (fromIdx === toIdx) {
