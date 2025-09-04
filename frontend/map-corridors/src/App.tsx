@@ -118,18 +118,7 @@ function App() {
               <MenuItem value="satellite">Satellite</MenuItem>
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel id="provider-label">Provider</InputLabel>
-            <Select
-              labelId="provider-label"
-              value={provider}
-              label="Provider"
-              onChange={(e) => setProvider(e.target.value as MapProviderId)}
-            >
-              <MenuItem value="maplibre">MapLibre</MenuItem>
-              <MenuItem value="mapbox">Mapbox</MenuItem>
-            </Select>
-          </FormControl>
+          {/* Provider selection removed to use Mapbox only */}
         </Toolbar>
       </AppBar>
       <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>

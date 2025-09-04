@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import Map, { Layer, Source } from '@vis.gl/react-maplibre'
-import type { MapRef } from '@vis.gl/react-maplibre'
+import Map, { Layer, Source } from '@vis.gl/react-mapbox'
+import type { MapRef } from '@vis.gl/react-mapbox'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
 
@@ -88,25 +88,14 @@ export function MapProviderView(props: {
     ref.fitBounds(bounds as any, { padding: 40, maxZoom: 19, duration: 600 })
   }, [isMapLoaded, uploadedGeojson])
 
-  const transformRequest = useMemo(() => {
-    if (!providerConfig?.accessToken) return undefined as any
-    return (url: string, resourceType?: string) => {
-      if (url.startsWith('mapbox://')) {
-        const httpsUrl = url.replace('mapbox://', 'https://api.mapbox.com/')
-        const join = httpsUrl.includes('?') ? '&' : '?'
-        return { url: `${httpsUrl}${join}access_token=${providerConfig.accessToken}` }
-      }
-      return { url }
-    }
-  }, [providerConfig])
+  // Mapbox binding reads token via prop
 
   return (
     <Map
       mapStyle={styleUrl}
+      mapboxAccessToken={providerConfig.accessToken}
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}
-      // Ensure MapLibre can load Mapbox styles when provider is mapbox
-      transformRequest={transformRequest}
       onLoad={() => setIsMapLoaded(true)}
       ref={mapRef as any}
     >
