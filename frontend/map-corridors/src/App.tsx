@@ -74,8 +74,8 @@ function App() {
           </FormControl>
         </Toolbar>
       </AppBar>
-      <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0 }}>
-        <Box sx={{ height: '100%', width: '100%' }}>
+      <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>
+        <Box sx={{ height: '100%', width: '100vw' }}>
           <MapProviderView
             provider={provider}
             baseStyle={baseStyle}
