@@ -436,12 +436,10 @@ export function generateSegmentedCorridors(
   return { leftSegments, rightSegments }
 }
 
-export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300): { left?: Feature<LineString>, right?: Feature<LineString>, gates: Feature<LineString>[], points: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
+export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300): { gates: Feature<LineString>[], points: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
   const { track, sourceSegIdx, gapAfterIndex, segments, mainSegmentIndexSet } = buildContinuousTrackWithSources(input)
   const gates: Feature<LineString>[] = []
   const points: Feature<Point>[] = []
-  let left: Feature<LineString> | undefined
-  let right: Feature<LineString> | undefined
   const leftSegments: Feature<LineString>[] = []
   const rightSegments: Feature<LineString>[] = []
   
@@ -474,13 +472,9 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM 
     const corridorSegments = generateSegmentedCorridors(track, { sp, tps, fp }, corridorDistanceM, input, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet, segments)
     leftSegments.push(...corridorSegments.leftSegments)
     rightSegments.push(...corridorSegments.rightSegments)
-    
-    // Keep single continuous corridors for backward compatibility (but these will be hidden)
-    const lr = generateLeftRightCorridor(track, corridorDistanceM)
-    if (lr) { left = lr.left; right = lr.right }
   }
   
-  return { left, right, gates, points, leftSegments, rightSegments }
+  return { gates, points, leftSegments, rightSegments }
 }
 
 

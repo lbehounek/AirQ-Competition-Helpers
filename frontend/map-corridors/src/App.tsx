@@ -16,8 +16,7 @@ function App() {
   const [baseStyle, setBaseStyle] = useState<'streets' | 'satellite'>('streets')
   const [geojson, setGeojson] = useState<GeoJSON | null>(null)
   // Remove buffer corridor state since we don't use it
-  const [leftCorr, setLeftCorr] = useState<GeoJSON | null>(null)
-  const [rightCorr, setRightCorr] = useState<GeoJSON | null>(null)
+  // continuous corridors removed; we use segmented only
   const [gates, setGates] = useState<GeoJSON | null>(null)
   const [points, setPoints] = useState<GeoJSON | null>(null)
   const [leftSegments, setLeftSegments] = useState<GeoJSON | null>(null)
@@ -33,15 +32,13 @@ function App() {
     setGeojson(parsed)
     // Remove buffer corridor computation since we only use precise corridors
     try {
-      const { left, right, gates, points, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(parsed, 300)
-      setLeftCorr(left || null)
-      setRightCorr(right || null)
+      const { gates, points, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(parsed, 300)
       setGates(gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null)
       setPoints(points && points.length ? ({ type: 'FeatureCollection', features: points } as any) : null)
       setLeftSegments(leftSegments && leftSegments.length ? ({ type: 'FeatureCollection', features: leftSegments } as any) : null)
       setRightSegments(rightSegments && rightSegments.length ? ({ type: 'FeatureCollection', features: rightSegments } as any) : null)
     } catch {
-      setLeftCorr(null); setRightCorr(null); setGates(null); setPoints(null); setLeftSegments(null); setRightSegments(null)
+      setGates(null); setPoints(null); setLeftSegments(null); setRightSegments(null)
     }
   }, [])
 
