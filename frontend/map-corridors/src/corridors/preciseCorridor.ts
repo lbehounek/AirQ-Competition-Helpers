@@ -1,6 +1,9 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Point, Position } from 'geojson'
 import { lineString, length as turfLength, getCoord, bearing as turfBearing, destination, point, nearestPointOnLine } from '@turf/turf'
 
+const DEBUG = false
+const log = (...args: any[]) => { if (DEBUG) console.log(...args) }
+
 type LonLatAlt = [number, number, number?]
 
 export type CorridorOutput = {
@@ -86,10 +89,10 @@ export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLat
   const mainTrackSegments = allSegments.filter(seg => !isDashedConnectorLine(seg.coordinates))
   const dashedConnectors = allSegments.filter(seg => isDashedConnectorLine(seg.coordinates))
   
-  console.log(`=== PROCESSING SUMMARY ===`)
-  console.log(`Total line segments found: ${allSegments.length}`)
-  console.log(`Main track segments: ${mainTrackSegments.length}`)
-  console.log(`Dashed connectors (excluded): ${dashedConnectors.length}`)
+  log(`=== PROCESSING SUMMARY ===`)
+  log(`Total line segments found: ${allSegments.length}`)
+  log(`Main track segments: ${mainTrackSegments.length}`)
+  log(`Dashed connectors (excluded): ${dashedConnectors.length}`)
   
   // Build detailed continuous track from main segments only
   if (mainTrackSegments.length === 0) return { track: [], sourceSegIdx: [], gapAfterIndex: [], segments: allSegments, mainSegmentIndexSet: new Set() }
@@ -139,7 +142,7 @@ export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLat
     }
   }
   
-  console.log(`Built detailed track: ${detailedTrack.length} total points from ${mainTrackSegments.length} segments`)
+  log(`Built detailed track: ${detailedTrack.length} total points from ${mainTrackSegments.length} segments`)
   
   const mainSet = new Set<number>(mainTrackSegments.map(s => s.index))
   return { track: detailedTrack, sourceSegIdx, gapAfterIndex, segments: allSegments, mainSegmentIndexSet: mainSet }
@@ -359,7 +362,7 @@ export function generateSegmentedCorridors(
   mainSegmentIndexSet: Set<number>,
   segments: Segment[]
 ): { leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
-  console.log('\n=== GENERATING SEGMENTED CORRIDORS ===')
+  log('\n=== GENERATING SEGMENTED CORRIDORS ===')
   
   const NM = 1852
   const leftSegments: Feature<LineString>[] = []
@@ -371,7 +374,7 @@ export function generateSegmentedCorridors(
     return { leftSegments, rightSegments }
   }
   
-  console.log(`✅ Found: SP + ${waypoints.tps.length} TPs + ${waypoints.fp ? 'FP' : 'no FP'}`)
+  log(`✅ Found: SP + ${waypoints.tps.length} TPs + ${waypoints.fp ? 'FP' : 'no FP'}`)
   
   // Step 2: Calculate all gate positions (where corridors START)
   const gatePositions: Array<{ trackIdx: number, name: string, distanceNM: number }> = []
@@ -382,7 +385,7 @@ export function generateSegmentedCorridors(
   if (sp5nmResult) {
     const sp5nmIdx = nearestTrackIndex(track, sp5nmResult.point)
     gatePositions.push({ trackIdx: sp5nmIdx, name: '5NM-after-SP', distanceNM: 5 })
-    console.log(`📍 Gate 1: 5NM after SP at track index ${sp5nmIdx}`)
+    log(`📍 Gate 1: 5NM after SP at track index ${sp5nmIdx}`)
   }
   
   // Gates 2+: 1NM after each TP
@@ -393,15 +396,13 @@ export function generateSegmentedCorridors(
     if (tp1nmResult) {
       const tp1nmIdx = nearestTrackIndex(track, tp1nmResult.point)
       gatePositions.push({ trackIdx: tp1nmIdx, name: `1NM-after-${tp.name}`, distanceNM: 1 })
-      console.log(`📍 Gate ${i + 2}: 1NM after ${tp.name} at track index ${tp1nmIdx}`)
+      log(`📍 Gate ${i + 2}: 1NM after ${tp.name} at track index ${tp1nmIdx}`)
     }
   }
   
   // Step 3: Define corridor segments using exact snapped gate points (Gate → next TP)
   // Combine two heuristics to detect dashed TP→TP pairs
-  const dashedPairsHeurA = detectDashedConnectorPairs(originalInput, waypoints.tps)
-  const dashedPairsHeurB = computeDashedPairsFromSegments(originalInput, waypoints.tps)
-  const dashedPairs = new Set<number>([...Array.from(dashedPairsHeurA), ...Array.from(dashedPairsHeurB)])
+  const dashedPairs = detectDashedConnectorPairs(originalInput, waypoints.tps)
 
   const isContinuousMainSpan = (fromIdx: number, toIdx: number): boolean => {
     if (fromIdx === toIdx) {
@@ -429,7 +430,7 @@ export function generateSegmentedCorridors(
     const preciseSlice = buildPreciseSlice(track, { point: start.point, segmentIndex: start.segmentIndex }, { point: end.point, segmentIndex: end.segmentIndex })
     // Enforce continuity on main track for this span
     if (!isContinuousMainSpan(Math.min(start.segmentIndex, end.segmentIndex), Math.max(start.segmentIndex, end.segmentIndex))) {
-      console.log(`❌ Skipping 5NM-after-SP→TP1 due to non-continuous/main span`)
+      log(`❌ Skipping 5NM-after-SP→TP1 due to non-continuous/main span`)
     } else if (preciseSlice.length >= 2) {
       const lr = generateLeftRightCorridor(preciseSlice, corridorDistanceM)
       if (lr) {
@@ -437,9 +438,9 @@ export function generateSegmentedCorridors(
         rightSegments.push(lineString(lr.right.geometry.coordinates as Position[], { segment: '5NM-after-SP→TP1' }))
       }
       const sliceLength = preciseSlice.reduce((acc, c, i) => i === 0 ? 0 : acc + calculateDistance(preciseSlice[i - 1], c), 0)
-      console.log(`🟢 Corridor 1: ${gatePositions[0].name} → TP1 (${start.segmentIndex}→${end.segmentIndex}), ${(sliceLength/1000).toFixed(2)} km`)
+      log(`🟢 Corridor 1: ${gatePositions[0].name} → TP1 (${start.segmentIndex}→${end.segmentIndex}), ${(sliceLength/1000).toFixed(2)} km`)
     } else {
-      console.log(`❌ Skipping 5NM-after-SP→TP1: slice too short`)
+      log(`❌ Skipping 5NM-after-SP→TP1: slice too short`)
     }
   }
   
@@ -467,14 +468,14 @@ export function generateSegmentedCorridors(
     // Build precise slice between snapped start and end
     const preciseSlice = buildPreciseSlice(track, { point: start.point, segmentIndex: start.segmentIndex }, { point: endPoint.point, segmentIndex: endPoint.segmentIndex })
     if (preciseSlice.length < 2) {
-      console.log(`⚠️  Precise slice too short for ${gatePositions[i].name}→${endName}`)
+      log(`⚠️  Precise slice too short for ${gatePositions[i].name}→${endName}`)
       continue
     }
 
     // Skip if this is a known dashed TP pair (no uninterrupted main track between TPi and TP(i+1))
     const startTpIndex = i - 1
     if (startTpIndex >= 0 && dashedPairs.has(startTpIndex)) {
-      console.log(`❌ Skipping dashed TP pair segment: ${gatePositions[i].name}→${endName}`)
+      log(`❌ Skipping dashed TP pair segment: ${gatePositions[i].name}→${endName}`)
       continue
     }
 
@@ -482,7 +483,7 @@ export function generateSegmentedCorridors(
     const fromIdx = Math.min(start.segmentIndex, endPoint.segmentIndex)
     const toIdx = Math.max(start.segmentIndex, endPoint.segmentIndex)
     if (!isContinuousMainSpan(fromIdx, toIdx)) {
-      console.log(`❌ Skipping non-continuous/main span: ${gatePositions[i].name}→${endName} (${fromIdx}→${toIdx})`)
+      log(`❌ Skipping non-continuous/main span: ${gatePositions[i].name}→${endName} (${fromIdx}→${toIdx})`)
       continue
     }
 
@@ -491,17 +492,17 @@ export function generateSegmentedCorridors(
     if (lr) {
       leftSegments.push(lineString(lr.left.geometry.coordinates as Position[], { segment: segmentName }))
       rightSegments.push(lineString(lr.right.geometry.coordinates as Position[], { segment: segmentName }))
-      console.log(`🟢 Corridor ${i + 1}: ${segmentName} (${start.segmentIndex}→${endPoint.segmentIndex})`)
+      log(`🟢 Corridor ${i + 1}: ${segmentName} (${start.segmentIndex}→${endPoint.segmentIndex})`)
     }
   }
   
   
   // Step 4: Generate 300m corridors for each segment
-  console.log(`\n📏 Generating ${corridorSegments.length} corridor segments...`)
+  log(`\n📏 Generating ${corridorSegments.length} corridor segments...`)
   
   // already generated within the loop using precise slices
   
-  console.log(`\n🎯 RESULT: Generated ${leftSegments.length} corridor segments with gaps in forbidden zones`)
+  log(`\n🎯 RESULT: Generated ${leftSegments.length} corridor segments with gaps in forbidden zones`)
   
   return { leftSegments, rightSegments }
 }
