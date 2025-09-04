@@ -12,8 +12,7 @@ import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 import { AppBar, Box, Button, Container, FormControl, InputLabel, MenuItem, Select, Toolbar, Typography } from '@mui/material'
 
 function App() {
-  const defaultProvider = ((import.meta as any).env?.VITE_MAPBOX_TOKEN ? 'mapbox' : 'maplibre') as MapProviderId
-  const [provider, setProvider] = useState<MapProviderId>(defaultProvider)
+  const [provider, setProvider] = useState<MapProviderId>('mapbox')
   const [baseStyle, setBaseStyle] = useState<'streets' | 'satellite'>('streets')
   const [geojson, setGeojson] = useState<GeoJSON | null>(null)
   // Remove buffer corridor state since we don't use it
