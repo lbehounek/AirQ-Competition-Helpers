@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 import { MapProviderView } from './map/MapProviderView'
@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Container, FormControl, InputLabel, MenuItem, Select, Toolbar, Typography } from '@mui/material'
+import { AppBar, Box, Button, Container, FormControl, InputLabel, MenuItem, Select, Toolbar, Typography } from '@mui/material'
 
 function App() {
   const [provider, setProvider] = useState<MapProviderId>('maplibre')
@@ -22,6 +22,7 @@ function App() {
   const [leftSegments, setLeftSegments] = useState<GeoJSON | null>(null)
   const [rightSegments, setRightSegments] = useState<GeoJSON | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const providerConfig = useMemo(() => mapProviders[provider], [provider])
 
@@ -78,11 +79,33 @@ function App() {
     }
   }, [onFiles])
 
+  const onClickSelectFile = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const onFileInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    await onFiles([files[0]])
+    // allow selecting the same file again later
+    e.target.value = ''
+  }, [onFiles])
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
       <AppBar position="static" color="default" elevation={1}>
         <Toolbar sx={{ gap: 2 }}>
           <Typography variant="h6" sx={{ mr: 1 }}>Map Corridors</Typography>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={onFileInputChange}
+            accept=".kml,.gpx,application/vnd.google-earth.kml+xml,application/gpx+xml"
+            style={{ display: 'none' }}
+          />
+          <Button variant="contained" color="primary" onClick={onClickSelectFile}>
+            Select KML/GPX
+          </Button>
           <FormControl size="small" sx={{ minWidth: 140 }}>
             <InputLabel id="base-style-label">Base</InputLabel>
             <Select
