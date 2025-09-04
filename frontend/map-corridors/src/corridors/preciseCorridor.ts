@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Point, Position } from 'geojson'
-import { lineString, length as turfLength, getCoord, bearing as turfBearing, destination, point } from '@turf/turf'
+import { lineString, length as turfLength, getCoord, bearing as turfBearing, destination, point, nearestPointOnLine } from '@turf/turf'
 
 type LonLatAlt = [number, number, number?]
 
@@ -41,7 +41,7 @@ function isDashedConnectorLine(coords: LonLatAlt[]): boolean {
   // Calculate segment length
   const length = calculateDistance(coords[0], coords[1])
   // Very short segments are likely dashed connectors
-  return length < 500  // Less than 500m
+  return length < 500  // Less than 500m (match backend)
 }
 
 type Segment = {
@@ -78,7 +78,7 @@ function extractAllSegments(input: GeoJSON): Segment[] {
   return segments
 }
 
-export function buildContinuousTrack(input: GeoJSON): LonLatAlt[] {
+export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLatAlt[], sourceSegIdx: number[], gapAfterIndex: boolean[], segments: Segment[], mainSegmentIndexSet: Set<number> } {
   // Extract all segments
   const allSegments = extractAllSegments(input)
   
@@ -92,39 +92,61 @@ export function buildContinuousTrack(input: GeoJSON): LonLatAlt[] {
   console.log(`Dashed connectors (excluded): ${dashedConnectors.length}`)
   
   // Build detailed continuous track from main segments only
-  if (mainTrackSegments.length === 0) return []
+  if (mainTrackSegments.length === 0) return { track: [], sourceSegIdx: [], gapAfterIndex: [], segments: allSegments, mainSegmentIndexSet: new Set() }
   
   // Sort segments by index to maintain original order
   const sortedSegments = mainTrackSegments.sort((a, b) => a.index - b.index)
   
   const detailedTrack: LonLatAlt[] = []
+  const sourceSegIdx: number[] = []
+  const gapAfterIndex: boolean[] = [] // length will be track.length - 1
   
   for (let i = 0; i < sortedSegments.length; i++) {
     const segment = sortedSegments[i]
     const coords = segment.coordinates
     
     if (i === 0) {
-      // First segment: add all coordinates
-      detailedTrack.push(...coords)
+      // First segment: append all points, all edges are contiguous
+      for (let k = 0; k < coords.length; k++) {
+        detailedTrack.push(coords[k])
+        sourceSegIdx.push(segment.index)
+        if (k > 0) gapAfterIndex.push(false)
+      }
     } else {
-      // For subsequent segments, check for duplicates
       const lastPoint = detailedTrack[detailedTrack.length - 1]
       const firstPoint = coords[0]
-      
       const distance = calculateDistance(lastPoint, firstPoint)
-      if (distance < 50) {  // Points are very close, likely connected
-        // Skip the duplicate first coordinate
-        detailedTrack.push(...coords.slice(1))
+      if (distance < 50) {
+        // Connected: skip duplicate first, append rest; edges contiguous
+        for (let k = 1; k < coords.length; k++) {
+          detailedTrack.push(coords[k])
+          sourceSegIdx.push(segment.index)
+          gapAfterIndex.push(false)
+        }
       } else {
-        // Gap exists, add all coordinates including first
-        detailedTrack.push(...coords)
+        // Gap exists between previous last and this segment's first point
+        // Append first point and mark the edge as a gap
+        detailedTrack.push(coords[0])
+        sourceSegIdx.push(segment.index)
+        gapAfterIndex.push(true)
+        // Append remaining points with contiguous edges
+        for (let k = 1; k < coords.length; k++) {
+          detailedTrack.push(coords[k])
+          sourceSegIdx.push(segment.index)
+          gapAfterIndex.push(false)
+        }
       }
     }
   }
   
   console.log(`Built detailed track: ${detailedTrack.length} total points from ${mainTrackSegments.length} segments`)
   
-  return detailedTrack
+  const mainSet = new Set<number>(mainTrackSegments.map(s => s.index))
+  return { track: detailedTrack, sourceSegIdx, gapAfterIndex, segments: allSegments, mainSegmentIndexSet: mainSet }
+}
+
+export function buildContinuousTrack(input: GeoJSON): LonLatAlt[] {
+  return buildContinuousTrackWithSources(input).track
 }
 
 export function generateLeftRightCorridor(track: LonLatAlt[], corridorDistanceM = 300): CorridorOutput | null {
@@ -184,6 +206,80 @@ export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ 
   return out
 }
 
+function detectDashedConnectorPairs(input: GeoJSON, tps: Array<{ name: string, coord: LonLatAlt }>): Set<number> {
+  const pairs = new Set<number>()
+  // Build quick array of TP coords
+  const tpCoords = tps.map(tp => tp.coord)
+  const segments = extractAllSegments(input)
+  for (const seg of segments) {
+    const coords = seg.coordinates
+    if (coords.length !== 2) continue
+    const segLen = calculateDistance(coords[0], coords[1])
+    if (segLen >= 800) continue // dashed connectors are short
+    // Find nearest two TPs to segment endpoints
+    let nearestA = -1, nearestB = -1
+    let bestA = Infinity, bestB = Infinity
+    for (let i = 0; i < tpCoords.length; i++) {
+      const dA = calculateDistance(coords[0], tpCoords[i])
+      if (dA < bestA) { bestA = dA; nearestA = i }
+      const dB = calculateDistance(coords[1], tpCoords[i])
+      if (dB < bestB) { bestB = dB; nearestB = i }
+    }
+    // Consider it the dashed connector for pair (k,k+1) if endpoints map to successive TPs
+    if (nearestA >= 0 && nearestB >= 0 && Math.abs(nearestA - nearestB) === 1) {
+      const k = Math.min(nearestA, nearestB)
+      // Require both endpoints reasonably close to their TPs
+      if (bestA < 1500 && bestB < 1500) {
+        pairs.add(k)
+      }
+    }
+  }
+  if (pairs.size > 0) {
+    console.log(`Detected dashed connector TP pairs (0-based): ${Array.from(pairs).join(', ')}`)
+  }
+  return pairs
+}
+
+function nearestSegmentIndexForCoord(segments: Segment[], coord: LonLatAlt): number {
+  let bestIdx = segments[0]?.index ?? 0
+  let bestDist = Infinity
+  for (const seg of segments) {
+    const ls = lineString(seg.coordinates.map(c => [c[0], c[1]]) as Position[])
+    const snapped = nearestPointOnLine(ls, point([coord[0], coord[1]]))
+    const dist = snapped.properties?.dist as number
+    if (dist < bestDist) {
+      bestDist = dist
+      bestIdx = seg.index
+    }
+  }
+  return bestIdx
+}
+
+function computeDashedPairsFromSegments(input: GeoJSON, tps: Array<{ name: string, coord: LonLatAlt }>): Set<number> {
+  const pairs = new Set<number>()
+  const segments = extractAllSegments(input)
+  if (segments.length === 0 || tps.length < 2) return pairs
+  const isMain = new Map<number, boolean>()
+  for (const seg of segments) {
+    isMain.set(seg.index, !isDashedConnectorLine(seg.coordinates))
+  }
+  for (let k = 0; k < tps.length - 1; k++) {
+    const idxA = nearestSegmentIndexForCoord(segments, tps[k].coord)
+    const idxB = nearestSegmentIndexForCoord(segments, tps[k + 1].coord)
+    const lo = Math.min(idxA, idxB)
+    const hi = Math.max(idxA, idxB)
+    let hasMain = false
+    for (let i = lo; i <= hi; i++) {
+      if (isMain.get(i)) { hasMain = true; break }
+    }
+    if (!hasMain) pairs.add(k)
+  }
+  if (pairs.size > 0) {
+    console.log(`Dashed pairs from segment analysis (0-based): ${Array.from(pairs).join(', ')}`)
+  }
+  return pairs
+}
+
 export function nearestTrackIndex(track: LonLatAlt[], target: LonLatAlt): number {
   // approximate: choose the index minimizing distance along vertices
   let bestIdx = 0
@@ -197,7 +293,7 @@ export function nearestTrackIndex(track: LonLatAlt[], target: LonLatAlt): number
   return bestIdx
 }
 
-export function pointAtDistanceAlongTrack(track: LonLatAlt[], startIdx: number, distanceMeters: number): { point: LonLatAlt, bearing: number } | null {
+export function pointAtDistanceAlongTrack(track: LonLatAlt[], startIdx: number, distanceMeters: number): { point: LonLatAlt, bearing: number, segmentIndex: number } | null {
   // walk segments from startIdx and interpolate
   let remaining = distanceMeters
   for (let i = startIdx; i < track.length - 1; i++) {
@@ -208,12 +304,12 @@ export function pointAtDistanceAlongTrack(track: LonLatAlt[], startIdx: number, 
     if (remaining <= segLenM) {
       const brg = calculateBearing(a, b)
       const p = projectCoordinate(a, brg, remaining)
-      return { point: p, bearing: brg }
+      return { point: p, bearing: brg, segmentIndex: i }
     }
     remaining -= segLenM
   }
   const lastBrg = calculateBearing(track[track.length - 2], track[track.length - 1])
-  return { point: track[track.length - 1], bearing: lastBrg }
+  return { point: track[track.length - 1], bearing: lastBrg, segmentIndex: track.length - 2 }
 }
 
 export function buildGateAtPoint(center: LonLatAlt, localBearingDeg: number, corridorDistanceM: number): Feature<LineString> {
@@ -224,16 +320,201 @@ export function buildGateAtPoint(center: LonLatAlt, localBearingDeg: number, cor
   return lineString([left as Position, right as Position], { role: 'gate', color: 'red' })
 }
 
-export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300): { left?: Feature<LineString>, right?: Feature<LineString>, gates: Feature<LineString>[], points: Feature<Point>[] } {
-  const track = buildContinuousTrack(input)
+type WaypointData = {
+  sp?: LonLatAlt
+  tps: Array<{ name: string, coord: LonLatAlt }>
+  fp?: LonLatAlt
+}
+
+function snapPointToTrack(track: LonLatAlt[], target: LonLatAlt): { point: LonLatAlt, segmentIndex: number, bearing: number } {
+  if (track.length < 2) return { point: track[0], segmentIndex: 0, bearing: 0 }
+  const line = lineString(track.map(c => [c[0], c[1]]) as Position[])
+  const snapped = nearestPointOnLine(line, point([target[0], target[1]]))
+  const [lon, lat] = getCoord(snapped)
+  const segIndex = Math.max(0, Math.min((snapped.properties?.index as number) ?? 0, track.length - 2))
+  const brg = calculateBearing(track[segIndex], track[segIndex + 1])
+  return { point: [lon, lat, target[2]], segmentIndex: segIndex, bearing: brg }
+}
+
+function buildPreciseSlice(track: LonLatAlt[], start: { point: LonLatAlt, segmentIndex: number }, end: { point: LonLatAlt, segmentIndex: number }): LonLatAlt[] {
+  if (start.segmentIndex > end.segmentIndex) return []
+  if (start.segmentIndex === end.segmentIndex) return [start.point, end.point]
+  const out: LonLatAlt[] = []
+  out.push(start.point)
+  // include intermediate vertices strictly between segments
+  for (let i = start.segmentIndex + 1; i <= end.segmentIndex; i++) {
+    out.push(track[i])
+  }
+  out.push(end.point)
+  return out
+}
+
+export function generateSegmentedCorridors(
+  track: LonLatAlt[], 
+  waypoints: WaypointData, 
+  corridorDistanceM: number,
+  originalInput: GeoJSON,
+  sourceSegIdx: number[],
+  gapAfterIndex: boolean[],
+  mainSegmentIndexSet: Set<number>,
+  segments: Segment[]
+): { leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
+  console.log('\n=== GENERATING SEGMENTED CORRIDORS ===')
+  
+  const NM = 1852
+  const leftSegments: Feature<LineString>[] = []
+  const rightSegments: Feature<LineString>[] = []
+  
+  // Step 1: Validate we have required waypoints
+  if (!waypoints.sp || waypoints.tps.length === 0) {
+    console.log('❌ Missing SP or TPs - cannot generate corridors')
+    return { leftSegments, rightSegments }
+  }
+  
+  console.log(`✅ Found: SP + ${waypoints.tps.length} TPs + ${waypoints.fp ? 'FP' : 'no FP'}`)
+  
+  // Step 2: Calculate all gate positions (where corridors START)
+  const gatePositions: Array<{ trackIdx: number, name: string, distanceNM: number }> = []
+  
+  // Gate 1: 5NM after SP
+  const spIdx = nearestTrackIndex(track, waypoints.sp)
+  const sp5nmResult = pointAtDistanceAlongTrack(track, spIdx, 5 * NM)
+  if (sp5nmResult) {
+    const sp5nmIdx = nearestTrackIndex(track, sp5nmResult.point)
+    gatePositions.push({ trackIdx: sp5nmIdx, name: '5NM-after-SP', distanceNM: 5 })
+    console.log(`📍 Gate 1: 5NM after SP at track index ${sp5nmIdx}`)
+  }
+  
+  // Gates 2+: 1NM after each TP
+  for (let i = 0; i < waypoints.tps.length; i++) {
+    const tp = waypoints.tps[i]
+    const tpIdx = nearestTrackIndex(track, tp.coord)
+    const tp1nmResult = pointAtDistanceAlongTrack(track, tpIdx, 1 * NM)
+    if (tp1nmResult) {
+      const tp1nmIdx = nearestTrackIndex(track, tp1nmResult.point)
+      gatePositions.push({ trackIdx: tp1nmIdx, name: `1NM-after-${tp.name}`, distanceNM: 1 })
+      console.log(`📍 Gate ${i + 2}: 1NM after ${tp.name} at track index ${tp1nmIdx}`)
+    }
+  }
+  
+  // Step 3: Define corridor segments using exact snapped gate points (Gate → next TP)
+  // Combine two heuristics to detect dashed TP→TP pairs
+  const dashedPairsHeurA = detectDashedConnectorPairs(originalInput, waypoints.tps)
+  const dashedPairsHeurB = computeDashedPairsFromSegments(originalInput, waypoints.tps)
+  const dashedPairs = new Set<number>([...Array.from(dashedPairsHeurA), ...Array.from(dashedPairsHeurB)])
+
+  const isContinuousMainSpan = (fromIdx: number, toIdx: number): boolean => {
+    if (fromIdx === toIdx) {
+      const segIdx = sourceSegIdx[fromIdx]
+      return mainSegmentIndexSet.has(segIdx)
+    }
+    if (fromIdx > toIdx) return false
+    for (let i = fromIdx; i < toIdx; i++) {
+      if (gapAfterIndex[i]) return false
+      const segIdxA = sourceSegIdx[i]
+      const segIdxB = sourceSegIdx[i + 1]
+      if (!mainSegmentIndexSet.has(segIdxA) || !mainSegmentIndexSet.has(segIdxB)) return false
+    }
+    return true
+  }
+  // Note: detectDashedConnectorPairs needs original input; workaround below patches later
+  const corridorSegments: Array<{ start: { point: LonLatAlt, idx: number }, end: { point: LonLatAlt, idx: number }, name: string }> = []
+  
+  // Segment 1: 5NM-after-SP → TP1
+  if (gatePositions.length > 0 && waypoints.tps.length > 0) {
+    const startGateAlong = pointAtDistanceAlongTrack(track, spIdx, 5 * NM)
+    const start = startGateAlong ? snapPointToTrack(track, startGateAlong.point) : snapPointToTrack(track, track[gatePositions[0].trackIdx])
+    const end = snapPointToTrack(track, waypoints.tps[0].coord)
+    // Build precise slice
+    const preciseSlice = buildPreciseSlice(track, { point: start.point, segmentIndex: start.segmentIndex }, { point: end.point, segmentIndex: end.segmentIndex })
+    // Enforce continuity on main track for this span
+    if (!isContinuousMainSpan(Math.min(start.segmentIndex, end.segmentIndex), Math.max(start.segmentIndex, end.segmentIndex))) {
+      console.log(`❌ Skipping 5NM-after-SP→TP1 due to non-continuous/main span`)
+    } else if (preciseSlice.length >= 2) {
+      const lr = generateLeftRightCorridor(preciseSlice, corridorDistanceM)
+      if (lr) {
+        leftSegments.push(lineString(lr.left.geometry.coordinates as Position[], { segment: '5NM-after-SP→TP1' }))
+        rightSegments.push(lineString(lr.right.geometry.coordinates as Position[], { segment: '5NM-after-SP→TP1' }))
+      }
+      const sliceLength = preciseSlice.reduce((acc, c, i) => i === 0 ? 0 : acc + calculateDistance(preciseSlice[i - 1], c), 0)
+      console.log(`🟢 Corridor 1: ${gatePositions[0].name} → TP1 (${start.segmentIndex}→${end.segmentIndex}), ${(sliceLength/1000).toFixed(2)} km`)
+    } else {
+      console.log(`❌ Skipping 5NM-after-SP→TP1: slice too short`)
+    }
+  }
+  
+  // Segments 2+: 1NM-after-TPn → TP(n+1)
+  for (let i = 1; i < gatePositions.length; i++) {
+    const gateAlong = i - 1 < waypoints.tps.length
+      ? pointAtDistanceAlongTrack(track, nearestTrackIndex(track, waypoints.tps[i - 1].coord), 1 * NM)
+      : null
+    const start = gateAlong ? snapPointToTrack(track, gateAlong.point) : snapPointToTrack(track, track[gatePositions[i].trackIdx])
+
+    let endPoint: { point: LonLatAlt, segmentIndex: number, bearing: number } | null = null
+    let endName: string
+    if (i < waypoints.tps.length) {
+      endPoint = snapPointToTrack(track, waypoints.tps[i].coord)
+      endName = waypoints.tps[i].name
+    } else if (waypoints.fp) {
+      endPoint = snapPointToTrack(track, waypoints.fp)
+      endName = 'FP'
+    } else {
+      continue
+    }
+
+    if (!endPoint) continue
+
+    // Build precise slice between snapped start and end
+    const preciseSlice = buildPreciseSlice(track, { point: start.point, segmentIndex: start.segmentIndex }, { point: endPoint.point, segmentIndex: endPoint.segmentIndex })
+    if (preciseSlice.length < 2) {
+      console.log(`⚠️  Precise slice too short for ${gatePositions[i].name}→${endName}`)
+      continue
+    }
+
+    // Skip if this is a known dashed TP pair (no uninterrupted main track between TPi and TP(i+1))
+    const startTpIndex = i - 1
+    if (startTpIndex >= 0 && dashedPairs.has(startTpIndex)) {
+      console.log(`❌ Skipping dashed TP pair segment: ${gatePositions[i].name}→${endName}`)
+      continue
+    }
+
+    // Additionally enforce continuity on the actual track index range
+    const fromIdx = Math.min(start.segmentIndex, endPoint.segmentIndex)
+    const toIdx = Math.max(start.segmentIndex, endPoint.segmentIndex)
+    if (!isContinuousMainSpan(fromIdx, toIdx)) {
+      console.log(`❌ Skipping non-continuous/main span: ${gatePositions[i].name}→${endName} (${fromIdx}→${toIdx})`)
+      continue
+    }
+
+    const segmentName = `${gatePositions[i].name}→${endName}`
+    const lr = generateLeftRightCorridor(preciseSlice, corridorDistanceM)
+    if (lr) {
+      leftSegments.push(lineString(lr.left.geometry.coordinates as Position[], { segment: segmentName }))
+      rightSegments.push(lineString(lr.right.geometry.coordinates as Position[], { segment: segmentName }))
+      console.log(`🟢 Corridor ${i + 1}: ${segmentName} (${start.segmentIndex}→${endPoint.segmentIndex})`)
+    }
+  }
+  
+  
+  // Step 4: Generate 300m corridors for each segment
+  console.log(`\n📏 Generating ${corridorSegments.length} corridor segments...`)
+  
+  // already generated within the loop using precise slices
+  
+  console.log(`\n🎯 RESULT: Generated ${leftSegments.length} corridor segments with gaps in forbidden zones`)
+  
+  return { leftSegments, rightSegments }
+}
+
+export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300): { left?: Feature<LineString>, right?: Feature<LineString>, gates: Feature<LineString>[], points: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
+  const { track, sourceSegIdx, gapAfterIndex, segments, mainSegmentIndexSet } = buildContinuousTrackWithSources(input)
   const gates: Feature<LineString>[] = []
   const points: Feature<Point>[] = []
   let left: Feature<LineString> | undefined
   let right: Feature<LineString> | undefined
-  if (track.length >= 2) {
-    const lr = generateLeftRightCorridor(track, corridorDistanceM)
-    if (lr) { left = lr.left; right = lr.right }
-  }
+  const leftSegments: Feature<LineString>[] = []
+  const rightSegments: Feature<LineString>[] = []
+  
   const { sp, tps, fp } = findNamedPoints(input)
   const NM = 1852
   
@@ -258,7 +539,18 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM 
     points.push(point([fp[0], fp[1]], { name: 'FP', role: 'waypoint' }) as Feature<Point>)
   }
   
-  return { left, right, gates, points }
+  // Generate segmented corridors with forbidden zones
+  if (track.length >= 2) {
+    const corridorSegments = generateSegmentedCorridors(track, { sp, tps, fp }, corridorDistanceM, input, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet, segments)
+    leftSegments.push(...corridorSegments.leftSegments)
+    rightSegments.push(...corridorSegments.rightSegments)
+    
+    // Keep single continuous corridors for backward compatibility (but these will be hidden)
+    const lr = generateLeftRightCorridor(track, corridorDistanceM)
+    if (lr) { left = lr.left; right = lr.right }
+  }
+  
+  return { left, right, gates, points, leftSegments, rightSegments }
 }
 
 
