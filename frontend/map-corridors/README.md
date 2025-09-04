@@ -8,22 +8,25 @@ Visualize uploaded KML on a MapLibre map with streets/satellite toggle and a sim
 - npm run build: type-check and build
 - npm run preview: preview production build
 
-## Env (optional)
+## Env
 
-- VITE_MAPBOX_TOKEN: needed only if you switch to Mapbox styles.
+Create a `.env` file (not committed) based on `.env.example`:
+
+- `VITE_MAPBOX_TOKEN`: your Mapbox access token. When set, the app defaults to Mapbox provider.
+- `VITE_MAPTILER_KEY` (optional): key for MapLibre satellite style via MapTiler. If omitted, satellite style under MapLibre shows a placeholder URL.
 
 ## Usage
 
 1) npm run dev
-2) Drop a .kml file in the drop zone. The track renders and a ~300m buffer is drawn.
+2) Click "Select KML/GPX" or drag a file onto the map. The track renders and corridors are drawn.
 
 ## Tech
 
 - Map: @vis.gl/react-maplibre + maplibre-gl
 - Parsing: @tmcw/togeojson (KML now; GPX ready)
 - Geospatial: @turf/turf
-- Upload: react-dropzone
+- Upload: native file input + HTML5 drag-and-drop
 
 ## Notes
 
-- The satellite style under MapLibre uses MapTiler; add your key to the URL or switch to Mapbox when you provide a token.
+- When `VITE_MAPBOX_TOKEN` is present, the app starts with Mapbox provider. Otherwise, it uses MapLibre.

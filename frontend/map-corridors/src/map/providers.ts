@@ -12,7 +12,12 @@ export const mapProviders: Record<MapProviderId, ProviderConfig> = {
   maplibre: {
     styles: {
       streets: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
-      satellite: 'https://api.maptiler.com/maps/hybrid/style.json?key=GET_YOUR_OWN_KEY',
+      satellite: (() => {
+        const key = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_MAPTILER_KEY) || ''
+        return key
+          ? `https://api.maptiler.com/maps/hybrid/style.json?key=${key}`
+          : 'https://api.maptiler.com/maps/hybrid/style.json?key=GET_YOUR_OWN_KEY'
+      })(),
     },
   },
   mapbox: {
