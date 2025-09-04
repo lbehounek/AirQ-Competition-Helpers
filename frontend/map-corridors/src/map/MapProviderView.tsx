@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Map, { Layer, Source } from '@vis.gl/react-mapbox'
 import type { MapRef } from '@vis.gl/react-mapbox'
-import 'maplibre-gl/dist/maplibre-gl.css'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
 
 type Overlay = {
@@ -89,6 +89,24 @@ export function MapProviderView(props: {
   }, [isMapLoaded, uploadedGeojson])
 
   // Mapbox binding reads token via prop
+
+  if (!providerConfig.accessToken && typeof styleUrl === 'string' && styleUrl.startsWith('mapbox://')) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: '100%', height: '100%',
+        color: '#1A202C', background: '#F8FAFC',
+        textAlign: 'center', padding: 16
+      }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Mapbox token required</div>
+          <div style={{ fontSize: 14 }}>
+            Set VITE_MAPBOX_TOKEN in frontend/map-corridors/.env and restart the dev server.
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <Map
