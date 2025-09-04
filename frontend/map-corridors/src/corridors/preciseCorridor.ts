@@ -1,7 +1,7 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Point, Position } from 'geojson'
 import { lineString, length as turfLength, getCoord, bearing as turfBearing, destination, point, nearestPointOnLine } from '@turf/turf'
 
-const DEBUG = false
+const DEBUG = (import.meta as any)?.env?.VITE_DEBUG_CORRIDORS === 'true' || (import.meta as any)?.env?.VITE_DEBUG_CORRIDORS === '1'
 const log = (...args: any[]) => { if (DEBUG) console.log(...args) }
 
 type LonLatAlt = [number, number, number?]
@@ -189,7 +189,8 @@ export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ 
     } else if (g.type === 'Feature') {
       const f = g as Feature
       const geom = f.geometry
-      const name = (f.properties?.name || f.properties?.Name || f.properties?.title) as string | undefined
+      const nameRaw = (f.properties?.name || f.properties?.Name || f.properties?.title) as string | undefined
+      const name = nameRaw?.trim()
       if (geom?.type === 'Point' && name) {
         const p = geom as Point
         const c = p.coordinates as LonLatAlt
@@ -209,79 +210,7 @@ export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ 
   return out
 }
 
-function detectDashedConnectorPairs(input: GeoJSON, tps: Array<{ name: string, coord: LonLatAlt }>): Set<number> {
-  const pairs = new Set<number>()
-  // Build quick array of TP coords
-  const tpCoords = tps.map(tp => tp.coord)
-  const segments = extractAllSegments(input)
-  for (const seg of segments) {
-    const coords = seg.coordinates
-    if (coords.length !== 2) continue
-    const segLen = calculateDistance(coords[0], coords[1])
-    if (segLen >= 800) continue // dashed connectors are short
-    // Find nearest two TPs to segment endpoints
-    let nearestA = -1, nearestB = -1
-    let bestA = Infinity, bestB = Infinity
-    for (let i = 0; i < tpCoords.length; i++) {
-      const dA = calculateDistance(coords[0], tpCoords[i])
-      if (dA < bestA) { bestA = dA; nearestA = i }
-      const dB = calculateDistance(coords[1], tpCoords[i])
-      if (dB < bestB) { bestB = dB; nearestB = i }
-    }
-    // Consider it the dashed connector for pair (k,k+1) if endpoints map to successive TPs
-    if (nearestA >= 0 && nearestB >= 0 && Math.abs(nearestA - nearestB) === 1) {
-      const k = Math.min(nearestA, nearestB)
-      // Require both endpoints reasonably close to their TPs
-      if (bestA < 1500 && bestB < 1500) {
-        pairs.add(k)
-      }
-    }
-  }
-  if (pairs.size > 0) {
-    console.log(`Detected dashed connector TP pairs (0-based): ${Array.from(pairs).join(', ')}`)
-  }
-  return pairs
-}
-
-function nearestSegmentIndexForCoord(segments: Segment[], coord: LonLatAlt): number {
-  let bestIdx = segments[0]?.index ?? 0
-  let bestDist = Infinity
-  for (const seg of segments) {
-    const ls = lineString(seg.coordinates.map(c => [c[0], c[1]]) as Position[])
-    const snapped = nearestPointOnLine(ls, point([coord[0], coord[1]]))
-    const dist = snapped.properties?.dist as number
-    if (dist < bestDist) {
-      bestDist = dist
-      bestIdx = seg.index
-    }
-  }
-  return bestIdx
-}
-
-function computeDashedPairsFromSegments(input: GeoJSON, tps: Array<{ name: string, coord: LonLatAlt }>): Set<number> {
-  const pairs = new Set<number>()
-  const segments = extractAllSegments(input)
-  if (segments.length === 0 || tps.length < 2) return pairs
-  const isMain = new Map<number, boolean>()
-  for (const seg of segments) {
-    isMain.set(seg.index, !isDashedConnectorLine(seg.coordinates))
-  }
-  for (let k = 0; k < tps.length - 1; k++) {
-    const idxA = nearestSegmentIndexForCoord(segments, tps[k].coord)
-    const idxB = nearestSegmentIndexForCoord(segments, tps[k + 1].coord)
-    const lo = Math.min(idxA, idxB)
-    const hi = Math.max(idxA, idxB)
-    let hasMain = false
-    for (let i = lo; i <= hi; i++) {
-      if (isMain.get(i)) { hasMain = true; break }
-    }
-    if (!hasMain) pairs.add(k)
-  }
-  if (pairs.size > 0) {
-    console.log(`Dashed pairs from segment analysis (0-based): ${Array.from(pairs).join(', ')}`)
-  }
-  return pairs
-}
+// Removed redundant dashed-pair heuristics; rely on continuity and main-track-only build
 
 export function nearestTrackIndex(track: LonLatAlt[], target: LonLatAlt): number {
   // approximate: choose the index minimizing distance along vertices
