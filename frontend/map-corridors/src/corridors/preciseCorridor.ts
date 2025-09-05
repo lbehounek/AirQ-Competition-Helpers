@@ -138,12 +138,16 @@ type WaypointData = {
 
 function snapPointToTrack(track: LonLatAlt[], target: LonLatAlt): { point: LonLatAlt, segmentIndex: number, bearing: number } {
   if (track.length < 2) return { point: track[0], segmentIndex: 0, bearing: 0 }
+  
+  // Use turf's nearestPointOnLine to find the exact snapped point
   const line = lineString(track.map(c => [c[0], c[1]]) as Position[])
   const snapped = nearestPointOnLine(line, point([target[0], target[1]]))
   const [lon, lat] = getCoord(snapped)
   const segIndex = Math.max(0, Math.min((snapped.properties?.index as number) ?? 0, track.length - 2))
+  
+  // FIXED: Use the bearing of the actual segment the point lies on
   const brg = calculateBearing(track[segIndex], track[segIndex + 1])
-  return { point: [lon, lat, target[2]], segmentIndex: segIndex, bearing: brg }
+  return { point: [lon, lat, target[2] || 0], segmentIndex: segIndex, bearing: brg }
 }
 
 function buildPreciseSlice(track: LonLatAlt[], start: { point: LonLatAlt, segmentIndex: number }, end: { point: LonLatAlt, segmentIndex: number }): LonLatAlt[] {
@@ -168,17 +172,18 @@ export function generateSegmentedCorridors(
   gapAfterIndex: boolean[],
   mainSegmentIndexSet: Set<number>,
   segments: Segment[]
-): { leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
+): { leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[], endGates: Feature<LineString>[] } {
   log('\n=== GENERATING SEGMENTED CORRIDORS ===')
   
   const NM = 1852
   const leftSegments: Feature<LineString>[] = []
   const rightSegments: Feature<LineString>[] = []
+  const endGates: Feature<LineString>[] = []
   
   // Step 1: Validate we have required waypoints
   if (!waypoints.sp || waypoints.tps.length === 0) {
     console.log('❌ Missing SP or TPs - cannot generate corridors')
-    return { leftSegments, rightSegments }
+    return { leftSegments, rightSegments, endGates }
   }
   
   log(`✅ Found: SP + ${waypoints.tps.length} TPs + ${waypoints.fp ? 'FP' : 'no FP'}`)
@@ -231,7 +236,10 @@ export function generateSegmentedCorridors(
   // Segment 1: 5NM-after-SP → TP1
   if (gatePositions.length > 0 && waypoints.tps.length > 0) {
     const startGateAlong = pointAtDistanceAlongTrack(track, spIdx, 5 * NM)
-    const start = startGateAlong ? snapPointToTrack(track, startGateAlong.point) : snapPointToTrack(track, track[gatePositions[0].trackIdx])
+    // FIXED: Use exact gate position and bearing, don't re-snap
+    const start = startGateAlong ? 
+      { point: startGateAlong.point, segmentIndex: startGateAlong.segmentIndex, bearing: startGateAlong.bearing } :
+      snapPointToTrack(track, track[gatePositions[0].trackIdx])
     const end = snapPointToTrack(track, waypoints.tps[0].coord)
     // Build precise slice
     const preciseSlice = buildPreciseSlice(track, { point: start.point, segmentIndex: start.segmentIndex }, { point: end.point, segmentIndex: end.segmentIndex })
@@ -256,7 +264,10 @@ export function generateSegmentedCorridors(
     const gateAlong = i - 1 < waypoints.tps.length
       ? pointAtDistanceAlongTrack(track, nearestTrackIndex(track, waypoints.tps[i - 1].coord), 1 * NM)
       : null
-    const start = gateAlong ? snapPointToTrack(track, gateAlong.point) : snapPointToTrack(track, track[gatePositions[i].trackIdx])
+    // FIXED: Use exact gate position and bearing, don't re-snap
+    const start = gateAlong ? 
+      { point: gateAlong.point, segmentIndex: gateAlong.segmentIndex, bearing: gateAlong.bearing } :
+      snapPointToTrack(track, track[gatePositions[i].trackIdx])
 
     let endPoint: { point: LonLatAlt, segmentIndex: number, bearing: number } | null = null
     let endName: string
@@ -311,7 +322,7 @@ export function generateSegmentedCorridors(
   
   log(`\n🎯 RESULT: Generated ${leftSegments.length} corridor segments with gaps in forbidden zones`)
   
-  return { leftSegments, rightSegments }
+  return { leftSegments, rightSegments, endGates }
 }
 
 export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300): { gates: Feature<LineString>[], points: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
@@ -350,6 +361,7 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM 
     const corridorSegments = generateSegmentedCorridors(track, { sp, tps, fp }, corridorDistanceM, input, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet, segments)
     leftSegments.push(...corridorSegments.leftSegments)
     rightSegments.push(...corridorSegments.rightSegments)
+    // Note: endGates are available in corridorSegments.endGates if needed
   }
   
   return { gates, points, leftSegments, rightSegments }

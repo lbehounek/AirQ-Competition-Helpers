@@ -10,6 +10,8 @@ import type { GeoJSON } from 'geojson'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
 import { AppBar, Box, Button, Container, FormControl, InputLabel, MenuItem, Select, Toolbar, Typography } from '@mui/material'
+import { Download } from '@mui/icons-material'
+import { geoJSONToKML, downloadKML } from './utils/exportKML'
 
 function App() {
   const [provider, setProvider] = useState<MapProviderId>('mapbox')
@@ -91,6 +93,31 @@ function App() {
     e.target.value = ''
   }, [onFiles])
 
+  const handleExportKML = useCallback(() => {
+    // Combine all corridor segments and gates into one FeatureCollection
+    const features: any[] = []
+    
+    if (leftSegments && leftSegments.type === 'FeatureCollection') {
+      features.push(...leftSegments.features)
+    }
+    if (rightSegments && rightSegments.type === 'FeatureCollection') {
+      features.push(...rightSegments.features)
+    }
+    if (gates && gates.type === 'FeatureCollection') {
+      features.push(...gates.features)
+    }
+    
+    if (features.length > 0) {
+      const combinedGeoJSON = {
+        type: 'FeatureCollection' as const,
+        features
+      }
+      
+      const kmlContent = geoJSONToKML(combinedGeoJSON, 'corridors_export')
+      downloadKML(kmlContent, 'corridors_export.kml')
+    }
+  }, [leftSegments, rightSegments, gates])
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
       <AppBar position="static" color="default" elevation={1}>
@@ -106,6 +133,16 @@ function App() {
           <Button variant="contained" color="primary" onClick={onClickSelectFile}>
             Select KML/GPX
           </Button>
+          {(leftSegments || rightSegments || gates) && (
+            <Button 
+              variant="outlined" 
+              color="secondary" 
+              onClick={handleExportKML}
+              startIcon={<Download />}
+            >
+              Export KML
+            </Button>
+          )}
           <FormControl size="small" sx={{ minWidth: 140 }}>
             <InputLabel id="base-style-label">Base</InputLabel>
             <Select
@@ -149,8 +186,8 @@ function App() {
               // Segmented corridor borders in green
               leftSegments ? { id: 'left-segments', data: leftSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               rightSegments ? { id: 'right-segments', data: rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
-              // Render gates with same green styling so "red lines" become corridor borders
-              gates ? { id: 'gates', data: gates, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
+              // Gates as red perpendicular lines marking corridor start points
+              gates ? { id: 'gates', data: gates, type: 'line' as const, paint: { 'line-color': '#ff0000', 'line-width': 2 } } : null,
               // Waypoint labels only, no points
               points ? { id: 'waypoints', data: points, type: 'circle' as const, paint: { 'circle-opacity': 0 } } : null,
             ].filter(Boolean) as any}
