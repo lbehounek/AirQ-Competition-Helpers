@@ -25,26 +25,33 @@ function projectCoordinate(origin: LonLatAlt, bearingDeg: number, distanceMeters
 
 export function generateLeftRightCorridor(track: LonLatAlt[], corridorDistanceM = 300): CorridorOutput | null {
   if (track.length < 2) return null
+  
+  // Simple segment-by-segment approach: no averaging, no complex bearing calculations
+  // Each segment gets processed independently with start→end bearing
   const left: LonLatAlt[] = []
   const right: LonLatAlt[] = []
-  for (let i = 0; i < track.length; i++) {
-    const cur = track[i]
-    let trackBearing: number
-    if (i === 0) trackBearing = calculateBearing(cur, track[i + 1])
-    else if (i === track.length - 1) trackBearing = calculateBearing(track[i - 1], cur)
-    else {
-      const bin = calculateBearing(track[i - 1], cur)
-      const bout = calculateBearing(cur, track[i + 1])
-      let diff = bout - bin
-      if (diff > 180) diff -= 360
-      else if (diff < -180) diff += 360
-      trackBearing = (bin + diff / 2 + 360) % 360
+  
+  // Process each segment independently
+  for (let i = 0; i < track.length - 1; i++) {
+    const segmentStart = track[i]
+    const segmentEnd = track[i + 1]
+    
+    // Calculate single bearing for this entire segment
+    const segmentBearing = calculateBearing(segmentStart, segmentEnd)
+    const leftBearing = (segmentBearing - 90 + 360) % 360
+    const rightBearing = (segmentBearing + 90) % 360
+    
+    // Offset start point of segment
+    if (i === 0) {
+      left.push(projectCoordinate(segmentStart, leftBearing, corridorDistanceM))
+      right.push(projectCoordinate(segmentStart, rightBearing, corridorDistanceM))
     }
-    const leftBearing = (trackBearing - 90 + 360) % 360
-    const rightBearing = (trackBearing + 90) % 360
-    left.push(projectCoordinate(cur, leftBearing, corridorDistanceM))
-    right.push(projectCoordinate(cur, rightBearing, corridorDistanceM))
+    
+    // Offset end point of segment (always add, creates clean segment boundaries)
+    left.push(projectCoordinate(segmentEnd, leftBearing, corridorDistanceM))
+    right.push(projectCoordinate(segmentEnd, rightBearing, corridorDistanceM))
   }
+  
   return {
     left: lineString(left as Position[], { role: 'left', color: 'green' }),
     right: lineString(right as Position[], { role: 'right', color: 'green' }),
