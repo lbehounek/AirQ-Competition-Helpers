@@ -184,12 +184,12 @@ function App() {
             baseStyle={baseStyle}
             providerConfig={providerConfig}
             geojsonOverlays={[
-              geojson ? { id: 'uploaded-geojson', data: geojson, type: 'line' as const, paint: { 'line-color': '#888', 'line-width': 2 } } : null,
+              geojson ? { id: 'uploaded-geojson', data: geojson, type: 'line' as const, paint: { 'line-color': '#ffcc00', 'line-width': 2 } } : null,
               // Segmented corridor borders in green
               leftSegments ? { id: 'left-segments', data: leftSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               rightSegments ? { id: 'right-segments', data: rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               // Gates as red perpendicular lines marking corridor start points
-              gates ? { id: 'gates', data: gates, type: 'line' as const, paint: { 'line-color': '#ff0000', 'line-width': 2 } } : null,
+              gates ? { id: 'gates', data: gates, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               // Waypoint labels only, no points
               points ? { id: 'waypoints', data: points, type: 'circle' as const, paint: { 'circle-opacity': 0 } } : null,
               // Exact waypoints with visible markers and labels

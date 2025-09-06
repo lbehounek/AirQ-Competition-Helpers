@@ -14,12 +14,7 @@ export function geoJSONToKML(geojson: GeoJSON, filename: string = 'corridors'): 
   kml += '    </LineStyle>\n'
   kml += '  </Style>\n'
   
-  kml += '  <Style id="redLine">\n'
-  kml += '    <LineStyle>\n'
-  kml += '      <color>ff0000ff</color>\n'
-  kml += '      <width>2</width>\n'
-  kml += '    </LineStyle>\n'
-  kml += '  </Style>\n'
+  // gates now share the same style as corridors (green)
   
   // Process features
   const features = geojson.type === 'FeatureCollection' 
@@ -31,7 +26,7 @@ export function geoJSONToKML(geojson: GeoJSON, filename: string = 'corridors'): 
       const lineString = feature.geometry as LineString
       const properties = feature.properties || {}
       const name = properties.segment || properties.role || `Line_${index + 1}`
-      const style = properties.role === 'gate' ? 'redLine' : 'greenLine'
+      const style = 'greenLine'
       
       kml += '  <Placemark>\n'
       kml += `    <name>${name}</name>\n`
