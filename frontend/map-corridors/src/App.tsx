@@ -12,6 +12,7 @@ import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 import { AppBar, Box, Button, Container, FormControl, InputLabel, MenuItem, Select, Toolbar, Typography } from '@mui/material'
 import { Download } from '@mui/icons-material'
 import { geoJSONToKML, downloadKML } from './utils/exportKML'
+import { buildContinuousTrackWithSources } from './corridors/segments'
 
 function App() {
   const [provider, setProvider] = useState<MapProviderId>('mapbox')
@@ -107,6 +108,21 @@ function App() {
     }
     if (gates && gates.type === 'FeatureCollection') {
       features.push(...gates.features)
+    }
+    // Include original main track as a single LineString (yellow in KML)
+    if (geojson) {
+      try {
+        const { track } = buildContinuousTrackWithSources(geojson as any)
+        if (track && track.length >= 2) {
+          features.push({
+            type: 'Feature',
+            properties: { role: 'original-track' },
+            geometry: { type: 'LineString', coordinates: track }
+          })
+        }
+      } catch {
+        // ignore export track failure
+      }
     }
     
     if (features.length > 0) {
