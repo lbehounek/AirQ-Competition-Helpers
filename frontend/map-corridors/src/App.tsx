@@ -190,8 +190,8 @@ function App() {
               rightSegments ? { id: 'right-segments', data: rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               // Gates as red perpendicular lines marking corridor start points
               gates ? { id: 'gates', data: gates, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
-              // Waypoint labels only, no points
-              points ? { id: 'waypoints', data: points, type: 'circle' as const, paint: { 'circle-opacity': 0 } } : null,
+              // Hide original KML waypoint labels to avoid duplicates; keep exactPoints labels
+              points ? { id: 'waypoints', data: points, type: 'circle' as const, paint: { 'circle-opacity': 0 }, layout: { 'text-field': '' } } : null,
               // Exact waypoints with visible markers and labels
               exactPoints ? { id: 'exact-points', data: exactPoints, type: 'circle' as const, paint: { 'circle-radius': 4, 'circle-color': '#111111' }, layout: { 'text-field': ['get', 'name'], 'text-offset': [0, 1.2], 'text-anchor': 'top' } } : null,
             ].filter(Boolean) as any}
