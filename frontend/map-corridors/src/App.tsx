@@ -21,6 +21,7 @@ function App() {
   // continuous corridors removed; we use segmented only
   const [gates, setGates] = useState<GeoJSON | null>(null)
   const [points, setPoints] = useState<GeoJSON | null>(null)
+  const [exactPoints, setExactPoints] = useState<GeoJSON | null>(null)
   const [leftSegments, setLeftSegments] = useState<GeoJSON | null>(null)
   const [rightSegments, setRightSegments] = useState<GeoJSON | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -36,13 +37,14 @@ function App() {
     setGeojson(parsed)
     // Remove buffer corridor computation since we only use precise corridors
     try {
-      const { gates, points, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(parsed, 300)
+      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(parsed, 300)
       setGates(gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null)
       setPoints(points && points.length ? ({ type: 'FeatureCollection', features: points } as any) : null)
+      setExactPoints(exactPoints && exactPoints.length ? ({ type: 'FeatureCollection', features: exactPoints } as any) : null)
       setLeftSegments(leftSegments && leftSegments.length ? ({ type: 'FeatureCollection', features: leftSegments } as any) : null)
       setRightSegments(rightSegments && rightSegments.length ? ({ type: 'FeatureCollection', features: rightSegments } as any) : null)
     } catch {
-      setGates(null); setPoints(null); setLeftSegments(null); setRightSegments(null)
+      setGates(null); setPoints(null); setExactPoints(null); setLeftSegments(null); setRightSegments(null)
     }
   }, [])
 
@@ -190,6 +192,8 @@ function App() {
               gates ? { id: 'gates', data: gates, type: 'line' as const, paint: { 'line-color': '#ff0000', 'line-width': 2 } } : null,
               // Waypoint labels only, no points
               points ? { id: 'waypoints', data: points, type: 'circle' as const, paint: { 'circle-opacity': 0 } } : null,
+              // Exact waypoints with visible markers and labels
+              exactPoints ? { id: 'exact-points', data: exactPoints, type: 'circle' as const, paint: { 'circle-radius': 4, 'circle-color': '#111111' }, layout: { 'text-field': ['get', 'name'], 'text-offset': [0, 1.2], 'text-anchor': 'top' } } : null,
             ].filter(Boolean) as any}
           />
         </Box>

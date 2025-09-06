@@ -126,7 +126,14 @@ export function MapProviderView(props: {
             <Layer id={`${ov.id}-fill`} type="fill" paint={{ 'fill-color': '#1d4ed8', 'fill-opacity': 0.25, ...(ov.paint || {}) }} layout={ov.layout ?? {}} />
           )}
           {ov.type === 'circle' && [
-            // Render labels only (hide marker dots)
+            // Optional visible dots
+            <Layer 
+              key={`${ov.id}-circles`}
+              id={`${ov.id}-circles`} 
+              type="circle"
+              paint={{ 'circle-radius': 0, 'circle-color': '#000000', ...(ov.paint || {}) }}
+            />,
+            // Labels
             <Layer 
               key={`${ov.id}-labels`}
               id={`${ov.id}-labels`} 

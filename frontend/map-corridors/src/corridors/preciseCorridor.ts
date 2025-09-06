@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Point, Position } from 'geojson'
-import { lineString, length as turfLength, getCoord, bearing as turfBearing, destination, point, nearestPointOnLine } from '@turf/turf'
+import { lineString, length as turfLength, getCoord, bearing as turfBearing, destination, point, nearestPointOnLine, lineIntersect } from '@turf/turf'
 import type { LonLatAlt, Segment } from './segments'
 import { calculateDistance, buildContinuousTrackWithSources } from './segments'
 
@@ -30,6 +30,8 @@ export function generateLeftRightCorridor(track: LonLatAlt[], corridorDistanceM 
   // Each segment gets processed independently with start→end bearing
   const left: LonLatAlt[] = []
   const right: LonLatAlt[] = []
+  const bearings: number[] = []
+  const segLengths: number[] = []
   
   // Process each segment independently
   for (let i = 0; i < track.length - 1; i++) {
@@ -38,6 +40,10 @@ export function generateLeftRightCorridor(track: LonLatAlt[], corridorDistanceM 
     
     // Calculate single bearing for this entire segment
     const segmentBearing = calculateBearing(segmentStart, segmentEnd)
+    bearings.push(segmentBearing)
+    // compute length for last-leg heuristics
+    const segLenM = turfLength(lineString([[segmentStart[0], segmentStart[1]], [segmentEnd[0], segmentEnd[1]]]), { units: 'kilometers' }) * 1000
+    segLengths.push(segLenM)
     const leftBearing = (segmentBearing - 90 + 360) % 360
     const rightBearing = (segmentBearing + 90) % 360
     
@@ -48,8 +54,22 @@ export function generateLeftRightCorridor(track: LonLatAlt[], corridorDistanceM 
     }
     
     // Offset end point of segment (always add, creates clean segment boundaries)
-    left.push(projectCoordinate(segmentEnd, leftBearing, corridorDistanceM))
-    right.push(projectCoordinate(segmentEnd, rightBearing, corridorDistanceM))
+    // For the very last segment, consider freezing bearing if last leg is tiny or sharply turns
+    if (i === track.length - 2 && bearings.length >= 2) {
+      const lastLen = segLengths[segLengths.length - 1]
+      const prevBearing = bearings[bearings.length - 2]
+      const angleDiff = Math.abs(((segmentBearing - prevBearing + 540) % 360) - 180)
+      const isTiny = lastLen < 40 // meters threshold
+      const isSharp = angleDiff > 50 // degrees threshold
+      const finalBearing = (isTiny || isSharp) ? prevBearing : segmentBearing
+      const finalLeftBearing = (finalBearing - 90 + 360) % 360
+      const finalRightBearing = (finalBearing + 90) % 360
+      left.push(projectCoordinate(segmentEnd, finalLeftBearing, corridorDistanceM))
+      right.push(projectCoordinate(segmentEnd, finalRightBearing, corridorDistanceM))
+    } else {
+      left.push(projectCoordinate(segmentEnd, leftBearing, corridorDistanceM))
+      right.push(projectCoordinate(segmentEnd, rightBearing, corridorDistanceM))
+    }
   }
   
   return {
@@ -143,7 +163,14 @@ function snapPointToTrack(track: LonLatAlt[], target: LonLatAlt): { point: LonLa
   const line = lineString(track.map(c => [c[0], c[1]]) as Position[])
   const snapped = nearestPointOnLine(line, point([target[0], target[1]]))
   const [lon, lat] = getCoord(snapped)
-  const segIndex = Math.max(0, Math.min((snapped.properties?.index as number) ?? 0, track.length - 2))
+  let segIndex = Math.max(0, Math.min((snapped.properties?.index as number) ?? 0, track.length - 2))
+  // Prefer incoming segment if we are essentially at a vertex
+  const t = (snapped.properties?.t as number) ?? undefined // position along segment [0..1]
+  const atVertex = Number.isFinite(t as any) && ((t as number) < 1e-3 || (t as number) > 1 - 1e-3)
+  if (atVertex && (t as number) > 1 - 1e-3) {
+    // at end of segment → pick incoming
+    if (segIndex > 0) segIndex = segIndex - 1
+  }
   
   // FIXED: Use the bearing of the actual segment the point lies on
   const brg = calculateBearing(track[segIndex], track[segIndex + 1])
@@ -167,11 +194,11 @@ export function generateSegmentedCorridors(
   track: LonLatAlt[], 
   waypoints: WaypointData, 
   corridorDistanceM: number,
-  originalInput: GeoJSON,
+  _originalInput: GeoJSON,
   sourceSegIdx: number[],
   gapAfterIndex: boolean[],
   mainSegmentIndexSet: Set<number>,
-  segments: Segment[]
+  _segments: Segment[]
 ): { leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[], endGates: Feature<LineString>[] } {
   log('\n=== GENERATING SEGMENTED CORRIDORS ===')
   
@@ -325,38 +352,135 @@ export function generateSegmentedCorridors(
   return { leftSegments, rightSegments, endGates }
 }
 
-export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300): { gates: Feature<LineString>[], points: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
+function extractGateCenterCandidates(input: GeoJSON): Array<{ center: LonLatAlt, line: Feature<LineString> } > {
+  const out: Array<{ center: LonLatAlt, line: Feature<LineString> }> = []
+  function scan(g: any) {
+    if (!g) return
+    if (g.type === 'FeatureCollection') {
+      for (const f of (g as FeatureCollection).features) scan(f)
+    } else if (g.type === 'Feature') {
+      const f = g as Feature
+      const geom = f.geometry
+      if (geom?.type === 'LineString') {
+        const ls = geom as LineString
+        const coords = ls.coordinates as LonLatAlt[]
+        if (coords.length === 3) {
+          const center = coords[1]
+          out.push({ center, line: lineString(coords as Position[]) })
+        }
+      }
+    } else if (g.type === 'LineString') {
+      const ls = g as LineString
+      const coords = ls.coordinates as LonLatAlt[]
+      if (coords.length === 3) {
+        const center = coords[1]
+        out.push({ center, line: lineString(coords as Position[]) })
+      }
+    }
+  }
+  scan(input)
+  return out
+}
+
+function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[]): { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt, exactPointFeatures: Feature<Point>[] } {
+  const named = findNamedPoints(input)
+  const candidates = extractGateCenterCandidates(input)
+  const exactPointFeatures: Feature<Point>[] = []
+  const result: { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt } = { tps: [] }
+
+  const trackLine = lineString(track.map(c => [c[0], c[1]]) as Position[])
+
+  function attachExact(name: string, approx: LonLatAlt): LonLatAlt | undefined {
+    // Find the candidate whose center is nearest to approx
+    let bestIdx = -1
+    let bestD2 = Infinity
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i].center
+      const dx = c[0] - approx[0]
+      const dy = c[1] - approx[1]
+      const d2 = dx*dx + dy*dy
+      if (d2 < bestD2) { bestD2 = d2; bestIdx = i }
+    }
+    if (bestIdx !== -1) {
+      const gate = candidates[bestIdx].line
+      const intersections = lineIntersect(trackLine, gate)
+      if (intersections && intersections.features.length) {
+        const p = intersections.features[0]
+        const [lon, lat] = getCoord(p)
+        const exact: LonLatAlt = [lon, lat, approx[2] || 0]
+        exactPointFeatures.push(point([lon, lat], { name, role: 'exact' }) as Feature<Point>)
+        return exact
+      }
+    }
+    // Fallback: snap the label to the track as the exact point
+    const snapped = nearestPointOnLine(trackLine, point([approx[0], approx[1]]))
+    const [lon, lat] = getCoord(snapped)
+    const exact: LonLatAlt = [lon, lat, approx[2] || 0]
+    exactPointFeatures.push(point([lon, lat], { name, role: 'exact' }) as Feature<Point>)
+    return exact
+  }
+
+  if (named.sp) {
+    const exact = attachExact('SP', named.sp)
+    if (exact) result.sp = exact
+  }
+  for (const tp of named.tps) {
+    const exact = attachExact(tp.name, tp.coord)
+    if (exact) result.tps.push({ name: tp.name, coord: exact })
+  }
+  if (named.fp) {
+    const exact = attachExact('FP', named.fp)
+    if (exact) result.fp = exact
+  }
+
+  // keep TP order
+  result.tps.sort((a, b) => {
+    const na = parseInt(a.name.split(' ').pop() || '0', 10)
+    const nb = parseInt(b.name.split(' ').pop() || '0', 10)
+    return na - nb
+  })
+
+  return { ...result, exactPointFeatures }
+}
+
+export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300): { gates: Feature<LineString>[], points: Feature<Point>[], exactPoints: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
   const { track, sourceSegIdx, gapAfterIndex, segments, mainSegmentIndexSet } = buildContinuousTrackWithSources(input)
   const gates: Feature<LineString>[] = []
   const points: Feature<Point>[] = []
+  const exactPoints: Feature<Point>[] = []
   const leftSegments: Feature<LineString>[] = []
   const rightSegments: Feature<LineString>[] = []
   
-  const { sp, tps, fp } = findNamedPoints(input)
+  const named = findNamedPoints(input)
+  const { sp, tps, fp, exactPointFeatures } = computeExactWaypoints(input, track)
+  exactPoints.push(...exactPointFeatures)
   const NM = 1852
   
   // Add SP point label
+  if (named.sp) points.push(point([named.sp[0], named.sp[1]], { name: 'SP', role: 'waypoint' }) as Feature<Point>)
   if (sp) {
-    points.push(point([sp[0], sp[1]], { name: 'SP', role: 'waypoint' }) as Feature<Point>)
     const idx = nearestTrackIndex(track, sp)
     const p = pointAtDistanceAlongTrack(track, idx, 5 * NM)
     if (p) gates.push(buildGateAtPoint(p.point, p.bearing, corridorDistanceM))
   }
   
   // Add TP point labels and gates 1NM AFTER each TP
-  for (const tp of tps) {
-    points.push(point([tp.coord[0], tp.coord[1]], { name: tp.name, role: 'waypoint' }) as Feature<Point>)
+  for (let i = 0; i < tps.length; i++) {
+    const tp = tps[i]
+    // add visual label at provided label position
+    const labelTp = named.tps[i]
+    if (labelTp) {
+      points.push(point([labelTp.coord[0], labelTp.coord[1]], { name: labelTp.name, role: 'waypoint' }) as Feature<Point>)
+    }
     const idx = nearestTrackIndex(track, tp.coord)
     const p = pointAtDistanceAlongTrack(track, idx, 1 * NM)
     if (p) gates.push(buildGateAtPoint(p.point, p.bearing, corridorDistanceM))
   }
   
   // Add FP point label (no gate after FP)
-  if (fp) {
-    points.push(point([fp[0], fp[1]], { name: 'FP', role: 'waypoint' }) as Feature<Point>)
-  }
+  if (named.fp) points.push(point([named.fp[0], named.fp[1]], { name: 'FP', role: 'waypoint' }) as Feature<Point>)
   
-  // Generate segmented corridors with forbidden zones
+  // Generate segmented corridors with forbidden zones using exact waypoints
   if (track.length >= 2) {
     const corridorSegments = generateSegmentedCorridors(track, { sp, tps, fp }, corridorDistanceM, input, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet, segments)
     leftSegments.push(...corridorSegments.leftSegments)
@@ -364,7 +488,7 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM 
     // Note: endGates are available in corridorSegments.endGates if needed
   }
   
-  return { gates, points, leftSegments, rightSegments }
+  return { gates, points, exactPoints, leftSegments, rightSegments }
 }
 
 
