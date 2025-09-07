@@ -393,7 +393,7 @@ function AppApi() {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
+      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '70%' }, mx: { xl: 'auto' } }}>
         {showOPFSWarning && (
           <Alert severity="warning" sx={{ mb: 2 }}>
             {t('opfs.warning')}
@@ -783,7 +783,7 @@ function AppApi() {
 
       {/* Footer */}
       <Box component="footer" sx={{ py: 2, mt: 4, bgcolor: 'background.default' }}>
-        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
+        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '70%' }, mx: { xl: 'auto' } }}>
           <Box sx={{ p: 2, borderRadius: 2, background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
             <Typography variant="body2" align="center" sx={{ color: 'common.white' }}>
               {t('footer.copy', { year: 2025, name: 'Lukáš Běhounek' })} {' '}
