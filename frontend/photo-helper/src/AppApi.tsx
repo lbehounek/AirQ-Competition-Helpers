@@ -63,6 +63,12 @@ function AppApi() {
     loading,
     error,
     backendAvailable,
+    // storage
+    isStorageLow,
+    storagePercentFree,
+    storageUsedBytes,
+    storageQuotaBytes,
+    updateStorageEstimate,
     addPhotosToSet,
     addPhotosToTurningPoint,
     removePhoto,
@@ -112,6 +118,16 @@ function AppApi() {
   const [circleMode, setCircleMode] = useState(false);
 
   const stats = getSessionStats();
+
+  // Humanize bytes
+  const formatBytes = (b?: number | null) => {
+    if (b == null) return 'unknown';
+    const units = ['B','KB','MB','GB','TB'];
+    let v = b;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(1)} ${units[i]}`;
+  };
 
   // Log relation ID to console (removed from UI)
   useEffect(() => {
@@ -402,6 +418,21 @@ function AppApi() {
 
           {/* White Content Section */}
           <Box sx={{ bgcolor: 'background.paper' }}>
+            {/* Storage warning (gated) */}
+            {isStorageLow && (
+              <Box sx={{ p: 1 }}>
+                <Alert severity="warning" sx={{ mb: 1 }}>
+                  {t('storage.warning', {
+                    percent: storagePercentFree != null ? storagePercentFree : '—',
+                    used: formatBytes(storageUsedBytes),
+                    quota: formatBytes(storageQuotaBytes)
+                  })}
+                  <Button size="small" variant="text" onClick={updateStorageEstimate} sx={{ ml: 2 }}>
+                    {t('storage.recheck')}
+                  </Button>
+                </Alert>
+              </Box>
+            )}
             {/* Photo Configuration */}
             <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
               <Box sx={{ 
