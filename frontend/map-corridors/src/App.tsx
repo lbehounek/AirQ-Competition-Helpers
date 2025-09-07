@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogTitle, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup } from '@mui/material'
+import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup } from '@mui/material'
 import { Download, Place } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -451,9 +451,8 @@ function App() {
       </Container>
     </Box>
     <Dialog open={isAnswerSheetOpen} onClose={() => setAnswerSheetOpen(false)} maxWidth="sm" fullWidth>
-      <DialogTitle>Answer Sheet</DialogTitle>
-      <DialogContent dividers>
-        <Table size="small">
+      <DialogContent dividers sx={{ p: 1 }}>
+        <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.75, px: 1.25, fontSize: 15 } }}>
           <TableHead>
             <TableRow>
               <TableCell>Photo label</TableCell>
