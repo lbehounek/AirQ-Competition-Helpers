@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Map Corridors",
+    "title": "Photo corridors",
     "selectKml": "Select KML/GPX",
     "exportKml": "Export KML",
     "toggleBase": {

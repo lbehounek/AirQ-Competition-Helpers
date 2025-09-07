@@ -41,7 +41,9 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
   const [locale, setLocaleState] = useState<Locale>(getInitialLocale)
   const [translations, setTranslations] = useState<Translation>(locales[locale])
 
-  useEffect(() => { setTranslations(locales[locale]) }, [locale])
+  useEffect(() => {
+    setTranslations(locales[locale])
+  }, [locale])
 
   const setLocale = (newLocale: Locale) => {
     const codes = SUPPORTED_LOCALES.map(l => l.code)

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 import { MapProviderView } from './map/MapProviderView'
@@ -20,6 +20,10 @@ import { LanguageSwitcher } from './components/LanguageSwitcher'
 
 function App() {
   const { t } = useI18n()
+  // Keep document title in sync with current language
+  useEffect(() => {
+    try { document.title = t('app.title') } catch {}
+  }, [t])
   const [provider] = useState<MapProviderId>('mapbox')
   const [baseStyle, setBaseStyle] = useState<'streets' | 'satellite'>('streets')
   const [geojson, setGeojson] = useState<GeoJSON | null>(null)

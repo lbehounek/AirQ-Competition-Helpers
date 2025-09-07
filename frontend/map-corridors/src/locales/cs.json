@@ -1,26 +1,26 @@
 {
   "app": {
-    "title": "Mapové koridory",
+    "title": "Foto koridory",
     "selectKml": "Vybrat KML/GPX",
     "exportKml": "Exportovat KML",
     "toggleBase": {
       "streets": "Mapa",
       "satellite": "Satelit"
     },
-    "dropHint": "Přetáhněte KML/GPX pro načtení",
-    "answerSheet": "Vygenerovat odpovědní arch",
-    "dragToPlace": "Přetáhnout pro umístění"
+    "dropHint": "Přetáhni KML pro načtení",
+    "answerSheet": "Vygenerovat answer sheet",
+    "dragToPlace": "Přetáhni pro umístění fotky"
   },
   "popup": {
     "name": "Název",
     "clear": "Vymazat",
     "delete": "Smazat",
-    "distance": "Vzdálenost od předchozí TP: {{nm}} NM",
-    "outside": "Mimo koridory",
-    "label": "Štítek"
+    "distance": "Vzdálenost od předchozího TP: {{nm}} NM",
+    "outside": "Mimo koridor",
+    "label": "Označení"
   },
   "sheet": {
-    "photoLabel": "Štítek fotky",
+    "photoLabel": "Označení fotky",
     "distance": "Vzdálenost",
     "fromTp": "Od TP"
   },
