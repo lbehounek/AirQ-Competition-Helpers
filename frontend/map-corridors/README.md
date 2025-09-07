@@ -35,3 +35,9 @@ Create a `.env` file (not committed) based on `.env.example`:
 
 - Corridor gates (e.g., “1 NM after TP”) are computed as distance along the track. The code walks the polyline segment-by-segment using geodesic lengths and places the gate at the exact accumulated distance.
 - Photo marker distances shown in the popup and in the Answer Sheet are straight-line (geodesic) distances from the corridor’s starting turning point to the photo location.
+
+### Turning point markers
+
+- Exact TP markers (black dots) are currently hidden by setting the circle radius to 0 for the `exact-points` layer.
+- To show them again, change the layer paint in `src/App.tsx`:
+  - Find the `exact-points` overlay and set `'circle-radius'` from `0` back to `4` (or desired size).
