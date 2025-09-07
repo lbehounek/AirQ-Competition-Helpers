@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogTitle, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, Switch } from '@mui/material'
+import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogTitle, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup } from '@mui/material'
 import { Download, Place } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -363,35 +363,25 @@ function App() {
           >
             Drag to place
           </Button>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography
-              variant="body2"
-              sx={{
-                cursor: 'pointer',
-                color: baseStyle === 'streets' ? 'primary.main' : 'text.secondary',
-                fontWeight: baseStyle === 'streets' ? 600 : 400
-              }}
-              onClick={() => setBaseStyle('streets')}
-            >
-              Streets
-            </Typography>
-            <Switch
-              checked={baseStyle === 'satellite'}
-              onChange={() => setBaseStyle(prev => prev === 'streets' ? 'satellite' : 'streets')}
-              inputProps={{ 'aria-label': 'Toggle base map' }}
-            />
-            <Typography
-              variant="body2"
-              sx={{
-                cursor: 'pointer',
-                color: baseStyle === 'satellite' ? 'primary.main' : 'text.secondary',
-                fontWeight: baseStyle === 'satellite' ? 600 : 400
-              }}
-              onClick={() => setBaseStyle('satellite')}
-            >
-              Satellite
-            </Typography>
-          </Box>
+          <ToggleButtonGroup
+            value={baseStyle}
+            exclusive
+            onChange={(_, val) => { if (val) setBaseStyle(val) }}
+            size="small"
+            color="primary"
+            aria-label="Base map style"
+            sx={{
+              borderRadius: 1.5,
+              '& .MuiToggleButtonGroup-grouped': {
+                borderRadius: 1.5,
+                px: 1.5,
+                '&:not(:first-of-type)': { borderLeft: '1px solid', borderColor: 'divider' }
+              }
+            }}
+          >
+            <ToggleButton value="streets" aria-label="Streets">Streets</ToggleButton>
+            <ToggleButton value="satellite" aria-label="Satellite">Satellite</ToggleButton>
+          </ToggleButtonGroup>
           {/* Provider selection removed to use Mapbox only */}
           <Button
             variant="outlined"
