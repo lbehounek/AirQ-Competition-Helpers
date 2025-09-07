@@ -190,6 +190,13 @@
       "tips": "💡 Tips: You can drag photos to reorder them, and use the shuffle button to randomize order!"
     }
   },
+  "storage": {
+    "warning": "Storage free: {{percent}}% · Used {{used}} / Quota {{quota}}",
+    "recheck": "Recheck"
+  },
+  "opfs": {
+    "warning": "Local persistence is not available in this browser. Work won’t be saved after reload. Recommended: Chrome, Firefox, or Edge."
+  },
   "errors": {
     "sessionNotFound": "Session not found",
     "uploadFailed": "Upload failed", 

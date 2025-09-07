@@ -394,7 +394,7 @@ function AppApi() {
       <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
         {showOPFSWarning && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Local persistence is not available in this browser. Work won’t be saved after reload. Recommended: Chrome, Firefox, or Edge.
+            {t('opfs.warning')}
           </Alert>
         )}
         {/* Unified Header and Controls */}
