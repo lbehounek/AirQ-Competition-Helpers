@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pomůcky na závody</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        color: #1A202C;
+        background: #F8FAFC;
+      }
+      header {
+        padding: 32px 16px 8px;
+        text-align: center;
+      }
+      header h1 { margin: 0 0 8px; font-size: 1.75rem; font-weight: 700; }
+      header p { margin: 0; color: #4A5568; }
+      .apps {
+        max-width: 720px;
+        margin: 24px auto 56px;
+        padding: 0 16px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+      .card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 16px 18px;
+        border-radius: 12px;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        text-decoration: none;
+        color: inherit;
+        transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+      }
+      .card:hover {
+        transform: translateY(-2px);
+        border-color: #BFDBFE;
+        box-shadow: 0 6px 16px rgba(2,136,209,0.12);
+      }
+      .card[aria-disabled="true"] {
+        opacity: 0.6;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+      .card[aria-disabled="true"]:hover {
+        transform: none;
+        border-color: #E2E8F0;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      }
+      .icon {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #1976D2 0%, #42A5F5 100%);
+        color: white;
+        overflow: hidden;
+      }
+      .icon img { width: 28px; height: 28px; display: block; }
+      .meta { display: grid; gap: 2px; }
+      .meta .title { font-weight: 700; }
+      .meta .desc { color: #4A5568; font-size: 0.9rem; }
+      footer {
+        text-align: center;
+        color: #4A5568;
+        padding: 24px 12px 40px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Pomocné nástroje</h1>
+      <p>Vyberte aplikaci</p>
+    </header>
+
+    <main class="apps">
+      <a class="card" href="./map-corridors/" aria-label="Otevřít Foto koridory">
+        <span class="icon">
+          <img src="./map-corridors/public/vite.svg" alt="Map Corridors" />
+        </span>
+        <span class="meta">
+          <span class="title">Foto koridory</span>
+          <span class="desc">Interaktivní vizualizace koridorů</span>
+        </span>
+      </a>
+
+      <a class="card" href="./photo-helper/" aria-label="Otevřít Foto pomocníka">
+        <span class="icon">
+          <img src="./photo-helper/public/vite.svg" alt="Photo Helper" />
+        </span>
+        <span class="meta">
+          <span class="title">Foto pomocník</span>
+          <span class="desc">Organizace a označování soutěžních fotek</span>
+        </span>
+      </a>
+
+      <div class="card" aria-disabled="true" aria-label="Generátor instrukcí (Práce probíhá)">
+        <span class="icon">
+          <img src="./photo-helper/public/vite.svg" alt="" />
+        </span>
+        <span class="meta">
+          <span class="title">Generátor instrukcí</span>
+          <span class="desc">Práce probíhá</span>
+        </span>
+      </div>
+    </main>
+
+    
+  </body>
+  </html>
+
+
