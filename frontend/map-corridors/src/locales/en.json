@@ -1,15 +1,15 @@
 {
   "app": {
     "title": "Photo corridors",
-    "selectKml": "Select KML/GPX",
+    "selectKml": "Select KML",
     "exportKml": "Export KML",
     "toggleBase": {
       "streets": "Streets",
       "satellite": "Satellite"
     },
-    "dropHint": "Drop KML/GPX to load",
-    "answerSheet": "Generate Answer Sheet",
-    "dragToPlace": "Drag to place"
+    "dropHint": "Drop KML to load",
+    "answerSheet": "Show Answer Sheet",
+    "dragToPlace": "Drag to place photo marker"
   },
   "popup": {
     "name": "Name",
