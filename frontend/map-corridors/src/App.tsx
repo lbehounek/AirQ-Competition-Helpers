@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Container, FormControl, InputLabel, MenuItem, Select, Toolbar, Typography, Dialog, DialogTitle, DialogContent, Table, TableHead, TableRow, TableCell, TableBody } from '@mui/material'
+import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogTitle, DialogContent, Table, TableHead, TableRow, TableCell, TableBody } from '@mui/material'
 import { Download, Place } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -363,18 +363,14 @@ function App() {
           >
             Drag to place
           </Button>
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel id="base-style-label">Base</InputLabel>
-            <Select
-              labelId="base-style-label"
-              value={baseStyle}
-              label="Base"
-              onChange={(e) => setBaseStyle(e.target.value as any)}
-            >
-              <MenuItem value="streets">Streets</MenuItem>
-              <MenuItem value="satellite">Satellite</MenuItem>
-            </Select>
-          </FormControl>
+          <Button
+            variant="outlined"
+            color="inherit"
+            onClick={() => setBaseStyle(prev => prev === 'streets' ? 'satellite' : 'streets')}
+            title="Toggle base map"
+          >
+            Base: {baseStyle === 'streets' ? 'Streets' : 'Satellite'}
+          </Button>
           {/* Provider selection removed to use Mapbox only */}
           <Button
             variant="outlined"
