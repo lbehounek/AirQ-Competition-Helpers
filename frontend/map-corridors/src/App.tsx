@@ -11,8 +11,8 @@ import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
 import { AppBar, Box, Button, Container, FormControl, InputLabel, MenuItem, Select, Toolbar, Typography } from '@mui/material'
 import { Download } from '@mui/icons-material'
-import { geoJSONToKML, downloadKML } from './utils/exportKML'
-import { buildContinuousTrackWithSources } from './corridors/segments'
+import { downloadKML } from './utils/exportKML'
+import { appendFeaturesToKML } from './utils/kmlMerge'
 
 function App() {
   const [provider, setProvider] = useState<MapProviderId>('mapbox')
@@ -27,12 +27,20 @@ function App() {
   const [rightSegments, setRightSegments] = useState<GeoJSON | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [originalKmlText, setOriginalKmlText] = useState<string | null>(null)
 
   const providerConfig = useMemo(() => mapProviders[provider], [provider])
 
   const onFiles = useCallback(async (files: File[]) => {
     const file = files[0]
     if (!file) return
+    // Store original KML text for export
+    const fileText = await file.text()
+    if (file.name.toLowerCase().endsWith('.kml')) {
+      setOriginalKmlText(fileText)
+    } else {
+      setOriginalKmlText(null)
+    }
     const { parseFileToGeoJSON } = await import('./parsers/detect')
     const parsed = await parseFileToGeoJSON(file)
     setGeojson(parsed)
@@ -97,9 +105,12 @@ function App() {
   }, [onFiles])
 
   const handleExportKML = useCallback(() => {
-    // Combine all corridor segments and gates into one FeatureCollection
+    if (!originalKmlText) {
+      alert('Original KML file not available for export')
+      return
+    }
+    // Build only corridors, gates, and exact points as features to append
     const features: any[] = []
-    
     if (leftSegments && leftSegments.type === 'FeatureCollection') {
       features.push(...leftSegments.features)
     }
@@ -109,36 +120,18 @@ function App() {
     if (gates && gates.type === 'FeatureCollection') {
       features.push(...gates.features)
     }
-    // Include exact waypoint labels as Points
     if (exactPoints && exactPoints.type === 'FeatureCollection') {
       features.push(...exactPoints.features)
     }
-    // Include original main track as a single LineString (yellow in KML)
-    if (geojson) {
-      try {
-        const { track } = buildContinuousTrackWithSources(geojson as any)
-        if (track && track.length >= 2) {
-          features.push({
-            type: 'Feature',
-            properties: { role: 'original-track' },
-            geometry: { type: 'LineString', coordinates: track }
-          })
-        }
-      } catch {
-        // ignore export track failure
-      }
-    }
-    
     if (features.length > 0) {
       const combinedGeoJSON = {
         type: 'FeatureCollection' as const,
         features
       }
-      
-      const kmlContent = geoJSONToKML(combinedGeoJSON, 'corridors_export')
-      downloadKML(kmlContent, 'corridors_export.kml')
+      const mergedKml = appendFeaturesToKML(originalKmlText, combinedGeoJSON, 'corridors_export')
+      downloadKML(mergedKml, 'corridors_export.kml')
     }
-  }, [leftSegments, rightSegments, gates])
+  }, [leftSegments, rightSegments, gates, exactPoints, originalKmlText])
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
