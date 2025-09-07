@@ -49,6 +49,10 @@ export function usePhotoSessionOPFS() {
 
   useEffect(() => () => revokeAllURLs(), []);
 
+  const getTrackTitles = useCallback(() => {
+    return { set1: 'SP - TPX', set2: 'TPX - FP' };
+  }, []);
+
   useEffect(() => {
     (async () => {
       setOpfsAvailable(null);
@@ -95,11 +99,24 @@ export function usePhotoSessionOPFS() {
           // Attach per-mode sets to in-memory state
           (withUrls as any).setsTrack = sAny.setsTrack;
           (withUrls as any).setsTurning = sAny.setsTurning;
+          // Ensure track bucket has default titles
+          if (!((withUrls as any).setsTrack?.set1?.title) || !((withUrls as any).setsTrack?.set2?.title)) {
+            const titles = getTrackTitles();
+            (withUrls as any).setsTrack.set1.title = (withUrls as any).setsTrack.set1.title || titles.set1;
+            (withUrls as any).setsTrack.set2.title = (withUrls as any).setsTrack.set2.title || titles.set2;
+          }
           setSession(withUrls);
         } else {
           const fresh = defaultSession(id);
           // Initialize per-mode stores
-          (fresh as any).setsTrack = fresh.sets;
+          const trackTitles = getTrackTitles();
+          // Set defaults for track titles
+          (fresh as any).sets = {
+            set1: { title: trackTitles.set1, photos: [] },
+            set2: { title: trackTitles.set2, photos: [] },
+          };
+          (fresh as any).setsTrack = (fresh as any).sets;
+          // Turning point titles remain empty by default
           (fresh as any).setsTurning = { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } };
           await writeJSON(dir, 'session.json', fresh);
           setSession(fresh);
@@ -269,12 +286,41 @@ export function usePhotoSessionOPFS() {
 
   const updateSetTitle = useCallback(async (setKey: 'set1' | 'set2', title: string) => {
     if (!session) return;
-    const next: ApiPhotoSession = {
+    // Apply title
+    let next: ApiPhotoSession = {
       ...session,
       version: session.version + 1,
       updatedAt: new Date().toISOString(),
       sets: { ...session.sets, [setKey]: { ...session.sets[setKey], title } },
     };
+
+    // In turning point mode, sync the other set's title when pattern matches
+    if (session.mode === 'turningpoint') {
+      const otherKey = setKey === 'set1' ? 'set2' : 'set1';
+      const spTpMatch = title.match(/^\s*SP\s*-\s*TP(\d+)\s*$/i); // SP - TPX
+      const tpFpMatch = title.match(/^\s*TP(\d+)\s*-\s*FP\s*$/i); // TPX - FP
+      if (spTpMatch) {
+        const num = spTpMatch[1];
+        next = {
+          ...next,
+          sets: {
+            ...next.sets,
+            [otherKey]: { ...next.sets[otherKey], title: `TP${num} - FP` }
+          }
+        };
+      } else if (tpFpMatch) {
+        const num = tpFpMatch[1];
+        next = {
+          ...next,
+          sets: {
+            ...next.sets,
+            [otherKey]: { ...next.sets[otherKey], title: `SP - TP${num}` }
+          }
+        };
+      }
+    }
+
+    // Mirror active sets into per-mode bucket
     (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
   }, [session, persistSession]);
@@ -423,6 +469,14 @@ export function usePhotoSessionOPFS() {
       }
       const id = session?.id || loadOrCreateSessionId();
       const fresh = defaultSession(id);
+      // Initialize TRACK titles on reset
+      const trackTitles = getTrackTitles();
+      (fresh as any).sets = {
+        set1: { title: trackTitles.set1, photos: [] },
+        set2: { title: trackTitles.set2, photos: [] },
+      };
+      (fresh as any).setsTrack = (fresh as any).sets;
+      (fresh as any).setsTurning = { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } };
       await persistSession(fresh);
       setError(null);
       // Revoke all URLs
