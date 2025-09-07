@@ -2,7 +2,6 @@
 photos/
 tmp/
 
-*.kml
 
 # Dependencies
 node_modules/
