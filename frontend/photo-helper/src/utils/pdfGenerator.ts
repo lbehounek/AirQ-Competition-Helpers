@@ -1,14 +1,91 @@
-import pdfMake from 'pdfmake/build/pdfmake';
-import pdfFonts from 'pdfmake/build/vfs_fonts';
+import React from 'react';
+import { Document, Page, Image, pdf, StyleSheet } from '@react-pdf/renderer';
+import type { ApiPhotoSet } from '../types/api';
 
-import type { ApiPhoto, ApiPhotoSet } from '../types/api';
+// Polyfill Buffer for @react-pdf/renderer
+import { Buffer } from 'buffer';
+if (typeof globalThis.Buffer === 'undefined') {
+  globalThis.Buffer = Buffer;
+}
 
-// Wire pdfMake virtual file system
-// The vfs_fonts file exports the VFS object directly
-(pdfMake as any).vfs = pdfFonts;
+// Brilliant workaround: Render text as image to bypass @react-pdf/renderer Unicode issues
+
+interface TextImageResult {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+const createTextImage = (text: string, isRotated: boolean = true): TextImageResult | null => {
+  if (!text.trim()) return null;
+  
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    // High-resolution rendering constants
+    const PIXEL_RATIO = 3; // 3x resolution for crisp PDF text
+    const FONT_SIZE = 14;
+    const FONT_FAMILY = 'Arial, sans-serif'; // Excellent Unicode support
+    const HORIZONTAL_PADDING = 40;
+    const VERTICAL_PADDING = 12;
+    const MIN_ROTATED_HEIGHT = 400; // Minimum height for rotated text
+    
+    // Configure font for text measurement
+    ctx.font = `bold ${FONT_SIZE}px ${FONT_FAMILY}`;
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000000';
+    
+    // Measure text dimensions
+    const metrics = ctx.measureText(text);
+    const textWidth = Math.ceil(metrics.width);
+    const textHeight = Math.ceil(FONT_SIZE * 1.4);
+    
+    // Calculate logical canvas dimensions
+    const logicalWidth = isRotated 
+      ? textHeight + VERTICAL_PADDING
+      : textWidth + HORIZONTAL_PADDING;
+    
+    const logicalHeight = isRotated
+      ? Math.max(textWidth + HORIZONTAL_PADDING, MIN_ROTATED_HEIGHT)
+      : textHeight + VERTICAL_PADDING;
+    
+    // Set high-resolution canvas size
+    canvas.width = logicalWidth * PIXEL_RATIO;
+    canvas.height = logicalHeight * PIXEL_RATIO;
+    ctx.scale(PIXEL_RATIO, PIXEL_RATIO);
+    
+    // Configure high-quality text rendering
+    ctx.font = `bold ${FONT_SIZE}px ${FONT_FAMILY}`;
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    // Draw text with rotation if needed
+    if (isRotated) {
+      ctx.translate(logicalWidth / 2, logicalHeight / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(text, 0, 0);
+    } else {
+      ctx.fillText(text, logicalWidth / 2, logicalHeight / 2);
+    }
+    
+    return {
+      dataUrl: canvas.toDataURL('image/png', 1.0),
+      width: logicalWidth,
+      height: logicalHeight
+    };
+  } catch (error) {
+    console.error('Failed to create text image:', error);
+    return null;
+  }
+};
 
 /**
- * Generate PDF using pdfMake with proper Czech character support
+ * Clean PDF generation with @react-pdf/renderer
  */
 export const generatePDF = async (
   set1: ApiPhotoSet,
@@ -19,22 +96,19 @@ export const generatePDF = async (
   layoutMode: 'landscape' | 'portrait' = 'landscape'
 ): Promise<void> => {
   
-  // Helper function to get canvas data URL for a photo
+  // Get canvas data URL for a photo
   const getPhotoDataUrl = (photoId: string, setKey: 'set1' | 'set2'): string | null => {
     try {
-      // Find the canvas element using the correct data attributes
       const canvasElement = document.querySelector(`canvas[data-photo-id="${photoId}"][data-set-key="${setKey}"]`) as HTMLCanvasElement;
       if (canvasElement) {
         return canvasElement.toDataURL('image/jpeg', 0.9);
       }
       
-      // Fallback: try just photo-id
       const fallbackCanvas = document.querySelector(`canvas[data-photo-id="${photoId}"]`) as HTMLCanvasElement;
       if (fallbackCanvas) {
         return fallbackCanvas.toDataURL('image/jpeg', 0.9);
       }
       
-      console.warn(`Canvas not found for photo ${photoId} in set ${setKey}`);
       return null;
     } catch (error) {
       console.warn(`Failed to get canvas data for photo ${photoId}:`, error);
@@ -42,185 +116,225 @@ export const generatePDF = async (
     }
   };
 
-  // Create photo grid for a set - Use absolute positioning instead of table layout
-  const createPhotoGrid = (photoSet: PhotoSet, setKey: 'set1' | 'set2') => {
-    const content = [];
-    
-    let photoWidth: number;
-    let photoHeight: number;
-    let startX: number;
-    let startY: number;
-    let gapX: number;
-    let gapY: number;
-    let cols: number;
-    let rows: number;
-    
+  // Clean layout calculations (portrait accepts dynamic gutter width)
+  const calculateLayout = (portraitGutterWidth: number = 15) => {
     if (layoutMode === 'portrait') {
-      // Portrait mode: 2x5 grid - Maximized for A4 (595 x 842 points)
-      // Page dimensions: 595 width x 842 height
-      // Usable area with 15pt margins: 565 x 812 points
-      
-      // Maximize photo size for 2 columns
+      // A4 Portrait: 595 x 842 points
       const pageWidth = 595;
       const pageHeight = 842;
-      const margin = 10;
-      const headerSpace = 30;
-      const minGapX = 10; // Minimum gap between columns
-      const minGapY = 8; // Minimum gap between rows
+      const margin = 5;
+      const textWidth = portraitGutterWidth; // Width for rotated text along left edge (measured)
+      const gap = 2.83; // 1mm in points
       
-      // Calculate maximum photo width
-      const availableWidth = pageWidth - (2 * margin);
-      photoWidth = Math.floor((availableWidth - minGapX) / 2);
-      photoHeight = photoWidth / aspectRatio;
+      // Available space for photos
+      const availableWidth = pageWidth - (2 * margin) - textWidth;
+      const availableHeight = pageHeight - (2 * margin);
       
-      // Check if height fits and adjust if necessary
-      const neededHeight = (photoHeight * 5) + (minGapY * 4) + headerSpace;
-      if (neededHeight > pageHeight - (2 * margin)) {
-        // Height doesn't fit, recalculate based on height constraint
-        const availableHeight = pageHeight - (2 * margin) - headerSpace;
-        photoHeight = Math.floor((availableHeight - (minGapY * 4)) / 5);
-        photoWidth = photoHeight * aspectRatio;
-      }
+      // Calculate photo size for 2x5 grid
+      const photoWidth = Math.floor((availableWidth - gap) / 2);
+      const photoHeight = Math.floor((availableHeight - (4 * gap)) / 5);
       
-      // Center the grid on the page
-      const totalWidth = (photoWidth * 2) + minGapX;
-      startX = (pageWidth - totalWidth) / 2;
-      startY = headerSpace + margin;
-      gapX = minGapX;
-      gapY = minGapY;
+      // Ensure aspect ratio
+      const correctedHeight = Math.min(photoHeight, photoWidth / aspectRatio);
+      const correctedWidth = correctedHeight * aspectRatio;
       
-      cols = 2;
-      rows = 5;
+      // Center the grid
+      const totalWidth = (correctedWidth * 2) + gap;
+      const totalHeight = (correctedHeight * 5) + (gap * 4);
+      
+      const startX = textWidth + margin + (availableWidth - totalWidth) / 2;
+      const startY = margin + (availableHeight - totalHeight) / 2;
+      
+      return {
+        photoWidth: correctedWidth,
+        photoHeight: correctedHeight,
+        startX,
+        startY,
+        gap,
+        cols: 2,
+        rows: 5,
+        textX: 5, // Text position at left edge
+        textY: pageHeight / 2 // Center vertically
+      };
     } else {
-      // Landscape mode: 3x3 grid - Maximized for A4 (842 x 595 points)
-      // Page dimensions: 842 width x 595 height
-      // Usable area with 15pt margins: 812 x 565 points
-      
-      // Maximize photo size for 3 columns
+      // A4 Landscape: 842 x 595 points  
       const pageWidth = 842;
       const pageHeight = 595;
       const margin = 10;
-      const headerSpace = 30;
-      const minGapX = 8; // Minimum gap between columns
-      const minGapY = 8; // Minimum gap between rows
+      const headerHeight = 25;
+      const gap = 2.83; // 1mm in points
       
-      // Calculate maximum photo width
+      // Available space for photos
       const availableWidth = pageWidth - (2 * margin);
-      photoWidth = Math.floor((availableWidth - (minGapX * 2)) / 3);
-      photoHeight = photoWidth / aspectRatio;
+      const availableHeight = pageHeight - (2 * margin) - headerHeight;
       
-      // Check if height fits and adjust if necessary
-      const neededHeight = (photoHeight * 3) + (minGapY * 2) + headerSpace;
-      if (neededHeight > pageHeight - (2 * margin)) {
-        // Height doesn't fit, recalculate based on height constraint
-        const availableHeight = pageHeight - (2 * margin) - headerSpace;
-        photoHeight = Math.floor((availableHeight - (minGapY * 2)) / 3);
-        photoWidth = photoHeight * aspectRatio;
+      // Calculate photo size for 3x3 grid
+      const photoWidth = Math.floor((availableWidth - (2 * gap)) / 3);
+      const photoHeight = Math.floor((availableHeight - (2 * gap)) / 3);
+      
+      // Ensure aspect ratio
+      const correctedHeight = Math.min(photoHeight, photoWidth / aspectRatio);
+      const correctedWidth = correctedHeight * aspectRatio;
+      
+      // Center the grid
+      const totalWidth = (correctedWidth * 3) + (gap * 2);
+      const startX = margin + (availableWidth - totalWidth) / 2;
+      const startY = margin + headerHeight;
+      
+      return {
+        photoWidth: correctedWidth,
+        photoHeight: correctedHeight,
+        startX,
+        startY,
+        gap,
+        cols: 3,
+        rows: 3,
+        headerY: margin + 5
+      };
+    }
+  };
+
+
+  // Simplified styles - no more text styling needed!
+  const styles = StyleSheet.create({
+    page: {
+      backgroundColor: '#ffffff',
+    }
+  });
+
+  // Create a single page (compute a local layout per page)
+  const createPage = (photoSet: ApiPhotoSet, setTitle: string, pageKey: string) => {
+    const elements: any[] = [];
+    let localLayout = calculateLayout(15);
+    
+    // Add header/title
+    if (layoutMode === 'portrait') {
+      // Create rotated text as image - perfect Czech character support!
+      const headerText = `${competitionName || ''} • ${setTitle}`;
+      const headerImage = createTextImage(headerText, true);
+      if (headerImage) {
+        // Recalculate layout with actual measured gutter width
+        const measuredGutter = Math.max(15, Math.ceil(headerImage.width));
+        localLayout = calculateLayout(measuredGutter);
+        // Calculate positioning to center along left edge
+        const pageHeight = 842; // A4 portrait height
+        const topPosition = (pageHeight - headerImage.height) / 2; // Center vertically
+        
+        elements.push(
+          React.createElement(Image, {
+            key: `header-${pageKey}`,
+            src: headerImage.dataUrl,
+            style: {
+              position: 'absolute',
+              left: 2, // Close to left edge
+              top: topPosition,
+              width: headerImage.width, // Use actual canvas width
+              height: headerImage.height, // Use actual canvas height
+            }
+          })
+        );
+      }
+    } else {
+      // Horizontal header as images
+      const competitionImage = createTextImage(competitionName || '', false);
+      const setTitleImage = createTextImage(setTitle, false);
+      
+      if (competitionImage) {
+        elements.push(
+          React.createElement(Image, {
+            key: `comp-name-${pageKey}`,
+            src: competitionImage.dataUrl,
+            style: {
+              position: 'absolute',
+              left: 10,
+              top: localLayout.headerY || 10,
+              width: competitionImage.width,
+              height: competitionImage.height,
+            }
+          })
+        );
       }
       
-      // Center the grid on the page
-      const totalWidth = (photoWidth * 3) + (minGapX * 2);
-      startX = (pageWidth - totalWidth) / 2;
-      startY = headerSpace + margin;
-      gapX = minGapX;
-      gapY = minGapY;
-      
-      cols = 3;
-      rows = 3;
+      if (setTitleImage) {
+        elements.push(
+          React.createElement(Image, {
+            key: `set-title-${pageKey}`,
+            src: setTitleImage.dataUrl,
+            style: {
+              position: 'absolute',
+              right: 10,
+              top: localLayout.headerY || 10,
+              width: setTitleImage.width,
+              height: setTitleImage.height,
+            }
+          })
+        );
+      }
     }
     
-    // Create grid with absolute positioning
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const index = row * cols + col;
+    // Add photos
+    for (let row = 0; row < localLayout.rows; row++) {
+      for (let col = 0; col < localLayout.cols; col++) {
+        const index = row * localLayout.cols + col;
         const photo = photoSet.photos[index];
         
-        const x = startX + col * (photoWidth + gapX);
-        const y = startY + row * (photoHeight + gapY);
-        
         if (photo) {
-          const dataUrl = getPhotoDataUrl(photo.id, setKey);
+          const dataUrl = getPhotoDataUrl(photo.id, pageKey === 'set1' ? 'set1' : 'set2');
           if (dataUrl) {
-            // FORCE MASSIVE PHOTO WITH ABSOLUTE POSITIONING
-            content.push({
-              image: dataUrl,
-              width: photoWidth, // FORCE WIDTH IN POINTS
-              height: photoHeight, // FORCE HEIGHT IN POINTS
-              absolutePosition: { x: x, y: y }
-            });
-          } else {
-            // Placeholder text
-            content.push({
-              text: photo.label || '',
-              fontSize: 24,
-              color: '#333333',
-              absolutePosition: { x: x + photoWidth/2, y: y + photoHeight/2 },
-              alignment: 'center'
-            });
+            const x = localLayout.startX + col * (localLayout.photoWidth + localLayout.gap);
+            const y = localLayout.startY + row * (localLayout.photoHeight + localLayout.gap);
+            
+            elements.push(
+              React.createElement(Image, {
+                key: `photo-${pageKey}-${index}`,
+                src: dataUrl,
+                style: {
+                  position: 'absolute',
+                  left: x,
+                  top: y,
+                  width: localLayout.photoWidth,
+                  height: localLayout.photoHeight,
+                }
+              })
+            );
           }
         }
       }
     }
     
-    return content;
+    return React.createElement(Page, {
+      key: pageKey,
+      size: 'A4',
+      orientation: layoutMode,
+      style: styles.page
+    }, elements);
   };
 
-  // Create header with competition name and set title
-  const createHeader = (setTitle: string) => {
-    return {
-      columns: [
-        {
-          text: competitionName || '',
-          style: 'header',
-          alignment: 'left',
-          margin: [10, 0, 0, 0] // Add left padding
-        },
-        {
-          text: setTitle,
-          style: 'header',
-          alignment: 'right',
-          margin: [0, 0, 10, 0] // Add right padding
-        }
-      ],
-      margin: [0, 5, 0, 10] // Compact header to maximize photo space
-    };
-  };
-
-  // Document definition
-  const docDefinition = {
-    pageSize: 'A4',
-    pageOrientation: layoutMode as ('landscape' | 'portrait'),
-    pageMargins: [10, 10, 10, 10], // Very minimal margins to maximize photo area
-    content: [] as any[],
-    styles: {
-      header: {
-        fontSize: 12,
-        bold: true,
-        color: '#000000'
-      }
-    }
-  };
-
-  // Add Set 1 page
+  // Create document
+  const pages = [];
+  
   if (set1.photos.length > 0) {
-    docDefinition.content.push(createHeader(set1.title));
-    docDefinition.content.push(...createPhotoGrid(set1, 'set1'));
+    pages.push(createPage(set1, set1.title, 'set1'));
   }
-
-  // Add Set 2 page
+  
   if (set2.photos.length > 0) {
-    if (docDefinition.content.length > 0) {
-      docDefinition.content.push({ text: '', pageBreak: 'before' });
-    }
-    docDefinition.content.push(createHeader(set2.title));
-    docDefinition.content.push(...createPhotoGrid(set2, 'set2'));
+    pages.push(createPage(set2, set2.title, 'set2'));
   }
+  
+  const pdfDocument = React.createElement(Document, {}, pages);
 
-  // Generate and download PDF
+  // Generate and download
   try {
-    const pdfDocGenerator = pdfMake.createPdf(docDefinition);
+    const blob = await pdf(pdfDocument).toBlob();
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-    pdfDocGenerator.download(`navigation-photos-${timestamp}.pdf`);
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `navigation-photos-${timestamp}.pdf`;
+    link.click();
+    // Defer revocation to avoid aborting download (e.g., Safari)
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (error) {
     console.error('PDF generation failed:', error);
     throw error;

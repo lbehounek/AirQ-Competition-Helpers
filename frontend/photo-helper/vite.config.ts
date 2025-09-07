@@ -14,4 +14,15 @@ export default defineConfig({
       },
     },
   },
+  define: {
+    global: 'globalThis',
+  },
+  resolve: {
+    alias: {
+      buffer: 'buffer', // Required by @react-pdf/renderer internal usage
+    },
+  },
+  optimizeDeps: {
+    include: ['buffer'],
+  },
 })

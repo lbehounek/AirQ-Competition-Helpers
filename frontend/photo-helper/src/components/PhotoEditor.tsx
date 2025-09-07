@@ -11,6 +11,7 @@ import {
   drawLabel,
   getCanvasMousePosition,
   constrainPosition,
+  constrainPositionForViewport,
   CANVAS_SETTINGS
 } from '../utils/canvasUtils';
 
@@ -160,10 +161,10 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       y: photo.canvasState.position.y + deltaY
     };
 
-    // Constrain position to keep image within bounds
-    const constrainedPosition = constrainPosition(
+    // Constrain position using original image dimensions for viewport-style panning
+    const constrainedPosition = constrainPositionForViewport(
       newPosition,
-      { width: croppedImage.width, height: croppedImage.height },
+      { width: photo.originalImage!.width, height: photo.originalImage!.height },
       canvasSize,
       photo.canvasState.scale
     );
@@ -201,9 +202,9 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
       y: photo.canvasState.position.y - centerOffsetY
     };
 
-    const constrainedPosition = constrainPosition(
+    const constrainedPosition = constrainPositionForViewport(
       newPosition,
-      { width: croppedImage.width, height: croppedImage.height },
+      { width: photo.originalImage!.width, height: photo.originalImage!.height },
       canvasSize,
       clampedScale
     );
