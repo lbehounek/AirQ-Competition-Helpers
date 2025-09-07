@@ -60,6 +60,10 @@ function App() {
   }, [])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
+    const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
+    const isMarkerDrag = types.includes('application/x-photo-marker')
+    const isFileDrag = (types.includes('Files') || types.includes('public.file-url')) && !isMarkerDrag
+    if (!isFileDrag) return
     e.preventDefault()
     e.stopPropagation()
     if (!isDragOver) setIsDragOver(true)
@@ -72,6 +76,10 @@ function App() {
   }, [])
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
+    const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
+    const isMarkerDrag = types.includes('application/x-photo-marker')
+    const isFileDrag = (types.includes('Files') || types.includes('public.file-url')) && !isMarkerDrag
+    if (!isFileDrag) return
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(false)
