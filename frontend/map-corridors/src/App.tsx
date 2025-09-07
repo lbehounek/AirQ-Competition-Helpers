@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogTitle, DialogContent, Table, TableHead, TableRow, TableCell, TableBody } from '@mui/material'
+import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogTitle, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, Switch } from '@mui/material'
 import { Download, Place } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -363,14 +363,35 @@ function App() {
           >
             Drag to place
           </Button>
-          <Button
-            variant="outlined"
-            color="inherit"
-            onClick={() => setBaseStyle(prev => prev === 'streets' ? 'satellite' : 'streets')}
-            title="Toggle base map"
-          >
-            Base: {baseStyle === 'streets' ? 'Streets' : 'Satellite'}
-          </Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                cursor: 'pointer',
+                color: baseStyle === 'streets' ? 'primary.main' : 'text.secondary',
+                fontWeight: baseStyle === 'streets' ? 600 : 400
+              }}
+              onClick={() => setBaseStyle('streets')}
+            >
+              Streets
+            </Typography>
+            <Switch
+              checked={baseStyle === 'satellite'}
+              onChange={() => setBaseStyle(prev => prev === 'streets' ? 'satellite' : 'streets')}
+              inputProps={{ 'aria-label': 'Toggle base map' }}
+            />
+            <Typography
+              variant="body2"
+              sx={{
+                cursor: 'pointer',
+                color: baseStyle === 'satellite' ? 'primary.main' : 'text.secondary',
+                fontWeight: baseStyle === 'satellite' ? 600 : 400
+              }}
+              onClick={() => setBaseStyle('satellite')}
+            >
+              Satellite
+            </Typography>
+          </Box>
           {/* Provider selection removed to use Mapbox only */}
           <Button
             variant="outlined"
