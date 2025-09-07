@@ -159,6 +159,7 @@ export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
         {...getRootProps()}
         elevation={isDragActive ? 4 : 1}
         sx={{
+          width: '100%',
           border: 2,
           borderStyle: 'dashed',
           borderRadius: 2,

@@ -189,6 +189,17 @@
       "tips": "💡 Tipy: Můžete přetahovat fotografie pro změnu pořadí a použít tlačítko zamíchat pro náhodné pořadí!"
     }
   },
+  "storage": {
+    "warning": "Volné místo: {{percent}}% · Využito {{used}} / Kvóta {{quota}}",
+    "recheck": "Znovu zkontrolovat"
+  },
+  "opfs": {
+    "warning": "Tento prohlížeč nepodporuje trvalé uložení dat (OPFS). Po obnovení stránky se vaše změny nezachovají. Pro plnou funkčnost použijte Chrome, Firefox nebo Edge."
+  },
+  "footer": {
+    "copy": "Vytvořil {{name}} v roce {{year}} pro leteckou soutěžní komunitu.",
+    "cta": "Kontaktujte mě."
+  },
   "errors": {
     "sessionNotFound": "Relace nenalezena",
     "uploadFailed": "Nahrávání selhalo", 

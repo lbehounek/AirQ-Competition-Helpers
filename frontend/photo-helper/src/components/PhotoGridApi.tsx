@@ -61,7 +61,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   useEffect(() => {
     if (photoSet.photos.length > 0) {
       const cache = getImageCache();
-      cache.preloadImages(photoSet.photos).catch(err => {
+      cache.preloadImages(photoSet.photos as any).catch(err => {
         console.error('Failed to preload images:', err);
       });
     }
@@ -169,7 +169,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
           // Removed outer grid border (redundant)
           border: 'none',
           boxShadow: 0,
-          // Expand to fill parent width in all cases
+          // Expand to fill parent width in all cases; parent handles xl constraint
           maxWidth: '100%',
           mx: 'unset'
         }}>

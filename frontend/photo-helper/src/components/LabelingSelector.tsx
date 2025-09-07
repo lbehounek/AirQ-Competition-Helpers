@@ -37,7 +37,7 @@ export const LabelingSelector: React.FC<LabelingSelectorProps> = ({ compact = fa
 
   if (compact) {
     return (
-      <ButtonGroup size="small" variant="outlined">
+      <ButtonGroup size="small" variant="outlined" sx={{ flexWrap: 'nowrap' }}>
         {LABELING_OPTIONS.map((option) => (
           <Button
             key={option.id}
@@ -45,10 +45,11 @@ export const LabelingSelector: React.FC<LabelingSelectorProps> = ({ compact = fa
             variant={currentLabeling.id === option.id ? 'contained' : 'outlined'}
             startIcon={getLabelingIcon(option.id)}
             sx={{ 
-              fontSize: '0.75rem',
-              px: 1.5,
-              py: 0.5,
-              minWidth: 'auto'
+              fontSize: '0.72rem',
+              px: 1.25,
+              py: 0.4,
+              minWidth: 'auto',
+              whiteSpace: 'nowrap'
             }}
           >
             {t(`photoLabels.types.${option.id}.name`)}

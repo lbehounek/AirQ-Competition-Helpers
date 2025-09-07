@@ -29,7 +29,7 @@ This document captures what we implemented to replace the backend with the brows
 - `frontend/photo-helper/src/AppApi.tsx`
   - Switched usage from `usePhotoSessionApi` (backend) to `usePhotoSessionOPFS` (OPFS).
 
-- `dev.sh`
+- `photohelper.sh`
   - Simplified to start frontend only (backend removed).
 
 ### Removed
@@ -116,10 +116,10 @@ Notes
 
 3) Remove backend layer
    - Delete `src/services/api.ts` and `src/hooks/usePhotoSessionApi.ts`.
-   - Update `dev.sh` to only run the frontend.
+   - Update `photohelper.sh` to only run the frontend.
 
 4) Build & run
-   - Dev: `./dev.sh` (starts Vite dev server).
+   - Dev: `./photohelper.sh` (starts Vite dev server).
    - Prod build: `./build.sh` (outputs to `public_html/`).
 
 ---
@@ -197,5 +197,4 @@ Why this split:
 Operational notes:
 - Keep the code paths modular so the desktop build points to the backend API, while the online build points to the frontend‑only behavior.
 - Document in the UI (help/about) that the online version is per‑session only; optionally, enable storing small **config‑only** data in `localStorage` with a clear toggle.
-
 

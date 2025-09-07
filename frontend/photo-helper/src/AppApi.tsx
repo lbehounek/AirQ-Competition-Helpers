@@ -16,7 +16,8 @@ import {
   Card,
   CardContent,
   useMediaQuery,
-  useTheme
+  useTheme,
+  Link
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -29,6 +30,7 @@ import {
   Shuffle
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
+import { usePhotoSessionOPFS } from './hooks/usePhotoSessionOPFS';
 import { DropZone } from './components/DropZone';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
@@ -52,6 +54,9 @@ import type { ApiPhoto, ApiPhotoSet } from './types/api';
 // Configurable delay before showing loading text (in milliseconds)
 const LOADING_TEXT_DELAY = 3000; // 3 seconds
 
+const STORAGE_MODE = (import.meta as any).env?.VITE_STORAGE_MODE ?? 'opfs';
+const useSessionHook = STORAGE_MODE === 'backend' ? usePhotoSessionApi : usePhotoSessionOPFS;
+
 function AppApi() {
   const {
     session,
@@ -59,6 +64,12 @@ function AppApi() {
     loading,
     error,
     backendAvailable,
+    // storage
+    isStorageLow,
+    storagePercentFree,
+    storageUsedBytes,
+    storageQuotaBytes,
+    updateStorageEstimate,
     addPhotosToSet,
     addPhotosToTurningPoint,
     removePhoto,
@@ -74,7 +85,7 @@ function AppApi() {
     checkBackendHealth,
     refreshSession,
     getSessionStats
-  } = usePhotoSessionApi();
+  } = useSessionHook() as any;
   
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
@@ -108,6 +119,17 @@ function AppApi() {
   const [circleMode, setCircleMode] = useState(false);
 
   const stats = getSessionStats();
+  const SHOW_WELCOME_INSTRUCTIONS = false;
+
+  // Humanize bytes
+  const formatBytes = (b?: number | null) => {
+    if (b == null) return 'unknown';
+    const units = ['B','KB','MB','GB','TB'];
+    let v = b;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(1)} ${units[i]}`;
+  };
 
   // Log relation ID to console (removed from UI)
   useEffect(() => {
@@ -317,7 +339,7 @@ function AppApi() {
     });
   };
 
-  // Backend checking (loading state)
+  // OPFS/back-end availability check (loading state)
   if (backendAvailable === null) {
     return (
       <Box sx={{ 
@@ -348,46 +370,8 @@ function AppApi() {
     );
   }
 
-  // Backend not available
-  if (backendAvailable === false) {
-    return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-        <Container maxWidth="md" sx={{ pt: 8 }}>
-          <Alert 
-            severity="error" 
-            sx={{ 
-              p: 4, 
-              textAlign: 'center',
-              fontSize: '1.1rem'
-            }}
-            icon={<CloudOff sx={{ fontSize: 40 }} />}
-          >
-            <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
-              Backend Server Not Running
-            </Typography>
-            <Typography variant="body1" sx={{ mb: 3 }}>
-              The backend server needs to be running for the application to work.
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
-              <Typography variant="body2" sx={{ fontFamily: 'monospace', bgcolor: 'grey.100', p: 2, borderRadius: 1 }}>
-                cd backend<br />
-                pip install -r requirements.txt<br />
-                python run.py
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<Refresh />}
-                onClick={checkBackendHealth}
-                size="large"
-              >
-                Check Again
-              </Button>
-            </Box>
-          </Alert>
-        </Container>
-      </Box>
-    );
-  }
+  // In OPFS mode, when not available, show non-blocking banner but continue
+  const showOPFSWarning = STORAGE_MODE !== 'backend' && backendAvailable === false;
 
   // No session created yet
   if (!session || !sessionId) {
@@ -409,7 +393,12 @@ function AppApi() {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
+      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
+        {showOPFSWarning && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {t('opfs.warning')}
+          </Alert>
+        )}
         {/* Unified Header and Controls */}
         <Paper elevation={2} sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
           {/* Blue Header Section */}
@@ -431,18 +420,33 @@ function AppApi() {
 
           {/* White Content Section */}
           <Box sx={{ bgcolor: 'background.paper' }}>
+            {/* Storage warning (gated) */}
+            {isStorageLow && (
+              <Box sx={{ p: 1 }}>
+                <Alert severity="warning" sx={{ mb: 1 }}>
+                  {t('storage.warning', {
+                    percent: storagePercentFree != null ? storagePercentFree : '—',
+                    used: formatBytes(storageUsedBytes),
+                    quota: formatBytes(storageQuotaBytes)
+                  })}
+                  <Button size="small" variant="text" onClick={updateStorageEstimate} sx={{ ml: 2 }}>
+                    {t('storage.recheck')}
+                  </Button>
+                </Alert>
+              </Box>
+            )}
             {/* Photo Configuration */}
             <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
               <Box sx={{ 
                 display: 'flex', 
-                gap: { xs: 2, sm: 3, md: 4 }, 
+                gap: { xs: 1, sm: 2, md: 2.5 }, 
                 alignItems: { xs: 'stretch', md: 'center' }, 
                 justifyContent: 'center',
-                flexWrap: 'wrap'
+                flexWrap: { xs: 'wrap', lg: 'wrap', xl: 'nowrap' }
               }}>
                 {/* Photo Mode */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
                     {t('mode.title')}
                   </Typography>
                   <ModeSelector 
@@ -453,8 +457,8 @@ function AppApi() {
                 </Box>
 
                 {/* Layout Mode (Portrait/Landscape) */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
                     {t('layout.title')}
                   </Typography>
                   <LayoutModeSelector 
@@ -469,16 +473,16 @@ function AppApi() {
                 </Box>
 
                 {/* Photo Format */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
                     {t('photoFormat.title')}
                   </Typography>
                   <AspectRatioSelector compact />
                 </Box>
 
                 {/* Photo Labels */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
                     {t('photoLabels.title')}
                   </Typography>
                   <LabelingSelector compact />
@@ -746,8 +750,8 @@ function AppApi() {
           </Box>
         </Paper>
 
-        {/* Welcome Instructions - Only shown when no photos */}
-        {stats.totalPhotos === 0 && (
+        {/* Welcome Instructions - present but hidden by default for cleaner UX */}
+        <Box sx={{ display: SHOW_WELCOME_INSTRUCTIONS ? 'block' : 'none' }}>
           <Alert
             severity="info"
             sx={{
@@ -774,8 +778,22 @@ function AppApi() {
               {t('session.instructions.tips')}
             </Typography>
           </Alert>
-        )}
+        </Box>
       </Container>
+
+      {/* Footer */}
+      <Box component="footer" sx={{ py: 2, mt: 4, bgcolor: 'background.default' }}>
+        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
+          <Box sx={{ p: 2, borderRadius: 2, background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
+            <Typography variant="body2" align="center" sx={{ color: 'common.white' }}>
+              {t('footer.copy', { year: 2025, name: 'Lukáš Běhounek' })} {' '}
+              <Link href="https://behounek.it" target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
+                {t('footer.cta')}
+              </Link>
+            </Typography>
+          </Box>
+        </Container>
+      </Box>
 
       {/* Photo Editor Modal */}
       <Modal

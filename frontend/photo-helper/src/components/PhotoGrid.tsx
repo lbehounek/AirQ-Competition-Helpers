@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Box, Typography, Grid, Paper, Chip, CircularProgress, IconButton } from '@mui/material';
-import { Image as ImageIcon, PhotoCamera, Close } from '@mui/icons-material';
+import { Box, Typography, Paper, CircularProgress, IconButton } from '@mui/material';
+import { Image as ImageIcon, Close } from '@mui/icons-material';
 import type { PhotoSet } from '../types';
 import { PhotoEditor } from './PhotoEditor';
 import { useAspectRatio } from '../contexts/AspectRatioContext';

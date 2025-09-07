@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚧 Deploying to production server..."
+echo "🚀 Deploying to production server..."
 
 # Check if deploy.conf exists
 if [ ! -f "deploy.conf" ]; then
@@ -12,22 +12,83 @@ fi
 # Source the configuration
 source deploy.conf
 
-# Check if public_html directory exists
-if [ ! -d "public_html" ]; then
-    echo "❌ public_html directory not found."
-    exit 1
-fi
+APP_NAME="$1" # optional: e.g., map-corridors or photo-helper
 
-echo "📁 Deploying public_html/ to $PROD_HOST"
-echo "📂 Target: $PROD_USER@$PROD_HOST:$PROD_REMOTE_DIR"
+build_and_stage() {
+    local app="$1"
+    local app_dir="frontend/$app"
+    local subdir="public_html/$app"
 
-# Deploy using rsync (without --delete to preserve existing remote files)
-rsync -avz public_html/ "$PROD_USER@$PROD_HOST:$PROD_REMOTE_DIR"
+    if [ ! -d "$app_dir" ]; then
+        echo "❌ Unknown app: $app (directory $app_dir not found)"
+        exit 1
+    fi
 
-if [ $? -eq 0 ]; then
-    echo "✅ Production deployment complete"
-    echo "🌐 https://javorovylist.cz"
+    echo "🛠  Building $app..."
+    (cd "$app_dir" && npm run -s build) || { echo "❌ Build failed for $app"; exit 1; }
+
+    echo "📦 Staging $app build to $subdir"
+    mkdir -p "$subdir"
+    rsync -avz "$app_dir/dist/" "$subdir/" || { echo "❌ Staging failed for $app"; exit 1; }
+}
+
+# Stage the landing page (frontend/index.html) into public_html root
+stage_landing() {
+    local landing_src="frontend/index.html"
+    local landing_dst="public_html/index.html"
+    if [ -f "$landing_src" ]; then
+        echo "🗂  Staging landing page to $landing_dst"
+        mkdir -p "public_html"
+        rsync -avz "$landing_src" "$landing_dst" || { echo "❌ Staging landing page failed"; exit 1; }
+    else
+        echo "ℹ️  Landing page $landing_src not found; skipping."
+    fi
+}
+
+if [ -n "$APP_NAME" ]; then
+    # Build and deploy only the specified app to its subfolder
+    build_and_stage "$APP_NAME"
+    stage_landing
+
+    echo "📁 Deploying $APP_NAME/ to $PROD_HOST"
+    echo "📂 Target: $PROD_USER@$PROD_HOST:${PROD_REMOTE_DIR}${APP_NAME}/"
+    rsync -avz "public_html/$APP_NAME/" "$PROD_USER@$PROD_HOST:${PROD_REMOTE_DIR}${APP_NAME}/"
+    if [ $? -eq 0 ]; then
+        echo "✅ Production deployment complete"
+        echo "🌐 ${PROD_URL}/$APP_NAME/"
+        # Deploy landing page index.html to the remote root as well
+        if [ -f "public_html/index.html" ]; then
+            echo "📄 Deploying landing page to $PROD_HOST root"
+            rsync -avz "public_html/index.html" "$PROD_USER@$PROD_HOST:${PROD_REMOTE_DIR}"
+            if [ $? -eq 0 ]; then
+                echo "🌐 ${PROD_URL}/"
+            else
+                echo "⚠️  Landing page deployment failed (app deployed successfully)."
+            fi
+        fi
+        exit 0
+    else
+        echo "❌ Deployment failed"
+        exit 1
+    fi
 else
-    echo "❌ Deployment failed"
-    exit 1
+    # No app specified: deploy entire public_html as before
+    if [ ! -d "public_html" ]; then
+        echo "❌ public_html directory not found."
+        exit 1
+    fi
+    # Ensure landing page is staged before full deploy
+    stage_landing
+    echo "📁 Deploying public_html/ to $PROD_HOST"
+    echo "📂 Target: $PROD_USER@$PROD_HOST:$PROD_REMOTE_DIR"
+    rsync -avz public_html/ "$PROD_USER@$PROD_HOST:$PROD_REMOTE_DIR"
+    if [ $? -eq 0 ]; then
+        echo "✅ Production deployment complete"
+        echo "🌐 ${PROD_URL}"
+    else
+        echo "❌ Deployment failed"
+        exit 1
+    fi
 fi
+
+

@@ -69,6 +69,21 @@ class ImageCacheManager {
   }
 
   /**
+   * Get an image by direct URL with caching and eviction
+   */
+  async getImageByUrl(url: string, cacheKey?: string): Promise<HTMLImageElement> {
+    const key = cacheKey || `url:${url}`;
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.maxAge) {
+      return cached.image;
+    }
+    const img = await this.loadImage(url);
+    this.cache.set(key, { image: img, url, timestamp: Date.now() });
+    this.cleanup();
+    return img;
+  }
+
+  /**
    * Clean up old cache entries
    */
   private cleanup() {
@@ -88,13 +103,18 @@ class ImageCacheManager {
   /**
    * Preload images for a set of photos
    */
-  async preloadImages(photos: Array<{ id: string; sessionId: string }>) {
-    const promises = photos.map(photo => 
-      this.getImage(photo.id, photo.sessionId).catch(err => {
+  async preloadImages(photos: Array<{ id: string; sessionId: string; url?: string }>) {
+    const promises = photos.map(async (photo) => {
+      try {
+        if (photo.url) {
+          return await this.getImageByUrl(photo.url);
+        }
+        return await this.getImage(photo.id, photo.sessionId);
+      } catch (err) {
         console.error(`Failed to preload image ${photo.id}:`, err);
         return null;
-      })
-    );
+      }
+    });
     
     await Promise.all(promises);
     console.log(`✅ Preloaded ${photos.length} images`);
@@ -138,7 +158,7 @@ export function getImageCache(): ImageCacheManager {
 // React hook for using the image cache
 import { useEffect, useState } from 'react';
 
-export function useCachedImage(photoId: string, sessionId: string) {
+export function useCachedImage(photoId: string, sessionId: string, directUrl?: string) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -157,7 +177,12 @@ export function useCachedImage(photoId: string, sessionId: string) {
       try {
         setLoading(true);
         setError(null);
-        const img = await cache.getImage(photoId, sessionId);
+        let img: HTMLImageElement;
+        if (directUrl) {
+          img = await cache.getImageByUrl(directUrl);
+        } else {
+          img = await cache.getImage(photoId, sessionId);
+        }
         
         if (!cancelled) {
           setImage(img);
@@ -176,7 +201,7 @@ export function useCachedImage(photoId: string, sessionId: string) {
     return () => {
       cancelled = true;
     };
-  }, [photoId, sessionId]);
+  }, [photoId, sessionId, directUrl]);
 
   return { image, loading, error };
 }

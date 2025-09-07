@@ -3,7 +3,9 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // Ensure assets load correctly when hosted under /photo-helper/
+  base: mode === 'production' ? '/photo-helper/' : '/',
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
@@ -25,4 +27,4 @@ export default defineConfig({
   optimizeDeps: {
     include: ['buffer'],
   },
-})
+}))
