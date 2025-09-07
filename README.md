@@ -11,7 +11,7 @@ This repository contains multiple tools and helpers for AirQ competitions.
 │   └── photo-helper/          # Photo organization frontend (React + TypeScript)
 ├── deploy.dev.sh              # Development deployment script
 ├── deploy.prod.sh             # Production deployment script
-├── dev.sh                     # Local development startup script
+├── photohelper.sh             # Local development startup script
 └── README.md                  # This file
 ```
 
@@ -37,8 +37,8 @@ A web application for organizing and editing competition photos with PDF export.
 
 ### Development
 ```bash
-# Start both backend and frontend
-./dev.sh
+# Start the Photo Helper frontend
+./photohelper.sh
 ```
 
 This will start:
@@ -87,7 +87,7 @@ When adding new competition helpers:
    frontend/your-tool-name/
    ```
 
-2. Update `dev.sh` to include your new services
+2. Update `photohelper.sh` to include your new services
 
 3. Update this README with documentation
 
