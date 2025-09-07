@@ -1,7 +1,7 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Point, Position } from 'geojson'
 import { lineString, length as turfLength, getCoord, bearing as turfBearing, destination, point, nearestPointOnLine, lineIntersect } from '@turf/turf'
 import type { LonLatAlt, Segment } from './segments'
-import { calculateDistance, buildContinuousTrackWithSources, isDashedConnectorLine } from './segments'
+import { calculateDistance, buildContinuousTrackWithSources } from './segments'
 
 const DEBUG = (import.meta as any)?.env?.VITE_DEBUG_CORRIDORS === 'true' || (import.meta as any)?.env?.VITE_DEBUG_CORRIDORS === '1'
 const log = (...args: any[]) => { if (DEBUG) console.log(...args) }
@@ -150,7 +150,37 @@ export function buildGateAtPoint(center: LonLatAlt, localBearingDeg: number, cor
   return lineString([left as Position, right as Position], { role: 'gate', color: 'red' })
 }
 
-// Removed unused helper - logic moved inline
+function isSpanOnMain(fromIdx: number, toIdx: number, sourceSegIdx: number[], gapAfterIndex: boolean[], mainSegmentIndexSet: Set<number>): boolean {
+  if (fromIdx > toIdx) return false
+  if (fromIdx === toIdx) {
+    const segIdx = sourceSegIdx[fromIdx]
+    return mainSegmentIndexSet.has(segIdx)
+  }
+  for (let i = fromIdx; i < toIdx; i++) {
+    if (gapAfterIndex[i]) return false
+    const a = sourceSegIdx[i]
+    const b = sourceSegIdx[i + 1]
+    if (!mainSegmentIndexSet.has(a) || !mainSegmentIndexSet.has(b)) return false
+  }
+  return true
+}
+
+function maybeBuildGateFromStartIdxDistance(
+  track: LonLatAlt[],
+  startIdx: number,
+  distanceMeters: number,
+  corridorDistanceM: number,
+  sourceSegIdx: number[],
+  gapAfterIndex: boolean[],
+  mainSegmentIndexSet: Set<number>
+): Feature<LineString> | null {
+  const along = pointAtDistanceAlongTrack(track, startIdx, distanceMeters)
+  if (!along) return null
+  const fromIdx = Math.min(startIdx, along.segmentIndex)
+  const toIdx = Math.max(startIdx, along.segmentIndex)
+  if (!isSpanOnMain(fromIdx, toIdx, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)) return null
+  return buildGateAtPoint(along.point, along.bearing, corridorDistanceM)
+}
 
 type WaypointData = {
   sp?: LonLatAlt
@@ -245,20 +275,6 @@ export function generateSegmentedCorridors(
   // Dashed TP pairs detection removed in cleanup; rely on continuity and main-track-only build
   const dashedPairs = new Set<number>()
 
-  const isContinuousMainSpan = (fromIdx: number, toIdx: number): boolean => {
-    if (fromIdx === toIdx) {
-      const segIdx = sourceSegIdx[fromIdx]
-      return mainSegmentIndexSet.has(segIdx)
-    }
-    if (fromIdx > toIdx) return false
-    for (let i = fromIdx; i < toIdx; i++) {
-      if (gapAfterIndex[i]) return false
-      const segIdxA = sourceSegIdx[i]
-      const segIdxB = sourceSegIdx[i + 1]
-      if (!mainSegmentIndexSet.has(segIdxA) || !mainSegmentIndexSet.has(segIdxB)) return false
-    }
-    return true
-  }
   // Note: detectDashedConnectorPairs needs original input; workaround below patches later
   const corridorSegments: Array<{ start: { point: LonLatAlt, idx: number }, end: { point: LonLatAlt, idx: number }, name: string }> = []
   
@@ -273,7 +289,7 @@ export function generateSegmentedCorridors(
     // Build precise slice
     const preciseSlice = buildPreciseSlice(track, { point: start.point, segmentIndex: start.segmentIndex }, { point: end.point, segmentIndex: end.segmentIndex })
     // Enforce continuity on main track for this span
-    if (!isContinuousMainSpan(Math.min(start.segmentIndex, end.segmentIndex), Math.max(start.segmentIndex, end.segmentIndex))) {
+    if (!isSpanOnMain(Math.min(start.segmentIndex, end.segmentIndex), Math.max(start.segmentIndex, end.segmentIndex), sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)) {
       log(`❌ Skipping 5NM-after-SP→TP1 due to non-continuous/main span`)
     } else if (preciseSlice.length >= 2) {
       const lr = generateLeftRightCorridor(preciseSlice, corridorDistanceM)
@@ -329,7 +345,7 @@ export function generateSegmentedCorridors(
     // Additionally enforce continuity on the actual track index range
     const fromIdx = Math.min(start.segmentIndex, endPoint.segmentIndex)
     const toIdx = Math.max(start.segmentIndex, endPoint.segmentIndex)
-    if (!isContinuousMainSpan(fromIdx, toIdx)) {
+    if (!isSpanOnMain(fromIdx, toIdx, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)) {
       log(`❌ Skipping non-continuous/main span: ${gatePositions[i].name}→${endName} (${fromIdx}→${toIdx})`)
       continue
     }
@@ -462,8 +478,8 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM 
   if (named.sp) points.push(point([named.sp[0], named.sp[1]], { name: 'SP', role: 'waypoint' }) as Feature<Point>)
   if (sp) {
     const idx = nearestTrackIndex(track, sp)
-    const p = pointAtDistanceAlongTrack(track, idx, 5 * NM)
-    if (p) gates.push(buildGateAtPoint(p.point, p.bearing, corridorDistanceM))
+    const gate = maybeBuildGateFromStartIdxDistance(track, idx, 5 * NM, corridorDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
+    if (gate) gates.push(gate)
   }
   
   // Add TP point labels and gates 1NM AFTER each TP
@@ -475,18 +491,8 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM 
       points.push(point([labelTp.coord[0], labelTp.coord[1]], { name: labelTp.name, role: 'waypoint' }) as Feature<Point>)
     }
     const idx = nearestTrackIndex(track, tp.coord)
-    const p = pointAtDistanceAlongTrack(track, idx, 1 * NM)
-    if (p) {
-      // Skip gate if it falls on a dashed connector segment
-      const trackSegmentIdx = p.segmentIndex
-      const originalSegmentIdx = sourceSegIdx[trackSegmentIdx]
-      const originalSegment = segments.find(s => s.index === originalSegmentIdx)
-      if (originalSegment && !isDashedConnectorLine(originalSegment.coordinates)) {
-        gates.push(buildGateAtPoint(p.point, p.bearing, corridorDistanceM))
-      } else {
-        log(`⚠️  Skipping gate 1NM after ${tp.name} - falls on dashed segment (original segment ${originalSegmentIdx})`)
-      }
-    }
+    const gate = maybeBuildGateFromStartIdxDistance(track, idx, 1 * NM, corridorDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
+    if (gate) gates.push(gate)
   }
   
   // Add FP point label (no gate after FP)
