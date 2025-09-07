@@ -343,6 +343,16 @@ function App() {
           <Button variant="contained" color="primary" onClick={onClickSelectFile}>
             Select KML/GPX
           </Button>
+          {(leftSegments || rightSegments || gates) && (
+            <Button 
+              variant="outlined" 
+              color="success" 
+              onClick={handleExportKML}
+              startIcon={<Download />}
+            >
+              Export KML
+            </Button>
+          )}
           <Button
             variant="outlined"
             color="primary"
@@ -353,16 +363,6 @@ function App() {
           >
             Drag to place
           </Button>
-          {(leftSegments || rightSegments || gates) && (
-            <Button 
-              variant="outlined" 
-              color="secondary" 
-              onClick={handleExportKML}
-              startIcon={<Download />}
-            >
-              Export KML
-            </Button>
-          )}
           <FormControl size="small" sx={{ minWidth: 140 }}>
             <InputLabel id="base-style-label">Base</InputLabel>
             <Select
