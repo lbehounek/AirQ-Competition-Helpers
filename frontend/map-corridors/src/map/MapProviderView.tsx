@@ -199,15 +199,16 @@ export function MapProviderView(props: {
             onDragEnd={(ev: any) => {
               const ll = ev.lngLat
               props.onMarkerDragEnd?.(m.id, ll.lng, ll.lat)
+              // Also open the popup after repositioning for quick edits
+              props.onMarkerClick?.(m.id)
             }}
           >
             <div style={{
-              width: 14,
-              height: 14,
-              borderRadius: 7,
-              background: '#1976d2',
-              border: '2px solid #ffffff',
-              boxShadow: '0 0 0 2px rgba(25,118,210,0.3)',
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              background: '#d32f2f',
+              border: '1px solid #ffffff',
               cursor: 'pointer'
             }} />
           </Marker>
