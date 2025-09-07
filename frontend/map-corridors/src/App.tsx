@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Container, FormControl, InputLabel, MenuItem, Select, Toolbar, Typography } from '@mui/material'
+import { AppBar, Box, Button, Container, FormControl, InputLabel, MenuItem, Select, Toolbar, Typography, Dialog, DialogTitle, DialogContent, Table, TableHead, TableRow, TableCell, TableBody } from '@mui/material'
 import { Download, Place } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -33,10 +33,17 @@ function App() {
   type PhotoLabel = 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T'
   const [markers, setMarkers] = useState<{ id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]>([])
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
+  const [isAnswerSheetOpen, setAnswerSheetOpen] = useState(false)
   const usedLabels = useMemo(() => {
     const set = new Set<PhotoLabel>()
     for (const m of markers) if (m.label) set.add(m.label)
     return Array.from(set)
+  }, [markers])
+  const allLabels: PhotoLabel[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
+  const labelToMarker = useMemo(() => {
+    const mp = new Map<PhotoLabel, { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }>()
+    for (const m of markers) if (m.label) mp.set(m.label, m)
+    return mp
   }, [markers])
 
   // Precompute corridor polygons and start TP coordinates
@@ -126,6 +133,27 @@ function App() {
         } catch {}
       }
       out[m.id] = found
+    }
+    return out
+  }, [markers, corridorPolygons])
+
+  const markerFromTpById = useMemo(() => {
+    const out: Record<string, string | null> = {}
+    for (const m of markers) {
+      let start: string | null = null
+      for (const c of corridorPolygons) {
+        const [minLng, minLat, maxLng, maxLat] = c.bbox
+        if (m.lng < minLng || m.lng > maxLng || m.lat < minLat || m.lat > maxLat) continue
+        try {
+          const pt = turfPoint([m.lng, m.lat])
+          const poly = turfPolygon([c.ring])
+          if (booleanPointInPolygon(pt, poly)) {
+            start = c.startName || null
+            break
+          }
+        } catch {}
+      }
+      out[m.id] = start
     }
     return out
   }, [markers, corridorPolygons])
@@ -300,6 +328,7 @@ function App() {
   }, [])
 
   return (
+    <>
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
       <AppBar position="static" color="default" elevation={1}>
         <Toolbar sx={{ gap: 2 }}>
@@ -347,6 +376,14 @@ function App() {
             </Select>
           </FormControl>
           {/* Provider selection removed to use Mapbox only */}
+          <Button
+            variant="outlined"
+            color="inherit"
+            onClick={() => setAnswerSheetOpen(true)}
+            sx={{ ml: 'auto' }}
+          >
+            Generate Answer Sheet
+          </Button>
         </Toolbar>
       </AppBar>
       <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>
@@ -399,6 +436,35 @@ function App() {
         </Box>
       </Container>
     </Box>
+    <Dialog open={isAnswerSheetOpen} onClose={() => setAnswerSheetOpen(false)} maxWidth="sm" fullWidth>
+      <DialogTitle>Answer Sheet</DialogTitle>
+      <DialogContent dividers>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Photo label</TableCell>
+              <TableCell>Distance</TableCell>
+              <TableCell>From TP</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {allLabels.map((L) => {
+              const m = labelToMarker.get(L)
+              const dist = m ? markerDistanceNmById[m.id] : null
+              const from = m ? (markerFromTpById[m.id] || '') : ''
+              return (
+                <TableRow key={L}>
+                  <TableCell>{L}</TableCell>
+                  <TableCell>{dist != null ? dist.toFixed(2) : ''}</TableCell>
+                  <TableCell>{from}</TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 
