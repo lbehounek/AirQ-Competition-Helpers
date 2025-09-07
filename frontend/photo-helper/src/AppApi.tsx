@@ -29,6 +29,7 @@ import {
   Shuffle
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
+import { usePhotoSessionOPFS } from './hooks/usePhotoSessionOPFS';
 import { DropZone } from './components/DropZone';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
@@ -52,6 +53,9 @@ import type { ApiPhoto, ApiPhotoSet } from './types/api';
 // Configurable delay before showing loading text (in milliseconds)
 const LOADING_TEXT_DELAY = 3000; // 3 seconds
 
+const STORAGE_MODE = (import.meta as any).env?.VITE_STORAGE_MODE ?? 'opfs';
+const useSessionHook = STORAGE_MODE === 'backend' ? usePhotoSessionApi : usePhotoSessionOPFS;
+
 function AppApi() {
   const {
     session,
@@ -74,7 +78,7 @@ function AppApi() {
     checkBackendHealth,
     refreshSession,
     getSessionStats
-  } = usePhotoSessionApi();
+  } = useSessionHook() as any;
   
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
@@ -317,7 +321,7 @@ function AppApi() {
     });
   };
 
-  // Backend checking (loading state)
+  // OPFS/back-end availability check (loading state)
   if (backendAvailable === null) {
     return (
       <Box sx={{ 
@@ -348,46 +352,8 @@ function AppApi() {
     );
   }
 
-  // Backend not available
-  if (backendAvailable === false) {
-    return (
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-        <Container maxWidth="md" sx={{ pt: 8 }}>
-          <Alert 
-            severity="error" 
-            sx={{ 
-              p: 4, 
-              textAlign: 'center',
-              fontSize: '1.1rem'
-            }}
-            icon={<CloudOff sx={{ fontSize: 40 }} />}
-          >
-            <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
-              Backend Server Not Running
-            </Typography>
-            <Typography variant="body1" sx={{ mb: 3 }}>
-              The backend server needs to be running for the application to work.
-            </Typography>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
-              <Typography variant="body2" sx={{ fontFamily: 'monospace', bgcolor: 'grey.100', p: 2, borderRadius: 1 }}>
-                cd backend<br />
-                pip install -r requirements.txt<br />
-                python run.py
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<Refresh />}
-                onClick={checkBackendHealth}
-                size="large"
-              >
-                Check Again
-              </Button>
-            </Box>
-          </Alert>
-        </Container>
-      </Box>
-    );
-  }
+  // In OPFS mode, when not available, show non-blocking banner but continue
+  const showOPFSWarning = STORAGE_MODE !== 'backend' && backendAvailable === false;
 
   // No session created yet
   if (!session || !sessionId) {
@@ -410,6 +376,11 @@ function AppApi() {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
       <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
+        {showOPFSWarning && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Local persistence is not available in this browser. Work won’t be saved after reload. Recommended: Chrome, Firefox, or Edge.
+          </Alert>
+        )}
         {/* Unified Header and Controls */}
         <Paper elevation={2} sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
           {/* Blue Header Section */}

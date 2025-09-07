@@ -61,7 +61,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   useEffect(() => {
     if (photoSet.photos.length > 0) {
       const cache = getImageCache();
-      cache.preloadImages(photoSet.photos).catch(err => {
+      cache.preloadImages(photoSet.photos as any).catch(err => {
         console.error('Failed to preload images:', err);
       });
     }

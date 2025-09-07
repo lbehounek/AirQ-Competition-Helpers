@@ -88,13 +88,18 @@ class ImageCacheManager {
   /**
    * Preload images for a set of photos
    */
-  async preloadImages(photos: Array<{ id: string; sessionId: string }>) {
-    const promises = photos.map(photo => 
-      this.getImage(photo.id, photo.sessionId).catch(err => {
+  async preloadImages(photos: Array<{ id: string; sessionId: string; url?: string }>) {
+    const promises = photos.map(async (photo) => {
+      try {
+        if (photo.url) {
+          return await this.loadImage(photo.url);
+        }
+        return await this.getImage(photo.id, photo.sessionId);
+      } catch (err) {
         console.error(`Failed to preload image ${photo.id}:`, err);
         return null;
-      })
-    );
+      }
+    });
     
     await Promise.all(promises);
     console.log(`✅ Preloaded ${photos.length} images`);
@@ -138,7 +143,7 @@ export function getImageCache(): ImageCacheManager {
 // React hook for using the image cache
 import { useEffect, useState } from 'react';
 
-export function useCachedImage(photoId: string, sessionId: string) {
+export function useCachedImage(photoId: string, sessionId: string, directUrl?: string) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -157,7 +162,12 @@ export function useCachedImage(photoId: string, sessionId: string) {
       try {
         setLoading(true);
         setError(null);
-        const img = await cache.getImage(photoId, sessionId);
+        let img: HTMLImageElement;
+        if (directUrl) {
+          img = await (cache as any)['loadImage'](directUrl);
+        } else {
+          img = await cache.getImage(photoId, sessionId);
+        }
         
         if (!cancelled) {
           setImage(img);
@@ -176,7 +186,7 @@ export function useCachedImage(photoId: string, sessionId: string) {
     return () => {
       cancelled = true;
     };
-  }, [photoId, sessionId]);
+  }, [photoId, sessionId, directUrl]);
 
   return { image, loading, error };
 }

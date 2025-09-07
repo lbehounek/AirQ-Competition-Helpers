@@ -486,7 +486,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   // Use cached image loading
   const { image: loadedImage, error: imageError } = useCachedImage(
     photo.id,
-    photo.sessionId
+    photo.sessionId,
+    photo.url
   );
   
   // Local state for smooth dragging
