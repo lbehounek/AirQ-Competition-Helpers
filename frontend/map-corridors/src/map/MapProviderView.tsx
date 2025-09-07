@@ -20,6 +20,7 @@ export function MapProviderView(props: {
   markers?: { id: string; lng: number; lat: number; name: string; label?: 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T' }[]
   activeMarkerId?: string | null
   usedLabels?: string[]
+  markerDistanceNmById?: Record<string, number | null>
   onMarkerAdd?: (lng: number, lat: number) => void
   onMarkerDragEnd?: (id: string, lng: number, lat: number) => void
   onMarkerClick?: (id: string | null) => void
@@ -285,6 +286,12 @@ export function MapProviderView(props: {
                     fontSize: 14
                   }}
                 />
+                {/* Distance info */}
+                <div style={{ fontSize: 12, color: '#374151' }}>
+                  {props.markerDistanceNmById && props.markerDistanceNmById[m.id] != null
+                    ? (<span>Distance from previous TP: <strong>{props.markerDistanceNmById[m.id]?.toFixed(2)}</strong> NM</span>)
+                    : (<span>Outside corridors</span>)}
+                </div>
                 <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>Label</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 6 }}>
                   {allLabels.map((L) => {

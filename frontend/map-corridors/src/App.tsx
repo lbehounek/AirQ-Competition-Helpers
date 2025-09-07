@@ -13,6 +13,8 @@ import { AppBar, Box, Button, Container, FormControl, InputLabel, MenuItem, Sele
 import { Download, Place } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
+import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } from '@turf/turf'
+import { calculateDistance } from './corridors/segments'
 
 function App() {
   const [provider] = useState<MapProviderId>('mapbox')
@@ -36,6 +38,97 @@ function App() {
     for (const m of markers) if (m.label) set.add(m.label)
     return Array.from(set)
   }, [markers])
+
+  // Precompute corridor polygons and start TP coordinates
+  const corridorPolygons = useMemo(() => {
+    type Ring = [number, number][]
+    const res: Array<{ name: string; ring: Ring; bbox: [number, number, number, number]; startName: string; startCoord?: [number, number] } > = []
+    const left = (leftSegments && (leftSegments as any).features) ? (leftSegments as any).features : []
+    const right = (rightSegments && (rightSegments as any).features) ? (rightSegments as any).features : []
+    const byName: Record<string, { left?: Ring; right?: Ring }> = {}
+    for (const f of left) {
+      const name = f.properties?.segment
+      if (!name) continue
+      byName[name] = byName[name] || {}
+      byName[name].left = f.geometry?.coordinates as Ring
+    }
+    for (const f of right) {
+      const name = f.properties?.segment
+      if (!name) continue
+      byName[name] = byName[name] || {}
+      byName[name].right = f.geometry?.coordinates as Ring
+    }
+    // Build lookup of exact point coords by name (SP, TP n)
+    const exactLookup: Record<string, [number, number]> = {}
+    if (exactPoints && (exactPoints as any).features) {
+      for (const f of (exactPoints as any).features) {
+        const role = f.properties?.role
+        const nm = f.properties?.name
+        if (role === 'exact' && nm && Array.isArray(f.geometry?.coordinates)) {
+          const [lng, lat] = f.geometry.coordinates
+          exactLookup[nm] = [lng, lat]
+        }
+      }
+    }
+    for (const name of Object.keys(byName)) {
+      const pair = byName[name]
+      if (!pair.left || !pair.right || pair.left.length < 2 || pair.right.length < 2) continue
+      // normalize to 2D positions [lng, lat]
+      const left2D: [number, number][] = (pair.left as any[]).map((c: any) => [Number(c[0]), Number(c[1])] as [number, number])
+      const right2D: [number, number][] = (pair.right as any[]).map((c: any) => [Number(c[0]), Number(c[1])] as [number, number])
+      let ring: Ring = [...left2D, ...right2D.slice().reverse()]
+      // close ring after 2D normalization
+      if (ring.length && (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])) {
+        ring.push([ring[0][0], ring[0][1]])
+      }
+      // ensure minimum valid ring size
+      if (ring.length < 4) continue
+      // bbox
+      let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
+      for (const [lng, lat] of ring) {
+        if (lng < minLng) minLng = lng
+        if (lat < minLat) minLat = lat
+        if (lng > maxLng) maxLng = lng
+        if (lat > maxLat) maxLat = lat
+      }
+      const beforeArrow = String(name).split('→')[0] || ''
+      let startName = 'SP'
+      if (beforeArrow.includes('SP')) startName = 'SP'
+      else if (beforeArrow.includes('after-')) startName = beforeArrow.split('after-').pop() || 'SP'
+      const startCoord = exactLookup[startName]
+      res.push({ name, ring, bbox: [minLng, minLat, maxLng, maxLat], startName, startCoord })
+    }
+    return res
+  }, [leftSegments, rightSegments, exactPoints])
+
+  // Compute per-marker distance info (NM) if inside a corridor
+  const markerDistanceNmById = useMemo(() => {
+    const out: Record<string, number | null> = {}
+    const NM = 1852
+    for (const m of markers) {
+      let found: number | null = null
+      for (const c of corridorPolygons) {
+        const [minLng, minLat, maxLng, maxLat] = c.bbox
+        if (m.lng < minLng || m.lng > maxLng || m.lat < minLat || m.lat > maxLat) continue
+        try {
+          const pt = turfPoint([m.lng, m.lat])
+          const poly = turfPolygon([c.ring])
+          if (booleanPointInPolygon(pt, poly)) {
+            if (c.startCoord) {
+              const meters = calculateDistance([c.startCoord[0], c.startCoord[1], 0], [m.lng, m.lat, 0])
+              const nm = Math.round((meters / NM) * 100) / 100
+              found = nm
+            } else {
+              found = null
+            }
+            break
+          }
+        } catch {}
+      }
+      out[m.id] = found
+    }
+    return out
+  }, [markers, corridorPolygons])
 
   const providerConfig = useMemo(() => mapProviders[provider], [provider])
 
@@ -294,6 +387,7 @@ function App() {
             markers={markers}
             activeMarkerId={activeMarkerId}
             usedLabels={usedLabels}
+            markerDistanceNmById={markerDistanceNmById}
             onMarkerAdd={handleMarkerAdd}
             onMarkerDragEnd={handleMarkerDragEnd}
             onMarkerClick={handleMarkerClick}
