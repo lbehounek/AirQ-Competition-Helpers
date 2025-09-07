@@ -30,3 +30,8 @@ Create a `.env` file (not committed) based on `.env.example`:
 ## Notes
 
 - When `VITE_MAPBOX_TOKEN` is present, the app starts with Mapbox provider. Otherwise, it uses MapLibre.
+
+### Distances
+
+- Corridor gates (e.g., “1 NM after TP”) are computed as distance along the track. The code walks the polyline segment-by-segment using geodesic lengths and places the gate at the exact accumulated distance.
+- Photo marker distances shown in the popup and in the Answer Sheet are straight-line (geodesic) distances from the corridor’s starting turning point to the photo location.
