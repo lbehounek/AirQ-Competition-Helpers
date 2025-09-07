@@ -69,6 +69,21 @@ class ImageCacheManager {
   }
 
   /**
+   * Get an image by direct URL with caching and eviction
+   */
+  async getImageByUrl(url: string, cacheKey?: string): Promise<HTMLImageElement> {
+    const key = cacheKey || `url:${url}`;
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.maxAge) {
+      return cached.image;
+    }
+    const img = await this.loadImage(url);
+    this.cache.set(key, { image: img, url, timestamp: Date.now() });
+    this.cleanup();
+    return img;
+  }
+
+  /**
    * Clean up old cache entries
    */
   private cleanup() {
@@ -92,7 +107,7 @@ class ImageCacheManager {
     const promises = photos.map(async (photo) => {
       try {
         if (photo.url) {
-          return await this.loadImage(photo.url);
+          return await this.getImageByUrl(photo.url);
         }
         return await this.getImage(photo.id, photo.sessionId);
       } catch (err) {
@@ -164,7 +179,7 @@ export function useCachedImage(photoId: string, sessionId: string, directUrl?: s
         setError(null);
         let img: HTMLImageElement;
         if (directUrl) {
-          img = await (cache as any)['loadImage'](directUrl);
+          img = await cache.getImageByUrl(directUrl);
         } else {
           img = await cache.getImage(photoId, sessionId);
         }

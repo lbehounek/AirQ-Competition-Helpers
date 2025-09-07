@@ -7,14 +7,21 @@ export type OPFSHandles = {
 
 export async function detectOPFSWriteSupport(): Promise<boolean> {
   try {
-    const root: any = await (navigator as any).storage?.getDirectory?.();
+    const storage: any = (navigator as any).storage;
+    if (!storage || typeof storage.getDirectory !== 'function') return false;
+    const root: any = await storage.getDirectory?.();
     if (!root?.getFileHandle || !root?.getDirectoryHandle) return false;
     const test = await root.getFileHandle('opfs-test.tmp', { create: true });
     if (!test?.createWritable) return false;
     const w = await test.createWritable();
     await w.write(new Blob([new Uint8Array([1, 2, 3])]));
     await w.close();
-    await root.removeEntry('opfs-test.tmp');
+    try {
+      await root.removeEntry('opfs-test.tmp');
+    } catch (e) {
+      // Cleanup failed; still consider write support present
+      // Optionally: console.debug('OPFS cleanup failed after test write', e);
+    }
     return true;
   } catch {
     return false;
@@ -22,7 +29,11 @@ export async function detectOPFSWriteSupport(): Promise<boolean> {
 }
 
 export async function initOPFS(): Promise<OPFSHandles> {
-  const root: FileSystemDirectoryHandle = await (navigator as any).storage.getDirectory();
+  const storage: any = (navigator as any).storage;
+  if (!storage || typeof storage.getDirectory !== 'function') {
+    throw new Error('OPFS not supported');
+  }
+  const root: FileSystemDirectoryHandle = await storage.getDirectory();
   const sessions = await root.getDirectoryHandle('sessions', { create: true });
   return { root, sessions };
 }
@@ -63,7 +74,11 @@ export async function savePhotoFile(
   photoId: string,
   file: File
 ) {
-  const fh = await photosDir.getFileHandle(photoId, { create: true });
+  const safeId = sanitizeFileName(photoId);
+  if (safeId !== photoId) {
+    console.warn(`Sanitized photoId for save: '${photoId}' -> '${safeId}'`);
+  }
+  const fh = await photosDir.getFileHandle(safeId, { create: true });
   const w = await fh.createWritable();
   await w.write(file);
   await w.close();
@@ -73,7 +88,11 @@ export async function getPhotoBlob(
   photosDir: FileSystemDirectoryHandle,
   photoId: string
 ): Promise<Blob> {
-  const fh = await photosDir.getFileHandle(photoId, { create: false });
+  const safeId = sanitizeFileName(photoId);
+  if (safeId !== photoId) {
+    console.warn(`Sanitized photoId for read: '${photoId}' -> '${safeId}'`);
+  }
+  const fh = await photosDir.getFileHandle(safeId, { create: false });
   const file = await fh.getFile();
   return file;
 }
@@ -82,7 +101,25 @@ export async function deletePhotoFile(
   photosDir: FileSystemDirectoryHandle,
   photoId: string
 ) {
-  await photosDir.removeEntry(photoId);
+  const safeId = sanitizeFileName(photoId);
+  if (safeId !== photoId) {
+    console.warn(`Sanitized photoId for delete: '${photoId}' -> '${safeId}'`);
+  }
+  await photosDir.removeEntry(safeId);
+}
+
+function sanitizeFileName(input: string): string {
+  // Remove path separators and control characters
+  const removedUnsafe = input
+    .replace(/[\\/]/g, '-')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .trim();
+  // Replace any remaining unsafe characters with '-'
+  const normalized = removedUnsafe.replace(/[^A-Za-z0-9._-]/g, '-');
+  // Enforce a reasonable max length (e.g., 128)
+  const truncated = normalized.slice(0, 128);
+  // Ensure non-empty
+  return truncated.length > 0 ? truncated : 'file';
 }
 
 export async function clearDirectory(dir: FileSystemDirectoryHandle) {

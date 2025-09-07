@@ -35,6 +35,12 @@ export function usePhotoSessionOPFS() {
   const [error, setError] = useState<string | null>(null);
   const [opfsAvailable, setOpfsAvailable] = useState<boolean | null>(null);
 
+  // Storage estimate
+  const [storageQuotaBytes, setStorageQuotaBytes] = useState<number | null>(null);
+  const [storageUsedBytes, setStorageUsedBytes] = useState<number | null>(null);
+  const [storagePercentFree, setStoragePercentFree] = useState<number | null>(null);
+  const [isStorageLow, setIsStorageLow] = useState<boolean>(false);
+
   const handlesRef = useRef<{
     sessionsDir?: FileSystemDirectoryHandle;
     sessionDir?: FileSystemDirectoryHandle;
@@ -63,6 +69,8 @@ export function usePhotoSessionOPFS() {
 
       if (!ok) {
         setSession(defaultSession(id));
+        // Try storage estimate even if OPFS not available
+        updateStorageEstimate();
         return;
       }
 
@@ -121,6 +129,7 @@ export function usePhotoSessionOPFS() {
           await writeJSON(dir, 'session.json', fresh);
           setSession(fresh);
         }
+        updateStorageEstimate();
       } catch (e) {
         console.error(e);
         setError('Failed to initialize OPFS');
@@ -161,6 +170,30 @@ export function usePhotoSessionOPFS() {
     setSession(next);
     if (handlesRef.current.sessionDir) {
       try { await writeJSON(handlesRef.current.sessionDir, 'session.json', sanitizeForDisk(next)); } catch {}
+    }
+    updateStorageEstimate();
+  }, []);
+
+  // Update storage metrics
+  const updateStorageEstimate = useCallback(async () => {
+    try {
+      const est: any = await (navigator as any).storage?.estimate?.();
+      const usage = est?.usage ?? null;
+      const quota = est?.quota ?? null;
+      setStorageUsedBytes(usage);
+      setStorageQuotaBytes(quota);
+      if (usage != null && quota != null && quota > 0) {
+        const free = Math.max(0, quota - usage);
+        const percentFree = Math.round((free / quota) * 100);
+        setStoragePercentFree(percentFree);
+        setIsStorageLow(percentFree < 20);
+      } else {
+        setStoragePercentFree(null);
+        setIsStorageLow(false);
+      }
+    } catch {
+      setStoragePercentFree(null);
+      setIsStorageLow(false);
     }
   }, []);
 
@@ -233,6 +266,7 @@ export function usePhotoSessionOPFS() {
       const modeKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
       (next as any)[modeKey] = next.sets;
       await persistSession(next);
+      await updateStorageEstimate();
     } catch (e: any) {
       setError(e?.message || 'Failed to add photos');
     } finally {
@@ -257,6 +291,7 @@ export function usePhotoSessionOPFS() {
       };
       (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
       await persistSession(next);
+      await updateStorageEstimate();
     } catch {
       setError('Failed to delete photo');
     }
@@ -282,6 +317,7 @@ export function usePhotoSessionOPFS() {
     };
     (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
+    await updateStorageEstimate();
   }, [session, persistSession]);
 
   const updateSetTitle = useCallback(async (setKey: 'set1' | 'set2', title: string) => {
@@ -323,6 +359,7 @@ export function usePhotoSessionOPFS() {
     // Mirror active sets into per-mode bucket
     (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
+    await updateStorageEstimate();
   }, [session, persistSession]);
 
   const reorderPhotos = useCallback(async (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
@@ -345,6 +382,7 @@ export function usePhotoSessionOPFS() {
     };
     (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
+    await updateStorageEstimate();
   }, [session, persistSession]);
 
   const shufflePhotos = useCallback(async (setKey: 'set1' | 'set2' | 'both') => {
@@ -361,6 +399,7 @@ export function usePhotoSessionOPFS() {
     };
     (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
+    await updateStorageEstimate();
   }, [session, persistSession]);
 
   const updateSessionMode = useCallback(async (mode: 'track' | 'turningpoint') => {
@@ -393,6 +432,7 @@ export function usePhotoSessionOPFS() {
     next.version = session.version + 1;
     next.updatedAt = new Date().toISOString();
     await persistSession(next as ApiPhotoSession);
+    await updateStorageEstimate();
   }, [session, persistSession]);
 
   const updateLayoutMode = useCallback(async (layoutMode: LayoutMode) => {
@@ -434,10 +474,14 @@ export function usePhotoSessionOPFS() {
     addPhotosToTurningPoint: async (files: File[]) => {
       if (!session) return;
       const gridCapacity = ((session as any).layoutMode === 'portrait') ? 10 : 9;
+      const maxTotal = gridCapacity * 2;
       const set1Count = session.sets.set1.photos.length;
       const set2Count = session.sets.set2.photos.length;
       const total = set1Count + set2Count;
-      if (total + files.length > 18) { setError(`Cannot add ${files.length} photos. Maximum 18 photos allowed (${total} already added).`); return; }
+      if (total + files.length > maxTotal) {
+        setError(`Cannot add ${files.length} photos. Maximum ${maxTotal} photos allowed (${total} already added).`);
+        return;
+      }
       const filesToSet1: File[] = [];
       const filesToSet2: File[] = [];
       for (const f of files) { const currentSet1 = set1Count + filesToSet1.length; if (currentSet1 < gridCapacity) filesToSet1.push(f); else filesToSet2.push(f); }
@@ -482,6 +526,7 @@ export function usePhotoSessionOPFS() {
       // Revoke all URLs
       for (const url of objectURLsRef.current.values()) URL.revokeObjectURL(url);
       objectURLsRef.current.clear();
+      await updateStorageEstimate();
     },
     refreshSession: async () => {
       // Reload session.json from disk and rebuild blob URLs
@@ -512,6 +557,12 @@ export function usePhotoSessionOPFS() {
     clearError,
     checkBackendHealth: async () => {},
     getSessionStats,
+    // storage
+    storageQuotaBytes,
+    storageUsedBytes,
+    storagePercentFree,
+    isStorageLow,
+    updateStorageEstimate,
   };
 }
 
