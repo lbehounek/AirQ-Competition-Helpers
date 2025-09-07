@@ -367,14 +367,21 @@ function App() {
             value={baseStyle}
             exclusive
             onChange={(_, val) => { if (val) setBaseStyle(val) }}
-            size="small"
+            size="medium"
             color="primary"
             aria-label="Base map style"
             sx={{
               borderRadius: 1.5,
+              height: 36,
+              '& .MuiToggleButton-root': {
+                minHeight: 36,
+                lineHeight: 1.5,
+                fontSize: 14,
+                px: 2
+              },
               '& .MuiToggleButtonGroup-grouped': {
                 borderRadius: 1.5,
-                px: 1.5,
+                px: 2,
                 '&:not(:first-of-type)': { borderLeft: '1px solid', borderColor: 'divider' }
               }
             }}
