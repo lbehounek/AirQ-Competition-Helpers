@@ -1,4 +1,4 @@
-import type { Feature, FeatureCollection, GeoJSON, LineString } from 'geojson'
+import type { Feature, FeatureCollection, GeoJSON, LineString, Point } from 'geojson'
 
 export function geoJSONToKML(geojson: GeoJSON, filename: string = 'corridors'): string {
   let kml = '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -20,6 +20,17 @@ export function geoJSONToKML(geojson: GeoJSON, filename: string = 'corridors'): 
   kml += '      <color>ff00caf7</color>\n'
   kml += '      <width>2</width>\n'
   kml += '    </LineStyle>\n'
+  kml += '  </Style>\n'
+  
+  // Point labels (exact waypoints)
+  kml += '  <Style id="labelPoint">\n'
+  kml += '    <IconStyle>\n'
+  kml += '      <color>ff000000</color>\n'
+  kml += '      <scale>0.8</scale>\n'
+  kml += '    </IconStyle>\n'
+  kml += '    <LabelStyle>\n'
+  kml += '      <scale>1</scale>\n'
+  kml += '    </LabelStyle>\n'
   kml += '  </Style>\n'
   
   // gates now share the same style as corridors (green)
@@ -51,6 +62,21 @@ export function geoJSONToKML(geojson: GeoJSON, filename: string = 'corridors'): 
       
       kml += '      </coordinates>\n'
       kml += '    </LineString>\n'
+      kml += '  </Placemark>\n'
+    } else if (feature.geometry?.type === 'Point') {
+      const pointGeom = feature.geometry as Point
+      const properties = feature.properties || {}
+      const name = properties.name || properties.role || `Point_${index + 1}`
+      const coord = pointGeom.coordinates as any
+      const lon = coord[0]
+      const lat = coord[1]
+      const alt = (coord[2] ?? 0)
+      kml += '  <Placemark>\n'
+      kml += `    <name>${name}</name>\n`
+      kml += `    <styleUrl>#labelPoint</styleUrl>\n`
+      kml += '    <Point>\n'
+      kml += `      <coordinates>${lon},${lat},${alt}</coordinates>\n`
+      kml += '    </Point>\n'
       kml += '  </Placemark>\n'
     }
   })

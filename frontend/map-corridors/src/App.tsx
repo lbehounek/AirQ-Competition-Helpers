@@ -109,6 +109,10 @@ function App() {
     if (gates && gates.type === 'FeatureCollection') {
       features.push(...gates.features)
     }
+    // Include exact waypoint labels as Points
+    if (exactPoints && exactPoints.type === 'FeatureCollection') {
+      features.push(...exactPoints.features)
+    }
     // Include original main track as a single LineString (yellow in KML)
     if (geojson) {
       try {
@@ -200,7 +204,7 @@ function App() {
             baseStyle={baseStyle}
             providerConfig={providerConfig}
             geojsonOverlays={[
-              geojson ? { id: 'uploaded-geojson', data: geojson, type: 'line' as const, paint: { 'line-color': '#f7ca00', 'line-width': 2 } } : null,
+              geojson ? { id: 'uploaded-geojson', data: geojson, type: 'line' as const, paint: { 'line-color': ['case', ['==', ['get', 'role'], 'original-track'], '#f7ca00', '#00ff00'], 'line-width': 2 } } : null,
               // Segmented corridor borders in green
               leftSegments ? { id: 'left-segments', data: leftSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               rightSegments ? { id: 'right-segments', data: rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
