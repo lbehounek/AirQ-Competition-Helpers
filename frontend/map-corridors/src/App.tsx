@@ -466,7 +466,7 @@ function App() {
               const dist = m ? markerDistanceNmById[m.id] : null
               const from = m ? (markerFromTpById[m.id] || '') : ''
               return (
-                <TableRow key={L}>
+                <TableRow key={L} hover>
                   <TableCell>{L}</TableCell>
                   <TableCell>{dist != null ? dist.toFixed(2) : ''}</TableCell>
                   <TableCell>{from}</TableCell>
