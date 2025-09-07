@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "Map Corridors",
+    "selectKml": "Select KML/GPX",
+    "exportKml": "Export KML",
+    "toggleBase": {
+      "streets": "Streets",
+      "satellite": "Satellite"
+    },
+    "dropHint": "Drop KML/GPX to load",
+    "answerSheet": "Generate Answer Sheet",
+    "dragToPlace": "Drag to place"
+  },
+  "popup": {
+    "name": "Name",
+    "clear": "Clear",
+    "delete": "Delete",
+    "distance": "Distance from previous TP: {{nm}} NM",
+    "outside": "Outside corridors",
+    "label": "Label"
+  },
+  "sheet": {
+    "photoLabel": "Photo label",
+    "distance": "Distance",
+    "fromTp": "From TP"
+  },
+  "errors": {
+    "mapboxTokenRequired": "Mapbox token required",
+    "setToken": "Set VITE_MAPBOX_TOKEN in frontend/map-corridors/.env and restart the dev server.",
+    "noOriginalKml": "Original KML file not available for export"
+  }
+}
+
+

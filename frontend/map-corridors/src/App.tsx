@@ -15,8 +15,10 @@ import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } from '@turf/turf'
 import { calculateDistance } from './corridors/segments'
+import { useI18n } from './contexts/I18nContext'
 
 function App() {
+  const { t } = useI18n()
   const [provider] = useState<MapProviderId>('mapbox')
   const [baseStyle, setBaseStyle] = useState<'streets' | 'satellite'>('streets')
   const [geojson, setGeojson] = useState<GeoJSON | null>(null)
@@ -332,7 +334,7 @@ function App() {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
       <AppBar position="static" color="default" elevation={1}>
         <Toolbar sx={{ gap: 2 }}>
-          <Typography variant="h6" sx={{ mr: 1 }}>Map Corridors</Typography>
+          <Typography variant="h6" sx={{ mr: 1 }}>{t('app.title')}</Typography>
           <input
             type="file"
             ref={fileInputRef}
@@ -341,7 +343,7 @@ function App() {
             style={{ display: 'none' }}
           />
           <Button variant="contained" color="primary" onClick={onClickSelectFile}>
-            Select KML/GPX
+            {t('app.selectKml')}
           </Button>
           {(leftSegments || rightSegments || gates) && (
             <Button 
@@ -350,7 +352,7 @@ function App() {
               onClick={handleExportKML}
               startIcon={<Download />}
             >
-              Export KML
+              {t('app.exportKml')}
             </Button>
           )}
           <Button
@@ -359,9 +361,9 @@ function App() {
             draggable
             onDragStart={onDragStartMarker}
             startIcon={<Place />}
-            title="Drag onto the map to place a photo marker"
+            title={t('app.dragToPlace')}
           >
-            Drag to place
+            {t('app.dragToPlace')}
           </Button>
           <ToggleButtonGroup
             value={baseStyle}
@@ -386,8 +388,8 @@ function App() {
               }
             }}
           >
-            <ToggleButton value="streets" aria-label="Streets">Streets</ToggleButton>
-            <ToggleButton value="satellite" aria-label="Satellite">Satellite</ToggleButton>
+            <ToggleButton value="streets" aria-label={t('app.toggleBase.streets')}>{t('app.toggleBase.streets')}</ToggleButton>
+            <ToggleButton value="satellite" aria-label={t('app.toggleBase.satellite')}>{t('app.toggleBase.satellite')}</ToggleButton>
           </ToggleButtonGroup>
           {/* Provider selection removed to use Mapbox only */}
           <Button
@@ -396,7 +398,7 @@ function App() {
             onClick={() => setAnswerSheetOpen(true)}
             sx={{ ml: 'auto' }}
           >
-            Generate Answer Sheet
+            {t('app.answerSheet')}
           </Button>
         </Toolbar>
       </AppBar>
@@ -416,7 +418,7 @@ function App() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               pointerEvents: 'none'
             }}>
-              <Typography variant="h6" color="primary.main">Drop KML/GPX to load</Typography>
+              <Typography variant="h6" color="primary.main">{t('app.dropHint')}</Typography>
             </Box>
           )}
           <MapProviderView
@@ -455,9 +457,9 @@ function App() {
         <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.75, px: 1.25, fontSize: 15 } }}>
           <TableHead>
             <TableRow>
-              <TableCell>Photo label</TableCell>
-              <TableCell>Distance</TableCell>
-              <TableCell>From TP</TableCell>
+              <TableCell>{t('sheet.photoLabel')}</TableCell>
+              <TableCell>{t('sheet.distance')}</TableCell>
+              <TableCell>{t('sheet.fromTp')}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

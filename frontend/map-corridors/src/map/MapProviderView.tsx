@@ -3,6 +3,7 @@ import MapGL, { Layer, Source, Marker, Popup } from '@vis.gl/react-mapbox'
 import type { MapRef } from '@vis.gl/react-mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
+import { useI18n } from '../contexts/I18nContext'
 
 type Overlay = {
   id: string
@@ -32,6 +33,7 @@ export function MapProviderView(props: {
   const { baseStyle, providerConfig, geojsonOverlays } = props
 
   const styleUrl = providerConfig.styles[baseStyle]
+  const { t } = useI18n()
 
   const mapRef = useRef<MapRef | null>(null)
   const [isMapLoaded, setIsMapLoaded] = useState(false)
@@ -142,9 +144,9 @@ export function MapProviderView(props: {
         textAlign: 'center', padding: 16
       }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Mapbox token required</div>
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{t('errors.mapboxTokenRequired')}</div>
           <div style={{ fontSize: 14 }}>
-            Set VITE_MAPBOX_TOKEN in frontend/map-corridors/.env and restart the dev server.
+            {t('errors.setToken')}
           </div>
         </div>
       </div>

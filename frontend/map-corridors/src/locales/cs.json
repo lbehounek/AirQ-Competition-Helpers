@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "Mapové koridory",
+    "selectKml": "Vybrat KML/GPX",
+    "exportKml": "Exportovat KML",
+    "toggleBase": {
+      "streets": "Mapa",
+      "satellite": "Satelit"
+    },
+    "dropHint": "Přetáhněte KML/GPX pro načtení",
+    "answerSheet": "Vygenerovat odpovědní arch",
+    "dragToPlace": "Přetáhnout pro umístění"
+  },
+  "popup": {
+    "name": "Název",
+    "clear": "Vymazat",
+    "delete": "Smazat",
+    "distance": "Vzdálenost od předchozí TP: {{nm}} NM",
+    "outside": "Mimo koridory",
+    "label": "Štítek"
+  },
+  "sheet": {
+    "photoLabel": "Štítek fotky",
+    "distance": "Vzdálenost",
+    "fromTp": "Od TP"
+  },
+  "errors": {
+    "mapboxTokenRequired": "Vyžadován Mapbox token",
+    "setToken": "Nastavte VITE_MAPBOX_TOKEN v frontend/map-corridors/.env a restartujte dev server.",
+    "noOriginalKml": "Původní KML není k dispozici pro export"
+  }
+}
+
+
