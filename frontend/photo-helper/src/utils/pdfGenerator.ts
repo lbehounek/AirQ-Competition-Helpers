@@ -116,14 +116,14 @@ export const generatePDF = async (
     }
   };
 
-  // Clean layout calculations
-  const calculateLayout = () => {
+  // Clean layout calculations (portrait accepts dynamic gutter width)
+  const calculateLayout = (portraitGutterWidth: number = 15) => {
     if (layoutMode === 'portrait') {
       // A4 Portrait: 595 x 842 points
       const pageWidth = 595;
       const pageHeight = 842;
       const margin = 5;
-      const textWidth = 15; // Width for rotated text along left edge
+      const textWidth = portraitGutterWidth; // Width for rotated text along left edge (measured)
       const gap = 2.83; // 1mm in points
       
       // Available space for photos
@@ -194,7 +194,6 @@ export const generatePDF = async (
     }
   };
 
-  const layout = calculateLayout();
 
   // Simplified styles - no more text styling needed!
   const styles = StyleSheet.create({
@@ -203,9 +202,10 @@ export const generatePDF = async (
     }
   });
 
-  // Create a single page
+  // Create a single page (compute a local layout per page)
   const createPage = (photoSet: ApiPhotoSet, setTitle: string, pageKey: string) => {
-    const elements = [];
+    const elements: any[] = [];
+    let localLayout = calculateLayout(15);
     
     // Add header/title
     if (layoutMode === 'portrait') {
@@ -213,6 +213,9 @@ export const generatePDF = async (
       const headerText = `${competitionName || ''} • ${setTitle}`;
       const headerImage = createTextImage(headerText, true);
       if (headerImage) {
+        // Recalculate layout with actual measured gutter width
+        const measuredGutter = Math.max(15, Math.ceil(headerImage.width));
+        localLayout = calculateLayout(measuredGutter);
         // Calculate positioning to center along left edge
         const pageHeight = 842; // A4 portrait height
         const topPosition = (pageHeight - headerImage.height) / 2; // Center vertically
@@ -244,7 +247,7 @@ export const generatePDF = async (
             style: {
               position: 'absolute',
               left: 10,
-              top: layout.headerY || 10,
+              top: localLayout.headerY || 10,
               width: competitionImage.width,
               height: competitionImage.height,
             }
@@ -260,7 +263,7 @@ export const generatePDF = async (
             style: {
               position: 'absolute',
               right: 10,
-              top: layout.headerY || 10,
+              top: localLayout.headerY || 10,
               width: setTitleImage.width,
               height: setTitleImage.height,
             }
@@ -270,16 +273,16 @@ export const generatePDF = async (
     }
     
     // Add photos
-    for (let row = 0; row < layout.rows; row++) {
-      for (let col = 0; col < layout.cols; col++) {
-        const index = row * layout.cols + col;
+    for (let row = 0; row < localLayout.rows; row++) {
+      for (let col = 0; col < localLayout.cols; col++) {
+        const index = row * localLayout.cols + col;
         const photo = photoSet.photos[index];
         
         if (photo) {
           const dataUrl = getPhotoDataUrl(photo.id, pageKey === 'set1' ? 'set1' : 'set2');
           if (dataUrl) {
-            const x = layout.startX + col * (layout.photoWidth + layout.gap);
-            const y = layout.startY + row * (layout.photoHeight + layout.gap);
+            const x = localLayout.startX + col * (localLayout.photoWidth + localLayout.gap);
+            const y = localLayout.startY + row * (localLayout.photoHeight + localLayout.gap);
             
             elements.push(
               React.createElement(Image, {
@@ -289,8 +292,8 @@ export const generatePDF = async (
                   position: 'absolute',
                   left: x,
                   top: y,
-                  width: layout.photoWidth,
-                  height: layout.photoHeight,
+                  width: localLayout.photoWidth,
+                  height: localLayout.photoHeight,
                 }
               })
             );
@@ -330,8 +333,8 @@ export const generatePDF = async (
     link.href = url;
     link.download = `navigation-photos-${timestamp}.pdf`;
     link.click();
-    
-    URL.revokeObjectURL(url);
+    // Defer revocation to avoid aborting download (e.g., Safari)
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (error) {
     console.error('PDF generation failed:', error);
     throw error;

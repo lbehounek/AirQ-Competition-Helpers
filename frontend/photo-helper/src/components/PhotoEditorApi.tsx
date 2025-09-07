@@ -69,19 +69,13 @@ const cropImageToAspectRatio = (
       const clampedNorm = Math.max(-1, Math.min(1, normalizedOffset.y));
       const deltaSource = clampedNorm * halfRangeSource;
       sourceY = Math.round(centerY + deltaSource);
-      console.log('🖼️ CROP: Applying Y offset:', { 
-        normalizedOffsetY: normalizedOffset.y, 
-        clampedNorm, 
-        centerY, 
-        halfRangeSource, 
-        deltaSource, 
-        finalSourceY: sourceY 
-      });
     } else {
       sourceY = Math.round(centerY);
-      console.log('🖼️ CROP: No Y offset, using center:', { centerY, finalSourceY: sourceY });
     }
   }
+  // Clamp source coordinates to remain within image bounds
+  sourceX = Math.max(0, Math.min(image.width - sourceWidth, sourceX));
+  sourceY = Math.max(0, Math.min(image.height - sourceHeight, sourceY));
   
   // Set canvas to the exact dimensions expected by calling code
   canvas.width = canvasSize.width;
