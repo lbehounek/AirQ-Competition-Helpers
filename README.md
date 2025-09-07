@@ -91,6 +91,20 @@ When adding new competition helpers:
 
 3. Update this README with documentation
 
+## UI change: Welcome instructions banner (AutoBanner)
+
+- The welcome instructions banner at the bottom of the Photo Helper is now hidden by default to reduce visual clutter.
+- It is not removed; it remains in the DOM with display: none so it can be re-enabled anytime.
+- Location: `frontend/photo-helper/src/AppApi.tsx`
+- How to re-enable:
+
+```ts
+// AppApi.tsx
+const SHOW_WELCOME_INSTRUCTIONS = true; // set to true to show the banner again
+```
+
+Current default value is `false`.
+
 ## License
 
 Private repository for AirQ competition tools.
