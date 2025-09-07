@@ -1,5 +1,4 @@
-import type { FeatureCollection, GeoJSON, LineString, Position } from 'geojson'
-import { lineString, point } from '@turf/turf'
+import type { FeatureCollection, GeoJSON, LineString } from 'geojson'
 
 export type LonLatAlt = [number, number, number?]
 

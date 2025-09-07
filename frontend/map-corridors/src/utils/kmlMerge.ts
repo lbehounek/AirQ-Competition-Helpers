@@ -16,6 +16,21 @@ function ensureStyle(doc: Document, id: string, innerXml: string) {
   if (created && documentEl) documentEl.appendChild(created)
 }
 
+function ensureFolder(doc: Document, folderName: string): Element {
+  const documentEl = doc.getElementsByTagName('Document')[0] || doc.documentElement
+  const folders = Array.from(doc.getElementsByTagName('Folder'))
+  for (const f of folders) {
+    const nameEl = f.getElementsByTagName('name')[0]
+    if (nameEl && nameEl.textContent === folderName) return f
+  }
+  const folder = doc.createElementNS(KML_NS, 'Folder')
+  const nm = doc.createElementNS(KML_NS, 'name')
+  nm.textContent = folderName
+  folder.appendChild(nm)
+  documentEl.appendChild(folder)
+  return folder
+}
+
 function addLinePlacemark(doc: Document, name: string, coords: number[][], styleId: string, role?: string) {
   const documentEl = doc.getElementsByTagName('Document')[0] || doc.documentElement
   const pm = doc.createElementNS(KML_NS, 'Placemark')
@@ -44,7 +59,9 @@ function addLinePlacemark(doc: Document, name: string, coords: number[][], style
 }
 
 function addPointPlacemark(doc: Document, name: string, coord: number[], role?: string) {
-  const documentEl = doc.getElementsByTagName('Document')[0] || doc.documentElement
+  const parentEl = role === 'track_photos' 
+    ? ensureFolder(doc, 'track_photos') 
+    : (doc.getElementsByTagName('Document')[0] || doc.documentElement)
   const pm = doc.createElementNS(KML_NS, 'Placemark')
   const nm = doc.createElementNS(KML_NS, 'name')
   nm.textContent = name
@@ -67,7 +84,7 @@ function addPointPlacemark(doc: Document, name: string, coord: number[], role?: 
   pm.appendChild(nm)
   pm.appendChild(styleUrl)
   pm.appendChild(pt)
-  documentEl.appendChild(pm)
+  parentEl.appendChild(pm)
 }
 
 export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName?: string): string {

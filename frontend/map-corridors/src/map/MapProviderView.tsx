@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import Map, { Layer, Source } from '@vis.gl/react-mapbox'
+import Map, { Layer, Source, Marker, Popup } from '@vis.gl/react-mapbox'
 import type { MapRef } from '@vis.gl/react-mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
@@ -17,6 +17,13 @@ export function MapProviderView(props: {
   baseStyle: 'streets' | 'satellite'
   providerConfig: ProviderConfig
   geojsonOverlays?: Overlay[]
+  markers?: { id: string; lng: number; lat: number; name: string }[]
+  activeMarkerId?: string | null
+  onMarkerAdd?: (lng: number, lat: number) => void
+  onMarkerDragEnd?: (id: string, lng: number, lat: number) => void
+  onMarkerClick?: (id: string | null) => void
+  onMarkerNameChange?: (id: string, name: string) => void
+  onMarkerDelete?: (id: string) => void
 }) {
   const { baseStyle, providerConfig, geojsonOverlays } = props
 
@@ -24,6 +31,36 @@ export function MapProviderView(props: {
 
   const mapRef = useRef<MapRef | null>(null)
   const [isMapLoaded, setIsMapLoaded] = useState(false)
+  // Attach native DnD listeners on the canvas to support custom marker drops
+  useEffect(() => {
+    if (!mapRef.current) return
+    const map = mapRef.current.getMap()
+    const canvas = map.getCanvas()
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('application/x-photo-marker')) {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'copy'
+      }
+    }
+    const onDrop = (e: DragEvent) => {
+      if (!mapRef.current) return
+      const dt = e.dataTransfer
+      if (dt && Array.from(dt.types).includes('application/x-photo-marker')) {
+        e.preventDefault()
+        const rect = (canvas as HTMLCanvasElement).getBoundingClientRect()
+        const x = e.clientX - rect.left
+        const y = e.clientY - rect.top
+        const lngLat = mapRef.current.getMap().unproject([x, y])
+        props.onMarkerAdd?.(lngLat.lng, lngLat.lat)
+      }
+    }
+    canvas.addEventListener('dragover', onDragOver)
+    canvas.addEventListener('drop', onDrop)
+    return () => {
+      canvas.removeEventListener('dragover', onDragOver)
+      canvas.removeEventListener('drop', onDrop)
+    }
+  }, [mapRef.current])
 
   const uploadedGeojson = useMemo(() => {
     return geojsonOverlays?.find((o) => o.id === 'uploaded-geojson')?.data
@@ -150,6 +187,68 @@ export function MapProviderView(props: {
             />
           ]}
         </Source>
+      ))}
+      {/* Interactive markers */}
+      {props.markers?.map(m => (
+        <React.Fragment key={m.id}>
+          <Marker
+            longitude={m.lng}
+            latitude={m.lat}
+            draggable
+            onClick={() => props.onMarkerClick?.(m.id)}
+            onDragEnd={(ev: any) => {
+              const ll = ev.lngLat
+              props.onMarkerDragEnd?.(m.id, ll.lng, ll.lat)
+            }}
+          >
+            <div style={{
+              width: 14,
+              height: 14,
+              borderRadius: 7,
+              background: '#1976d2',
+              border: '2px solid #ffffff',
+              boxShadow: '0 0 0 2px rgba(25,118,210,0.3)',
+              cursor: 'pointer'
+            }} />
+          </Marker>
+          {props.activeMarkerId === m.id && (
+            <Popup longitude={m.lng} latitude={m.lat} anchor="top" closeButton={true} closeOnMove={false}
+              onClose={() => props.onMarkerClick?.(null as any)}
+            >
+              <div style={{ minWidth: 220, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ fontSize: 12, color: '#374151' }}>Name</label>
+                <input
+                  type="text"
+                  value={m.name}
+                  onChange={(e) => props.onMarkerNameChange?.(m.id, e.target.value.slice(0, 30))}
+                  placeholder="Photo name"
+                  style={{
+                    padding: '6px 8px',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: 6,
+                    fontSize: 14
+                  }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                  <button
+                    onClick={() => props.onMarkerDelete?.(m.id)}
+                    style={{
+                      background: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '6px 10px',
+                      fontSize: 13,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </Popup>
+          )}
+        </React.Fragment>
       ))}
     </Map>
   )

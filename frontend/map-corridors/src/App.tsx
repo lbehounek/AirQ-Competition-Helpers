@@ -10,12 +10,12 @@ import type { GeoJSON } from 'geojson'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
 import { AppBar, Box, Button, Container, FormControl, InputLabel, MenuItem, Select, Toolbar, Typography } from '@mui/material'
-import { Download } from '@mui/icons-material'
+import { Download, Place } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 
 function App() {
-  const [provider, setProvider] = useState<MapProviderId>('mapbox')
+  const [provider] = useState<MapProviderId>('mapbox')
   const [baseStyle, setBaseStyle] = useState<'streets' | 'satellite'>('streets')
   const [geojson, setGeojson] = useState<GeoJSON | null>(null)
   // Remove buffer corridor state since we don't use it
@@ -28,6 +28,8 @@ function App() {
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [originalKmlText, setOriginalKmlText] = useState<string | null>(null)
+  const [markers, setMarkers] = useState<{ id: string; lng: number; lat: number; name: string }[]>([])
+  const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
 
   const providerConfig = useMemo(() => mapProviders[provider], [provider])
 
@@ -123,6 +125,15 @@ function App() {
     if (exactPoints && exactPoints.type === 'FeatureCollection') {
       features.push(...exactPoints.features)
     }
+    // Append photo markers as Point features under track_photos via name property
+    if (markers.length) {
+      const markerFeatures = markers.map(m => ({
+        type: 'Feature',
+        properties: { name: m.name || 'photo', role: 'track_photos' },
+        geometry: { type: 'Point', coordinates: [m.lng, m.lat] }
+      }))
+      features.push(...markerFeatures as any)
+    }
     if (features.length > 0) {
       const combinedGeoJSON = {
         type: 'FeatureCollection' as const,
@@ -132,6 +143,36 @@ function App() {
       downloadKML(mergedKml, 'corridors_export.kml')
     }
   }, [leftSegments, rightSegments, gates, exactPoints, originalKmlText])
+
+  // Drag source for placing markers
+  const onDragStartMarker = useCallback((e: React.DragEvent) => {
+    e.dataTransfer.setData('application/x-photo-marker', '1')
+    e.dataTransfer.effectAllowed = 'copy'
+  }, [])
+
+  // Marker callbacks passed to map
+  const handleMarkerAdd = useCallback((lng: number, lat: number) => {
+    const id = Math.random().toString(36).slice(2)
+    setMarkers(prev => [...prev, { id, lng, lat, name: '' }])
+    setActiveMarkerId(id)
+  }, [])
+
+  const handleMarkerDragEnd = useCallback((id: string, lng: number, lat: number) => {
+    setMarkers(prev => prev.map(m => m.id === id ? { ...m, lng, lat } : m))
+  }, [])
+
+  const handleMarkerClick = useCallback((id: string | null) => {
+    setActiveMarkerId(id)
+  }, [])
+
+  const handleMarkerNameChange = useCallback((id: string, name: string) => {
+    setMarkers(prev => prev.map(m => m.id === id ? { ...m, name: name.slice(0, 30) } : m))
+  }, [])
+
+  const handleMarkerDelete = useCallback((id: string) => {
+    setMarkers(prev => prev.filter(m => m.id !== id))
+    setActiveMarkerId(current => current === id ? null : current)
+  }, [])
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
@@ -147,6 +188,16 @@ function App() {
           />
           <Button variant="contained" color="primary" onClick={onClickSelectFile}>
             Select KML/GPX
+          </Button>
+          <Button
+            variant="outlined"
+            color="primary"
+            draggable
+            onDragStart={onDragStartMarker}
+            startIcon={<Place />}
+            title="Drag onto the map to place a photo marker"
+          >
+            Drag to place
           </Button>
           {(leftSegments || rightSegments || gates) && (
             <Button 
@@ -208,6 +259,13 @@ function App() {
               // Exact waypoints with visible markers and labels
               exactPoints ? { id: 'exact-points', data: exactPoints, type: 'circle' as const, paint: { 'circle-radius': 4, 'circle-color': '#111111' }, layout: { 'text-field': ['get', 'name'], 'text-offset': [0, 1.2], 'text-anchor': 'top' } } : null,
             ].filter(Boolean) as any}
+            markers={markers}
+            activeMarkerId={activeMarkerId}
+            onMarkerAdd={handleMarkerAdd}
+            onMarkerDragEnd={handleMarkerDragEnd}
+            onMarkerClick={handleMarkerClick}
+            onMarkerNameChange={handleMarkerNameChange}
+            onMarkerDelete={handleMarkerDelete}
           />
         </Box>
       </Container>
