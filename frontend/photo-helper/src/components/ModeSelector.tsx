@@ -41,7 +41,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onModeC
 
   if (compact) {
     return (
-      <ButtonGroup size="small" variant="outlined">
+      <ButtonGroup size="small" variant="outlined" sx={{ flexWrap: 'nowrap' }}>
         {MODE_OPTIONS.map((option) => (
           <Button
             key={option.id}
@@ -49,10 +49,11 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onModeC
             variant={currentMode === option.id ? 'contained' : 'outlined'}
             startIcon={option.icon}
             sx={{ 
-              fontSize: '0.75rem',
-              px: 1.5,
-              py: 0.5,
-              minWidth: 'auto'
+              fontSize: '0.72rem',
+              px: 1.25,
+              py: 0.4,
+              minWidth: 'auto',
+              whiteSpace: 'nowrap'
             }}
           >
             {t(option.nameKey)}

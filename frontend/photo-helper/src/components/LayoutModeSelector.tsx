@@ -81,9 +81,9 @@ export const LayoutModeSelector: React.FC<LayoutModeSelectorProps> = ({
           sx={{
             height: 28,
             '& .MuiToggleButton-root': {
-              px: 1.5,
-              py: 0.5,
-              fontSize: '0.75rem',
+              px: 1.25,
+              py: 0.4,
+              fontSize: '0.72rem',
               textTransform: 'none',
               gap: 0.5,
               '& .MuiSvgIcon-root': {

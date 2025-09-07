@@ -393,7 +393,7 @@ function AppApi() {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '70%' }, mx: { xl: 'auto' } }}>
+      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
         {showOPFSWarning && (
           <Alert severity="warning" sx={{ mb: 2 }}>
             {t('opfs.warning')}
@@ -439,14 +439,14 @@ function AppApi() {
             <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
               <Box sx={{ 
                 display: 'flex', 
-                gap: { xs: 2, sm: 3, md: 4 }, 
+                gap: { xs: 1, sm: 2, md: 2.5 }, 
                 alignItems: { xs: 'stretch', md: 'center' }, 
                 justifyContent: 'center',
-                flexWrap: 'wrap'
+                flexWrap: { xs: 'wrap', lg: 'wrap', xl: 'nowrap' }
               }}>
                 {/* Photo Mode */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
                     {t('mode.title')}
                   </Typography>
                   <ModeSelector 
@@ -457,8 +457,8 @@ function AppApi() {
                 </Box>
 
                 {/* Layout Mode (Portrait/Landscape) */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
                     {t('layout.title')}
                   </Typography>
                   <LayoutModeSelector 
@@ -473,16 +473,16 @@ function AppApi() {
                 </Box>
 
                 {/* Photo Format */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
                     {t('photoFormat.title')}
                   </Typography>
                   <AspectRatioSelector compact />
                 </Box>
 
                 {/* Photo Labels */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
                     {t('photoLabels.title')}
                   </Typography>
                   <LabelingSelector compact />
@@ -783,7 +783,7 @@ function AppApi() {
 
       {/* Footer */}
       <Box component="footer" sx={{ py: 2, mt: 4, bgcolor: 'background.default' }}>
-        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '70%' }, mx: { xl: 'auto' } }}>
+        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
           <Box sx={{ p: 2, borderRadius: 2, background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
             <Typography variant="body2" align="center" sx={{ color: 'common.white' }}>
               {t('footer.copy', { year: 2025, name: 'Lukáš Běhounek' })} {' '}
