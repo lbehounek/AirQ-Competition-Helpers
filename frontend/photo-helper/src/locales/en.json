@@ -197,6 +197,10 @@
   "opfs": {
     "warning": "Local persistence is not available in this browser. Work won’t be saved after reload. Recommended: Chrome, Firefox, or Edge."
   },
+  "footer": {
+    "copy": "Built in {{year}} by {{name}} for fellow aviators.",
+    "cta": "Let's get in touch."
+  },
   "errors": {
     "sessionNotFound": "Session not found",
     "uploadFailed": "Upload failed", 

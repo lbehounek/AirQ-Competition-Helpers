@@ -16,7 +16,8 @@ import {
   Card,
   CardContent,
   useMediaQuery,
-  useTheme
+  useTheme,
+  Link
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -118,6 +119,7 @@ function AppApi() {
   const [circleMode, setCircleMode] = useState(false);
 
   const stats = getSessionStats();
+  const SHOW_WELCOME_INSTRUCTIONS = false;
 
   // Humanize bytes
   const formatBytes = (b?: number | null) => {
@@ -748,8 +750,8 @@ function AppApi() {
           </Box>
         </Paper>
 
-        {/* Welcome Instructions - Only shown when no photos */}
-        {stats.totalPhotos === 0 && (
+        {/* Welcome Instructions - present but hidden by default for cleaner UX */}
+        <Box sx={{ display: SHOW_WELCOME_INSTRUCTIONS ? 'block' : 'none' }}>
           <Alert
             severity="info"
             sx={{
@@ -776,8 +778,22 @@ function AppApi() {
               {t('session.instructions.tips')}
             </Typography>
           </Alert>
-        )}
+        </Box>
       </Container>
+
+      {/* Footer */}
+      <Box component="footer" sx={{ py: 2, mt: 4, bgcolor: 'background.default' }}>
+        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
+          <Box sx={{ p: 2, borderRadius: 2, background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
+            <Typography variant="body2" align="center" sx={{ color: 'common.white' }}>
+              {t('footer.copy', { year: 2025, name: 'Lukáš Běhounek' })} {' '}
+              <Link href="https://behounek.it" target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
+                {t('footer.cta')}
+              </Link>
+            </Typography>
+          </Box>
+        </Container>
+      </Box>
 
       {/* Photo Editor Modal */}
       <Modal

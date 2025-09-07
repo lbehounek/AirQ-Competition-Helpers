@@ -196,6 +196,10 @@
   "opfs": {
     "warning": "Tento prohlížeč nepodporuje trvalé uložení dat (OPFS). Po obnovení stránky se vaše změny nezachovají. Pro plnou funkčnost použijte Chrome, Firefox nebo Edge."
   },
+  "footer": {
+    "copy": "Vytvořil {{name}} v roce {{year}} pro leteckou soutěžní komunitu.",
+    "cta": "Kontaktujte mě."
+  },
   "errors": {
     "sessionNotFound": "Relace nenalezena",
     "uploadFailed": "Nahrávání selhalo", 
