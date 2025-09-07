@@ -1,7 +1,7 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Point, Position } from 'geojson'
 import { lineString, length as turfLength, getCoord, bearing as turfBearing, destination, point, nearestPointOnLine, lineIntersect } from '@turf/turf'
 import type { LonLatAlt, Segment } from './segments'
-import { calculateDistance, buildContinuousTrackWithSources } from './segments'
+import { calculateDistance, buildContinuousTrackWithSources, isDashedConnectorLine } from './segments'
 
 const DEBUG = (import.meta as any)?.env?.VITE_DEBUG_CORRIDORS === 'true' || (import.meta as any)?.env?.VITE_DEBUG_CORRIDORS === '1'
 const log = (...args: any[]) => { if (DEBUG) console.log(...args) }
@@ -149,6 +149,8 @@ export function buildGateAtPoint(center: LonLatAlt, localBearingDeg: number, cor
   const right = projectCoordinate(center, rightBearing, corridorDistanceM)
   return lineString([left as Position, right as Position], { role: 'gate', color: 'red' })
 }
+
+// Removed unused helper - logic moved inline
 
 type WaypointData = {
   sp?: LonLatAlt
@@ -474,7 +476,17 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM 
     }
     const idx = nearestTrackIndex(track, tp.coord)
     const p = pointAtDistanceAlongTrack(track, idx, 1 * NM)
-    if (p) gates.push(buildGateAtPoint(p.point, p.bearing, corridorDistanceM))
+    if (p) {
+      // Skip gate if it falls on a dashed connector segment
+      const trackSegmentIdx = p.segmentIndex
+      const originalSegmentIdx = sourceSegIdx[trackSegmentIdx]
+      const originalSegment = segments.find(s => s.index === originalSegmentIdx)
+      if (originalSegment && !isDashedConnectorLine(originalSegment.coordinates)) {
+        gates.push(buildGateAtPoint(p.point, p.bearing, corridorDistanceM))
+      } else {
+        log(`⚠️  Skipping gate 1NM after ${tp.name} - falls on dashed segment (original segment ${originalSegmentIdx})`)
+      }
+    }
   }
   
   // Add FP point label (no gate after FP)
