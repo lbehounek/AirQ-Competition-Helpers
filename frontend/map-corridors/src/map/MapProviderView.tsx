@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import Map, { Layer, Source, Marker, Popup } from '@vis.gl/react-mapbox'
+import MapGL, { Layer, Source, Marker, Popup } from '@vis.gl/react-mapbox'
 import type { MapRef } from '@vis.gl/react-mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
@@ -31,6 +31,8 @@ export function MapProviderView(props: {
 
   const mapRef = useRef<MapRef | null>(null)
   const [isMapLoaded, setIsMapLoaded] = useState(false)
+  const dragStartLngLatRef = useRef<Map<string, { lng: number, lat: number }>>(new Map())
+  const dragMovedPxRef = useRef<Map<string, number>>(new Map())
   // Attach native DnD listeners on the canvas to support custom marker drops
   useEffect(() => {
     if (!mapRef.current) return
@@ -146,7 +148,7 @@ export function MapProviderView(props: {
   }
 
   return (
-    <Map
+    <MapGL
       mapStyle={styleUrl}
       mapboxAccessToken={providerConfig.accessToken}
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
@@ -195,12 +197,44 @@ export function MapProviderView(props: {
             longitude={m.lng}
             latitude={m.lat}
             draggable
-            onClick={() => props.onMarkerClick?.(m.id)}
-            onDragEnd={(ev: any) => {
+            onClick={(ev: any) => {
+              const moved = dragMovedPxRef.current.get(m.id) || 0
+              if (moved < 8) {
+                ev?.preventDefault?.()
+                ev?.originalEvent?.stopPropagation?.()
+                props.onMarkerClick?.(m.id)
+              }
+              dragStartLngLatRef.current.delete(m.id)
+              dragMovedPxRef.current.delete(m.id)
+            }}
+            onDragStart={(ev: any) => {
               const ll = ev.lngLat
-              props.onMarkerDragEnd?.(m.id, ll.lng, ll.lat)
-              // Also open the popup after repositioning for quick edits
-              props.onMarkerClick?.(m.id)
+              dragStartLngLatRef.current.set(m.id, { lng: ll.lng, lat: ll.lat })
+              dragMovedPxRef.current.set(m.id, 0)
+            }}
+            onDrag={(ev: any) => {
+              const start = dragStartLngLatRef.current.get(m.id)
+              if (!start || !mapRef.current) return
+              const map = mapRef.current.getMap()
+              const p0 = map.project([start.lng, start.lat] as any)
+              const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat] as any)
+              const dx = p1.x - p0.x
+              const dy = p1.y - p0.y
+              const dist = Math.sqrt(dx*dx + dy*dy)
+              dragMovedPxRef.current.set(m.id, dist)
+            }}
+            onDragEnd={(ev: any) => {
+              const moved = dragMovedPxRef.current.get(m.id) || 0
+              dragStartLngLatRef.current.delete(m.id)
+              dragMovedPxRef.current.delete(m.id)
+              if (moved < 8) {
+                // Treat as click: do not update position, just open popup
+                props.onMarkerClick?.(m.id)
+              } else {
+                const ll = ev.lngLat
+                props.onMarkerDragEnd?.(m.id, ll.lng, ll.lat)
+                props.onMarkerClick?.(m.id)
+              }
             }}
           >
             <div style={{
@@ -251,7 +285,7 @@ export function MapProviderView(props: {
           )}
         </React.Fragment>
       ))}
-    </Map>
+    </MapGL>
   )
 }
 
