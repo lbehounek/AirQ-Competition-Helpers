@@ -90,7 +90,20 @@ function addPointPlacemark(doc: Document, name: string, coord: number[], role?: 
 export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName?: string): string {
   const parser = new DOMParser()
   const xml = parser.parseFromString(originalKml, 'application/xml')
-  const documentEl = xml.getElementsByTagName('Document')[0] || xml.documentElement
+  let documentEl = xml.getElementsByTagName('Document')[0]
+  if (!documentEl) {
+    // Ensure a single Document element under <kml>
+    const kmlRoot = xml.documentElement
+    const newDoc = xml.createElementNS(KML_NS, 'Document')
+    // Move existing feature children under Document
+    const toMove: Element[] = []
+    for (const child of Array.from(kmlRoot.children)) {
+      if (child.tagName !== 'Document') toMove.push(child)
+    }
+    for (const el of toMove) newDoc.appendChild(el)
+    kmlRoot.appendChild(newDoc)
+    documentEl = newDoc
+  }
   if (docName && documentEl) {
     const nameEl = documentEl.getElementsByTagName('name')[0] || xml.createElementNS(KML_NS, 'name')
     nameEl.textContent = docName
@@ -115,7 +128,7 @@ export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName
     } else if (feature.geometry.type === 'Point') {
       const pt = feature.geometry as Point
       const name = (props as any).name || (props as any).role || 'point'
-      addPointPlacemark(xml, name, pt.coordinates as any)
+      addPointPlacemark(xml, name, pt.coordinates as any, (props as any).role)
     }
   }
 

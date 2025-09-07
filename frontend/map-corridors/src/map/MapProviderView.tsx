@@ -41,7 +41,7 @@ export function MapProviderView(props: {
   const dragMovedPxRef = useRef<Map<string, number>>(new Map())
   // Attach native DnD listeners on the canvas to support custom marker drops
   useEffect(() => {
-    if (!mapRef.current) return
+    if (!isMapLoaded || !mapRef.current) return
     const map = mapRef.current.getMap()
     const canvas = map.getCanvas()
     const onDragOver = (e: DragEvent) => {
@@ -68,7 +68,7 @@ export function MapProviderView(props: {
       canvas.removeEventListener('dragover', onDragOver)
       canvas.removeEventListener('drop', onDrop)
     }
-  }, [mapRef.current])
+  }, [isMapLoaded, props.onMarkerAdd])
 
   const uploadedGeojson = useMemo(() => {
     return geojsonOverlays?.find((o) => o.id === 'uploaded-geojson')?.data

@@ -5,9 +5,14 @@ export function DropZone(props: {
   onDropFiles: (files: File[]) => void | Promise<void>
   accept?: { [mime: string]: string[] }
 }) {
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    props.onDropFiles(acceptedFiles)
-  }, [props])
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    try {
+      await props.onDropFiles(acceptedFiles)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('DropZone onDropFiles error', err)
+    }
+  }, [props.onDropFiles])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: props.accept })
 

@@ -1,10 +1,19 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Point } from 'geojson'
 
+function xmlEscape(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
 export function geoJSONToKML(geojson: GeoJSON, filename: string = 'corridors'): string {
   let kml = '<?xml version="1.0" encoding="UTF-8"?>\n'
   kml += '<kml xmlns="http://www.opengis.net/kml/2.2">\n'
   kml += '<Document>\n'
-  kml += `  <name>${filename}</name>\n`
+  kml += `  <name>${xmlEscape(String(filename))}</name>\n`
   
   // Define styles
   kml += '  <Style id="greenLine">\n'
@@ -48,7 +57,7 @@ export function geoJSONToKML(geojson: GeoJSON, filename: string = 'corridors'): 
       const style = properties.role === 'original-track' ? 'yellowLine' : 'greenLine'
       
       kml += '  <Placemark>\n'
-      kml += `    <name>${name}</name>\n`
+      kml += `    <name>${xmlEscape(String(name))}</name>\n`
       kml += `    <styleUrl>#${style}</styleUrl>\n`
       kml += '    <LineString>\n'
       kml += '      <coordinates>\n'
@@ -72,7 +81,7 @@ export function geoJSONToKML(geojson: GeoJSON, filename: string = 'corridors'): 
       const lat = coord[1]
       const alt = (coord[2] ?? 0)
       kml += '  <Placemark>\n'
-      kml += `    <name>${name}</name>\n`
+      kml += `    <name>${xmlEscape(String(name))}</name>\n`
       kml += `    <styleUrl>#labelPoint</styleUrl>\n`
       kml += '    <Point>\n'
       kml += `      <coordinates>${lon},${lat},${alt}</coordinates>\n`

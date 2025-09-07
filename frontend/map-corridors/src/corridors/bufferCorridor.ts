@@ -10,9 +10,26 @@ export function buildBufferedCorridor(input: GeoJSON, distance: number, units: '
       for (const f of (g as FeatureCollection).features) collectLines(f)
     } else if (g.type === 'Feature') {
       const geom = (g as Feature).geometry
-      if (geom?.type === 'LineString') lines.push(g as Feature<LineString>)
+      if (geom?.type === 'LineString') {
+        lines.push(g as Feature<LineString>)
+      } else if (geom?.type === 'MultiLineString') {
+        const props = (g as Feature).properties || {}
+        for (const coords of (geom as any).coordinates || []) {
+          lines.push({ type: 'Feature', properties: { ...props }, geometry: { type: 'LineString', coordinates: coords } as LineString })
+        }
+      } else if (geom?.type === 'GeometryCollection') {
+        for (const sub of (geom as any).geometries || []) {
+          collectLines({ type: 'Feature', properties: (g as Feature).properties || {}, geometry: sub })
+        }
+      }
     } else if (g.type === 'LineString') {
       lines.push({ type: 'Feature', properties: {}, geometry: g })
+    } else if (g.type === 'MultiLineString') {
+      for (const coords of (g as any).coordinates || []) {
+        lines.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } as LineString })
+      }
+    } else if (g.type === 'GeometryCollection') {
+      for (const sub of (g as any).geometries || []) collectLines(sub)
     }
   }
 

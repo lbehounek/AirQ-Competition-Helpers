@@ -24,16 +24,28 @@ export function extractExactTurningPointsFromKml(kmlText) {
         .split(/\s+/)
         .filter(Boolean)
         .map(s => s.split(',').map(Number))
-        .map(([lon, lat, alt]) => [lon, lat, alt || 0])
-      lineStrings.push({ name, coords })
+        .map(([lon, lat, alt]) => [lon, lat, alt])
+        .filter(([lon, lat, alt]) => Number.isFinite(lon) && Number.isFinite(lat) && (alt == null || Number.isFinite(alt)))
+        .map(([lon, lat, alt]) => [lon, lat, Number.isFinite(alt) ? alt : 0])
+      if (coords.length >= 2) lineStrings.push({ name, coords })
       continue
     }
 
     const pointEl = pm.getElementsByTagName('Point')[0]
     if (pointEl) {
       const coordsText = (pointEl.getElementsByTagName('coordinates')[0]?.textContent || '').trim()
-      const [lon, lat, alt] = coordsText.split(',').map(Number)
-      points.push({ name, coord: [lon, lat, alt || 0] })
+      if (coordsText) {
+        const parts = coordsText.split(',')
+        if (parts.length >= 2) {
+          const lon = Number(parts[0])
+          const lat = Number(parts[1])
+          const altRaw = parts[2] != null ? Number(parts[2]) : NaN
+          if (Number.isFinite(lon) && Number.isFinite(lat)) {
+            const alt = Number.isFinite(altRaw) ? altRaw : 0
+            points.push({ name, coord: [lon, lat, alt] })
+          }
+        }
+      }
     }
   }
 
