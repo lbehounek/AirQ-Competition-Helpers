@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "Photo corridors",
+    "selectKml": "Select KML",
+    "exportKml": "Export KML",
+    "toggleBase": {
+      "streets": "Streets",
+      "satellite": "Satellite"
+    },
+    "dropHint": "Drop KML to load",
+    "answerSheet": "Show Answer Sheet",
+    "dragToPlace": "Drag to place photo marker"
+  },
+  "popup": {
+    "name": "Name",
+    "clear": "Clear",
+    "delete": "Delete",
+    "distance": "Distance from previous TP: {{nm}} NM",
+    "outside": "Outside corridors",
+    "label": "Label"
+  },
+  "sheet": {
+    "photoLabel": "Photo label",
+    "distance": "Distance",
+    "fromTp": "From TP"
+  },
+  "errors": {
+    "mapboxTokenRequired": "Mapbox token required",
+    "setToken": "Set VITE_MAPBOX_TOKEN in frontend/map-corridors/.env and restart the dev server.",
+    "noOriginalKml": "Original KML file not available for export"
+  }
+}
+
+
