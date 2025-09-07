@@ -28,8 +28,14 @@ function App() {
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [originalKmlText, setOriginalKmlText] = useState<string | null>(null)
-  const [markers, setMarkers] = useState<{ id: string; lng: number; lat: number; name: string }[]>([])
+  type PhotoLabel = 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T'
+  const [markers, setMarkers] = useState<{ id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]>([])
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
+  const usedLabels = useMemo(() => {
+    const set = new Set<PhotoLabel>()
+    for (const m of markers) if (m.label) set.add(m.label)
+    return Array.from(set)
+  }, [markers])
 
   const providerConfig = useMemo(() => mapProviders[provider], [provider])
 
@@ -137,7 +143,11 @@ function App() {
     if (markers.length) {
       const markerFeatures = markers.map(m => ({
         type: 'Feature',
-        properties: { name: m.name || 'photo', role: 'track_photos' },
+        properties: { 
+          name: m.label ? `${m.label} - ${m.name || 'photo'}` : (m.name || 'photo'),
+          role: 'track_photos',
+          label: m.label || undefined
+        },
         geometry: { type: 'Point', coordinates: [m.lng, m.lat] }
       }))
       features.push(...markerFeatures as any)
@@ -180,6 +190,20 @@ function App() {
   const handleMarkerDelete = useCallback((id: string) => {
     setMarkers(prev => prev.filter(m => m.id !== id))
     setActiveMarkerId(current => current === id ? null : current)
+  }, [])
+
+  const handleMarkerLabelChange = useCallback((id: string, label: PhotoLabel) => {
+    setMarkers(prev => {
+      const current = prev.find(m => m.id === id)
+      if (!current) return prev
+      const isUsedElsewhere = prev.some(m => m.id !== id && m.label === label)
+      if (isUsedElsewhere) return prev
+      return prev.map(m => m.id === id ? { ...m, label } : m)
+    })
+  }, [])
+
+  const handleMarkerLabelClear = useCallback((id: string) => {
+    setMarkers(prev => prev.map(m => m.id === id ? ({ ...m, label: undefined }) : m))
   }, [])
 
   return (
@@ -269,11 +293,14 @@ function App() {
             ].filter(Boolean) as any}
             markers={markers}
             activeMarkerId={activeMarkerId}
+            usedLabels={usedLabels}
             onMarkerAdd={handleMarkerAdd}
             onMarkerDragEnd={handleMarkerDragEnd}
             onMarkerClick={handleMarkerClick}
             onMarkerNameChange={handleMarkerNameChange}
             onMarkerDelete={handleMarkerDelete}
+            onMarkerLabelChange={handleMarkerLabelChange}
+            onMarkerLabelClear={handleMarkerLabelClear}
           />
         </Box>
       </Container>
