@@ -17,7 +17,7 @@
     "@react-pdf/renderer": "^4.3.0",
     "buffer": "^6.0.3",
     "fabric": "^6.7.1",
-    "jspdf": "^3.0.1",
+    "jspdf": "^3.0.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-dropzone": "^14.3.8"
