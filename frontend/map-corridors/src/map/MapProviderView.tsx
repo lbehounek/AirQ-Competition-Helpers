@@ -37,6 +37,7 @@ export function MapProviderView(props: {
 
   const mapRef = useRef<MapRef | null>(null)
   const [isMapLoaded, setIsMapLoaded] = useState(false)
+  const [confirmDeleteForId, setConfirmDeleteForId] = useState<string | null>(null)
   const dragStartLngLatRef = useRef<Map<string, { lng: number, lat: number }>>(new Map())
   const dragMovedPxRef = useRef<Map<string, number>>(new Map())
   // Attach native DnD listeners on the canvas to support custom marker drops
@@ -320,36 +321,86 @@ export function MapProviderView(props: {
                     )
                   })}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-                  <button
-                    onClick={() => props.onMarkerLabelClear?.(m.id)}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 6,
-                      border: '1px solid #e5e7eb',
-                      background: '#ffffff',
-                      color: '#111827',
-                      cursor: 'pointer',
-                      fontSize: 13
-                    }}
-                  >
-                    Clear
-                  </button>
-                  <button
-                    onClick={() => props.onMarkerDelete?.(m.id)}
-                    style={{
-                      background: '#ef4444',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '6px 10px',
-                      fontSize: 13,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
+                {confirmDeleteForId === m.id ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                    <div style={{ fontSize: 12, color: '#374151' }}>{t('popup.confirmDelete')}</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={() => setConfirmDeleteForId(null)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          border: '1px solid #e5e7eb',
+                          background: '#ffffff',
+                          color: '#111827',
+                          cursor: 'pointer',
+                          fontSize: 13
+                        }}
+                      >
+                        {t('popup.cancel')}
+                      </button>
+                      <button
+                        onClick={() => { props.onMarkerDelete?.(m.id); setConfirmDeleteForId(null); props.onMarkerClick?.(null as any) }}
+                        style={{
+                          background: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: 6,
+                          padding: '6px 10px',
+                          fontSize: 13,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {t('popup.delete')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+                    <button
+                      onClick={() => props.onMarkerLabelClear?.(m.id)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 6,
+                        border: '1px solid #e5e7eb',
+                        background: '#ffffff',
+                        color: '#111827',
+                        cursor: 'pointer',
+                        fontSize: 13
+                      }}
+                    >
+                      {t('popup.clear')}
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteForId(m.id)}
+                      style={{
+                        background: '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '6px 10px',
+                        fontSize: 13,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {t('popup.delete')}
+                    </button>
+                    <button
+                      onClick={() => props.onMarkerClick?.(null as any)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 6,
+                        border: '1px solid #1d4ed8',
+                        background: '#1d4ed8',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        fontSize: 13
+                      }}
+                    >
+                      {t('popup.ok')}
+                    </button>
+                  </div>
+                )}
               </div>
             </Popup>
           )}

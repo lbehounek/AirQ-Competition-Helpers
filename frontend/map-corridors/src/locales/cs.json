@@ -16,6 +16,9 @@
     "name": "Název",
     "clear": "Vymazat",
     "delete": "Smazat",
+    "ok": "OK",
+    "confirmDelete": "Smazat tento bod fotky?",
+    "cancel": "Zrušit",
     "distance": "Vzdálenost od předchozího TP: {{nm}} NM",
     "outside": "Mimo koridor",
     "label": "Označení"

@@ -16,6 +16,9 @@
     "name": "Name",
     "clear": "Clear",
     "delete": "Delete",
+    "ok": "OK",
+    "confirmDelete": "Delete this photo marker?",
+    "cancel": "Cancel",
     "distance": "Distance from previous TP: {{nm}} NM",
     "outside": "Outside corridors",
     "label": "Label"
