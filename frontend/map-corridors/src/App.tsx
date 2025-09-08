@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
-import { MapProviderView, MapProviderViewHandle } from './map/MapProviderView'
+import { MapProviderView } from './map/MapProviderView'
+import type { MapProviderViewHandle } from './map/MapProviderView'
 import type { MapProviderId } from './map/providers'
 import { mapProviders } from './map/providers'
 // DropZone removed; map area acts as drop target
@@ -222,7 +223,7 @@ function App() {
     } finally {
       lastComputeSigRef.current = { geojson: input, spAfterNm }
     }
-  }, [session?.geojson, session?.use1NmAfterSp, setComputedData])
+  }, [session?.geojson, session?.use1NmAfterSp])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
@@ -383,7 +384,7 @@ function App() {
   return (
     <>
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
-      <AppBar position="static" color="default" elevation={1}>
+      <AppBar position="static" color="default" elevation={1} data-print-hide="true">
         <Toolbar sx={{ gap: 2 }}>
           <Typography variant="h6" sx={{ mr: 1 }}>{t('app.title')}</Typography>
           <input
