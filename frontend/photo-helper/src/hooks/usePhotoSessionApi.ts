@@ -202,6 +202,52 @@ export const usePhotoSessionApi = () => {
     }
   }, [sessionId, backendAvailable]);
 
+  // Apply a setting to all photos across active sets, then refresh from backend
+  const applySettingToAll = useCallback(async (setting: string, value: any, excludePhotoId?: string) => {
+    if (!session || !sessionId || !backendAvailable) return;
+    try {
+      // Optimistically update local state for responsiveness
+      setSession((current) => {
+        if (!current) return current;
+        const defaultCanvasState: any = {
+          position: { x: 0, y: 0 },
+          scale: 1,
+          brightness: 0,
+          contrast: 1,
+          sharpness: 0,
+          whiteBalance: { temperature: 0, tint: 0, auto: false },
+          labelPosition: 'bottom-left'
+        };
+        const applyPatch = (cs: any) => {
+          const next = { ...defaultCanvasState, ...cs };
+          if (setting === 'scale') next.scale = Math.max(1, Number(value));
+          else if (setting === 'brightness') next.brightness = Number(value);
+          else if (setting === 'contrast') next.contrast = Number(value);
+          else if (setting === 'sharpness') next.sharpness = Number(value);
+          else if (setting === 'whiteBalance.temperature') { const wb = { ...(next.whiteBalance || defaultCanvasState.whiteBalance) }; wb.temperature = Number(value); wb.auto = false; next.whiteBalance = wb; }
+          else if (setting === 'whiteBalance.tint') { const wb = { ...(next.whiteBalance || defaultCanvasState.whiteBalance) }; wb.tint = Number(value); wb.auto = false; next.whiteBalance = wb; }
+          return next;
+        };
+        const mapPhotos = (photos: any[]) => photos.map(p => (p.id === excludePhotoId ? p : { ...p, canvasState: applyPatch(p.canvasState) }));
+        return {
+          ...current,
+          sets: {
+            set1: { ...current.sets.set1, photos: mapPhotos(current.sets.set1.photos as any) },
+            set2: { ...current.sets.set2, photos: mapPhotos(current.sets.set2.photos as any) },
+          }
+        } as any;
+      });
+      // TODO: Add backend bulk update endpoint; for now, rely on per-photo save or leave transient
+      // Immediately refresh to ensure backend/local consistency
+      const refreshed = await api.getSession(sessionId);
+      setSession(refreshed.session as any);
+    } catch (err) {
+      const errorMessage = err instanceof ApiError ? err.message : 'Failed to apply setting to all';
+      setError(errorMessage);
+      console.error('Apply-to-all error:', err);
+    }
+  }, [session, sessionId, backendAvailable]);
+
   const updateSetTitle = useCallback(async (setKey: 'set1' | 'set2', title: string) => {
     if (!sessionId || !backendAvailable) return;
 
@@ -511,6 +557,7 @@ export const usePhotoSessionApi = () => {
     addPhotosToTurningPoint,
     removePhoto,
     updatePhotoState,
+    applySettingToAll,
     updateSetTitle,
     updateSetTitles,
     reorderPhotos,

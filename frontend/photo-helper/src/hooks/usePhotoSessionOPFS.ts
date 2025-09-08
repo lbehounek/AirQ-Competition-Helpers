@@ -320,6 +320,61 @@ export function usePhotoSessionOPFS() {
     await updateStorageEstimate();
   }, [session, persistSession]);
 
+  // Apply a single setting to all photos across active sets in one atomic update
+  const applySettingToAll = useCallback(async (setting: string, value: any, excludePhotoId?: string) => {
+    if (!session) return;
+    const defaultCanvasState: Photo['canvasState'] = {
+      position: { x: 0, y: 0 },
+      scale: 1,
+      brightness: 0,
+      contrast: 1,
+      sharpness: 0,
+      whiteBalance: { temperature: 0, tint: 0, auto: false },
+      labelPosition: 'bottom-left'
+    } as any;
+
+    const applyPatch = (cs: Photo['canvasState']): Photo['canvasState'] => {
+      const next = { ...defaultCanvasState, ...cs } as Photo['canvasState'];
+      if (setting === 'scale') {
+        next.scale = Math.max(1, Number(value));
+      } else if (setting === 'brightness') {
+        next.brightness = Number(value);
+      } else if (setting === 'contrast') {
+        next.contrast = Number(value);
+      } else if (setting === 'sharpness') {
+        next.sharpness = Number(value);
+      } else if (setting === 'whiteBalance.temperature') {
+        const wb = { ...(next.whiteBalance || defaultCanvasState.whiteBalance) };
+        wb.temperature = Number(value);
+        wb.auto = false;
+        next.whiteBalance = wb as any;
+      } else if (setting === 'whiteBalance.tint') {
+        const wb = { ...(next.whiteBalance || defaultCanvasState.whiteBalance) };
+        wb.tint = Number(value);
+        wb.auto = false;
+        next.whiteBalance = wb as any;
+      }
+      return next;
+    };
+
+    const mapPhotos = (photos: ApiPhoto[]) => photos.map(p => (
+      p.id === excludePhotoId ? p : { ...p, canvasState: applyPatch(p.canvasState as any) }
+    ));
+
+    const next: ApiPhotoSession = {
+      ...session,
+      version: session.version + 1,
+      updatedAt: new Date().toISOString(),
+      sets: {
+        set1: { ...session.sets.set1, photos: mapPhotos(session.sets.set1.photos as any) },
+        set2: { ...session.sets.set2, photos: mapPhotos(session.sets.set2.photos as any) },
+      },
+    };
+    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    await persistSession(next);
+    await updateStorageEstimate();
+  }, [session, persistSession]);
+
   const updateSetTitle = useCallback(async (setKey: 'set1' | 'set2', title: string) => {
     if (!session) return;
     // Apply title
@@ -508,6 +563,7 @@ export function usePhotoSessionOPFS() {
     },
     removePhoto,
     updatePhotoState,
+    applySettingToAll,
     updateSetTitle,
     updateSetTitles,
     reorderPhotos,

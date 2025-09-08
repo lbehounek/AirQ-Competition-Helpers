@@ -85,7 +85,8 @@ function AppApi() {
     clearError,
     checkBackendHealth,
     refreshSession,
-    getSessionStats
+    getSessionStats,
+    applySettingToAll
   } = useSessionHook() as any;
   
   const { currentRatio } = useAspectRatio();
@@ -294,48 +295,7 @@ function AppApi() {
   };
 
   // Helper: safely apply a setting to all photos with sane defaults
-  const applySettingToAll = (setting: string, value: any) => {
-    if (!session || !selectedPhoto) return;
-
-    const defaultCanvasState = {
-      position: { x: 0, y: 0 },
-      scale: 1,
-      brightness: 0,
-      contrast: 1,
-      sharpness: 0,
-      whiteBalance: { temperature: 0, tint: 0, auto: false },
-      labelPosition: 'bottom-left' as const
-    };
-
-    (['set1', 'set2'] as const).forEach(setKey => {
-      session.sets[setKey].photos.forEach((photo: any) => {
-        if (photo.id === selectedPhoto.photo.id) return; // Skip current photo
-
-        const baseState = photo.canvasState ?? defaultCanvasState;
-        const currentState: any = { ...defaultCanvasState, ...baseState };
-
-        if (setting === 'scale') {
-          currentState.scale = value;
-        } else if (setting === 'brightness') {
-          currentState.brightness = value;
-        } else if (setting === 'contrast') {
-          currentState.contrast = value;
-        } else if (setting === 'sharpness') {
-          currentState.sharpness = value;
-        } else if (setting === 'whiteBalance.temperature') {
-          const wb = { ...(currentState.whiteBalance ?? defaultCanvasState.whiteBalance), auto: false };
-          wb.temperature = value;
-          currentState.whiteBalance = wb;
-        } else if (setting === 'whiteBalance.tint') {
-          const wb = { ...(currentState.whiteBalance ?? defaultCanvasState.whiteBalance), auto: false };
-          wb.tint = value;
-          currentState.whiteBalance = wb;
-        }
-
-        updatePhotoState(setKey as 'set1' | 'set2', photo.id, currentState);
-      });
-    });
-  };
+  // applySettingToAll now provided by hook for atomic updates across photos
 
   // OPFS/back-end availability check (loading state)
   if (backendAvailable === null) {
