@@ -215,6 +215,26 @@ export const usePhotoSessionApi = () => {
     }
   }, [sessionId, backendAvailable]);
 
+  // Batch update multiple set titles atomically to avoid UI desync
+  const updateSetTitles = useCallback(async (titles: Partial<{ set1: string; set2: string }>) => {
+    if (!sessionId || !backendAvailable) return;
+    try {
+      // Apply sequentially but sync from backend after both; backend lacks batch endpoint
+      if (typeof titles.set1 === 'string') {
+        await api.updateSetTitle(sessionId, 'set1', titles.set1);
+      }
+      if (typeof titles.set2 === 'string') {
+        await api.updateSetTitle(sessionId, 'set2', titles.set2);
+      }
+      const refreshed = await api.getSession(sessionId);
+      setSession(refreshed.session as ApiPhotoSession);
+    } catch (err) {
+      const errorMessage = err instanceof ApiError ? err.message : 'Failed to update titles';
+      setError(errorMessage);
+      console.error('Batch title update error:', err);
+    }
+  }, [sessionId, backendAvailable]);
+
   const resetSession = useCallback(async () => {
     if (!backendAvailable) return;
     
@@ -492,6 +512,7 @@ export const usePhotoSessionApi = () => {
     removePhoto,
     updatePhotoState,
     updateSetTitle,
+    updateSetTitles,
     reorderPhotos,
     shufflePhotos,
     updateSessionMode,

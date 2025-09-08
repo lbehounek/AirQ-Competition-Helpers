@@ -362,6 +362,24 @@ export function usePhotoSessionOPFS() {
     await updateStorageEstimate();
   }, [session, persistSession]);
 
+  // Batch update multiple set titles atomically to avoid stale state overwrites
+  const updateSetTitles = useCallback(async (titles: Partial<{ set1: string; set2: string }>) => {
+    if (!session) return;
+    const next: ApiPhotoSession = {
+      ...session,
+      version: session.version + 1,
+      updatedAt: new Date().toISOString(),
+      sets: {
+        ...session.sets,
+        set1: titles.set1 !== undefined ? { ...session.sets.set1, title: titles.set1 } : session.sets.set1,
+        set2: titles.set2 !== undefined ? { ...session.sets.set2, title: titles.set2 } : session.sets.set2,
+      },
+    };
+    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    await persistSession(next);
+    await updateStorageEstimate();
+  }, [session, persistSession]);
+
   const reorderPhotos = useCallback(async (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
     if (!session) return;
     const gridCapacity = ((session as any).layoutMode === 'portrait') ? 10 : 9;
@@ -491,6 +509,7 @@ export function usePhotoSessionOPFS() {
     removePhoto,
     updatePhotoState,
     updateSetTitle,
+    updateSetTitles,
     reorderPhotos,
     shufflePhotos,
     updateSessionMode,
