@@ -237,10 +237,8 @@ export const usePhotoSessionApi = () => {
           }
         } as any;
       });
-      // TODO: Add backend bulk update endpoint; for now, rely on per-photo save or leave transient
-      // Immediately refresh to ensure backend/local consistency
-      const refreshed = await api.getSession(sessionId);
-      setSession(refreshed.session as any);
+      // TODO: Add backend bulk update endpoint; for now, keep optimistic state
+      // Skip immediate refresh to avoid overwriting local changes
     } catch (err) {
       const errorMessage = err instanceof ApiError ? err.message : 'Failed to apply setting to all';
       setError(errorMessage);

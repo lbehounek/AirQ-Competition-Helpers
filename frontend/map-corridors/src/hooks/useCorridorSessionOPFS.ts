@@ -50,7 +50,7 @@ const defaultSession = (id: string): CorridorsSession => ({
 export function useCorridorSessionOPFS() {
   const [session, setSession] = useState<CorridorsSession | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [loading] = useState(false)
+  // No loading UI is currently used; keep hook lean
   const [error, setError] = useState<string | null>(null)
   const [opfsAvailable, setOpfsAvailable] = useState<boolean | null>(null)
 
@@ -68,8 +68,8 @@ export function useCorridorSessionOPFS() {
         return
       }
       try {
-        const { sessions } = await initOPFS()
-        const { dir } = await ensureSessionDir({ root: {} as any, sessions }, id)
+        const { root, sessions } = await initOPFS()
+        const { dir } = await ensureSessionDir({ root, sessions }, id)
         handlesRef.current = { sessionsDir: sessions, sessionDir: dir }
         const existing = await readJSON<CorridorsSession>(dir, 'session.json')
         if (existing) {
@@ -95,7 +95,12 @@ export function useCorridorSessionOPFS() {
   const persistSession = useCallback(async (next: CorridorsSession) => {
     setSession(next)
     if (handlesRef.current.sessionDir) {
-      try { await writeJSON(handlesRef.current.sessionDir, 'session.json', next) } catch {}
+      try { 
+        await writeJSON(handlesRef.current.sessionDir, 'session.json', next) 
+      } catch (e) {
+        console.error('Failed to persist corridors session to OPFS', e)
+        setError('Failed to persist session')
+      }
     }
   }, [])
 
@@ -158,7 +163,6 @@ export function useCorridorSessionOPFS() {
     // state
     session,
     sessionId,
-    loading,
     error,
     backendAvailable: opfsAvailable,
     // actions

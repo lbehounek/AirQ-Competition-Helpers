@@ -48,10 +48,22 @@ export async function writeJSON(
   name: string,
   data: any
 ) {
+  let text: string
+  try {
+    text = JSON.stringify(data)
+  } catch (e) {
+    throw new Error(`Failed to serialize JSON for ${name}: ${(e as any)?.message || e}`)
+  }
   const fh = await dir.getFileHandle(name, { create: true })
-  const w = await fh.createWritable()
-  await w.write(new Blob([JSON.stringify(data)], { type: 'application/json' }))
-  await w.close()
+  let w: FileSystemWritableFileStream | null = null
+  try {
+    w = await (fh as any).createWritable()
+    await w.write(new Blob([text], { type: 'application/json' }))
+  } catch (e) {
+    throw new Error(`Failed to write ${name}: ${(e as any)?.message || e}`)
+  } finally {
+    try { await (w as any)?.close?.() } catch {}
+  }
 }
 
 export async function readJSON<T>(dir: FileSystemDirectoryHandle, name: string): Promise<T | null> {

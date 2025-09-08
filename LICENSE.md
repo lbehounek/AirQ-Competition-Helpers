@@ -13,7 +13,7 @@ with the following ADDITIONAL TERMS:
    Any redistribution, modification, or derivative work **must give clear and
    visible credit** to the original author:
 
-   "This project is based on AirQ Competition Helpers by Lukas Behounek (https://github.com/lbehounek)."
+   "This project is based on AirQ Competition Helpers by Lukas Behounek (https://github.com/lbehounek https://behounek.it)."
 
 3. OPEN SOURCE SHARING
    You are allowed to:

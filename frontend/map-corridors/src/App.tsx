@@ -333,8 +333,9 @@ function App() {
     const container = answerSheetRef.current
     if (!container) return
     const html = container.innerHTML
-    const w = window.open('', '_blank')
+    const w = window.open('', '_blank', 'noopener,noreferrer')
     if (!w) return
+    try { (w as any).opener = null } catch {}
     const styles = `@page { size: A4 portrait; margin: 12mm; } body { font-family: Arial, sans-serif; color: #111; } table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #999; padding: 6px 8px; font-size: 12px; } th { background: #f2f2f2; text-align: left; }`
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${t('app.title')} - ${t('sheet.print')}</title><style>${styles}</style></head><body>${html}</body></html>`)
     w.document.close()

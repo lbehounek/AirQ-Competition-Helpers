@@ -234,13 +234,17 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
             }
           }
         }
-        if (!dataUrl || dataUrl === 'data:,') return
-        const w = window.open('', '_blank')
+        if (!dataUrl || dataUrl === 'data:,') { throw new Error('Failed to capture map image') }
+        const w = window.open('', '_blank', 'noopener,noreferrer')
         if (!w) return
+        try { (w as any).opener = null } catch {}
         const html = `<!doctype html><html><head><meta charset=\"utf-8\"><title>Map Print</title><style>html,body{margin:0;padding:0;background:#fff}img{max-width:100vw;max-height:100vh;display:block;margin:0 auto}</style></head><body><img id=\"snap\" alt=\"map\"/></body><script>\n(function(){\n  var img = document.getElementById('snap');\n  img.onload = function(){ setTimeout(function(){ try{ window.print(); }catch(e){} try{ window.close(); }catch(e){} }, 150); };\n  img.src = '${dataUrl}';\n})();\n</script></html>`
         w.document.write(html)
         w.document.close()
         try { w.focus() } catch {}
+      } catch (err) {
+        console.error('Map print failed', err)
+        try { alert(t('sheet.print') + ': failed') } catch {}
       } finally {
         // Restore corridor layer visibility
         for (const id of corridorLayerIds) {

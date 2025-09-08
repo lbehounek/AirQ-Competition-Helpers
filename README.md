@@ -86,3 +86,6 @@ LLMs were used heavily during development. While the overall architecture, appro
 ## License
 
 This software is developed for the flying community to maintain and promote our beautiful sport and is published free for non-commercial use. Commercial use is not permitted. See [LICENSE.md](./LICENSE.md) for full terms.
+
+https://leteckanavigace.cz
+https://behounek.it
