@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, IconButton, Tooltip } from '@mui/material'
+import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, IconButton, Tooltip, Alert } from '@mui/material'
 import { Download, Place, Print } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -17,6 +17,7 @@ import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } fro
 import { calculateDistance } from './corridors/segments'
 import { useI18n } from './contexts/I18nContext'
 import { LanguageSwitcher } from './components/LanguageSwitcher'
+import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 
 function App() {
   const { t } = useI18n()
@@ -25,21 +26,21 @@ function App() {
     try { document.title = t('app.title') } catch {}
   }, [t])
   const [provider] = useState<MapProviderId>('mapbox')
-  const [baseStyle, setBaseStyle] = useState<'streets' | 'satellite'>('streets')
-  const [geojson, setGeojson] = useState<GeoJSON | null>(null)
-  // Remove buffer corridor state since we don't use it
-  // continuous corridors removed; we use segmented only
-  const [gates, setGates] = useState<GeoJSON | null>(null)
-  const [points, setPoints] = useState<GeoJSON | null>(null)
-  const [exactPoints, setExactPoints] = useState<GeoJSON | null>(null)
-  const [leftSegments, setLeftSegments] = useState<GeoJSON | null>(null)
-  const [rightSegments, setRightSegments] = useState<GeoJSON | null>(null)
-  const [use1NmAfterSp, setUse1NmAfterSp] = useState(false)
+  const {
+    session,
+    backendAvailable,
+    setBaseStyle,
+    setUse1NmAfterSp,
+    setMarkers: persistMarkers,
+    setComputedData,
+    saveOriginalKmlText,
+    loadOriginalKmlText,
+  } = useCorridorSessionOPFS()
+  const baseStyle = (session?.baseStyle || 'streets') as 'streets' | 'satellite'
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [originalKmlText, setOriginalKmlText] = useState<string | null>(null)
   type PhotoLabel = 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T'
-  const [markers, setMarkers] = useState<{ id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]>([])
+  const markers = (session?.markers || []) as { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
   const [isAnswerSheetOpen, setAnswerSheetOpen] = useState(false)
   const answerSheetRef = useRef<HTMLDivElement | null>(null)
@@ -55,12 +56,15 @@ function App() {
     return mp
   }, [markers])
 
+  // Avoid infinite recompute loops by memoizing last compute signature
+  const lastComputeSigRef = useRef<{ geojson: GeoJSON; spAfterNm: number } | null>(null)
+
   // Precompute corridor polygons and start TP coordinates
   const corridorPolygons = useMemo(() => {
     type Ring = [number, number][]
     const res: Array<{ name: string; ring: Ring; bbox: [number, number, number, number]; startName: string; startCoord?: [number, number] } > = []
-    const left = (leftSegments && (leftSegments as any).features) ? (leftSegments as any).features : []
-    const right = (rightSegments && (rightSegments as any).features) ? (rightSegments as any).features : []
+    const left = (session?.leftSegments && (session.leftSegments as any).features) ? (session.leftSegments as any).features : []
+    const right = (session?.rightSegments && (session.rightSegments as any).features) ? (session.rightSegments as any).features : []
     const byName: Record<string, { left?: Ring; right?: Ring }> = {}
     for (const f of left) {
       const name = f.properties?.segment
@@ -76,8 +80,8 @@ function App() {
     }
     // Build lookup of exact point coords by name (SP, TP n)
     const exactLookup: Record<string, [number, number]> = {}
-    if (exactPoints && (exactPoints as any).features) {
-      for (const f of (exactPoints as any).features) {
+    if (session?.exactPoints && (session.exactPoints as any).features) {
+      for (const f of (session.exactPoints as any).features) {
         const role = f.properties?.role
         const nm = f.properties?.name
         if (role === 'exact' && nm && Array.isArray(f.geometry?.coordinates)) {
@@ -115,7 +119,7 @@ function App() {
       res.push({ name, ring, bbox: [minLng, minLat, maxLng, maxLat], startName, startCoord })
     }
     return res
-  }, [leftSegments, rightSegments, exactPoints])
+  }, [session?.leftSegments, session?.rightSegments, session?.exactPoints])
 
   // Compute per-marker distance info (NM) if inside a corridor
   const markerDistanceNmById = useMemo(() => {
@@ -169,41 +173,55 @@ function App() {
 
   const providerConfig = useMemo(() => mapProviders[provider], [provider])
 
-  const recomputeCorridors = useCallback((input: GeoJSON, spAfterNm: number) => {
-    try {
-      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(input, 300, spAfterNm)
-      setGates(gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null)
-      setPoints(points && points.length ? ({ type: 'FeatureCollection', features: points } as any) : null)
-      setExactPoints(exactPoints && exactPoints.length ? ({ type: 'FeatureCollection', features: exactPoints } as any) : null)
-      setLeftSegments(leftSegments && leftSegments.length ? ({ type: 'FeatureCollection', features: leftSegments } as any) : null)
-      setRightSegments(rightSegments && rightSegments.length ? ({ type: 'FeatureCollection', features: rightSegments } as any) : null)
-    } catch {
-      setGates(null); setPoints(null); setExactPoints(null); setLeftSegments(null); setRightSegments(null)
-    }
-  }, [])
-
   const onFiles = useCallback(async (files: File[]) => {
     const file = files[0]
     if (!file) return
     // Store original KML text for export
     const fileText = await file.text()
-    if (file.name.toLowerCase().endsWith('.kml')) {
-      setOriginalKmlText(fileText)
-    } else {
-      setOriginalKmlText(null)
-    }
+    await saveOriginalKmlText(file.name.toLowerCase().endsWith('.kml') ? fileText : '')
     const { parseFileToGeoJSON } = await import('./parsers/detect')
     const parsed = await parseFileToGeoJSON(file)
-    setGeojson(parsed)
     // compute corridors using current SP-after setting
-    recomputeCorridors(parsed, use1NmAfterSp ? 1 : 5)
-  }, [recomputeCorridors, use1NmAfterSp])
+    const use1 = !!session?.use1NmAfterSp
+    try {
+      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(parsed, 300, use1 ? 1 : 5)
+      await setComputedData({
+        geojson: parsed,
+        gates: gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null,
+        points: points && points.length ? ({ type: 'FeatureCollection', features: points } as any) : null,
+        exactPoints: exactPoints && exactPoints.length ? ({ type: 'FeatureCollection', features: exactPoints } as any) : null,
+        leftSegments: leftSegments && leftSegments.length ? ({ type: 'FeatureCollection', features: leftSegments } as any) : null,
+        rightSegments: rightSegments && rightSegments.length ? ({ type: 'FeatureCollection', features: rightSegments } as any) : null,
+      })
+    } catch {
+      await setComputedData({ geojson: parsed, gates: null, points: null, exactPoints: null, leftSegments: null, rightSegments: null })
+    }
+  }, [saveOriginalKmlText, session?.use1NmAfterSp, setComputedData])
 
   // Recompute when toggling SP-after distance
   useEffect(() => {
-    if (!geojson) return
-    recomputeCorridors(geojson, use1NmAfterSp ? 1 : 5)
-  }, [geojson, use1NmAfterSp, recomputeCorridors])
+    if (!session?.geojson) return
+    const input = session.geojson
+    const spAfterNm = session.use1NmAfterSp ? 1 : 5
+    const last = lastComputeSigRef.current
+    // Only recompute when input or parameter changed
+    if (last && last.geojson === input && last.spAfterNm === spAfterNm) return
+    try {
+      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(input, 300, spAfterNm)
+      setComputedData({
+        geojson: input,
+        gates: gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null,
+        points: points && points.length ? ({ type: 'FeatureCollection', features: points } as any) : null,
+        exactPoints: exactPoints && exactPoints.length ? ({ type: 'FeatureCollection', features: exactPoints } as any) : null,
+        leftSegments: leftSegments && leftSegments.length ? ({ type: 'FeatureCollection', features: leftSegments } as any) : null,
+        rightSegments: rightSegments && rightSegments.length ? ({ type: 'FeatureCollection', features: rightSegments } as any) : null,
+      })
+    } catch {
+      setComputedData({ geojson: input, gates: null, points: null, exactPoints: null, leftSegments: null, rightSegments: null })
+    } finally {
+      lastComputeSigRef.current = { geojson: input, spAfterNm }
+    }
+  }, [session?.geojson, session?.use1NmAfterSp, setComputedData])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
@@ -260,24 +278,25 @@ function App() {
     e.target.value = ''
   }, [onFiles])
 
-  const handleExportKML = useCallback(() => {
+  const handleExportKML = useCallback(async () => {
+    const originalKmlText = await loadOriginalKmlText()
     if (!originalKmlText) {
-      alert('Original KML file not available for export')
+      alert(t('errors.noOriginalKml'))
       return
     }
     // Build only corridors, gates, and exact points as features to append
     const features: any[] = []
-    if (leftSegments && leftSegments.type === 'FeatureCollection') {
-      features.push(...leftSegments.features)
+    if (session?.leftSegments && session.leftSegments.type === 'FeatureCollection') {
+      features.push(...session.leftSegments.features)
     }
-    if (rightSegments && rightSegments.type === 'FeatureCollection') {
-      features.push(...rightSegments.features)
+    if (session?.rightSegments && session.rightSegments.type === 'FeatureCollection') {
+      features.push(...session.rightSegments.features)
     }
-    if (gates && gates.type === 'FeatureCollection') {
-      features.push(...gates.features)
+    if (session?.gates && session.gates.type === 'FeatureCollection') {
+      features.push(...session.gates.features)
     }
-    if (exactPoints && exactPoints.type === 'FeatureCollection') {
-      features.push(...exactPoints.features)
+    if (session?.exactPoints && session.exactPoints.type === 'FeatureCollection') {
+      features.push(...session.exactPoints.features)
     }
     // Append photo markers as Point features under track_photos via name property
     if (markers.length) {
@@ -300,7 +319,7 @@ function App() {
       const mergedKml = appendFeaturesToKML(originalKmlText, combinedGeoJSON, 'corridors_export')
       downloadKML(mergedKml, 'corridors_export.kml')
     }
-  }, [leftSegments, rightSegments, gates, exactPoints, originalKmlText])
+  }, [session?.leftSegments, session?.rightSegments, session?.gates, session?.exactPoints, markers, loadOriginalKmlText, t])
 
   // Drag source for placing markers
   const onDragStartMarker = useCallback((e: React.DragEvent) => {
@@ -325,40 +344,40 @@ function App() {
   // Marker callbacks passed to map
   const handleMarkerAdd = useCallback((lng: number, lat: number) => {
     const id = Math.random().toString(36).slice(2)
-    setMarkers(prev => [...prev, { id, lng, lat, name: '' }])
+    persistMarkers(prev => [...prev, { id, lng, lat, name: '' }])
     setActiveMarkerId(id)
-  }, [])
+  }, [persistMarkers])
 
   const handleMarkerDragEnd = useCallback((id: string, lng: number, lat: number) => {
-    setMarkers(prev => prev.map(m => m.id === id ? { ...m, lng, lat } : m))
-  }, [])
+    persistMarkers(prev => prev.map(m => m.id === id ? { ...m, lng, lat } : m))
+  }, [persistMarkers])
 
   const handleMarkerClick = useCallback((id: string | null) => {
     setActiveMarkerId(id)
   }, [])
 
   const handleMarkerNameChange = useCallback((id: string, name: string) => {
-    setMarkers(prev => prev.map(m => m.id === id ? { ...m, name: name.slice(0, 30) } : m))
-  }, [])
+    persistMarkers(prev => prev.map(m => m.id === id ? { ...m, name: name.slice(0, 30) } : m))
+  }, [persistMarkers])
 
   const handleMarkerDelete = useCallback((id: string) => {
-    setMarkers(prev => prev.filter(m => m.id !== id))
+    persistMarkers(prev => prev.filter(m => m.id !== id))
     setActiveMarkerId(current => current === id ? null : current)
-  }, [])
+  }, [persistMarkers])
 
   const handleMarkerLabelChange = useCallback((id: string, label: PhotoLabel) => {
-    setMarkers(prev => {
+    persistMarkers(prev => {
       const current = prev.find(m => m.id === id)
       if (!current) return prev
       const isUsedElsewhere = prev.some(m => m.id !== id && m.label === label)
       if (isUsedElsewhere) return prev
       return prev.map(m => m.id === id ? { ...m, label } : m)
     })
-  }, [])
+  }, [persistMarkers])
 
   const handleMarkerLabelClear = useCallback((id: string) => {
-    setMarkers(prev => prev.map(m => m.id === id ? ({ ...m, label: undefined }) : m))
-  }, [])
+    persistMarkers(prev => prev.map(m => m.id === id ? ({ ...m, label: undefined }) : m))
+  }, [persistMarkers])
 
   return (
     <>
@@ -376,7 +395,7 @@ function App() {
           <Button variant="contained" color="primary" onClick={onClickSelectFile}>
             {t('app.selectKml')}
           </Button>
-          {(leftSegments || rightSegments || gates) && (
+          {(session?.leftSegments || session?.rightSegments || session?.gates) && (
             <Button 
               variant="outlined" 
               color="success" 
@@ -423,7 +442,7 @@ function App() {
             <ToggleButton value="satellite" aria-label={t('app.toggleBase.satellite')}>{t('app.toggleBase.satellite')}</ToggleButton>
           </ToggleButtonGroup>
           <FormControlLabel
-            control={<Checkbox size="small" checked={use1NmAfterSp} onChange={(e) => setUse1NmAfterSp(e.target.checked)} />}
+            control={<Checkbox size="small" checked={!!session?.use1NmAfterSp} onChange={(e) => setUse1NmAfterSp(e.target.checked)} />}
             label={t('app.use1NmAfterSp')}
           />
           {/* Provider selection removed to use Mapbox only */}
@@ -446,6 +465,11 @@ function App() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {backendAvailable === false && (
+            <Box sx={{ position: 'absolute', top: 8, left: 8, right: 8, zIndex: 20 }}>
+              <Alert severity="warning">{t('opfs.warning')}</Alert>
+            </Box>
+          )}
           {isDragOver && (
             <Box sx={{
               position: 'absolute', inset: 0, zIndex: 10,
@@ -462,16 +486,16 @@ function App() {
             baseStyle={baseStyle}
             providerConfig={providerConfig}
             geojsonOverlays={[
-              geojson ? { id: 'uploaded-geojson', data: geojson, type: 'line' as const, paint: { 'line-color': '#f7ca00', 'line-width': 2 } } : null,
+              session?.geojson ? { id: 'uploaded-geojson', data: session.geojson, type: 'line' as const, paint: { 'line-color': '#f7ca00', 'line-width': 2 } } : null,
               // Segmented corridor borders in green
-              leftSegments ? { id: 'left-segments', data: leftSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
-              rightSegments ? { id: 'right-segments', data: rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
+              session?.leftSegments ? { id: 'left-segments', data: session.leftSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
+              session?.rightSegments ? { id: 'right-segments', data: session.rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               // Gates as red perpendicular lines marking corridor start points
-              gates ? { id: 'gates', data: gates, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
+              session?.gates ? { id: 'gates', data: session.gates, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               // Hide original KML waypoint labels to avoid duplicates; keep exactPoints labels
-              points ? { id: 'waypoints', data: points, type: 'circle' as const, paint: { 'circle-opacity': 0 }, layout: { 'text-field': '' } } : null,
+              session?.points ? { id: 'waypoints', data: session.points, type: 'circle' as const, paint: { 'circle-opacity': 0 }, layout: { 'text-field': '' } } : null,
               // Exact waypoints: hide dot markers (keep labels via symbol layout below)
-              exactPoints ? { id: 'exact-points', data: exactPoints, type: 'circle' as const, paint: { 'circle-radius': 0, 'circle-color': '#111111' }, layout: { 'text-field': ['get', 'name'], 'text-offset': [0, 1.2], 'text-anchor': 'top' } } : null,
+              session?.exactPoints ? { id: 'exact-points', data: session.exactPoints, type: 'circle' as const, paint: { 'circle-radius': 0, 'circle-color': '#111111' }, layout: { 'text-field': ['get', 'name'], 'text-offset': [0, 1.2], 'text-anchor': 'top' } } : null,
             ].filter(Boolean) as any}
             markers={markers}
             activeMarkerId={activeMarkerId}
