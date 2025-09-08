@@ -247,36 +247,35 @@ export const generatePDF = async (
       const measuredHeaderHeight = Math.max(competitionImage?.height || 0, setTitleImage?.height || 0);
       localLayout = calculateLayout(15, measuredHeaderHeight, headerTopPad);
 
-      if (competitionImage) {
-        elements.push(
-          React.createElement(Image, {
-            key: `comp-name-${pageKey}`,
-            src: competitionImage.dataUrl,
-            style: {
-              position: 'absolute',
-              left: headerTopPad, // ~1mm from left edge
-              top: localLayout.headerY,
-              width: competitionImage.width,
-              height: competitionImage.height,
-            }
-          })
-        );
-      }
-      
       if (setTitleImage) {
-        // Center set title at top
-        const pageWidth = 842; // A4 landscape width in points
-        const centeredLeft = (pageWidth - setTitleImage.width) / 2;
+        // Place set title at top-left
         elements.push(
           React.createElement(Image, {
             key: `set-title-${pageKey}`,
             src: setTitleImage.dataUrl,
             style: {
               position: 'absolute',
-              left: centeredLeft,
+              left: headerTopPad, // ~1mm from left edge
               top: localLayout.headerY,
               width: setTitleImage.width,
               height: setTitleImage.height,
+            }
+          })
+        );
+      }
+
+      if (competitionImage) {
+        // Place competition name at top-right
+        elements.push(
+          React.createElement(Image, {
+            key: `comp-name-${pageKey}`,
+            src: competitionImage.dataUrl,
+            style: {
+              position: 'absolute',
+              right: headerTopPad, // ~1mm from right edge
+              top: localLayout.headerY,
+              width: competitionImage.width,
+              height: competitionImage.height,
             }
           })
         );
