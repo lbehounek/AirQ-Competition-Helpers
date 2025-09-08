@@ -1,0 +1,11 @@
+# --- Development Environment ---
+DEV_USER=""
+DEV_HOST=""
+DEV_REMOTE_DIR=""
+DEV_URL=""
+
+# --- Production Environment ---
+PROD_USER=""
+PROD_HOST=""
+PROD_REMOTE_DIR=""
+PROD_URL=""
