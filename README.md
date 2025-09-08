@@ -1,110 +1,88 @@
 # AirQ Competition Helpers
 
-This repository contains multiple tools and helpers for AirQ competitions.
+Software for FAI competitions. Currently supports Rally Flying, with plans to add Precision Flying very soon and Microlight competitions shortly after (they are close to these navigation disciplines within GAC).
+
+## Overview
+
+There are two public tools today. A third tool is planned but will remain private. Its backend will not be published; however, any related frontend code will live in this repository.
+
+All current public tools are frontend-only. They do not require a backend. Persistence across reloads and across private sessions is implemented via OPFS (Origin Private File System).
+
+## Tools
+
+### 📸 Photo Helper (frontend-only)
+Comprehensive photo editor to process, organize, edit, and prepare photos for printing for FAI competitions — both track and turning photos.
+
+Features:
+- Photo upload and organization (e.g., 3x3 grids)
+- Real-time photo adjustments (brightness, contrast, sharpness, white balance)
+- Modes for Track photos and Turning Point photos
+- Competition metadata and labeling
+- PDF export with Czech character support
+- Internationalization (English/Czech)
+- Persistence via OPFS, no backend required
+
+Location: `frontend/photo-helper`
+
+### 🗺️ MapCorridors (Rally Flying, frontend-only)
+Determines whether a photo location is inside the allowed photo corridor per rules, places a marker at that position, and automatically generates an answer sheet based on input data.
+
+Current input support: KML used in Czech competitions. If support for other KML variants or GPX inputs is feasible for you, feel free to open a pull request. We can also discuss privately developing such support.
+
+Location: `frontend/map-corridors`
+
+### Planned (private) third tool
+Will be used to generate relay instructions for construction, which is feasible to do algorithmically. Unlike the two tools above, it will use a backend, so it will not be exposed for public use for now. Related frontend code may appear here; the backend will remain private.
 
 ## Project Structure
 
 ```
-├── backend/
-│   └── photo-helper/          # Photo organization backend (FastAPI)
 ├── frontend/
-│   └── photo-helper/          # Photo organization frontend (React + TypeScript)
-├── deploy.dev.sh              # Development deployment script
-├── deploy.prod.sh             # Production deployment script
-├── photohelper.sh             # Local development startup script
-└── README.md                  # This file
+│   ├── photo-helper/           # Photo editor (React + TypeScript, Material UI)
+│   └── map-corridors/          # Rally corridors helper (React + TypeScript)
+├── public_html/                # Built static assets for deployment
+├── deploy.dev.sh               # Development deployment script
+├── deploy.prod.sh              # Production deployment script
+├── photohelper.sh              # Local helper script (legacy/dev)
+└── README.md
 ```
 
-## Available Tools
+There are additional backend-related directories in this repository used historically and for experimentation. They are not required for running the two public tools described above.
 
-### 📸 Photo Helper
-A web application for organizing and editing competition photos with PDF export.
+## Quick Start (frontend tools)
 
-**Features:**
-- Photo upload and organization in 3x3 grids
-- Real-time photo editing (brightness, contrast, sharpness, white balance)
-- Two modes: Track photos and Turning Point photos
-- Competition metadata and labeling
-- PDF export with Czech character support
-- Internationalization (English/Czech)
-
-**Tech Stack:**
-- **Backend**: FastAPI (Python)
-- **Frontend**: React + TypeScript + Material-UI
-- **PDF Generation**: pdfMake with Czech character support
-
-## Quick Start
-
-### Development
-```bash
-# Start the Photo Helper frontend
-./photohelper.sh
-```
-
-This will start:
-- Backend: http://localhost:8000
-- Frontend: http://localhost:5173
-
-### Individual Services
-
-#### Photo Helper Backend
-```bash
-cd backend/photo-helper
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python run.py
-```
-
-#### Photo Helper Frontend
+Photo Helper
 ```bash
 cd frontend/photo-helper
 npm install
 npm run dev
 ```
 
+MapCorridors
+```bash
+cd frontend/map-corridors
+npm install
+npm run dev
+```
+
 ## Deployment
 
-### Development Server
+Development server
 ```bash
 ./deploy.dev.sh
 ```
 
-### Production Server
+Production server
 ```bash
 ./deploy.prod.sh
 ```
 
-Make sure to configure `deploy.conf` based on `deploy.conf.example`.
+Make sure to configure `deploy.conf` based on your environment.
 
-## Adding New Tools
+## Notes on authorship
 
-When adding new competition helpers:
-
-1. Create new directories:
-   ```
-   backend/your-tool-name/
-   frontend/your-tool-name/
-   ```
-
-2. Update `photohelper.sh` to include your new services
-
-3. Update this README with documentation
-
-## UI change: Welcome instructions banner (AutoBanner)
-
-- The welcome instructions banner at the bottom of the Photo Helper is now hidden by default to reduce visual clutter.
-- It is not removed; it remains in the DOM with display: none so it can be re-enabled anytime.
-- Location: `frontend/photo-helper/src/AppApi.tsx`
-- How to re-enable:
-
-```ts
-// AppApi.tsx
-const SHOW_WELCOME_INSTRUCTIONS = true; // set to true to show the banner again
-```
-
-Current default value is `false`.
+LLMs were used heavily during development. While the overall architecture, approach, and direction were provided and supervised manually, approximately 99% of the code was generated by LLMs. Care is taken to follow good programming practices, including clear structure, security practices, modularization, and maintainability to support future development.
 
 ## License
 
-Private repository for AirQ competition tools.
+This software is developed for the flying community to maintain and promote our beautiful sport and is published free for non-commercial use. Commercial use is not permitted. See [LICENSE.md](./LICENSE.md) for full terms.
