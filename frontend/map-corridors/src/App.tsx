@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
-import { MapProviderView } from './map/MapProviderView'
+import { MapProviderView, MapProviderViewHandle } from './map/MapProviderView'
 import type { MapProviderId } from './map/providers'
 import { mapProviders } from './map/providers'
 // DropZone removed; map area acts as drop target
@@ -39,6 +39,7 @@ function App() {
   const baseStyle = (session?.baseStyle || 'streets') as 'streets' | 'satellite'
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const mapRef = useRef<MapProviderViewHandle | null>(null)
   type PhotoLabel = 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T'
   const markers = (session?.markers || []) as { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
@@ -415,6 +416,13 @@ function App() {
           >
             {t('app.dragToPlace')}
           </Button>
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={() => mapRef.current?.printMap()}
+          >
+            {t('app.printMap')}
+          </Button>
           <ToggleButtonGroup
             value={baseStyle}
             exclusive
@@ -482,6 +490,7 @@ function App() {
             </Box>
           )}
           <MapProviderView
+            ref={mapRef as any}
             provider={provider}
             baseStyle={baseStyle}
             providerConfig={providerConfig}

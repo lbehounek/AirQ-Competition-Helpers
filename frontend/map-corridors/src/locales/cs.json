@@ -3,6 +3,7 @@
     "title": "Foto koridory",
     "selectKml": "Načíst KML",
     "exportKml": "Exportovat KML",
+    "printMap": "Tisk mapy",
     "toggleBase": {
       "streets": "Mapa",
       "satellite": "Satelit"

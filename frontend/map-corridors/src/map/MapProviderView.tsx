@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import MapGL, { Layer, Source, Marker, Popup } from '@vis.gl/react-mapbox'
 import type { MapRef } from '@vis.gl/react-mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -13,7 +13,11 @@ type Overlay = {
   layout?: any
 }
 
-export function MapProviderView(props: {
+export type MapProviderViewHandle = {
+  printMap: () => Promise<void>
+}
+
+export const MapProviderView = forwardRef<MapProviderViewHandle, {
   provider: MapProviderId
   baseStyle: 'streets' | 'satellite'
   providerConfig: ProviderConfig
@@ -29,7 +33,7 @@ export function MapProviderView(props: {
   onMarkerDelete?: (id: string) => void
   onMarkerLabelChange?: (id: string, label: 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T') => void
   onMarkerLabelClear?: (id: string) => void
-}) {
+}>(function MapProviderView(props, ref) {
   const { baseStyle, providerConfig, geojsonOverlays } = props
 
   const styleUrl = providerConfig.styles[baseStyle]
@@ -155,6 +159,45 @@ export function MapProviderView(props: {
   }
 
   const allLabels: ('A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T')[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
+
+  // Imperative print: hide corridor layers, snapshot canvas, print, restore
+  useImperativeHandle(ref, () => ({
+    async printMap() {
+      if (!mapRef.current) return
+      const map = mapRef.current.getMap()
+      const corridorLayerIds = ['left-segments-line', 'right-segments-line', 'gates-line']
+      const prevVisibility: Record<string, string> = {}
+      try {
+        // Hide corridor layers if present
+        for (const id of corridorLayerIds) {
+          if (map.getLayer(id)) {
+            const vis = map.getLayoutProperty(id, 'visibility') as any
+            prevVisibility[id] = (vis === 'none' || vis === 'visible') ? vis : 'visible'
+            map.setLayoutProperty(id, 'visibility', 'none')
+          }
+        }
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+        const canvas = map.getCanvas()
+        const dataUrl = canvas.toDataURL('image/png')
+        const w = window.open('', '_blank')
+        if (!w) return
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>Map Print</title><style>body,html{margin:0;padding:0}img{max-width:100vw;max-height:100vh;display:block;margin:0 auto}</style></head><body><img src="${dataUrl}"/></body></html>`
+        w.document.write(html)
+        w.document.close()
+        try { w.focus() } catch {}
+        try { w.print() } catch {}
+        try { w.close() } catch {}
+      } finally {
+        // Restore corridor layer visibility
+        for (const id of corridorLayerIds) {
+          if (mapRef.current && mapRef.current.getMap().getLayer(id)) {
+            const prev = (prevVisibility[id] || 'visible') as 'none' | 'visible'
+            mapRef.current.getMap().setLayoutProperty(id, 'visibility', prev)
+          }
+        }
+      }
+    }
+  }), [])
 
   return (
     <MapGL
@@ -408,7 +451,7 @@ export function MapProviderView(props: {
       ))}
     </MapGL>
   )
-}
+})
 
 
 

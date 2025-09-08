@@ -3,6 +3,7 @@
     "title": "Photo corridors",
     "selectKml": "Select KML",
     "exportKml": "Export KML",
+    "printMap": "Print Map",
     "toggleBase": {
       "streets": "Streets",
       "satellite": "Satellite"
