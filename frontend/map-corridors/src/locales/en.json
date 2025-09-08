@@ -34,6 +34,10 @@
     "setToken": "Set VITE_MAPBOX_TOKEN in frontend/map-corridors/.env and restart the dev server.",
     "noOriginalKml": "Original KML file not available for export"
   }
+  ,
+  "opfs": {
+    "warning": "Your browser does not fully support local storage (OPFS). Changes will not persist after refresh. Consider using Chrome or Edge."
+  }
 }
 
 

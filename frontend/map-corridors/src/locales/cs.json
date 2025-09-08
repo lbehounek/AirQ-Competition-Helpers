@@ -34,6 +34,10 @@
     "setToken": "Nastavte VITE_MAPBOX_TOKEN v frontend/map-corridors/.env a restartujte dev server.",
     "noOriginalKml": "Původní KML není k dispozici pro export"
   }
+  ,
+  "opfs": {
+    "warning": "Váš prohlížeč nepodporuje plně lokální úložiště (OPFS). Změny se po obnovení ztratí. Zvažte použití Chrome nebo Edge."
+  }
 }
 
 
