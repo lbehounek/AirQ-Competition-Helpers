@@ -9,8 +9,8 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel } from '@mui/material'
-import { Download, Place } from '@mui/icons-material'
+import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, IconButton, Tooltip } from '@mui/material'
+import { Download, Place, Print } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } from '@turf/turf'
@@ -42,6 +42,7 @@ function App() {
   const [markers, setMarkers] = useState<{ id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]>([])
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
   const [isAnswerSheetOpen, setAnswerSheetOpen] = useState(false)
+  const answerSheetRef = useRef<HTMLDivElement | null>(null)
   const usedLabels = useMemo(() => {
     const set = new Set<PhotoLabel>()
     for (const m of markers) if (m.label) set.add(m.label)
@@ -307,6 +308,20 @@ function App() {
     e.dataTransfer.effectAllowed = 'copy'
   }, [])
 
+  const handlePrintAnswerSheet = useCallback(() => {
+    const container = answerSheetRef.current
+    if (!container) return
+    const html = container.innerHTML
+    const w = window.open('', '_blank')
+    if (!w) return
+    const styles = `@page { size: A4 portrait; margin: 12mm; } body { font-family: Arial, sans-serif; color: #111; } table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #999; padding: 6px 8px; font-size: 12px; } th { background: #f2f2f2; text-align: left; }`
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${t('app.title')} - ${t('sheet.print')}</title><style>${styles}</style></head><body>${html}</body></html>`)
+    w.document.close()
+    try { w.focus() } catch {}
+    try { w.print() } catch {}
+    try { w.close() } catch {}
+  }, [t])
+
   // Marker callbacks passed to map
   const handleMarkerAdd = useCallback((lng: number, lat: number) => {
     const id = Math.random().toString(36).slice(2)
@@ -475,7 +490,14 @@ function App() {
     </Box>
     <Dialog open={isAnswerSheetOpen} onClose={() => setAnswerSheetOpen(false)} maxWidth="sm" fullWidth>
       <DialogContent dividers sx={{ p: 1 }}>
-        <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.75, px: 1.25, fontSize: 15 } }}>
+        <Box sx={{ position: 'relative' }}>
+          <Tooltip title={t('sheet.print')}>
+            <IconButton onClick={handlePrintAnswerSheet} size="small" sx={{ position: 'absolute', top: 4, right: 4 }} aria-label={t('sheet.print')}>
+              <Print fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <div ref={answerSheetRef}>
+            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.75, px: 1.25, fontSize: 15 } }}>
           <TableHead>
             <TableRow>
               <TableCell>{t('sheet.photoLabel')}</TableCell>
@@ -497,7 +519,9 @@ function App() {
               )
             })}
           </TableBody>
-        </Table>
+            </Table>
+          </div>
+        </Box>
       </DialogContent>
     </Dialog>
     </>

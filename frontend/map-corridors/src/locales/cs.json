@@ -26,7 +26,8 @@
   "sheet": {
     "photoLabel": "Označení fotky",
     "distance": "Vzdálenost",
-    "fromTp": "Od TP"
+    "fromTp": "Od TP",
+    "print": "Tisk"
   },
   "errors": {
     "mapboxTokenRequired": "Vyžadován Mapbox token",

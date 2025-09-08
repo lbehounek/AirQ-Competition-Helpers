@@ -26,7 +26,8 @@
   "sheet": {
     "photoLabel": "Photo label",
     "distance": "Distance",
-    "fromTp": "From TP"
+    "fromTp": "From TP",
+    "print": "Print"
   },
   "errors": {
     "mapboxTokenRequired": "Mapbox token required",
