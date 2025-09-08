@@ -9,7 +9,8 @@
     },
     "dropHint": "Přetáhni KML pro načtení",
     "answerSheet": "Zobrazit answer sheet",
-    "dragToPlace": "Přetáhni pro umístění fotky"
+    "dragToPlace": "Přetáhni pro umístění fotky",
+    "use1NmAfterSp": "Koridor začíná 1 NM po SP"
   },
   "popup": {
     "name": "Název",

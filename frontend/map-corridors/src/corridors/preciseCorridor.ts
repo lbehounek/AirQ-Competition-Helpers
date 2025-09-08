@@ -230,7 +230,8 @@ export function generateSegmentedCorridors(
   sourceSegIdx: number[],
   gapAfterIndex: boolean[],
   mainSegmentIndexSet: Set<number>,
-  _segments: Segment[]
+  _segments: Segment[],
+  spAfterNm: number = 5
 ): { leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[], endGates: Feature<LineString>[] } {
   log('\n=== GENERATING SEGMENTED CORRIDORS ===')
   
@@ -250,13 +251,13 @@ export function generateSegmentedCorridors(
   // Step 2: Calculate all gate positions (where corridors START)
   const gatePositions: Array<{ trackIdx: number, name: string, distanceNM: number }> = []
   
-  // Gate 1: 5NM after SP
+  // Gate 1: X NM after SP (default 5NM)
   const spIdx = nearestTrackIndex(track, waypoints.sp)
-  const sp5nmResult = pointAtDistanceAlongTrack(track, spIdx, 5 * NM)
-  if (sp5nmResult) {
-    const sp5nmIdx = nearestTrackIndex(track, sp5nmResult.point)
-    gatePositions.push({ trackIdx: sp5nmIdx, name: '5NM-after-SP', distanceNM: 5 })
-    log(`📍 Gate 1: 5NM after SP at track index ${sp5nmIdx}`)
+  const spNmResult = pointAtDistanceAlongTrack(track, spIdx, spAfterNm * NM)
+  if (spNmResult) {
+    const spNmIdx = nearestTrackIndex(track, spNmResult.point)
+    gatePositions.push({ trackIdx: spNmIdx, name: `${spAfterNm}NM-after-SP`, distanceNM: spAfterNm })
+    log(`📍 Gate 1: ${spAfterNm}NM after SP at track index ${spNmIdx}`)
   }
   
   // Gates 2+: 1NM after each TP
@@ -278,9 +279,9 @@ export function generateSegmentedCorridors(
   // Note: detectDashedConnectorPairs needs original input; workaround below patches later
   const corridorSegments: Array<{ start: { point: LonLatAlt, idx: number }, end: { point: LonLatAlt, idx: number }, name: string }> = []
   
-  // Segment 1: 5NM-after-SP → TP1
+  // Segment 1: XNM-after-SP → TP1
   if (gatePositions.length > 0 && waypoints.tps.length > 0) {
-    const startGateAlong = pointAtDistanceAlongTrack(track, spIdx, 5 * NM)
+    const startGateAlong = pointAtDistanceAlongTrack(track, spIdx, spAfterNm * NM)
     // FIXED: Use exact gate position and bearing, don't re-snap
     const start = startGateAlong ? 
       { point: startGateAlong.point, segmentIndex: startGateAlong.segmentIndex, bearing: startGateAlong.bearing } :
@@ -290,17 +291,17 @@ export function generateSegmentedCorridors(
     const preciseSlice = buildPreciseSlice(track, { point: start.point, segmentIndex: start.segmentIndex }, { point: end.point, segmentIndex: end.segmentIndex })
     // Enforce continuity on main track for this span
     if (!isSpanOnMain(Math.min(start.segmentIndex, end.segmentIndex), Math.max(start.segmentIndex, end.segmentIndex), sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)) {
-      log(`❌ Skipping 5NM-after-SP→TP1 due to non-continuous/main span`)
+      log(`❌ Skipping ${spAfterNm}NM-after-SP→TP1 due to non-continuous/main span`)
     } else if (preciseSlice.length >= 2) {
       const lr = generateLeftRightCorridor(preciseSlice, corridorDistanceM)
       if (lr) {
-        leftSegments.push(lineString(lr.left.geometry.coordinates as Position[], { segment: '5NM-after-SP→TP1' }))
-        rightSegments.push(lineString(lr.right.geometry.coordinates as Position[], { segment: '5NM-after-SP→TP1' }))
+        leftSegments.push(lineString(lr.left.geometry.coordinates as Position[], { segment: `${spAfterNm}NM-after-SP→TP1` }))
+        rightSegments.push(lineString(lr.right.geometry.coordinates as Position[], { segment: `${spAfterNm}NM-after-SP→TP1` }))
       }
       const sliceLength = preciseSlice.reduce((acc, c, i) => i === 0 ? 0 : acc + calculateDistance(preciseSlice[i - 1], c), 0)
       log(`🟢 Corridor 1: ${gatePositions[0].name} → TP1 (${start.segmentIndex}→${end.segmentIndex}), ${(sliceLength/1000).toFixed(2)} km`)
     } else {
-      log(`❌ Skipping 5NM-after-SP→TP1: slice too short`)
+      log(`❌ Skipping ${spAfterNm}NM-after-SP→TP1: slice too short`)
     }
   }
   
@@ -461,7 +462,7 @@ function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[]): { sp?: LonLa
   return { ...result, exactPointFeatures }
 }
 
-export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300): { gates: Feature<LineString>[], points: Feature<Point>[], exactPoints: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
+export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM = 300, spAfterNm: number = 5): { gates: Feature<LineString>[], points: Feature<Point>[], exactPoints: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
   const { track, sourceSegIdx, gapAfterIndex, segments, mainSegmentIndexSet } = buildContinuousTrackWithSources(input)
   const gates: Feature<LineString>[] = []
   const points: Feature<Point>[] = []
@@ -478,7 +479,7 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM 
   if (named.sp) points.push(point([named.sp[0], named.sp[1]], { name: 'SP', role: 'waypoint' }) as Feature<Point>)
   if (sp) {
     const idx = nearestTrackIndex(track, sp)
-    const gate = maybeBuildGateFromStartIdxDistance(track, idx, 5 * NM, corridorDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
+    const gate = maybeBuildGateFromStartIdxDistance(track, idx, spAfterNm * NM, corridorDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
     if (gate) gates.push(gate)
   }
   
@@ -500,7 +501,7 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, corridorDistanceM 
   
   // Generate segmented corridors with forbidden zones using exact waypoints
   if (track.length >= 2) {
-    const corridorSegments = generateSegmentedCorridors(track, { sp, tps, fp }, corridorDistanceM, input, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet, segments)
+    const corridorSegments = generateSegmentedCorridors(track, { sp, tps, fp }, corridorDistanceM, input, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet, segments, spAfterNm)
     leftSegments.push(...corridorSegments.leftSegments)
     rightSegments.push(...corridorSegments.rightSegments)
     // Note: endGates are available in corridorSegments.endGates if needed

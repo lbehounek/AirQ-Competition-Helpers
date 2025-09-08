@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup } from '@mui/material'
+import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel } from '@mui/material'
 import { Download, Place } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -34,6 +34,7 @@ function App() {
   const [exactPoints, setExactPoints] = useState<GeoJSON | null>(null)
   const [leftSegments, setLeftSegments] = useState<GeoJSON | null>(null)
   const [rightSegments, setRightSegments] = useState<GeoJSON | null>(null)
+  const [use1NmAfterSp, setUse1NmAfterSp] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [originalKmlText, setOriginalKmlText] = useState<string | null>(null)
@@ -167,6 +168,19 @@ function App() {
 
   const providerConfig = useMemo(() => mapProviders[provider], [provider])
 
+  const recomputeCorridors = useCallback((input: GeoJSON, spAfterNm: number) => {
+    try {
+      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(input, 300, spAfterNm)
+      setGates(gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null)
+      setPoints(points && points.length ? ({ type: 'FeatureCollection', features: points } as any) : null)
+      setExactPoints(exactPoints && exactPoints.length ? ({ type: 'FeatureCollection', features: exactPoints } as any) : null)
+      setLeftSegments(leftSegments && leftSegments.length ? ({ type: 'FeatureCollection', features: leftSegments } as any) : null)
+      setRightSegments(rightSegments && rightSegments.length ? ({ type: 'FeatureCollection', features: rightSegments } as any) : null)
+    } catch {
+      setGates(null); setPoints(null); setExactPoints(null); setLeftSegments(null); setRightSegments(null)
+    }
+  }, [])
+
   const onFiles = useCallback(async (files: File[]) => {
     const file = files[0]
     if (!file) return
@@ -180,18 +194,15 @@ function App() {
     const { parseFileToGeoJSON } = await import('./parsers/detect')
     const parsed = await parseFileToGeoJSON(file)
     setGeojson(parsed)
-    // Remove buffer corridor computation since we only use precise corridors
-    try {
-      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(parsed, 300)
-      setGates(gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null)
-      setPoints(points && points.length ? ({ type: 'FeatureCollection', features: points } as any) : null)
-      setExactPoints(exactPoints && exactPoints.length ? ({ type: 'FeatureCollection', features: exactPoints } as any) : null)
-      setLeftSegments(leftSegments && leftSegments.length ? ({ type: 'FeatureCollection', features: leftSegments } as any) : null)
-      setRightSegments(rightSegments && rightSegments.length ? ({ type: 'FeatureCollection', features: rightSegments } as any) : null)
-    } catch {
-      setGates(null); setPoints(null); setExactPoints(null); setLeftSegments(null); setRightSegments(null)
-    }
-  }, [])
+    // compute corridors using current SP-after setting
+    recomputeCorridors(parsed, use1NmAfterSp ? 1 : 5)
+  }, [recomputeCorridors, use1NmAfterSp])
+
+  // Recompute when toggling SP-after distance
+  useEffect(() => {
+    if (!geojson) return
+    recomputeCorridors(geojson, use1NmAfterSp ? 1 : 5)
+  }, [geojson, use1NmAfterSp, recomputeCorridors])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
@@ -396,6 +407,10 @@ function App() {
             <ToggleButton value="streets" aria-label={t('app.toggleBase.streets')}>{t('app.toggleBase.streets')}</ToggleButton>
             <ToggleButton value="satellite" aria-label={t('app.toggleBase.satellite')}>{t('app.toggleBase.satellite')}</ToggleButton>
           </ToggleButtonGroup>
+          <FormControlLabel
+            control={<Checkbox size="small" checked={use1NmAfterSp} onChange={(e) => setUse1NmAfterSp(e.target.checked)} />}
+            label={t('app.use1NmAfterSp')}
+          />
           {/* Provider selection removed to use Mapbox only */}
           <Button
             variant="outlined"
