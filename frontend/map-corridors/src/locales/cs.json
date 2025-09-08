@@ -3,18 +3,23 @@
     "title": "Foto koridory",
     "selectKml": "Načíst KML",
     "exportKml": "Exportovat KML",
+    "printMap": "Tisk mapy",
     "toggleBase": {
       "streets": "Mapa",
       "satellite": "Satelit"
     },
     "dropHint": "Přetáhni KML pro načtení",
     "answerSheet": "Zobrazit answer sheet",
-    "dragToPlace": "Přetáhni pro umístění fotky"
+    "dragToPlace": "Přetáhni pro umístění fotky",
+    "use1NmAfterSp": "Koridor začíná 1 NM po SP"
   },
   "popup": {
     "name": "Název",
     "clear": "Vymazat",
     "delete": "Smazat",
+    "ok": "OK",
+    "confirmDelete": "Smazat tento bod fotky?",
+    "cancel": "Zrušit",
     "distance": "Vzdálenost od předchozího TP: {{nm}} NM",
     "outside": "Mimo koridor",
     "label": "Označení"
@@ -22,12 +27,17 @@
   "sheet": {
     "photoLabel": "Označení fotky",
     "distance": "Vzdálenost",
-    "fromTp": "Od TP"
+    "fromTp": "Od TP",
+    "print": "Tisk"
   },
   "errors": {
     "mapboxTokenRequired": "Vyžadován Mapbox token",
     "setToken": "Nastavte VITE_MAPBOX_TOKEN v frontend/map-corridors/.env a restartujte dev server.",
     "noOriginalKml": "Původní KML není k dispozici pro export"
+  }
+  ,
+  "opfs": {
+    "warning": "Váš prohlížeč nepodporuje plně lokální úložiště (OPFS). Změny se po obnovení ztratí. Zvažte použití Chrome nebo Edge."
   }
 }
 

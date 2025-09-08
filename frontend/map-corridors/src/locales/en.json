@@ -3,18 +3,23 @@
     "title": "Photo corridors",
     "selectKml": "Select KML",
     "exportKml": "Export KML",
+    "printMap": "Print Map",
     "toggleBase": {
       "streets": "Streets",
       "satellite": "Satellite"
     },
     "dropHint": "Drop KML to load",
     "answerSheet": "Show Answer Sheet",
-    "dragToPlace": "Drag to place photo marker"
+    "dragToPlace": "Drag to place photo marker",
+    "use1NmAfterSp": "Corridor 1 NM after start point"
   },
   "popup": {
     "name": "Name",
     "clear": "Clear",
     "delete": "Delete",
+    "ok": "OK",
+    "confirmDelete": "Delete this photo marker?",
+    "cancel": "Cancel",
     "distance": "Distance from previous TP: {{nm}} NM",
     "outside": "Outside corridors",
     "label": "Label"
@@ -22,12 +27,17 @@
   "sheet": {
     "photoLabel": "Photo label",
     "distance": "Distance",
-    "fromTp": "From TP"
+    "fromTp": "From TP",
+    "print": "Print"
   },
   "errors": {
     "mapboxTokenRequired": "Mapbox token required",
     "setToken": "Set VITE_MAPBOX_TOKEN in frontend/map-corridors/.env and restart the dev server.",
     "noOriginalKml": "Original KML file not available for export"
+  }
+  ,
+  "opfs": {
+    "warning": "Your browser does not fully support local storage (OPFS). Changes will not persist after refresh. Consider using Chrome or Edge."
   }
 }
 

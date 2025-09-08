@@ -26,7 +26,7 @@ const createTextImage = (text: string, isRotated: boolean = true): TextImageResu
     
     // High-resolution rendering constants
     const PIXEL_RATIO = 3; // 3x resolution for crisp PDF text
-    const FONT_SIZE = 14;
+    const FONT_SIZE = 18; // ~30% larger for better header prominence
     const FONT_FAMILY = 'Arial, sans-serif'; // Excellent Unicode support
     const HORIZONTAL_PADDING = 40;
     const VERTICAL_PADDING = 12;
@@ -116,13 +116,16 @@ export const generatePDF = async (
     }
   };
 
-  // Clean layout calculations (portrait accepts dynamic gutter width)
-  const calculateLayout = (portraitGutterWidth: number = 15) => {
+  // Clean layout calculations
+  // portraitGutterWidth: measured width of rotated header gutter (portrait mode)
+  // landscapeHeaderHeight: measured header height (landscape mode)
+  // headerTopPad: top padding for header text (default ~1mm)
+  const calculateLayout = (portraitGutterWidth: number = 15, landscapeHeaderHeight: number = 25, headerTopPad: number = 2.83) => {
     if (layoutMode === 'portrait') {
       // A4 Portrait: 595 x 842 points
       const pageWidth = 595;
       const pageHeight = 842;
-      const margin = 5;
+      const margin = 5; // keep small inner margin for rotated text stability
       const textWidth = portraitGutterWidth; // Width for rotated text along left edge (measured)
       const gap = 2.83; // 1mm in points
       
@@ -160,13 +163,13 @@ export const generatePDF = async (
       // A4 Landscape: 842 x 595 points  
       const pageWidth = 842;
       const pageHeight = 595;
-      const margin = 10;
-      const headerHeight = 25;
+      const margin = 0; // edge-less layout
+      const headerHeight = Math.max(0, landscapeHeaderHeight || 0);
       const gap = 2.83; // 1mm in points
       
       // Available space for photos
       const availableWidth = pageWidth - (2 * margin);
-      const availableHeight = pageHeight - (2 * margin) - headerHeight;
+      const availableHeight = pageHeight - headerTopPad - headerHeight; // start directly under header
       
       // Calculate photo size for 3x3 grid
       const photoWidth = Math.floor((availableWidth - (2 * gap)) / 3);
@@ -179,7 +182,7 @@ export const generatePDF = async (
       // Center the grid
       const totalWidth = (correctedWidth * 3) + (gap * 2);
       const startX = margin + (availableWidth - totalWidth) / 2;
-      const startY = margin + headerHeight;
+      const startY = headerTopPad + headerHeight;
       
       return {
         photoWidth: correctedWidth,
@@ -189,7 +192,7 @@ export const generatePDF = async (
         gap,
         cols: 3,
         rows: 3,
-        headerY: margin + 5
+        headerY: headerTopPad // place text ~1mm from the top edge
       };
     }
   };
@@ -235,37 +238,44 @@ export const generatePDF = async (
         );
       }
     } else {
-      // Horizontal header as images
+      // Horizontal header as images (landscape)
       const competitionImage = createTextImage(competitionName || '', false);
       const setTitleImage = createTextImage(setTitle, false);
-      
-      if (competitionImage) {
-        elements.push(
-          React.createElement(Image, {
-            key: `comp-name-${pageKey}`,
-            src: competitionImage.dataUrl,
-            style: {
-              position: 'absolute',
-              left: 10,
-              top: localLayout.headerY || 10,
-              width: competitionImage.width,
-              height: competitionImage.height,
-            }
-          })
-        );
-      }
-      
+
+      // Measure header height and recompute layout to avoid overlap
+      const headerTopPad = 2.83; // ~1mm from the top edge
+      const measuredHeaderHeight = Math.max(competitionImage?.height || 0, setTitleImage?.height || 0);
+      localLayout = calculateLayout(15, measuredHeaderHeight, headerTopPad);
+
       if (setTitleImage) {
+        // Place set title at top-left
         elements.push(
           React.createElement(Image, {
             key: `set-title-${pageKey}`,
             src: setTitleImage.dataUrl,
             style: {
               position: 'absolute',
-              right: 10,
-              top: localLayout.headerY || 10,
+              left: headerTopPad, // ~1mm from left edge
+              top: localLayout.headerY,
               width: setTitleImage.width,
               height: setTitleImage.height,
+            }
+          })
+        );
+      }
+
+      if (competitionImage) {
+        // Place competition name at top-right
+        elements.push(
+          React.createElement(Image, {
+            key: `comp-name-${pageKey}`,
+            src: competitionImage.dataUrl,
+            style: {
+              position: 'absolute',
+              right: headerTopPad, // ~1mm from right edge
+              top: localLayout.headerY,
+              width: competitionImage.width,
+              height: competitionImage.height,
             }
           })
         );

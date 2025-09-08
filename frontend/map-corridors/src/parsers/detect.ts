@@ -3,6 +3,10 @@ import type { GeoJSON } from 'geojson'
 
 export async function parseFileToGeoJSON(file: File): Promise<GeoJSON> {
   const text = await file.text()
+  return parseTextToGeoJSON(text, file.name)
+}
+
+export function parseTextToGeoJSON(text: string, fileNameHint?: string): GeoJSON {
   const parser = new DOMParser()
   const xml = parser.parseFromString(text, 'application/xml')
   // Detect XML parse errors
@@ -12,7 +16,7 @@ export async function parseFileToGeoJSON(file: File): Promise<GeoJSON> {
     throw new Error(`XML parse error: ${msg}`)
   }
 
-  const name = file.name.toLowerCase()
+  const name = (fileNameHint || '').toLowerCase()
   const rootTag = xml.documentElement?.nodeName?.toLowerCase?.() || ''
   const tryParseKml = () => kmlToGeoJSON(xml) as unknown as GeoJSON
   const tryParseGpx = () => gpxToGeoJSON(xml) as unknown as GeoJSON

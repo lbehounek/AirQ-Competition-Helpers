@@ -376,9 +376,11 @@ const renderPhotoOnCanvas = (
     ctx.drawImage(tempCanvas, x, y);
   }
   
-  // Draw label on main canvas (for both WebGL and CPU paths)
-  const labelPos = isDragging && localLabelPosition ? localLabelPosition : canvasState.labelPosition;
-  drawLabel(canvas, label, labelPos);
+  // Draw label only when not dragging to save work while moving
+  if (!isDragging) {
+    const labelPos = isDragging && localLabelPosition ? localLabelPosition : canvasState.labelPosition;
+    drawLabel(canvas, label, labelPos);
+  }
 };
 
 // Draw circle overlay on canvas
@@ -482,6 +484,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [circlePreview, setCirclePreview] = useState<{ x: number; y: number } | null>(null);
   const [circleStartPos, setCircleStartPos] = useState<{ x: number; y: number } | null>(null);  // Track initial circle position for click vs drag
   const [localCirclePosition, setLocalCirclePosition] = useState<{ x: number; y: number } | null>(null);  // Local circle position for smooth dragging
+  const pendingUpdateRef = useRef<number | null>(null);
+  const lastMoveTimeRef = useRef<number>(0);
+  const dragRafRef = useRef<number | null>(null);
+  const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [dragScaleFactor, setDragScaleFactor] = useState(1);
   
   // Use cached image loading
   const { image: loadedImage, error: imageError } = useCachedImage(
@@ -493,12 +500,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   // Local state for smooth dragging
   const [localPosition, setLocalPosition] = useState(photo.canvasState.position);
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
-  const pendingUpdateRef = useRef<number | null>(null);
-  const lastMoveTimeRef = useRef<number>(0);
   
   // WebGL context management
   const webglManager = useWebGLContext();
   const [webglSupported, setWebglSupported] = useState<boolean>(false);
+  const [lowPerformanceMode, setLowPerformanceMode] = useState<boolean>(false);
 
   // Dynamic canvas dimensions based on aspect ratio
   const canvasSize = size === 'large'
@@ -621,10 +627,18 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     const canvas = canvasRef.current;
     if (!canvas || !loadedImage || !photo?.canvasState) return;
 
-    // Create a temporary canvas for atomic rendering to prevent distortion flash
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvasSize.width;
-    tempCanvas.height = canvasSize.height;
+    // Create or reuse a temporary canvas for atomic rendering to prevent distortion flash
+    let tempCanvas = tempCanvasRef.current;
+    const targetWidth = Math.round(canvasSize.width * (isDragging ? dragScaleFactor : 1));
+    const targetHeight = Math.round(canvasSize.height * (isDragging ? dragScaleFactor : 1));
+    if (!tempCanvas) {
+      tempCanvas = document.createElement('canvas');
+      tempCanvasRef.current = tempCanvas;
+    }
+    if (tempCanvas.width !== targetWidth || tempCanvas.height !== targetHeight) {
+      tempCanvas.width = targetWidth;
+      tempCanvas.height = targetHeight;
+    }
 
     // Render to temporary canvas first
     renderPhotoOnCanvas(
@@ -638,8 +652,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       null, // WebGL context will be requested on-demand in renderCanvas
       webglManager,
       currentRatio.ratio,
-      BASE_WIDTH / currentRatio.ratio,  // Always use BASE dimensions for consistent cropping
-      showOriginal // Pass the showOriginal parameter
+      BASE_WIDTH / currentRatio.ratio,
+      (showOriginal || isDragging)
     );
 
     // Draw circle overlay if it exists
@@ -669,9 +683,13 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     canvas.height = canvasSize.height;
     const ctx = getCanvasContext(canvas);
     if (ctx) {
-      ctx.drawImage(tempCanvas, 0, 0);
+      if (isDragging && dragScaleFactor < 1) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'medium';
+      }
+      ctx.drawImage(tempCanvas, 0, 0, canvasSize.width, canvasSize.height);
     }
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview, dragScaleFactor]);
 
   useEffect(() => {
     renderCanvas();
@@ -681,6 +699,17 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   useEffect(() => {
     const supported = isWebGLSupported();
     setWebglSupported(supported);
+  }, []);
+
+  // Detect device capability and enable low-performance mode heuristics
+  useEffect(() => {
+    try {
+      const cores = (navigator as any).hardwareConcurrency || 4;
+      const mem = (navigator as any).deviceMemory || 4; // GB
+      setLowPerformanceMode(cores <= 4 || mem <= 4);
+    } catch {
+      setLowPerformanceMode(false);
+    }
   }, []);
 
   // Document-level drag handling for better UX
@@ -806,9 +835,10 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         clearTimeout(pendingUpdateRef.current);
       }
       
+      const debounceMs = lowPerformanceMode ? 60 : 30;
       pendingUpdateRef.current = setTimeout(() => {
         onUpdate({ ...photo.canvasState, position: newPosition });
-      }, 30);
+      }, debounceMs);
     };
 
     const handleDocumentMouseUp = () => {
@@ -850,6 +880,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       }
       
       setIsDragging(false);
+      setDragScaleFactor(1);
       setIsDraggingCircle(false);
       setCircleStartPos(null);
       setLocalCirclePosition(null);
@@ -865,7 +896,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     document.body.style.webkitUserSelect = 'none';
     document.body.style.cursor = isDraggingCircle ? 'move' : 'grabbing';
     
-    // Use pointer events for mouse and touch support (no added complexity)
     document.addEventListener('pointermove', handleDocumentMouseMove as any);
     document.addEventListener('pointerup', handleDocumentMouseUp);
     document.addEventListener('pointercancel', handleDocumentMouseUp);
@@ -968,6 +998,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Normal photo dragging
     setIsDragging(true);
+    setDragScaleFactor(0.5);
     setDragStart({ x, y });
     // Sync local position to current state to avoid stale position
     setLocalPosition(photo.canvasState.position);

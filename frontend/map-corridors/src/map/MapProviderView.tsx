@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import MapGL, { Layer, Source, Marker, Popup } from '@vis.gl/react-mapbox'
 import type { MapRef } from '@vis.gl/react-mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -13,7 +13,11 @@ type Overlay = {
   layout?: any
 }
 
-export function MapProviderView(props: {
+export type MapProviderViewHandle = {
+  printMap: () => Promise<void>
+}
+
+export const MapProviderView = forwardRef<MapProviderViewHandle, {
   provider: MapProviderId
   baseStyle: 'streets' | 'satellite'
   providerConfig: ProviderConfig
@@ -29,7 +33,7 @@ export function MapProviderView(props: {
   onMarkerDelete?: (id: string) => void
   onMarkerLabelChange?: (id: string, label: 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T') => void
   onMarkerLabelClear?: (id: string) => void
-}) {
+}>(function MapProviderView(props, ref) {
   const { baseStyle, providerConfig, geojsonOverlays } = props
 
   const styleUrl = providerConfig.styles[baseStyle]
@@ -37,6 +41,7 @@ export function MapProviderView(props: {
 
   const mapRef = useRef<MapRef | null>(null)
   const [isMapLoaded, setIsMapLoaded] = useState(false)
+  const [confirmDeleteForId, setConfirmDeleteForId] = useState<string | null>(null)
   const dragStartLngLatRef = useRef<Map<string, { lng: number, lat: number }>>(new Map())
   const dragMovedPxRef = useRef<Map<string, number>>(new Map())
   // Attach native DnD listeners on the canvas to support custom marker drops
@@ -155,10 +160,108 @@ export function MapProviderView(props: {
 
   const allLabels: ('A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T')[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
 
+  // Imperative print: hide corridor layers, snapshot canvas, print, restore
+  useImperativeHandle(ref, () => ({
+    async printMap() {
+      if (!mapRef.current) return
+      const map = mapRef.current.getMap()
+      const corridorLayerIds = ['left-segments-line', 'right-segments-line', 'gates-line']
+      const prevVisibility: Record<string, string> = {}
+      try {
+        // Hide corridor layers if present
+        for (const id of corridorLayerIds) {
+          if (map.getLayer(id)) {
+            const vis = map.getLayoutProperty(id, 'visibility') as any
+            prevVisibility[id] = (vis === 'none' || vis === 'visible') ? vis : 'visible'
+            map.setLayoutProperty(id, 'visibility', 'none')
+          }
+        }
+        // Prefer tab capture and crop to the map container to exclude headers/toolbars
+        let dataUrl = ''
+        try {
+          // @ts-ignore getDisplayMedia exists in modern browsers
+          const stream: MediaStream = await (navigator.mediaDevices as any).getDisplayMedia({
+            video: { preferCurrentTab: true },
+            audio: false
+          })
+          const track = stream.getVideoTracks()[0]
+          const video = document.createElement('video')
+          video.srcObject = stream
+          await new Promise<void>((res) => { video.onloadedmetadata = () => { video.play().then(() => res()) } })
+          // Hide app bars/toolbars via data attribute during capture (visibility keeps layout stable)
+          const hideNodes = Array.from(document.querySelectorAll('[data-print-hide="true"]')) as HTMLElement[]
+          hideNodes.forEach(n => { n.setAttribute('data-print-hidden-applied', '1'); n.style.setProperty('visibility', 'hidden', 'important') })
+          // Allow frame to update with hidden UI
+          await new Promise((r) => requestAnimationFrame(r))
+          // Compute crop rect in captured video coordinates
+          const container = map.getContainer() as HTMLElement
+          const rect = container.getBoundingClientRect()
+          const capW = video.videoWidth || (rect.width * (window.devicePixelRatio || 1))
+          const capH = video.videoHeight || (rect.height * (window.devicePixelRatio || 1))
+          const scaleX = capW / window.innerWidth
+          const scaleY = capH / window.innerHeight
+          const sx = Math.max(0, Math.floor(rect.left * scaleX))
+          const sy = Math.max(0, Math.floor(rect.top * scaleY))
+          const sw = Math.max(1, Math.floor(rect.width * scaleX))
+          const sh = Math.max(1, Math.floor(rect.height * scaleY))
+          const off = document.createElement('canvas')
+          const dpr = Math.max(1, window.devicePixelRatio || 1)
+          off.width = Math.max(1, Math.floor(rect.width * dpr))
+          off.height = Math.max(1, Math.floor(rect.height * dpr))
+          const ctx = off.getContext('2d')
+          if (ctx) {
+            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, off.width, off.height)
+            try { dataUrl = off.toDataURL('image/png') } catch {}
+          }
+          // Cleanup
+          hideNodes.forEach(n => { if (n.getAttribute('data-print-hidden-applied') === '1') { n.style.removeProperty('visibility'); n.removeAttribute('data-print-hidden-applied') } })
+          video.pause()
+          video.srcObject = null as any
+          track.stop()
+        } catch {
+          // Fallback to reading the map canvas directly
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+          const canvas = map.getCanvas()
+          try { dataUrl = canvas.toDataURL('image/png') } catch {}
+          if (!dataUrl || dataUrl === 'data:,') {
+            const off = document.createElement('canvas')
+            off.width = canvas.width
+            off.height = canvas.height
+            const ctx = off.getContext('2d')
+            if (ctx) {
+              ctx.drawImage(canvas, 0, 0)
+              try { dataUrl = off.toDataURL('image/png') } catch {}
+            }
+          }
+        }
+        if (!dataUrl || dataUrl === 'data:,') { throw new Error('Failed to capture map image') }
+        const w = window.open('', '_blank', 'noopener,noreferrer')
+        if (!w) return
+        try { (w as any).opener = null } catch {}
+        const html = `<!doctype html><html><head><meta charset=\"utf-8\"><title>Map Print</title><style>html,body{margin:0;padding:0;background:#fff}img{max-width:100vw;max-height:100vh;display:block;margin:0 auto}</style></head><body><img id=\"snap\" alt=\"map\"/></body><script>\n(function(){\n  var img = document.getElementById('snap');\n  img.onload = function(){ setTimeout(function(){ try{ window.print(); }catch(e){} try{ window.close(); }catch(e){} }, 150); };\n  img.src = '${dataUrl}';\n})();\n</script></html>`
+        w.document.write(html)
+        w.document.close()
+        try { w.focus() } catch {}
+      } catch (err) {
+        console.error('Map print failed', err)
+        try { alert(t('sheet.print') + ': failed') } catch {}
+      } finally {
+        // Restore corridor layer visibility
+        for (const id of corridorLayerIds) {
+          if (mapRef.current && mapRef.current.getMap().getLayer(id)) {
+            const prev = (prevVisibility[id] || 'visible') as 'none' | 'visible'
+            mapRef.current.getMap().setLayoutProperty(id, 'visibility', prev)
+          }
+        }
+      }
+    }
+  }), [])
+
   return (
     <MapGL
       mapStyle={styleUrl}
       mapboxAccessToken={providerConfig.accessToken}
+      preserveDrawingBuffer
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}
       onLoad={() => setIsMapLoaded(true)}
@@ -189,7 +292,7 @@ export function MapProviderView(props: {
               layout={{ 
                 'text-field': ['get', 'name'], 
                 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'], 
-                'text-size': 12, 
+                'text-size': 16, 
                 'text-offset': [0, -2],
                 'text-anchor': 'bottom',
                 ...(ov.layout ?? {}) 
@@ -261,9 +364,9 @@ export function MapProviderView(props: {
                 transform: 'translate(10px, -6px)',
                 background: 'rgba(255,255,255,0.85)',
                 borderRadius: 4,
-                padding: '0px 2px',
-                fontSize: 11,
-                lineHeight: '14px',
+                padding: '1px 4px',
+                fontSize: 14,
+                lineHeight: '18px',
                 fontWeight: 600,
                 color: '#111',
                 border: '1px solid #e5e7eb'
@@ -320,36 +423,86 @@ export function MapProviderView(props: {
                     )
                   })}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-                  <button
-                    onClick={() => props.onMarkerLabelClear?.(m.id)}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 6,
-                      border: '1px solid #e5e7eb',
-                      background: '#ffffff',
-                      color: '#111827',
-                      cursor: 'pointer',
-                      fontSize: 13
-                    }}
-                  >
-                    Clear
-                  </button>
-                  <button
-                    onClick={() => props.onMarkerDelete?.(m.id)}
-                    style={{
-                      background: '#ef4444',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '6px 10px',
-                      fontSize: 13,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
+                {confirmDeleteForId === m.id ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                    <div style={{ fontSize: 12, color: '#374151' }}>{t('popup.confirmDelete')}</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        onClick={() => setConfirmDeleteForId(null)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          border: '1px solid #e5e7eb',
+                          background: '#ffffff',
+                          color: '#111827',
+                          cursor: 'pointer',
+                          fontSize: 13
+                        }}
+                      >
+                        {t('popup.cancel')}
+                      </button>
+                      <button
+                        onClick={() => { props.onMarkerDelete?.(m.id); setConfirmDeleteForId(null); props.onMarkerClick?.(null as any) }}
+                        style={{
+                          background: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: 6,
+                          padding: '6px 10px',
+                          fontSize: 13,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {t('popup.delete')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+                    <button
+                      onClick={() => props.onMarkerLabelClear?.(m.id)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 6,
+                        border: '1px solid #e5e7eb',
+                        background: '#ffffff',
+                        color: '#111827',
+                        cursor: 'pointer',
+                        fontSize: 13
+                      }}
+                    >
+                      {t('popup.clear')}
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteForId(m.id)}
+                      style={{
+                        background: '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '6px 10px',
+                        fontSize: 13,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {t('popup.delete')}
+                    </button>
+                    <button
+                      onClick={() => props.onMarkerClick?.(null as any)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 6,
+                        border: '1px solid #1d4ed8',
+                        background: '#1d4ed8',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        fontSize: 13
+                      }}
+                    >
+                      {t('popup.ok')}
+                    </button>
+                  </div>
+                )}
               </div>
             </Popup>
           )}
@@ -357,6 +510,8 @@ export function MapProviderView(props: {
       ))}
     </MapGL>
   )
-}
+})
+
+
 
 

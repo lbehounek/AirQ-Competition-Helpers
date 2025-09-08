@@ -202,6 +202,50 @@ export const usePhotoSessionApi = () => {
     }
   }, [sessionId, backendAvailable]);
 
+  // Apply a setting to all photos across active sets, then refresh from backend
+  const applySettingToAll = useCallback(async (setting: string, value: any, excludePhotoId?: string) => {
+    if (!session || !sessionId || !backendAvailable) return;
+    try {
+      // Optimistically update local state for responsiveness
+      setSession((current) => {
+        if (!current) return current;
+        const defaultCanvasState: any = {
+          position: { x: 0, y: 0 },
+          scale: 1,
+          brightness: 0,
+          contrast: 1,
+          sharpness: 0,
+          whiteBalance: { temperature: 0, tint: 0, auto: false },
+          labelPosition: 'bottom-left'
+        };
+        const applyPatch = (cs: any) => {
+          const next = { ...defaultCanvasState, ...cs };
+          if (setting === 'scale') next.scale = Math.max(1, Number(value));
+          else if (setting === 'brightness') next.brightness = Number(value);
+          else if (setting === 'contrast') next.contrast = Number(value);
+          else if (setting === 'sharpness') next.sharpness = Number(value);
+          else if (setting === 'whiteBalance.temperature') { const wb = { ...(next.whiteBalance || defaultCanvasState.whiteBalance) }; wb.temperature = Number(value); wb.auto = false; next.whiteBalance = wb; }
+          else if (setting === 'whiteBalance.tint') { const wb = { ...(next.whiteBalance || defaultCanvasState.whiteBalance) }; wb.tint = Number(value); wb.auto = false; next.whiteBalance = wb; }
+          return next;
+        };
+        const mapPhotos = (photos: any[]) => photos.map(p => (p.id === excludePhotoId ? p : { ...p, canvasState: applyPatch(p.canvasState) }));
+        return {
+          ...current,
+          sets: {
+            set1: { ...current.sets.set1, photos: mapPhotos(current.sets.set1.photos as any) },
+            set2: { ...current.sets.set2, photos: mapPhotos(current.sets.set2.photos as any) },
+          }
+        } as any;
+      });
+      // TODO: Add backend bulk update endpoint; for now, keep optimistic state
+      // Skip immediate refresh to avoid overwriting local changes
+    } catch (err) {
+      const errorMessage = err instanceof ApiError ? err.message : 'Failed to apply setting to all';
+      setError(errorMessage);
+      console.error('Apply-to-all error:', err);
+    }
+  }, [session, sessionId, backendAvailable]);
+
   const updateSetTitle = useCallback(async (setKey: 'set1' | 'set2', title: string) => {
     if (!sessionId || !backendAvailable) return;
 
@@ -212,6 +256,26 @@ export const usePhotoSessionApi = () => {
       const errorMessage = err instanceof ApiError ? err.message : 'Failed to update title';
       setError(errorMessage);
       console.error('Title update error:', err);
+    }
+  }, [sessionId, backendAvailable]);
+
+  // Batch update multiple set titles atomically to avoid UI desync
+  const updateSetTitles = useCallback(async (titles: Partial<{ set1: string; set2: string }>) => {
+    if (!sessionId || !backendAvailable) return;
+    try {
+      // Apply sequentially but sync from backend after both; backend lacks batch endpoint
+      if (typeof titles.set1 === 'string') {
+        await api.updateSetTitle(sessionId, 'set1', titles.set1);
+      }
+      if (typeof titles.set2 === 'string') {
+        await api.updateSetTitle(sessionId, 'set2', titles.set2);
+      }
+      const refreshed = await api.getSession(sessionId);
+      setSession(refreshed.session as ApiPhotoSession);
+    } catch (err) {
+      const errorMessage = err instanceof ApiError ? err.message : 'Failed to update titles';
+      setError(errorMessage);
+      console.error('Batch title update error:', err);
     }
   }, [sessionId, backendAvailable]);
 
@@ -491,7 +555,9 @@ export const usePhotoSessionApi = () => {
     addPhotosToTurningPoint,
     removePhoto,
     updatePhotoState,
+    applySettingToAll,
     updateSetTitle,
+    updateSetTitles,
     reorderPhotos,
     shufflePhotos,
     updateSessionMode,
