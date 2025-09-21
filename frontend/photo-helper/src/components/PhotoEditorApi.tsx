@@ -11,6 +11,7 @@ import { useWebGLContext } from '../utils/webglContextManager';
 import { drawLabel, getCanvasContext } from '../utils/canvasUtils';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useCachedImage } from '../utils/imageCache';
+import { intelligentResize, resizeImageHighQuality } from '../utils/highQualityResize';
 import type { ApiPhoto } from '../types/api';
 
 interface PhotoEditorApiProps {
@@ -92,7 +93,7 @@ const cropImageToAspectRatio = (
   return canvas;
 };
 
-const renderPhotoOnCanvas = (
+const renderPhotoOnCanvas = async (
   canvas: HTMLCanvasElement,
   image: HTMLImageElement,
   canvasState: Photo['canvasState'],
@@ -104,7 +105,8 @@ const renderPhotoOnCanvas = (
   webglManager?: { requestContext: () => WebGLContext | null; releaseContext: (ctx: WebGLContext) => void; isAvailable: boolean },
   aspectRatio = 4/3,
   baseHeight = 225,
-  showOriginal = false
+  showOriginal = false,
+  useHighQuality = false
 ) => {
   const ctx = getCanvasContext(canvas);
   if (!ctx) {
@@ -174,8 +176,34 @@ const renderPhotoOnCanvas = (
     return;
   }
   
-  // Draw the original image to temp canvas
-  tempCtx.drawImage(image, 0, 0, displayWidth, displayHeight);
+  // Draw the original image to temp canvas using high-quality resizing when appropriate
+  if (useHighQuality && !isDragging && !showOriginal) {
+    try {
+      console.log(`🎨 Using high-quality resize for ${image.width}x${image.height} → ${Math.ceil(displayWidth)}x${Math.ceil(displayHeight)}`);
+      
+      // Use intelligent high-quality resizing
+      const highQualityCanvas = await intelligentResize(
+        image, 
+        Math.ceil(displayWidth), 
+        Math.ceil(displayHeight),
+        {
+          unsharpAmount: 80,      // Post-sharpening
+          unsharpRadius: 0.6,
+          unsharpThreshold: 2
+        }
+      );
+      
+      // Copy high-quality result to temp canvas
+      tempCtx.drawImage(highQualityCanvas, 0, 0);
+    } catch (error) {
+      console.warn('High-quality resize failed, falling back to standard rendering:', error);
+      // Fallback to standard rendering
+      tempCtx.drawImage(image, 0, 0, displayWidth, displayHeight);
+    }
+  } else {
+    // Standard fast rendering for dragging or when high-quality is disabled
+    tempCtx.drawImage(image, 0, 0, displayWidth, displayHeight);
+  }
   
   // Skip processing if showing original
   const sharpness = canvasState.sharpness || 0;
@@ -623,7 +651,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   }, [photo.canvasState.whiteBalance?.auto, loadedImage, onUpdate]);
 
   // Render canvas
-  const renderCanvas = useCallback(() => {
+  const renderCanvas = useCallback(async () => {
     const canvas = canvasRef.current;
     if (!canvas || !loadedImage || !photo?.canvasState) return;
 
@@ -640,8 +668,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       tempCanvas.height = targetHeight;
     }
 
+    // Enable high-quality rendering for static (non-dragging) scenarios
+    const useHighQuality = !isDragging && !showOriginal && size === 'large';
+
     // Render to temporary canvas first
-    renderPhotoOnCanvas(
+    await renderPhotoOnCanvas(
       tempCanvas,
       loadedImage,
       photo.canvasState,
@@ -653,7 +684,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       webglManager,
       currentRatio.ratio,
       BASE_WIDTH / currentRatio.ratio,
-      (showOriginal || isDragging)
+      (showOriginal || isDragging),
+      useHighQuality
     );
 
     // Draw circle overlay if it exists
@@ -689,10 +721,12 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       }
       ctx.drawImage(tempCanvas, 0, 0, canvasSize.width, canvasSize.height);
     }
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview, dragScaleFactor]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview, dragScaleFactor, size]);
 
   useEffect(() => {
-    renderCanvas();
+    renderCanvas().catch(error => {
+      console.error('Render canvas failed:', error);
+    });
   }, [renderCanvas]);
 
   // Initialize WebGL support detection
