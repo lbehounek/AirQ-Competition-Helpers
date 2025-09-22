@@ -481,10 +481,42 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 }) => {
   const { currentRatio, getCanvasSize } = useAspectRatio();
   
+  // All hooks must be called before any conditional logic or early returns
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [circleMode, setCircleMode] = useState(externalCircleMode);
+  const [isDraggingCircle, setIsDraggingCircle] = useState(false);
+  const [circlePreview, setCirclePreview] = useState<{ x: number; y: number } | null>(null);
+  const [circleStartPos, setCircleStartPos] = useState<{ x: number; y: number } | null>(null);  // Track initial circle position for click vs drag
+  const [localCirclePosition, setLocalCirclePosition] = useState<{ x: number; y: number } | null>(null);  // Local circle position for smooth dragging
+  const pendingUpdateRef = useRef<number | null>(null);
+  const lastMoveTimeRef = useRef<number>(0);
+  const dragRafRef = useRef<number | null>(null);
+  const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [dragScaleFactor, setDragScaleFactor] = useState(1);
+  
+  // Use cached image loading - provide safe defaults for when photo is null
+  const { image: loadedImage, error: imageError } = useCachedImage(
+    photo?.id || '',
+    photo?.sessionId || '',
+    photo?.url || ''
+  );
+  
+  // Local state for smooth dragging - provide safe defaults
+  const [localPosition, setLocalPosition] = useState(photo?.canvasState?.position || { x: 0, y: 0 });
+  const [localLabelPosition, setLocalLabelPosition] = useState(photo?.canvasState?.labelPosition || { x: 0, y: 0 });
+  
+  // WebGL context management
+  const webglManager = useWebGLContext();
+  const [webglSupported, setWebglSupported] = useState<boolean>(false);
+  const [lowPerformanceMode, setLowPerformanceMode] = useState<boolean>(false);
+
   // Dynamic canvas sizes based on aspect ratio
   const gridCanvasSize = getCanvasSize(240);
   const largeCanvasSize = getCanvasSize(600); // Match the canvas size used below
   
+  // Early return after all hooks are called
   if (!photo || !photo.canvasState) {
     return (
       <Box sx={{
@@ -504,36 +536,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     );
   }
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [circleMode, setCircleMode] = useState(externalCircleMode);
-  const [isDraggingCircle, setIsDraggingCircle] = useState(false);
-  const [circlePreview, setCirclePreview] = useState<{ x: number; y: number } | null>(null);
-  const [circleStartPos, setCircleStartPos] = useState<{ x: number; y: number } | null>(null);  // Track initial circle position for click vs drag
-  const [localCirclePosition, setLocalCirclePosition] = useState<{ x: number; y: number } | null>(null);  // Local circle position for smooth dragging
-  const pendingUpdateRef = useRef<number | null>(null);
-  const lastMoveTimeRef = useRef<number>(0);
-  const dragRafRef = useRef<number | null>(null);
-  const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [dragScaleFactor, setDragScaleFactor] = useState(1);
-  
-  // Use cached image loading
-  const { image: loadedImage, error: imageError } = useCachedImage(
-    photo.id,
-    photo.sessionId,
-    photo.url
-  );
-  
-  // Local state for smooth dragging
-  const [localPosition, setLocalPosition] = useState(photo.canvasState.position);
-  const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
-  
-  // WebGL context management
-  const webglManager = useWebGLContext();
-  const [webglSupported, setWebglSupported] = useState<boolean>(false);
-  const [lowPerformanceMode, setLowPerformanceMode] = useState<boolean>(false);
-
   // Dynamic canvas dimensions based on aspect ratio
   const canvasSize = size === 'large'
     ? getCanvasSize(600) // 2x scale for modal
@@ -543,11 +545,13 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
   // Sync local states when photo changes
   useEffect(() => {
+    if (!photo?.canvasState) return;
+    
     if (!isDragging) {
       setLocalPosition(photo.canvasState.position);
     }
     setLocalLabelPosition(photo.canvasState.labelPosition);
-  }, [photo.canvasState.position, photo.canvasState.labelPosition, isDragging]);
+  }, [photo?.canvasState?.position, photo?.canvasState?.labelPosition, isDragging]);
 
   // Sync with external circle mode
   useEffect(() => {
@@ -560,14 +564,14 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
   // Update local position when scale changes
   useEffect(() => {
-    if (!isDragging) {
-      setLocalPosition(photo.canvasState.position);
-    }
-  }, [photo.canvasState.scale, isDragging]);
+    if (!photo?.canvasState || isDragging) return;
+    
+    setLocalPosition(photo.canvasState.position);
+  }, [photo?.canvasState?.scale, isDragging]);
 
   // Handle auto white balance calculation
   useEffect(() => {
-    if (!photo.canvasState.whiteBalance?.auto || !loadedImage || !canvasRef.current) return;
+    if (!photo?.canvasState?.whiteBalance?.auto || !loadedImage || !canvasRef.current) return;
 
     // Create a temporary canvas to analyze the image
     const tempCanvas = document.createElement('canvas');
@@ -648,7 +652,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         }
       });
     }
-  }, [photo.canvasState.whiteBalance?.auto, loadedImage, onUpdate]);
+  }, [photo?.canvasState?.whiteBalance?.auto, loadedImage, onUpdate]);
 
   // Render canvas
   const renderCanvas = useCallback(async () => {

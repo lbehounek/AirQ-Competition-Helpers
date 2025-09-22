@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "@types/pica": "^9.0.5",
-    "pica": "^9.0.1"
-  }
-}

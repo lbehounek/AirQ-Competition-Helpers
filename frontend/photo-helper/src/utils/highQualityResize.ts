@@ -402,7 +402,7 @@ export const intelligentResize = async (
  */
 export const isPicaWasmAvailable = (): boolean => {
   try {
-    return typeof WebAssembly !== 'undefined' && WebAssembly.validate;
+    return typeof WebAssembly !== 'undefined' && typeof WebAssembly.validate === 'function';
   } catch {
     return false;
   }
