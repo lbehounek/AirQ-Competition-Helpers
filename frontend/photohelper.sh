@@ -34,7 +34,7 @@ trap cleanup SIGINT SIGTERM
 
 # Start frontend
 echo "⚛️ Starting photo-helper frontend..."
-cd "$SCRIPT_DIR/frontend/photo-helper" || { echo "❌ Cannot cd to frontend/photo-helper"; exit 1; }
+cd "$SCRIPT_DIR/photo-helper" || { echo "❌ Cannot cd to photo-helper"; exit 1; }
 [ ! -d "node_modules" ] && npm install -q
 npm run dev &
 echo "✅ Frontend: http://localhost:5173"

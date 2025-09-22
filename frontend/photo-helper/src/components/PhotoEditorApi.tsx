@@ -11,6 +11,7 @@ import { useWebGLContext } from '../utils/webglContextManager';
 import { drawLabel, getCanvasContext } from '../utils/canvasUtils';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useCachedImage } from '../utils/imageCache';
+import { intelligentResize, resizeImageHighQuality } from '../utils/highQualityResize';
 import type { ApiPhoto } from '../types/api';
 
 interface PhotoEditorApiProps {
@@ -92,7 +93,7 @@ const cropImageToAspectRatio = (
   return canvas;
 };
 
-const renderPhotoOnCanvas = (
+const renderPhotoOnCanvas = async (
   canvas: HTMLCanvasElement,
   image: HTMLImageElement,
   canvasState: Photo['canvasState'],
@@ -104,7 +105,8 @@ const renderPhotoOnCanvas = (
   webglManager?: { requestContext: () => WebGLContext | null; releaseContext: (ctx: WebGLContext) => void; isAvailable: boolean },
   aspectRatio = 4/3,
   baseHeight = 225,
-  showOriginal = false
+  showOriginal = false,
+  useHighQuality = false
 ) => {
   const ctx = getCanvasContext(canvas);
   if (!ctx) {
@@ -174,8 +176,34 @@ const renderPhotoOnCanvas = (
     return;
   }
   
-  // Draw the original image to temp canvas
-  tempCtx.drawImage(image, 0, 0, displayWidth, displayHeight);
+  // Draw the original image to temp canvas using high-quality resizing when appropriate
+  if (useHighQuality && !isDragging && !showOriginal) {
+    try {
+      console.log(`🎨 Using high-quality resize for ${image.width}x${image.height} → ${Math.ceil(displayWidth)}x${Math.ceil(displayHeight)}`);
+      
+      // Use intelligent high-quality resizing
+      const highQualityCanvas = await intelligentResize(
+        image, 
+        Math.ceil(displayWidth), 
+        Math.ceil(displayHeight),
+        {
+          unsharpAmount: 80,      // Post-sharpening
+          unsharpRadius: 0.6,
+          unsharpThreshold: 2
+        }
+      );
+      
+      // Copy high-quality result to temp canvas
+      tempCtx.drawImage(highQualityCanvas, 0, 0);
+    } catch (error) {
+      console.warn('High-quality resize failed, falling back to standard rendering:', error);
+      // Fallback to standard rendering
+      tempCtx.drawImage(image, 0, 0, displayWidth, displayHeight);
+    }
+  } else {
+    // Standard fast rendering for dragging or when high-quality is disabled
+    tempCtx.drawImage(image, 0, 0, displayWidth, displayHeight);
+  }
   
   // Skip processing if showing original
   const sharpness = canvasState.sharpness || 0;
@@ -453,29 +481,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 }) => {
   const { currentRatio, getCanvasSize } = useAspectRatio();
   
-  // Dynamic canvas sizes based on aspect ratio
-  const gridCanvasSize = getCanvasSize(240);
-  const largeCanvasSize = getCanvasSize(600); // Match the canvas size used below
-  
-  if (!photo || !photo.canvasState) {
-    return (
-      <Box sx={{
-        width: size === 'large' ? largeCanvasSize.width : gridCanvasSize.width,
-        height: size === 'large' ? largeCanvasSize.height : gridCanvasSize.height,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'grey.50',
-        border: '1px solid',
-        borderColor: 'grey.300',
-        borderRadius: '8px',
-        color: 'grey.600'
-      }}>
-        No photo data
-      </Box>
-    );
-  }
-
+  // All hooks must be called before any conditional logic or early returns
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -490,22 +496,26 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [dragScaleFactor, setDragScaleFactor] = useState(1);
   
-  // Use cached image loading
+  // Use cached image loading - provide safe defaults for when photo is null
   const { image: loadedImage, error: imageError } = useCachedImage(
-    photo.id,
-    photo.sessionId,
-    photo.url
+    photo?.id || '',
+    photo?.sessionId || '',
+    photo?.url || ''
   );
   
-  // Local state for smooth dragging
-  const [localPosition, setLocalPosition] = useState(photo.canvasState.position);
-  const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
+  // Local state for smooth dragging - provide safe defaults
+  const [localPosition, setLocalPosition] = useState(photo?.canvasState?.position || { x: 0, y: 0 });
+  const [localLabelPosition, setLocalLabelPosition] = useState(photo?.canvasState?.labelPosition || { x: 0, y: 0 });
   
   // WebGL context management
   const webglManager = useWebGLContext();
   const [webglSupported, setWebglSupported] = useState<boolean>(false);
   const [lowPerformanceMode, setLowPerformanceMode] = useState<boolean>(false);
 
+  // Dynamic canvas sizes based on aspect ratio
+  const gridCanvasSize = getCanvasSize(240);
+  const largeCanvasSize = getCanvasSize(600); // Match the canvas size used below
+  
   // Dynamic canvas dimensions based on aspect ratio
   const canvasSize = size === 'large'
     ? getCanvasSize(600) // 2x scale for modal
@@ -515,11 +525,13 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
   // Sync local states when photo changes
   useEffect(() => {
+    if (!photo?.canvasState) return;
+    
     if (!isDragging) {
       setLocalPosition(photo.canvasState.position);
     }
     setLocalLabelPosition(photo.canvasState.labelPosition);
-  }, [photo.canvasState.position, photo.canvasState.labelPosition, isDragging]);
+  }, [photo?.canvasState?.position, photo?.canvasState?.labelPosition, isDragging]);
 
   // Sync with external circle mode
   useEffect(() => {
@@ -532,14 +544,14 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
   // Update local position when scale changes
   useEffect(() => {
-    if (!isDragging) {
-      setLocalPosition(photo.canvasState.position);
-    }
-  }, [photo.canvasState.scale, isDragging]);
+    if (!photo?.canvasState || isDragging) return;
+    
+    setLocalPosition(photo.canvasState.position);
+  }, [photo?.canvasState?.scale, isDragging]);
 
   // Handle auto white balance calculation
   useEffect(() => {
-    if (!photo.canvasState.whiteBalance?.auto || !loadedImage || !canvasRef.current) return;
+    if (!photo?.canvasState?.whiteBalance?.auto || !loadedImage || !canvasRef.current) return;
 
     // Create a temporary canvas to analyze the image
     const tempCanvas = document.createElement('canvas');
@@ -620,10 +632,10 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         }
       });
     }
-  }, [photo.canvasState.whiteBalance?.auto, loadedImage, onUpdate]);
+  }, [photo?.canvasState?.whiteBalance?.auto, loadedImage, onUpdate]);
 
   // Render canvas
-  const renderCanvas = useCallback(() => {
+  const renderCanvas = useCallback(async () => {
     const canvas = canvasRef.current;
     if (!canvas || !loadedImage || !photo?.canvasState) return;
 
@@ -640,8 +652,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       tempCanvas.height = targetHeight;
     }
 
+    // Enable high-quality rendering for static (non-dragging) scenarios
+    const useHighQuality = !isDragging && !showOriginal && size === 'large';
+
     // Render to temporary canvas first
-    renderPhotoOnCanvas(
+    await renderPhotoOnCanvas(
       tempCanvas,
       loadedImage,
       photo.canvasState,
@@ -653,7 +668,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       webglManager,
       currentRatio.ratio,
       BASE_WIDTH / currentRatio.ratio,
-      (showOriginal || isDragging)
+      (showOriginal || isDragging),
+      useHighQuality
     );
 
     // Draw circle overlay if it exists
@@ -689,10 +705,12 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       }
       ctx.drawImage(tempCanvas, 0, 0, canvasSize.width, canvasSize.height);
     }
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview, dragScaleFactor]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview, dragScaleFactor, size]);
 
   useEffect(() => {
-    renderCanvas();
+    renderCanvas().catch(error => {
+      console.error('Render canvas failed:', error);
+    });
   }, [renderCanvas]);
 
   // Initialize WebGL support detection
@@ -1107,84 +1125,95 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     });
   };
 
-  // Loading/error states
-  if (imageError) {
-    return (
-      <Box sx={{
-        width: size === 'large' ? 400 : '100%',
-        height: size === 'large' ? 300 : '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'error.light',
-        color: 'error.contrastText',
-        borderRadius: 1
-      }}>
-        Failed to load image
-      </Box>
-    );
-  }
-
-  if (!loadedImage) {
-    return (
-      <Box sx={{
-        width: size === 'large' ? 400 : '100%',
-        height: size === 'large' ? 300 : '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'grey.100',
-        color: 'grey.600',
-        borderRadius: 1
-      }}>
-        Loading...
-      </Box>
-    );
-  }
-
+  // Conditional rendering - single return statement handles all states
   return (
-    <Box sx={{ 
-      position: 'relative', 
-      width: size === 'large' ? largeCanvasSize.width : '100%',
-      height: size === 'large' ? largeCanvasSize.height : '100%'
-    }}>
-      <canvas
-        ref={canvasRef}
-        data-photo-id={photo.id}
-        data-set-key={setKey}
-        data-label={label}
-        style={{
-          width: size === 'grid' ? '100%' : 'auto',
-          height: size === 'grid' ? '100%' : 'auto',
-          maxWidth: '100%',
-          maxHeight: '100%',
-          cursor: size === 'grid' ? 'pointer' : 
-                  circleMode ? 'crosshair' : 
-                  (isDragging || isDraggingCircle) ? 'grabbing' : 'grab',
+    <>
+      {!photo || !photo.canvasState ? (
+        <Box sx={{
+          width: size === 'large' ? largeCanvasSize.width : gridCanvasSize.width,
+          height: size === 'large' ? largeCanvasSize.height : gridCanvasSize.height,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'grey.50',
           border: '1px solid',
-          borderColor: size === 'grid' ? 'transparent' : '#e0e0e0',
-          borderRadius: size === 'grid' ? 0 : '4px', // Rectangular for grid (PDF preview), rounded for modal
-          display: 'block'
-        }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleCanvasMouseMove}
-        onMouseLeave={handleCanvasMouseLeave}
-        onWheel={handleWheel}
-        onDragStart={(e) => e.preventDefault()} // Prevent browser's default image drag
-      />
+          borderColor: 'grey.300',
+          borderRadius: '8px',
+          color: 'grey.600'
+        }}>
+          No photo data
+        </Box>
+      ) : imageError ? (
+        <Box sx={{
+          width: size === 'large' ? 400 : '100%',
+          height: size === 'large' ? 300 : '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'error.light',
+          color: 'error.contrastText',
+          borderRadius: 1
+        }}>
+          Failed to load image
+        </Box>
+      ) : !loadedImage ? (
+        <Box sx={{
+          width: size === 'large' ? 400 : '100%',
+          height: size === 'large' ? 300 : '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'grey.100',
+          color: 'grey.600',
+          borderRadius: 1
+        }}>
+          Loading...
+        </Box>
+      ) : (
+        <Box sx={{ 
+          position: 'relative', 
+          width: size === 'large' ? largeCanvasSize.width : '100%',
+          height: size === 'large' ? largeCanvasSize.height : '100%'
+        }}>
+          <canvas
+            ref={canvasRef}
+            data-photo-id={photo.id}
+            data-set-key={setKey}
+            data-label={label}
+            style={{
+              width: size === 'grid' ? '100%' : 'auto',
+              height: size === 'grid' ? '100%' : 'auto',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              cursor: size === 'grid' ? 'pointer' : 
+                      circleMode ? 'crosshair' : 
+                      (isDragging || isDraggingCircle) ? 'grabbing' : 'grab',
+              border: '1px solid',
+              borderColor: size === 'grid' ? 'transparent' : '#e0e0e0',
+              borderRadius: size === 'grid' ? 0 : '4px', // Rectangular for grid (PDF preview), rounded for modal
+              display: 'block'
+            }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleCanvasMouseMove}
+            onMouseLeave={handleCanvasMouseLeave}
+            onWheel={handleWheel}
+            onDragStart={(e) => e.preventDefault()} // Prevent browser's default image drag
+          />
 
-      {size === 'grid' && (
-        <Tooltip title={`Photo ${label} - Click to edit`} placement="top">
-          <Box sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            pointerEvents: 'none'
-          }} />
-        </Tooltip>
+          {size === 'grid' && (
+            <Tooltip title={`Photo ${label} - Click to edit`} placement="top">
+              <Box sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                pointerEvents: 'none'
+              }} />
+            </Tooltip>
+          )}
+        </Box>
       )}
-    </Box>
+    </>
   );
 };

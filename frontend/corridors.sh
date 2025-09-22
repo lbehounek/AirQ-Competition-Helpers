@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="$ROOT_DIR/frontend/map-corridors"
+APP_DIR="$ROOT_DIR/map-corridors"
 
 if [ ! -d "$APP_DIR" ]; then
   echo "Error: app directory not found: $APP_DIR" >&2

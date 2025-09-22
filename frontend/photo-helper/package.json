@@ -15,9 +15,11 @@
     "@mui/icons-material": "^7.3.1",
     "@mui/material": "^7.3.1",
     "@react-pdf/renderer": "^4.3.0",
+    "@types/pica": "^9.0.5",
     "buffer": "^6.0.3",
     "fabric": "^6.7.1",
     "jspdf": "^3.0.2",
+    "pica": "^9.0.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-dropzone": "^14.3.8"
