@@ -516,26 +516,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const gridCanvasSize = getCanvasSize(240);
   const largeCanvasSize = getCanvasSize(600); // Match the canvas size used below
   
-  // Early return after all hooks are called
-  if (!photo || !photo.canvasState) {
-    return (
-      <Box sx={{
-        width: size === 'large' ? largeCanvasSize.width : gridCanvasSize.width,
-        height: size === 'large' ? largeCanvasSize.height : gridCanvasSize.height,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'grey.50',
-        border: '1px solid',
-        borderColor: 'grey.300',
-        borderRadius: '8px',
-        color: 'grey.600'
-      }}>
-        No photo data
-      </Box>
-    );
-  }
-
   // Dynamic canvas dimensions based on aspect ratio
   const canvasSize = size === 'large'
     ? getCanvasSize(600) // 2x scale for modal
@@ -1145,84 +1125,95 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     });
   };
 
-  // Loading/error states
-  if (imageError) {
-    return (
-      <Box sx={{
-        width: size === 'large' ? 400 : '100%',
-        height: size === 'large' ? 300 : '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'error.light',
-        color: 'error.contrastText',
-        borderRadius: 1
-      }}>
-        Failed to load image
-      </Box>
-    );
-  }
-
-  if (!loadedImage) {
-    return (
-      <Box sx={{
-        width: size === 'large' ? 400 : '100%',
-        height: size === 'large' ? 300 : '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'grey.100',
-        color: 'grey.600',
-        borderRadius: 1
-      }}>
-        Loading...
-      </Box>
-    );
-  }
-
+  // Conditional rendering - single return statement handles all states
   return (
-    <Box sx={{ 
-      position: 'relative', 
-      width: size === 'large' ? largeCanvasSize.width : '100%',
-      height: size === 'large' ? largeCanvasSize.height : '100%'
-    }}>
-      <canvas
-        ref={canvasRef}
-        data-photo-id={photo.id}
-        data-set-key={setKey}
-        data-label={label}
-        style={{
-          width: size === 'grid' ? '100%' : 'auto',
-          height: size === 'grid' ? '100%' : 'auto',
-          maxWidth: '100%',
-          maxHeight: '100%',
-          cursor: size === 'grid' ? 'pointer' : 
-                  circleMode ? 'crosshair' : 
-                  (isDragging || isDraggingCircle) ? 'grabbing' : 'grab',
+    <>
+      {!photo || !photo.canvasState ? (
+        <Box sx={{
+          width: size === 'large' ? largeCanvasSize.width : gridCanvasSize.width,
+          height: size === 'large' ? largeCanvasSize.height : gridCanvasSize.height,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'grey.50',
           border: '1px solid',
-          borderColor: size === 'grid' ? 'transparent' : '#e0e0e0',
-          borderRadius: size === 'grid' ? 0 : '4px', // Rectangular for grid (PDF preview), rounded for modal
-          display: 'block'
-        }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleCanvasMouseMove}
-        onMouseLeave={handleCanvasMouseLeave}
-        onWheel={handleWheel}
-        onDragStart={(e) => e.preventDefault()} // Prevent browser's default image drag
-      />
+          borderColor: 'grey.300',
+          borderRadius: '8px',
+          color: 'grey.600'
+        }}>
+          No photo data
+        </Box>
+      ) : imageError ? (
+        <Box sx={{
+          width: size === 'large' ? 400 : '100%',
+          height: size === 'large' ? 300 : '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'error.light',
+          color: 'error.contrastText',
+          borderRadius: 1
+        }}>
+          Failed to load image
+        </Box>
+      ) : !loadedImage ? (
+        <Box sx={{
+          width: size === 'large' ? 400 : '100%',
+          height: size === 'large' ? 300 : '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'grey.100',
+          color: 'grey.600',
+          borderRadius: 1
+        }}>
+          Loading...
+        </Box>
+      ) : (
+        <Box sx={{ 
+          position: 'relative', 
+          width: size === 'large' ? largeCanvasSize.width : '100%',
+          height: size === 'large' ? largeCanvasSize.height : '100%'
+        }}>
+          <canvas
+            ref={canvasRef}
+            data-photo-id={photo.id}
+            data-set-key={setKey}
+            data-label={label}
+            style={{
+              width: size === 'grid' ? '100%' : 'auto',
+              height: size === 'grid' ? '100%' : 'auto',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              cursor: size === 'grid' ? 'pointer' : 
+                      circleMode ? 'crosshair' : 
+                      (isDragging || isDraggingCircle) ? 'grabbing' : 'grab',
+              border: '1px solid',
+              borderColor: size === 'grid' ? 'transparent' : '#e0e0e0',
+              borderRadius: size === 'grid' ? 0 : '4px', // Rectangular for grid (PDF preview), rounded for modal
+              display: 'block'
+            }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleCanvasMouseMove}
+            onMouseLeave={handleCanvasMouseLeave}
+            onWheel={handleWheel}
+            onDragStart={(e) => e.preventDefault()} // Prevent browser's default image drag
+          />
 
-      {size === 'grid' && (
-        <Tooltip title={`Photo ${label} - Click to edit`} placement="top">
-          <Box sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            pointerEvents: 'none'
-          }} />
-        </Tooltip>
+          {size === 'grid' && (
+            <Tooltip title={`Photo ${label} - Click to edit`} placement="top">
+              <Box sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                pointerEvents: 'none'
+              }} />
+            </Tooltip>
+          )}
+        </Box>
       )}
-    </Box>
+    </>
   );
 };
