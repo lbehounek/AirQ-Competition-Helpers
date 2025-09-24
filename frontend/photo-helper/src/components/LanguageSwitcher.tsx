@@ -26,9 +26,6 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ compact = fa
     setLocale(newLocale);
   };
 
-  const handleCloseClick = () => {
-    window.location.href = '../';
-  };
 
   if (compact) {
     return (
@@ -52,7 +49,9 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ compact = fa
         </ButtonGroup>
         <Tooltip title={t('app.backToMenu')} arrow>
           <IconButton
-            onClick={handleCloseClick}
+            component="a"
+            href="../"
+            aria-label={t('app.backToMenu')}
             size="small"
             sx={{
               color: 'white',

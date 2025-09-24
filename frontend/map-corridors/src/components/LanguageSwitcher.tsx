@@ -7,9 +7,6 @@ import { SUPPORTED_LOCALES } from '../locales'
 export const LanguageSwitcher: React.FC = () => {
   const { locale, setLocale, t } = useI18n()
   
-  const handleCloseClick = () => {
-    window.location.href = '../'
-  }
   
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -17,7 +14,7 @@ export const LanguageSwitcher: React.FC = () => {
         {SUPPORTED_LOCALES.map((lang) => (
           <Button
             key={lang.code}
-            onClick={() => setLocale(lang.code as any)}
+            onClick={() => setLocale(lang.code)}
             variant={locale === lang.code ? 'contained' : 'outlined'}
             sx={{ fontSize: '0.75rem', px: 1.25, py: 0.5, minWidth: 'auto' }}
           >
@@ -27,7 +24,9 @@ export const LanguageSwitcher: React.FC = () => {
       </ButtonGroup>
       <Tooltip title={t('app.backToMenu')} arrow>
         <IconButton
-          onClick={handleCloseClick}
+          component="a"
+          href="../"
+          aria-label={t('app.backToMenu')}
           size="small"
           sx={{
             color: 'inherit',

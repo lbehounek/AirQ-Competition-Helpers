@@ -28,9 +28,8 @@ build_and_stage() {
     (cd "$app_dir" && npm run -s build) || { echo "❌ Build failed for $app"; exit 1; }
 
     echo "📦 Staging $app build to $subdir"
-    rm -rf "$subdir"
     mkdir -p "$subdir"
-    rsync -avz "$app_dir/dist/" "$subdir/" || { echo "❌ Staging failed for $app"; exit 1; }
+    rsync -avz --delete "$app_dir/dist/" "$subdir/" || { echo "❌ Staging failed for $app"; exit 1; }
 }
 
 # Stage the landing page (frontend/index.html) into public_html root
