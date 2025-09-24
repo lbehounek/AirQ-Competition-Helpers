@@ -16,7 +16,7 @@ interface TextImageResult {
   height: number;
 }
 
-const createTextImage = (text: string, isRotated: boolean = true): TextImageResult | null => {
+const createTextImage = (text: string, isRotated: boolean = true, fontSize: number = 18): TextImageResult | null => {
   if (!text.trim()) return null;
   
   try {
@@ -26,7 +26,7 @@ const createTextImage = (text: string, isRotated: boolean = true): TextImageResu
     
     // High-resolution rendering constants
     const PIXEL_RATIO = 3; // 3x resolution for crisp PDF text
-    const FONT_SIZE = 18; // ~30% larger for better header prominence
+    const FONT_SIZE = fontSize; // Configurable font size
     const FONT_FAMILY = 'Arial, sans-serif'; // Excellent Unicode support
     const HORIZONTAL_PADDING = 40;
     const VERTICAL_PADDING = 12;
@@ -84,6 +84,75 @@ const createTextImage = (text: string, isRotated: boolean = true): TextImageResu
   }
 };
 
+const createMultilineTextImage = (lines: string[], fontSize: number = 12): TextImageResult | null => {
+  if (!lines.length || lines.every(line => !line.trim())) return null;
+  
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    // High-resolution rendering constants
+    const PIXEL_RATIO = 3; // 3x resolution for crisp PDF text
+    const FONT_SIZE = fontSize;
+    const FONT_FAMILY = 'Arial, sans-serif'; // Excellent Unicode support
+    const HORIZONTAL_PADDING = 20;
+    const VERTICAL_PADDING = 8;
+    const LINE_SPACING = fontSize * 0.1; // 10% of font size for tighter line spacing
+    
+    // Configure font for text measurement
+    ctx.font = `bold ${FONT_SIZE}px ${FONT_FAMILY}`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#000000';
+    
+    // Measure text dimensions
+    let maxWidth = 0;
+    const lineMetrics = lines.map(line => {
+      const metrics = ctx.measureText(line);
+      const width = Math.ceil(metrics.width);
+      maxWidth = Math.max(maxWidth, width);
+      return { text: line, width };
+    });
+    
+    const lineHeight = Math.ceil(FONT_SIZE * 1.2);
+    const totalHeight = (lineHeight * lines.length) + (LINE_SPACING * (lines.length - 1));
+    
+    // Calculate logical canvas dimensions
+    const logicalWidth = maxWidth + HORIZONTAL_PADDING;
+    const logicalHeight = totalHeight + VERTICAL_PADDING;
+    
+    // Set high-resolution canvas size
+    canvas.width = logicalWidth * PIXEL_RATIO;
+    canvas.height = logicalHeight * PIXEL_RATIO;
+    ctx.scale(PIXEL_RATIO, PIXEL_RATIO);
+    
+    // Configure high-quality text rendering
+    ctx.font = `bold ${FONT_SIZE}px ${FONT_FAMILY}`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'right';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    // Draw each line aligned to the right
+    const startY = VERTICAL_PADDING / 2;
+    const rightX = logicalWidth - (HORIZONTAL_PADDING / 2);
+    lines.forEach((line, index) => {
+      const y = startY + (index * (lineHeight + LINE_SPACING));
+      ctx.fillText(line, rightX, y);
+    });
+    
+    return {
+      dataUrl: canvas.toDataURL('image/png', 1.0),
+      width: logicalWidth,
+      height: logicalHeight
+    };
+  } catch (error) {
+    console.error('Failed to create multiline text image:', error);
+    return null;
+  }
+};
+
 /**
  * Clean PDF generation with @react-pdf/renderer
  */
@@ -93,7 +162,8 @@ export const generatePDF = async (
   sessionId: string,
   aspectRatio = 4/3,
   competitionName?: string,
-  layoutMode: 'landscape' | 'portrait' = 'landscape'
+  layoutMode: 'landscape' | 'portrait' = 'landscape',
+  t?: (key: string) => string
 ): Promise<void> => {
   
   // Get canvas data URL for a photo
@@ -213,7 +283,16 @@ export const generatePDF = async (
     // Add header/title
     if (layoutMode === 'portrait') {
       // Create rotated text as image - perfect Czech character support!
-      const headerText = `${competitionName || ''} • ${setTitle}`;
+      // Merge set title and competition name with " | " separator, then add promotional text
+      const mergedTitleText = setTitle && competitionName 
+        ? `${setTitle} | ${competitionName}`
+        : setTitle || competitionName || '';
+      const promotionalText = t 
+        ? `${t('pdf.promotional.line1')} ${t('pdf.promotional.line2')}`
+        : 'created using zavody.behounek.it';
+      const headerText = mergedTitleText 
+        ? `${mergedTitleText} • ${promotionalText}`
+        : promotionalText;
       const headerImage = createTextImage(headerText, true);
       if (headerImage) {
         // Recalculate layout with actual measured gutter width
@@ -239,43 +318,55 @@ export const generatePDF = async (
       }
     } else {
       // Horizontal header as images (landscape)
-      const competitionImage = createTextImage(competitionName || '', false);
-      const setTitleImage = createTextImage(setTitle, false);
+      // Merge set title and competition name with " | " separator
+      const mergedTitleText = setTitle && competitionName 
+        ? `${setTitle} | ${competitionName}`
+        : setTitle || competitionName || '';
+      const mergedTitleImage = createTextImage(mergedTitleText, false, 18); // Main font size
+      
+      // Create two-line promotional text with half the font size
+      const promotionalLines = t 
+        ? [t('pdf.promotional.line1'), t('pdf.promotional.line2')]
+        : ['created using', 'zavody.behounek.it'];
+      const promotionalImage = createMultilineTextImage(promotionalLines, 9); // Half the main font size
 
       // Measure header height and recompute layout to avoid overlap
       const headerTopPad = 2.83; // ~1mm from the top edge
-      const measuredHeaderHeight = Math.max(competitionImage?.height || 0, setTitleImage?.height || 0);
+      const measuredHeaderHeight = Math.max(
+        mergedTitleImage?.height || 0,
+        promotionalImage?.height || 0
+      );
       localLayout = calculateLayout(15, measuredHeaderHeight, headerTopPad);
 
-      if (setTitleImage) {
-        // Place set title at top-left
+      if (mergedTitleImage) {
+        // Place merged title at top-left
         elements.push(
           React.createElement(Image, {
-            key: `set-title-${pageKey}`,
-            src: setTitleImage.dataUrl,
+            key: `merged-title-${pageKey}`,
+            src: mergedTitleImage.dataUrl,
             style: {
               position: 'absolute',
               left: headerTopPad, // ~1mm from left edge
               top: localLayout.headerY,
-              width: setTitleImage.width,
-              height: setTitleImage.height,
+              width: mergedTitleImage.width,
+              height: mergedTitleImage.height,
             }
           })
         );
       }
 
-      if (competitionImage) {
-        // Place competition name at top-right
+      if (promotionalImage) {
+        // Place two-line promotional text on the right
         elements.push(
           React.createElement(Image, {
-            key: `comp-name-${pageKey}`,
-            src: competitionImage.dataUrl,
+            key: `promotional-${pageKey}`,
+            src: promotionalImage.dataUrl,
             style: {
               position: 'absolute',
               right: headerTopPad, // ~1mm from right edge
               top: localLayout.headerY,
-              width: competitionImage.width,
-              height: competitionImage.height,
+              width: promotionalImage.width,
+              height: promotionalImage.height,
             }
           })
         );

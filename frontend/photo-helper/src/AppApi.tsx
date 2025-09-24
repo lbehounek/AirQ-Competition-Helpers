@@ -287,7 +287,7 @@ function AppApi() {
         };
       }
 
-      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape');
+      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape', t);
     } catch (error) {
       console.error('PDF generation failed:', error);
       // Could add user notification here
@@ -478,14 +478,16 @@ function AppApi() {
                 <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
                   {t('competition.title')}
                 </Typography>
-                <EditableHeading
-                  value={session?.competition_name || ''}
-                  defaultValue={t('competition.defaultName')}
-                  onChange={updateCompetitionName}
-                  variant="h6"
-                  color="text.primary"
-                  placeholder={t('competition.placeholder')}
-                />
+                <Box sx={{ flex: '1.5', minWidth: 0 }}>
+                  <EditableHeading
+                    value={session?.competition_name || ''}
+                    defaultValue={t('competition.defaultName')}
+                    onChange={updateCompetitionName}
+                    variant="h6"
+                    color="text.primary"
+                    placeholder={t('competition.placeholder')}
+                  />
+                </Box>
               </Box>
             </Box>
           </Box>
