@@ -81,7 +81,12 @@
   "competition": {
     "title": "Competition",
     "placeholder": "Enter competition name...",
-    "defaultName": "Competition Name"
+    "defaultName": "Competition Name",
+    "numbered": "Competition {{number}}",
+    "createNew": "Create New Competition",
+    "current": "Current: {{name}}",
+    "photos": "{{count}} photos",
+    "selectCompetition": "Select Competition"
   },
   "actions": {
     "title": "Actions",
@@ -194,6 +199,19 @@
   "storage": {
     "warning": "Storage free: {{percent}}% · Used {{used}} / Quota {{quota}}",
     "recheck": "Recheck"
+  },
+  "cleanup": {
+    "title": "Storage Cleanup Suggestions",
+    "subtitle": "Found {{count}} competitions to clean up:",
+    "willFree": "This will free approximately {{size}} of storage.",
+    "currentTotal": "You currently have {{count}} competitions.",
+    "keepAll": "Keep All",
+    "deleteSelected": "Delete Selected",
+    "reviewDetails": "Review Details",
+    "ageReason": "{{days}} days old, {{photos}} photos",
+    "excessReason": "Excess - keeping newest {{max}}",
+    "postpone": "Remind me later",
+    "autoCleanupInfo": "Automatic cleanup suggestions help keep your storage organized."
   },
   "opfs": {
     "warning": "Local persistence is not available in this browser. Work won’t be saved after reload. Recommended: Chrome, Firefox, or Edge."

@@ -31,6 +31,7 @@ import {
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
 import { usePhotoSessionOPFS } from './hooks/usePhotoSessionOPFS';
+import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { DropZone } from './components/DropZone';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
@@ -43,6 +44,9 @@ import { ModeSelector } from './components/ModeSelector';
 import { TurningPointLayout } from './components/TurningPointLayout';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { LayoutModeSelector } from './components/LayoutModeSelector';
+import { CompetitionSelector } from './components/CompetitionSelector';
+import { CreateCompetitionButton } from './components/CreateCompetitionButton';
+import { CleanupModal } from './components/CleanupModal';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
@@ -55,39 +59,52 @@ import type { ApiPhoto, ApiPhotoSet } from './types/api';
 const LOADING_TEXT_DELAY = 3000; // 3 seconds
 
 const STORAGE_MODE = (import.meta as any).env?.VITE_STORAGE_MODE ?? 'opfs';
-const useSessionHook = STORAGE_MODE === 'backend' ? usePhotoSessionApi : usePhotoSessionOPFS;
+const useSessionHook = STORAGE_MODE === 'backend' ? usePhotoSessionApi : useCompetitionSystem;
 
 function AppApi() {
+  const sessionHookResult = useSessionHook() as any;
   const {
     session,
-    sessionId,
     loading,
     error,
-    backendAvailable,
-    // storage
-    isStorageLow,
-    storagePercentFree,
-    storageUsedBytes,
-    storageQuotaBytes,
-    updateStorageEstimate,
     addPhotosToSet,
-    addPhotosToTurningPoint,
     removePhoto,
     updatePhotoState,
     updateSetTitle,
-    updateSetTitles,
-    reorderPhotos,
-    shufflePhotos,
     updateSessionMode,
     updateLayoutMode,
-    updateCompetitionName,
-    resetSession,
-    clearError,
-    checkBackendHealth,
-    refreshSession,
+    updateSessionCompetitionName,
     getSessionStats,
-    applySettingToAll
-  } = useSessionHook() as any;
+    clearError,
+    // Competition-specific features (only available in OPFS mode)
+    currentCompetition,
+    competitions,
+    createNewCompetition,
+    switchToCompetition,
+    cleanupCandidates,
+    storageStats,
+    performCleanup,
+    dismissCleanup,
+    updateStorageStats
+  } = sessionHookResult;
+
+  // Legacy API compatibility
+  const sessionId = session?.id;
+  const backendAvailable = STORAGE_MODE === 'backend' ? sessionHookResult.backendAvailable : true;
+  const isStorageLow = STORAGE_MODE === 'backend' ? sessionHookResult.isStorageLow : storageStats?.isLow;
+  const storagePercentFree = STORAGE_MODE === 'backend' ? sessionHookResult.storagePercentFree : storageStats?.percentUsed ? 100 - storageStats.percentUsed : null;
+  const storageUsedBytes = STORAGE_MODE === 'backend' ? sessionHookResult.storageUsedBytes : storageStats?.usedBytes;
+  const storageQuotaBytes = STORAGE_MODE === 'backend' ? sessionHookResult.storageQuotaBytes : storageStats?.quotaBytes;
+  const updateStorageEstimate = STORAGE_MODE === 'backend' ? sessionHookResult.updateStorageEstimate : updateStorageStats;
+  const addPhotosToTurningPoint = sessionHookResult.addPhotosToTurningPoint || addPhotosToSet;
+  const updateSetTitles = sessionHookResult.updateSetTitles || updateSetTitle;
+  const reorderPhotos = sessionHookResult.reorderPhotos || (() => {});
+  const shufflePhotos = sessionHookResult.shufflePhotos || (() => {});
+  const updateCompetitionName = updateSessionCompetitionName;
+  const resetSession = sessionHookResult.resetSession || (() => {});
+  const checkBackendHealth = sessionHookResult.checkBackendHealth || (() => {});
+  const refreshSession = sessionHookResult.refreshSession || (() => {});
+  const applySettingToAll = sessionHookResult.applySettingToAll || (() => {});
   
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
@@ -472,23 +489,104 @@ function AppApi() {
               </Box>
             </Box>
 
-            {/* Competition Name */}
+            {/* Competition Management */}
             <Box sx={{ p: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                  {t('competition.title')}
-                </Typography>
-                <Box sx={{ flex: '1.5', minWidth: 0 }}>
-                  <EditableHeading
-                    value={session?.competition_name || ''}
-                    defaultValue={t('competition.defaultName')}
-                    onChange={updateCompetitionName}
-                    variant="h6"
-                    color="text.primary"
-                    placeholder={t('competition.placeholder')}
-                  />
+              {STORAGE_MODE === 'opfs' ? (
+                /* Competition system for OPFS mode */
+                <Box>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', mb: 2 }}>
+                    {t('competition.title')}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Box sx={{ flex: '1 1 300px', minWidth: 250 }}>
+                      <CompetitionSelector
+                        competitions={competitions || []}
+                        currentCompetitionId={currentCompetition?.id || null}
+                        onCompetitionChange={switchToCompetition}
+                        loading={loading}
+                      />
+                    </Box>
+                    <Box sx={{ flex: '0 0 auto', display: 'flex', gap: 1 }}>
+                      <CreateCompetitionButton
+                        onCreateCompetition={createNewCompetition}
+                        storageStats={storageStats}
+                        competitionCount={competitions?.length || 0}
+                        loading={loading}
+                      />
+                      {currentCompetition && (
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          onClick={() => {
+                            if (window.confirm(`Delete "${currentCompetition.name}"? This cannot be undone.`)) {
+                              deleteCompetition(currentCompetition.id);
+                            }
+                          }}
+                          disabled={loading}
+                          sx={{ minWidth: 'auto' }}
+                        >
+                          Delete
+                        </Button>
+                      )}
+                    </Box>
+                  </Box>
+                  {/* Competition Name Editor */}
+                  <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                      Name:
+                    </Typography>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <EditableHeading
+                        value={session?.competition_name || ''}
+                        defaultValue={t('competition.defaultName')}
+                        onChange={updateCompetitionName}
+                        variant="subtitle2"
+                        color="text.primary"
+                        placeholder={t('competition.placeholder')}
+                      />
+                    </Box>
+                  </Box>
+                  {currentCompetition && (
+                    <Box sx={{ mt: 2, p: 1.5, backgroundColor: 'action.hover', borderRadius: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                          {t('competition.current', { name: currentCompetition.name })}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                          •
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                          {t('competition.photos', { count: currentCompetition.photoCount })}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                          •
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                          {new Date(currentCompetition.createdAt).toLocaleDateString()}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
                 </Box>
-              </Box>
+              ) : (
+                /* Legacy single competition name for backend mode */
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                    {t('competition.title')}
+                  </Typography>
+                  <Box sx={{ flex: '1.5', minWidth: 0 }}>
+                    <EditableHeading
+                      value={session?.competition_name || ''}
+                      defaultValue={t('competition.defaultName')}
+                      onChange={updateCompetitionName}
+                      variant="h6"
+                      color="text.primary"
+                      placeholder={t('competition.placeholder')}
+                    />
+                  </Box>
+                </Box>
+              )}
             </Box>
           </Box>
         </Paper>
@@ -893,6 +991,17 @@ function AppApi() {
           </Box>
         </Fade>
       </Modal>
+
+      {/* Competition Cleanup Modal - Only show in OPFS mode */}
+      {STORAGE_MODE === 'opfs' && (
+        <CleanupModal
+          open={cleanupCandidates?.length > 0}
+          candidates={cleanupCandidates || []}
+          onConfirm={performCleanup}
+          onCancel={dismissCleanup}
+          loading={loading}
+        />
+      )}
     </Box>
   );
 }
