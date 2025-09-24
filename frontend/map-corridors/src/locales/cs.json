@@ -11,7 +11,8 @@
     "dropHint": "Přetáhni KML pro načtení",
     "answerSheet": "Zobrazit answer sheet",
     "dragToPlace": "Přetáhni pro umístění fotky",
-    "use1NmAfterSp": "Koridor začíná 1 NM po SP"
+    "use1NmAfterSp": "Koridor začíná 1 NM po SP",
+    "backToMenu": "Zpět do hlavního menu"
   },
   "popup": {
     "name": "Název",

@@ -28,6 +28,7 @@ build_and_stage() {
     (cd "$app_dir" && npm run -s build) || { echo "❌ Build failed for $app"; exit 1; }
 
     echo "📦 Staging $app build to $subdir"
+    rm -rf "$subdir"
     mkdir -p "$subdir"
     rsync -avz "$app_dir/dist/" "$subdir/" || { echo "❌ Staging failed for $app"; exit 1; }
 }
@@ -52,7 +53,7 @@ if [ -n "$APP_NAME" ]; then
 
     echo "📁 Deploying $APP_NAME/ to $PROD_HOST"
     echo "📂 Target: $PROD_USER@$PROD_HOST:${PROD_REMOTE_DIR}${APP_NAME}/"
-    rsync -avz "../public_html/$APP_NAME/" "$PROD_USER@$PROD_HOST:${PROD_REMOTE_DIR}${APP_NAME}/"
+    rsync -avz --delete "../public_html/$APP_NAME/" "$PROD_USER@$PROD_HOST:${PROD_REMOTE_DIR}${APP_NAME}/"
     if [ $? -eq 0 ]; then
         echo "✅ Production deployment complete"
         echo "🌐 ${PROD_URL}/$APP_NAME/"
@@ -72,16 +73,15 @@ if [ -n "$APP_NAME" ]; then
         exit 1
     fi
 else
-    # No app specified: deploy entire public_html as before
-    if [ ! -d "../public_html" ]; then
-        echo "❌ public_html directory not found."
-        exit 1
-    fi
-    # Ensure landing page is staged before full deploy
+    # No app specified: build both apps and deploy entire public_html
+    echo "🛠  Building all apps..."
+    build_and_stage "photo-helper"
+    build_and_stage "map-corridors"
     stage_landing
+    
     echo "📁 Deploying public_html/ to $PROD_HOST"
     echo "📂 Target: $PROD_USER@$PROD_HOST:$PROD_REMOTE_DIR"
-    rsync -avz ../public_html/ "$PROD_USER@$PROD_HOST:$PROD_REMOTE_DIR"
+    rsync -avz --delete ../public_html/ "$PROD_USER@$PROD_HOST:$PROD_REMOTE_DIR"
     if [ $? -eq 0 ]; then
         echo "✅ Production deployment complete"
         echo "🌐 ${PROD_URL}"

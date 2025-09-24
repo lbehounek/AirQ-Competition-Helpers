@@ -6,8 +6,11 @@ import {
   Typography,
   Chip,
   ButtonGroup,
-  Button
+  Button,
+  IconButton,
+  Tooltip
 } from '@mui/material';
+import { Close } from '@mui/icons-material';
 
 import { useI18n } from '../contexts/I18nContext';
 import { SUPPORTED_LOCALES } from '../locales';
@@ -17,31 +20,51 @@ interface LanguageSwitcherProps {
 }
 
 export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ compact = false }) => {
-  const { locale, setLocale } = useI18n();
+  const { locale, setLocale, t } = useI18n();
 
   const handleLanguageClick = (newLocale: typeof locale) => {
     setLocale(newLocale);
   };
 
+  const handleCloseClick = () => {
+    window.location.href = '../';
+  };
+
   if (compact) {
     return (
-      <ButtonGroup size="small" variant="outlined">
-        {SUPPORTED_LOCALES.map((lang) => (
-          <Button
-            key={lang.code}
-            onClick={() => handleLanguageClick(lang.code)}
-            variant={locale === lang.code ? 'contained' : 'outlined'}
-            sx={{ 
-              fontSize: '0.75rem',
-              px: 1.5,
-              py: 0.5,
-              minWidth: 'auto'
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <ButtonGroup size="small" variant="outlined">
+          {SUPPORTED_LOCALES.map((lang) => (
+            <Button
+              key={lang.code}
+              onClick={() => handleLanguageClick(lang.code)}
+              variant={locale === lang.code ? 'contained' : 'outlined'}
+              sx={{ 
+                fontSize: '0.75rem',
+                px: 1.5,
+                py: 0.5,
+                minWidth: 'auto'
+              }}
+            >
+              {lang.flag} {lang.code.toUpperCase()}
+            </Button>
+          ))}
+        </ButtonGroup>
+        <Tooltip title={t('app.backToMenu')} arrow>
+          <IconButton
+            onClick={handleCloseClick}
+            size="small"
+            sx={{
+              color: 'white',
+              '&:hover': {
+                backgroundColor: 'rgba(255, 255, 255, 0.1)'
+              }
             }}
           >
-            {lang.flag} {lang.code.toUpperCase()}
-          </Button>
-        ))}
-      </ButtonGroup>
+            <Close fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Box>
     );
   }
 
