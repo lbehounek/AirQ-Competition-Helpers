@@ -218,5 +218,11 @@
     "edit": "Upravit",
     "preview": "Náhled",
     "selected": "Vybráno"
+  },
+  "pdf": {
+    "promotional": {
+      "line1": "vytvořeno přes",
+      "line2": "zavody.behounek.it"
+    }
   }
 }

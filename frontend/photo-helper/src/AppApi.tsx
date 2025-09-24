@@ -287,7 +287,7 @@ function AppApi() {
         };
       }
 
-      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape');
+      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape', t);
     } catch (error) {
       console.error('PDF generation failed:', error);
       // Could add user notification here

@@ -219,5 +219,11 @@
     "edit": "Edit",
     "preview": "Preview",
     "selected": "Selected"
+  },
+  "pdf": {
+    "promotional": {
+      "line1": "created using",
+      "line2": "zavody.behounek.it"
+    }
   }
 }
