@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "Photo Helper",
-    "subtitle": "Organize your navigation flight photos into standardized PDF layouts"
+    "subtitle": "Organize your navigation flight photos into standardized PDF layouts",
+    "backToMenu": "Back to main menu"
   },
   "navigation": {
     "overview": "Overview",

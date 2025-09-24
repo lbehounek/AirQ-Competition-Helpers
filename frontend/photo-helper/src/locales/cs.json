@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "Foto Pomocník",
-    "subtitle": "Organizujte fotografie z navigačního letu do standardizovaných PDF rozvržení"
+    "subtitle": "Organizujte fotografie z navigačního letu do standardizovaných PDF rozvržení",
+    "backToMenu": "Zpět do hlavního menu"
   },
   "navigation": {
     "overview": "Přehled",

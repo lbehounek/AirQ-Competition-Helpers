@@ -11,7 +11,8 @@
     "dropHint": "Drop KML to load",
     "answerSheet": "Show Answer Sheet",
     "dragToPlace": "Drag to place photo marker",
-    "use1NmAfterSp": "Corridor 1 NM after start point"
+    "use1NmAfterSp": "Corridor 1 NM after start point",
+    "backToMenu": "Back to main menu"
   },
   "popup": {
     "name": "Name",

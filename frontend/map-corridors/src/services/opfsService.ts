@@ -58,7 +58,9 @@ export async function writeJSON(
   let w: FileSystemWritableFileStream | null = null
   try {
     w = await (fh as any).createWritable()
-    await w.write(new Blob([text], { type: 'application/json' }))
+    if (w) {
+      await w.write(new Blob([text], { type: 'application/json' }))
+    }
   } catch (e) {
     throw new Error(`Failed to write ${name}: ${(e as any)?.message || e}`)
   } finally {
