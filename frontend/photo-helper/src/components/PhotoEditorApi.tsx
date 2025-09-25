@@ -497,16 +497,16 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [dragScaleFactor, setDragScaleFactor] = useState(1);
   // Idle-based high quality rendering control
   const [isIdleHQ, setIsIdleHQ] = useState(false);
-  const idleTimerRef = useRef<number | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const markInteraction = useCallback(() => {
     setIsIdleHQ(false);
     if (idleTimerRef.current) {
-      clearTimeout(idleTimerRef.current);
+      window.clearTimeout(idleTimerRef.current);
     }
-    idleTimerRef.current = setTimeout(() => {
+    idleTimerRef.current = window.setTimeout(() => {
       setIsIdleHQ(true);
-    }, 3000) as unknown as number;
+    }, 3000);
   }, []);
   
   // Use cached image loading - provide safe defaults for when photo is null
@@ -539,7 +539,28 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     // Start idle timer on mount to allow HQ after initial load settles
     markInteraction();
     return () => {
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+    };
+  }, [markInteraction]);
+
+  // Global lightweight activity listeners to reset idle timer (pointer/key)
+  useEffect(() => {
+    const throttleMs = 250;
+    const lastRef = lastMoveTimeRef; // reuse existing ref
+    const handlePointerMove = () => {
+      const now = Date.now();
+      if (now - lastRef.current < throttleMs) return;
+      lastRef.current = now;
+      markInteraction();
+    };
+    const handleKeyDown = () => {
+      markInteraction();
+    };
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    window.addEventListener('keydown', handleKeyDown, { passive: true } as any);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove as any);
+      window.removeEventListener('keydown', handleKeyDown as any);
     };
   }, [markInteraction]);
 
