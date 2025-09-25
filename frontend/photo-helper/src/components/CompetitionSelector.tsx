@@ -2,8 +2,9 @@
  * Competition dropdown selector component
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Select, MenuItem, FormControl, InputLabel, Box, Typography, Chip } from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material/Select';
 import type { CompetitionMetadata } from '../types/competition';
 import { useI18n } from '../contexts/I18nContext';
 
@@ -25,18 +26,19 @@ export const CompetitionSelector: React.FC<CompetitionSelectorProps> = ({
   const { t } = useI18n();
   
   // Debug logging (development only)
-  if (process.env.NODE_ENV === 'development') {
-    // Intentionally not inside render output; minimal and guarded
-    // eslint-disable-next-line no-console
-    console.log('CompetitionSelector render:', {
-      competitions: competitions?.length || 0,
-      currentCompetitionId,
-      loading
-    });
-  }
+  React.useEffect(() => {
+    if ((import.meta as any).env?.DEV) {
+      // eslint-disable-next-line no-console
+      console.log('CompetitionSelector render:', {
+        competitions: competitions?.length || 0,
+        currentCompetitionId,
+        loading
+      });
+    }
+  }, [competitions?.length, currentCompetitionId, loading]);
   
-  const handleChange = (event: any) => {
-    const competitionId = event.target.value;
+  const handleChange = (event: SelectChangeEvent<string>) => {
+    const competitionId = event.target.value as string;
     if (competitionId && competitionId !== currentCompetitionId) {
       onCompetitionChange(competitionId);
     }
@@ -116,7 +118,7 @@ export const CompetitionSelector: React.FC<CompetitionSelectorProps> = ({
         {sortedCompetitions.length === 0 ? (
           <MenuItem disabled>
             <Typography variant="body2" color="text.secondary">
-              {loading ? t('common.loading') : 'No competitions available'}
+              {loading ? t('common.loading') : t('competition.emptyState')}
             </Typography>
           </MenuItem>
         ) : (
@@ -124,7 +126,6 @@ export const CompetitionSelector: React.FC<CompetitionSelectorProps> = ({
             <MenuItem 
               key={competition.id} 
               value={competition.id}
-              selected={competition.id === currentCompetitionId}
               sx={{
                 py: 1.5,
                 minHeight: 'auto',

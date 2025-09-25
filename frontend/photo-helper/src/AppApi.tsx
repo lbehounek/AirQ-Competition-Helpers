@@ -29,15 +29,11 @@ import {
   FlightTakeoff,
   RestartAlt,
   Close,
-  CheckCircle,
-  CloudOff,
-  Refresh,
   PictureAsPdf,
   Shuffle,
   Warning
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
-import { usePhotoSessionOPFS } from './hooks/usePhotoSessionOPFS';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { DropZone } from './components/DropZone';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
@@ -106,13 +102,19 @@ function AppApi() {
   const updateStorageEstimate = STORAGE_MODE === 'backend' ? sessionHookResult.updateStorageEstimate : updateStorageStats;
   const addPhotosToTurningPoint = sessionHookResult.addPhotosToTurningPoint || addPhotosToSet;
   const updateSetTitles = sessionHookResult.updateSetTitles || updateSetTitle;
-  const reorderPhotos = sessionHookResult.reorderPhotos || (() => {});
-  const shufflePhotos = sessionHookResult.shufflePhotos || (() => {});
+  // Feature support flags (default false) and function refs when supported
+  const supportsReorder = Boolean(sessionHookResult.reorderPhotos);
+  const reorderPhotos = supportsReorder ? sessionHookResult.reorderPhotos : undefined;
+  const supportsShuffle = Boolean(sessionHookResult.shufflePhotos);
+  const shufflePhotos = supportsShuffle ? sessionHookResult.shufflePhotos : undefined;
   const updateCompetitionName = updateSessionCompetitionName;
-  const resetSession = sessionHookResult.resetSession || (() => {});
+  const supportsReset = Boolean(sessionHookResult.resetSession);
+  const resetSession = supportsReset ? sessionHookResult.resetSession : undefined;
   const checkBackendHealth = sessionHookResult.checkBackendHealth || (() => {});
-  const refreshSession = sessionHookResult.refreshSession || (() => {});
-  const applySettingToAll = sessionHookResult.applySettingToAll || (() => {});
+  const supportsRefresh = Boolean(sessionHookResult.refreshSession);
+  const refreshSession = supportsRefresh ? sessionHookResult.refreshSession : undefined;
+  const supportsApplyToAll = Boolean(sessionHookResult.applySettingToAll);
+  const applySettingToAll = supportsApplyToAll ? sessionHookResult.applySettingToAll : undefined;
   
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
@@ -282,7 +284,9 @@ function AppApi() {
 
   const handlePhotoMove = (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
     // Use the new reorderPhotos function from the hook
-    reorderPhotos(setKey, fromIndex, toIndex);
+    if (supportsReorder && reorderPhotos) {
+      reorderPhotos(setKey, fromIndex, toIndex);
+    }
   };
 
   const handleShuffle = async () => {
@@ -291,7 +295,9 @@ function AppApi() {
     console.log('🎲 Shuffling photos in both sets...');
     
     // Shuffle both sets in a single state update (no flickering, both sets update!)
-    await shufflePhotos('both');
+    if (supportsShuffle && shufflePhotos) {
+      await shufflePhotos('both');
+    }
 
     console.log('✨ Photo shuffle completed!');
   };
@@ -527,7 +533,12 @@ function AppApi() {
                     </Typography>
                     <Button
                       onClick={handleShuffle}
-                      disabled={loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1)}
+                      disabled={
+                        loading ||
+                        !session ||
+                        !supportsShuffle ||
+                        (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1)
+                      }
                       variant="outlined"
                       size="small"
                       startIcon={<Shuffle />}
@@ -804,7 +815,7 @@ function AppApi() {
               variant="outlined"
               color="error"
               startIcon={<RestartAlt />}
-              onClick={resetSession}
+              onClick={() => { if (supportsReset && resetSession) resetSession(); }}
               size="large"
               sx={{
                 py: 1.5,
@@ -814,6 +825,7 @@ function AppApi() {
                 borderWidth: 2,
                 '&:hover': { borderWidth: 2 }
               }}
+              disabled={!supportsReset}
             >
               {t('actions.resetSession')}
             </Button>
@@ -875,7 +887,7 @@ function AppApi() {
         <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
           <Box sx={{ p: 2, borderRadius: 2, background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
             <Typography variant="body2" align="center" sx={{ color: 'common.white' }}>
-              {t('footer.copy', { year: 2025, name: 'Lukáš Běhounek' })} {' '}
+              {t('footer.copy', { year: new Date().getFullYear(), name: 'Lukáš Běhounek' })} {' '}
               <Link href="https://behounek.it" target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
                 {t('footer.cta')}
               </Link>
@@ -890,7 +902,9 @@ function AppApi() {
         onClose={() => {
           setSelectedPhoto(null);
           // Immediately refresh session to sync grid with modal changes
-          refreshSession();
+          if (supportsRefresh && refreshSession) {
+            refreshSession();
+          }
         }}
         closeAfterTransition
         slots={{ backdrop: Backdrop }}
@@ -978,14 +992,16 @@ function AppApi() {
                         onClose={() => {
                           setSelectedPhoto(null);
                           // Immediately refresh session to sync grid with modal changes
-                          refreshSession();
+                          if (supportsRefresh && refreshSession) {
+                            refreshSession();
+                          }
                         }}
                         mode="compact-right"
                         showOriginal={showOriginal}
                         onToggleOriginal={() => setShowOriginal(!showOriginal)}
                         circleMode={circleMode}
                         onCircleModeToggle={() => setCircleMode(!circleMode)}
-                        onApplyToAll={(setting, value) => applySettingToAll(setting, value)}
+                        onApplyToAll={supportsApplyToAll && applySettingToAll ? (setting, value) => applySettingToAll(setting, value) : undefined}
                       />
                     </Box>
                   </Box>
@@ -1008,12 +1024,14 @@ function AppApi() {
                       onClose={() => {
                         setSelectedPhoto(null);
                         // Immediately refresh session to sync grid with modal changes
-                        refreshSession();
+                        if (supportsRefresh && refreshSession) {
+                          refreshSession();
+                        }
                       }}
                       mode="sliders"
                       showOriginal={showOriginal}
                       onToggleOriginal={() => setShowOriginal(!showOriginal)}
-                      onApplyToAll={(setting, value) => applySettingToAll(setting, value)}
+                      onApplyToAll={supportsApplyToAll && applySettingToAll ? (setting, value) => applySettingToAll(setting, value) : undefined}
                     />
                   </Box>
                 </Box>

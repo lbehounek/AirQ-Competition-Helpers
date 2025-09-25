@@ -86,12 +86,12 @@ export const CreateCompetitionButton: React.FC<CreateCompetitionButtonProps> = (
 
   const getStorageMessage = (): string => {
     if (isStorageCritical) {
-      return `Critical storage usage: ${storagePercent}%. Consider cleaning up old competitions.`;
+      return t('storage.status.critical', { percent: storagePercent });
     }
     if (isStorageLow) {
-      return `High storage usage: ${storagePercent}%. You may want to clean up old competitions soon.`;
+      return t('storage.status.high', { percent: storagePercent });
     }
-    return `Storage usage: ${storagePercent}%`;
+    return t('storage.status.normal', { percent: storagePercent });
   };
 
   return (
@@ -128,7 +128,7 @@ export const CreateCompetitionButton: React.FC<CreateCompetitionButtonProps> = (
               value={competitionName}
               onChange={(e) => setCompetitionName(e.target.value)}
               placeholder={t('competition.numbered', { number: competitionCount + 1 })}
-              helperText="Leave empty to use default naming"
+              helperText={t('competition.helper.leaveEmptyForDefault')}
               disabled={creating}
               autoFocus
             />
@@ -145,14 +145,14 @@ export const CreateCompetitionButton: React.FC<CreateCompetitionButtonProps> = (
                 <Typography variant="body2">
                   {getStorageMessage()}
                 </Typography>
-                {storageStats.usedBytes && storageStats.quotaBytes && (
+                {storageStats?.usedBytes != null && storageStats?.quotaBytes != null && (
                   <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Typography variant="caption">
                       {formatBytes(storageStats.usedBytes)} / {formatBytes(storageStats.quotaBytes)}
                     </Typography>
                     <LinearProgress 
                       variant="determinate" 
-                      value={storagePercent} 
+                      value={Number.isFinite(storagePercent) ? Math.max(0, Math.min(100, storagePercent)) : 0} 
                       sx={{ 
                         flexGrow: 1, 
                         height: 6, 
@@ -170,7 +170,7 @@ export const CreateCompetitionButton: React.FC<CreateCompetitionButtonProps> = (
           {/* Competition count info */}
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2 }}>
             <Typography variant="body2" color="text.secondary">
-              Current competitions:
+              {t('competition.currentCount')}:
             </Typography>
             <Chip 
               size="small" 
@@ -184,7 +184,7 @@ export const CreateCompetitionButton: React.FC<CreateCompetitionButtonProps> = (
           {competitionCount >= 8 && (
             <Alert severity="info" sx={{ mb: 2 }}>
               <Typography variant="body2">
-                You have {competitionCount} competitions. When you reach 10, the oldest will be automatically suggested for cleanup.
+                {t('competition.reachingLimit', { count: competitionCount })}
               </Typography>
             </Alert>
           )}

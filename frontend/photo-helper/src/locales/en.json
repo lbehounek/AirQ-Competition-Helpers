@@ -101,6 +101,13 @@
       "warning": "This action cannot be undone. All photos and settings will be permanently deleted.",
       "confirm": "Delete Competition"
     }
+    ,
+    "helper": {
+      "leaveEmptyForDefault": "Leave empty to use default naming"
+    },
+    "currentCount": "Current competitions",
+    "reachingLimit": "You have {{count}} competitions. When you reach 10, the oldest will be automatically suggested for cleanup.",
+    "emptyState": "No competitions available"
   },
   "actions": {
     "title": "Actions",
@@ -213,6 +220,12 @@
   "storage": {
     "warning": "Storage free: {{percent}}% · Used {{used}} / Quota {{quota}}",
     "recheck": "Recheck"
+    ,
+    "status": {
+      "critical": "Critical storage usage: {{percent}}%. Consider cleaning up old competitions.",
+      "high": "High storage usage: {{percent}}%. You may want to clean up old competitions soon.",
+      "normal": "Storage usage: {{percent}}%"
+    }
   },
   "cleanup": {
     "title": "Storage Cleanup Suggestions",
@@ -251,7 +264,10 @@
     "delete": "Delete",
     "edit": "Edit",
     "preview": "Preview",
-    "selected": "Selected"
+    "selected": "Selected",
+    "selectAll": "Select All",
+    "selectNone": "Select None",
+    "createdOn": "Created: {{date}}"
   },
   "pdf": {
     "promotional": {

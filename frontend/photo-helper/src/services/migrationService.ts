@@ -94,7 +94,10 @@ export class MigrationService {
       // Initialize mode-specific storage based on current mode
       if (session.mode === 'track') {
         // Current sets belong to track mode
-        session.setsTrack = { ...session.sets };
+        // Deep clone to avoid shared references
+        const clonedSet1 = JSON.parse(JSON.stringify(session.sets.set1));
+        const clonedSet2 = JSON.parse(JSON.stringify(session.sets.set2));
+        session.setsTrack = { set1: clonedSet1, set2: clonedSet2 };
         session.setsTurning = { set1: makeEmptySet(), set2: makeEmptySet() };
         
         // Ensure track mode has proper default titles
@@ -108,7 +111,10 @@ export class MigrationService {
         }
       } else {
         // Current sets belong to turning point mode
-        session.setsTurning = { ...session.sets };
+        // Deep clone to avoid shared references
+        const clonedSet1 = JSON.parse(JSON.stringify(session.sets.set1));
+        const clonedSet2 = JSON.parse(JSON.stringify(session.sets.set2));
+        session.setsTurning = { set1: clonedSet1, set2: clonedSet2 };
         session.setsTrack = { 
           set1: { title: 'SP - TPX', photos: [] }, 
           set2: { title: 'TPX - FP', photos: [] } 

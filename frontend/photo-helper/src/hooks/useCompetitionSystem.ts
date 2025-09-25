@@ -157,15 +157,8 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   // Load storage stats after initialization
   useEffect(() => {
     if (!loading && currentCompetition !== null) {
-      // Load storage stats
-      (async () => {
-        try {
-          const stats = await competitionService.getStorageStats();
-          setStorageStats(stats);
-        } catch (err) {
-          console.warn('Failed to get storage stats:', err);
-        }
-      })();
+      // DRY: reuse updateStorageStats helper
+      updateStorageStats();
     }
   }, [loading, currentCompetition]);
 
@@ -177,6 +170,20 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       
       const competitionName = name || getDefaultCompetitionName();
       
+      // Revoke blob URLs from current competition before creating a new one
+      try {
+        if (currentCompetition?.session) {
+          const s = currentCompetition.session as any;
+          const revokeInSet = (setObj: any) => {
+            try { setObj?.set1?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
+            try { setObj?.set2?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
+          };
+          revokeInSet(s.sets);
+          revokeInSet(s.setsTrack);
+          revokeInSet(s.setsTurning);
+        }
+      } catch {}
+
       // Create new empty session with mode-specific sets
       const emptySession: ApiPhotoSession = {
         id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -217,6 +224,20 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       setLoading(true);
       setError(null);
       
+      // Revoke blob URLs from current competition before switching
+      try {
+        if (currentCompetition?.session) {
+          const s = currentCompetition.session as any;
+          const revokeInSet = (setObj: any) => {
+            try { setObj?.set1?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
+            try { setObj?.set2?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
+          };
+          revokeInSet(s.sets);
+          revokeInSet(s.setsTrack);
+          revokeInSet(s.setsTurning);
+        }
+      } catch {}
+
       await competitionService.setActiveCompetition(id);
       const competition = await competitionService.getCompetition(id);
       setCurrentCompetition(competition);
@@ -235,6 +256,20 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       setLoading(true);
       setError(null);
       
+      // Revoke blob URLs before deleting (if deleting the current competition)
+      try {
+        if (currentCompetition?.id === id && currentCompetition?.session) {
+          const s = currentCompetition.session as any;
+          const revokeInSet = (setObj: any) => {
+            try { setObj?.set1?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
+            try { setObj?.set2?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
+          };
+          revokeInSet(s.sets);
+          revokeInSet(s.setsTrack);
+          revokeInSet(s.setsTurning);
+        }
+      } catch {}
+
       await competitionService.deleteCompetition(id);
       
       // If we deleted the current competition, load the new active one
@@ -358,8 +393,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       }
       
       // Convert files to photos (simplified - you'd use proper photo creation logic)
-      const newPhotos = files.map((file, index) => ({
-        id: `photo-${Date.now()}-${index}`,
+      const newPhotos = files.map((file) => ({
+        id: (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+          ? (crypto as any).randomUUID()
+          : `photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         sessionId: session.id,
         url: URL.createObjectURL(file),
         filename: file.name,
@@ -503,10 +540,15 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         setsTurning: session.setsTurning || { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } }
       };
       
-      // Revoke existing blob URLs before blanking them, then save sanitized copies
+      // Revoke existing blob URLs across all buckets before blanking
       try {
-        session.sets.set1.photos.forEach(p => { if (p.url && p.url.startsWith('blob:')) URL.revokeObjectURL(p.url); });
-        session.sets.set2.photos.forEach(p => { if (p.url && p.url.startsWith('blob:')) URL.revokeObjectURL(p.url); });
+        const revokeInSet = (setObj: any) => {
+          try { setObj?.set1?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
+          try { setObj?.set2?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
+        };
+        revokeInSet(session.sets);
+        revokeInSet((session as any).setsTrack);
+        revokeInSet((session as any).setsTurning);
       } catch {}
       const sanitizedCurrentSets = {
         set1: {
@@ -560,6 +602,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       // Reload competition to get proper blob URLs
       const reloadedCompetition = await competitionService.getCompetition(currentCompetition.id);
       setCurrentCompetition(reloadedCompetition);
+      // Refresh storage stats after mode switch persistence
+      try {
+        await updateStorageStats();
+      } catch {}
       
     } catch (err) {
       console.error('Failed to update session mode:', err);

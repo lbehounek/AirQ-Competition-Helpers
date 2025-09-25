@@ -30,7 +30,6 @@ export const CompetitionManager: React.FC<CompetitionManagerProps> = ({
     error,
     createNewCompetition,
     switchToCompetition,
-    deleteCompetition,
     cleanupCandidates,
     storageStats,
     performCleanup,
@@ -38,7 +37,7 @@ export const CompetitionManager: React.FC<CompetitionManagerProps> = ({
     clearError
   } = competitionHook;
 
-  // Show cleanup modal on mount if candidates exist
+  // Show cleanup modal whenever enabled and candidates exist (not limited to mount)
   const shouldShowCleanup = showCleanupOnMount && cleanupCandidates.length > 0;
 
   if (loading && !currentCompetition) {

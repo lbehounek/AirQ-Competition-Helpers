@@ -2,7 +2,7 @@
  * Cleanup confirmation modal - shows storage cleanup suggestions to user
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -50,6 +50,11 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
   const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(
     new Set(candidates.map(c => c.competition.id))
   );
+
+  // Reset selections when candidates list or open state changes
+  useEffect(() => {
+    setSelectedCandidates(new Set(candidates.map(c => c.competition.id)));
+  }, [candidates, open]);
 
   const handleToggleCandidate = (candidateId: string) => {
     const newSelected = new Set(selectedCandidates);
@@ -127,10 +132,10 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
         {/* Selection controls */}
         <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
           <Button size="small" onClick={handleSelectAll} variant="outlined">
-            Select All
+            {t('common.selectAll')}
           </Button>
           <Button size="small" onClick={handleSelectNone} variant="outlined">
-            Select None
+            {t('common.selectNone')}
           </Button>
           <Box sx={{ flexGrow: 1 }} />
           <Chip 
@@ -191,7 +196,7 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
                           {formatReason(candidate)}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          Created: {formatDate(candidate.competition.createdAt)}
+                          {t('common.createdOn', { date: formatDate(candidate.competition.createdAt) })}
                         </Typography>
                       </Box>
                     }
