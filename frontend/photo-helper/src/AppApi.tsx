@@ -17,7 +17,12 @@ import {
   CardContent,
   useMediaQuery,
   useTheme,
-  Link
+  Link,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -27,7 +32,8 @@ import {
   CloudOff,
   Refresh,
   PictureAsPdf,
-  Shuffle
+  Shuffle,
+  Warning
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
 import { usePhotoSessionOPFS } from './hooks/usePhotoSessionOPFS';
@@ -81,6 +87,7 @@ function AppApi() {
     competitions,
     createNewCompetition,
     switchToCompetition,
+    deleteCompetition,
     cleanupCandidates,
     storageStats,
     performCleanup,
@@ -115,6 +122,10 @@ function AppApi() {
   
   // State to track if we should show loading text
   const [showLoadingText, setShowLoadingText] = useState(false);
+  
+  // State for delete confirmation dialog
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [competitionToDelete, setCompetitionToDelete] = useState<{ id: string; name: string } | null>(null);
   
   // Show loading text after delay
   useEffect(() => {
@@ -222,6 +233,25 @@ function AppApi() {
     if (selectedPhoto?.photo.id === photoId) {
       setSelectedPhoto(null);
     }
+  };
+
+  // Delete confirmation handlers
+  const handleDeleteCompetitionClick = (competition: { id: string; name: string }) => {
+    setCompetitionToDelete(competition);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (competitionToDelete) {
+      await deleteCompetition(competitionToDelete.id);
+      setDeleteConfirmOpen(false);
+      setCompetitionToDelete(null);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setCompetitionToDelete(null);
   };
 
   const handlePhotoMove = (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
@@ -518,15 +548,14 @@ function AppApi() {
                           variant="outlined"
                           color="error"
                           size="small"
-                          onClick={() => {
-                            if (window.confirm(`Delete "${currentCompetition.name}"? This cannot be undone.`)) {
-                              deleteCompetition(currentCompetition.id);
-                            }
-                          }}
+                          onClick={() => handleDeleteCompetitionClick({
+                            id: currentCompetition.id,
+                            name: currentCompetition.name
+                          })}
                           disabled={loading}
                           sx={{ minWidth: 'auto' }}
                         >
-                          Delete
+                          {t('common.delete')}
                         </Button>
                       )}
                     </Box>
@@ -1002,6 +1031,40 @@ function AppApi() {
           loading={loading}
         />
       )}
+
+      {/* Delete Competition Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-competition-title"
+        aria-describedby="delete-competition-description"
+      >
+        <DialogTitle id="delete-competition-title" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Warning color="error" />
+          {t('competition.delete.title')}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="delete-competition-description">
+            {competitionToDelete && t('competition.delete.message', { name: competitionToDelete.name })}
+          </DialogContentText>
+          <DialogContentText sx={{ mt: 2, fontWeight: 600, color: 'error.main' }}>
+            {t('competition.delete.warning')}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} variant="outlined">
+            {t('common.cancel')}
+          </Button>
+          <Button 
+            onClick={handleDeleteConfirm} 
+            color="error" 
+            variant="contained"
+            disabled={loading}
+          >
+            {loading ? t('common.loading') : t('competition.delete.confirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

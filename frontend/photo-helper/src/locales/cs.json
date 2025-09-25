@@ -86,7 +86,13 @@
     "createNew": "Vytvořit novou soutěž",
     "current": "Aktuální: {{name}}",
     "photos": "{{count}} fotografií",
-    "selectCompetition": "Vybrat soutěž"
+    "selectCompetition": "Vybrat soutěž",
+    "delete": {
+      "title": "Smazat soutěž",
+      "message": "Opravdu chcete smazat \"{{name}}\"?",
+      "warning": "Tuto akci nelze vrátit zpět. Všechny fotografie a nastavení budou trvale smazány.",
+      "confirm": "Smazat soutěž"
+    }
   },
   "actions": {
     "title": "Akce",

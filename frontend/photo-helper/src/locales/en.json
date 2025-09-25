@@ -86,7 +86,13 @@
     "createNew": "Create New Competition",
     "current": "Current: {{name}}",
     "photos": "{{count}} photos",
-    "selectCompetition": "Select Competition"
+    "selectCompetition": "Select Competition",
+    "delete": {
+      "title": "Delete Competition",
+      "message": "Are you sure you want to delete \"{{name}}\"?",
+      "warning": "This action cannot be undone. All photos and settings will be permanently deleted.",
+      "confirm": "Delete Competition"
+    }
   },
   "actions": {
     "title": "Actions",
