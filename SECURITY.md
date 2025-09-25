@@ -73,10 +73,11 @@ If you accidentally exposed the dev server:
 
 ### Additional Security Measures Applied
 
-✅ **CORS Restrictions**: Both apps restrict cross-origin requests to localhost only
-✅ **File System Deny Rules**: Comprehensive blocking of sensitive paths
+✅ **CORS Restrictions**: Both apps restrict cross-origin requests to localhost (IPv4 + IPv6)
+✅ **File System Deny Rules**: Block sensitive paths while allowing node_modules for Vite functionality  
 ✅ **Environment File Protection**: `.env*` files explicitly denied and gitignored
 ✅ **Preview Server Hardening**: Same localhost-only restrictions apply
+✅ **Balanced Security**: Protects against path traversal without breaking dev server functionality
 
 ### Team Policy
 
