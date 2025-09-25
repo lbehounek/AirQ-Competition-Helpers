@@ -12,7 +12,7 @@ interface TurningPointLayoutProps {
   set2: ApiPhotoSet;
   loading: boolean;
   error: string | null;
-  onFilesDropped: (files: File[]) => void;
+  onFilesDropped: (setKey: 'set1' | 'set2', files: File[]) => void;
   onPhotoClick: (photo: ApiPhoto, setKey: 'set1' | 'set2') => void;
   onPhotoUpdate: (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => void;
   onPhotoRemove: (setKey: 'set1' | 'set2', photoId: string) => void;
@@ -52,7 +52,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
             </Typography>
           </Box>
           <GridSizedDropZone
-            onFilesDropped={onFilesDropped}
+            onFilesDropped={(files) => onFilesDropped('set1', files)}
             setName={t('turningpoint.photos')}
             maxPhotos={18}
             loading={loading}
@@ -76,7 +76,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
                 onPhotoRemove={(photoId) => onPhotoRemove('set1', photoId)}
                 onPhotoClick={(photo) => onPhotoClick(photo, 'set1')}
                 onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set1', fromIndex, toIndex)}
-                onFilesDropped={(files) => onFilesDropped(files)}
+                onFilesDropped={(files) => onFilesDropped('set1', files)}
                 customLabels={turningPointLabels.set1}
               />
             </Paper>
@@ -96,7 +96,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
                 onPhotoRemove={(photoId) => onPhotoRemove('set2', photoId)}
                 onPhotoClick={(photo) => onPhotoClick(photo, 'set2')}
                 onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set2', fromIndex, toIndex)}
-                onFilesDropped={(files) => onFilesDropped(files)}
+                onFilesDropped={(files) => onFilesDropped('set2', files)}
                 customLabels={turningPointLabels.set2}
               />
             </Paper>

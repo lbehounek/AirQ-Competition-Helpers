@@ -30,6 +30,7 @@ export interface UseCompetitionSystemResult {
   
   // Session operations (proxied to current competition)
   session: ApiPhotoSession | null;
+  sessionId: string | null;
   addPhotosToSet: (files: File[], setKey: 'set1' | 'set2') => Promise<void>;
   removePhoto: (setKey: 'set1' | 'set2', photoId: string) => Promise<void>;
   updatePhotoState: (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => Promise<void>;
@@ -85,12 +86,45 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         migrationPerformed.current = true;
       }
       
-      // Load competitions
-      await refreshCompetitions();
-      
-      // Load active competition
+      // Load active competition first
       const activeCompetition = await competitionService.getActiveCompetition();
-      setCurrentCompetition(activeCompetition);
+      
+      // If no competitions exist (fresh install), create the first one
+      if (!activeCompetition) {
+        console.log('No competitions found, creating first competition');
+        const defaultName = getDefaultCompetitionName(1);
+        
+        // Create new empty session with mode-specific sets
+        const emptySession: ApiPhotoSession = {
+          id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          version: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          mode: 'track',
+          competition_name: defaultName,
+          sets: {
+            set1: { title: 'SP - TPX', photos: [] },
+            set2: { title: 'TPX - FP', photos: [] }
+          },
+          // Initialize mode-specific storage
+          setsTrack: {
+            set1: { title: 'SP - TPX', photos: [] },
+            set2: { title: 'TPX - FP', photos: [] }
+          },
+          setsTurning: {
+            set1: { title: '', photos: [] },
+            set2: { title: '', photos: [] }
+          }
+        };
+        
+        const newCompetition = await competitionService.createCompetition(defaultName, emptySession);
+        setCurrentCompetition(newCompetition);
+      } else {
+        setCurrentCompetition(activeCompetition);
+      }
+      
+      // Load competitions list after setting current competition
+      await refreshCompetitions();
       
       // Check for cleanup suggestions
       await checkCleanupNeeded();
@@ -103,20 +137,21 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     }
   }, []);
 
+  // Run initialization on mount
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
   // Load competitions list
   const refreshCompetitions = useCallback(async () => {
     try {
       const index = await competitionService.getCompetitionsIndex();
+      console.log('refreshCompetitions loaded:', index.competitions?.length || 0, 'competitions');
       setCompetitions(index.competitions);
     } catch (err) {
       console.error('Failed to load competitions:', err);
     }
   }, []);
-
-  // Initialize on mount
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
 
   // Load storage stats after initialization
   useEffect(() => {
@@ -141,7 +176,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       
       const competitionName = name || getDefaultCompetitionName();
       
-      // Create new empty session
+      // Create new empty session with mode-specific sets
       const emptySession: ApiPhotoSession = {
         id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         version: 1,
@@ -152,6 +187,15 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         sets: {
           set1: { title: 'SP - TPX', photos: [] },
           set2: { title: 'TPX - FP', photos: [] }
+        },
+        // Initialize mode-specific storage
+        setsTrack: {
+          set1: { title: 'SP - TPX', photos: [] },
+          set2: { title: 'TPX - FP', photos: [] }
+        },
+        setsTurning: {
+          set1: { title: '', photos: [] },
+          set2: { title: '', photos: [] }
         }
       };
       
@@ -288,7 +332,30 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   }, [currentCompetition, refreshCompetitions]);
 
   const addPhotosToSet = useCallback(async (files: File[], setKey: 'set1' | 'set2') => {
+    if (!currentCompetition?.session) {
+      console.error('No current competition or session available');
+      setError('No active competition to add photos to');
+      return;
+    }
+
     await updateCurrentCompetition(session => {
+      // Ensure sets structure is valid with extensive defensive checks
+      if (!session || !session.sets) {
+        console.error('Session or session.sets is undefined:', session);
+        throw new Error('Invalid session structure');
+      }
+
+      const ensuredSets = {
+        set1: session.sets.set1 || { title: '', photos: [] },
+        set2: session.sets.set2 || { title: '', photos: [] }
+      };
+
+      // Additional validation
+      if (!ensuredSets[setKey]) {
+        console.error(`setKey '${setKey}' not found in ensuredSets:`, ensuredSets);
+        throw new Error(`Invalid setKey: ${setKey}`);
+      }
+      
       // Convert files to photos (simplified - you'd use proper photo creation logic)
       const newPhotos = files.map((file, index) => ({
         id: `photo-${Date.now()}-${index}`,
@@ -312,46 +379,62 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         version: session.version + 1,
         updatedAt: new Date().toISOString(),
         sets: {
-          ...session.sets,
+          ...ensuredSets,
           [setKey]: {
-            ...session.sets[setKey],
-            photos: [...session.sets[setKey].photos, ...newPhotos]
+            ...ensuredSets[setKey],
+            photos: [...(ensuredSets[setKey].photos || []), ...newPhotos]
+          }
+        }
+      };
+    }, { updatePhotos: true });
+  }, [updateCurrentCompetition, currentCompetition]);
+
+  const removePhoto = useCallback(async (setKey: 'set1' | 'set2', photoId: string) => {
+    await updateCurrentCompetition(session => {
+      // Ensure sets structure is valid
+      const ensuredSets = {
+        set1: session.sets?.set1 || { title: '', photos: [] },
+        set2: session.sets?.set2 || { title: '', photos: [] }
+      };
+      
+      return {
+        ...session,
+        version: session.version + 1,
+        updatedAt: new Date().toISOString(),
+        sets: {
+          ...ensuredSets,
+          [setKey]: {
+            ...ensuredSets[setKey],
+            photos: (ensuredSets[setKey].photos || []).filter(p => p.id !== photoId)
           }
         }
       };
     }, { updatePhotos: true });
   }, [updateCurrentCompetition]);
 
-  const removePhoto = useCallback(async (setKey: 'set1' | 'set2', photoId: string) => {
-    await updateCurrentCompetition(session => ({
-      ...session,
-      version: session.version + 1,
-      updatedAt: new Date().toISOString(),
-      sets: {
-        ...session.sets,
-        [setKey]: {
-          ...session.sets[setKey],
-          photos: session.sets[setKey].photos.filter(p => p.id !== photoId)
-        }
-      }
-    }), { updatePhotos: true });
-  }, [updateCurrentCompetition]);
-
   const updatePhotoState = useCallback(async (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
-    await updateCurrentCompetition(session => ({
-      ...session,
-      version: session.version + 1,
-      updatedAt: new Date().toISOString(),
-      sets: {
-        ...session.sets,
-        [setKey]: {
-          ...session.sets[setKey],
-          photos: session.sets[setKey].photos.map(p => 
-            p.id === photoId ? { ...p, canvasState: { ...p.canvasState, ...canvasState } } : p
-          )
+    await updateCurrentCompetition(session => {
+      // Ensure sets structure is valid
+      const ensuredSets = {
+        set1: session.sets?.set1 || { title: '', photos: [] },
+        set2: session.sets?.set2 || { title: '', photos: [] }
+      };
+      
+      return {
+        ...session,
+        version: session.version + 1,
+        updatedAt: new Date().toISOString(),
+        sets: {
+          ...ensuredSets,
+          [setKey]: {
+            ...ensuredSets[setKey],
+            photos: (ensuredSets[setKey].photos || []).map(p => 
+              p.id === photoId ? { ...p, canvasState: { ...p.canvasState, ...canvasState } } : p
+            )
+          }
         }
-      }
-    }));
+      };
+    });
   }, [updateCurrentCompetition]);
 
   const updateSetTitle = useCallback(async (setKey: 'set1' | 'set2', title: string) => {
@@ -393,37 +476,86 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   }, [updateCurrentCompetition]);
 
   const updateSessionMode = useCallback(async (mode: 'track' | 'turningpoint') => {
-    await updateCurrentCompetition(session => {
-      let updatedSets = { ...session.sets };
+    if (!currentCompetition) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
       
-      // Set appropriate default titles when switching modes
+      const session = currentCompetition.session;
+      
+      // Save current active sets into the current mode bucket
+      const currentKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
+      const nextKey = mode === 'track' ? 'setsTrack' : 'setsTurning';
+      
+      // Initialize mode-specific storage if it doesn't exist
+      const updatedSession = {
+        ...session,
+        setsTrack: session.setsTrack || { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } },
+        setsTurning: session.setsTurning || { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } }
+      };
+      
+      // Save current sets to current mode bucket (remove blob URLs to avoid stale references)
+      const sanitizedCurrentSets = {
+        set1: {
+          ...session.sets.set1,
+          photos: session.sets.set1.photos.map(p => ({ ...p, url: '' }))
+        },
+        set2: {
+          ...session.sets.set2,
+          photos: session.sets.set2.photos.map(p => ({ ...p, url: '' }))
+        }
+      };
+      (updatedSession as any)[currentKey] = sanitizedCurrentSets;
+      
+      // Load target mode sets (or use empty defaults)
+      const targetSets = (updatedSession as any)[nextKey] || { 
+        set1: { title: '', photos: [] }, 
+        set2: { title: '', photos: [] } 
+      };
+      
+      // Set appropriate default titles when switching to track mode with empty sets
+      let newSets = { ...targetSets };
       if (mode === 'track') {
-        // Track mode defaults
-        if (!updatedSets.set1.title || updatedSets.set1.title.trim() === '') {
-          updatedSets.set1.title = 'SP - TPX';
+        if (!newSets.set1.title || newSets.set1.title.trim() === '') {
+          newSets.set1.title = 'SP - TPX';
         }
-        if (!updatedSets.set2.title || updatedSets.set2.title.trim() === '') {
-          updatedSets.set2.title = 'TPX - FP';
-        }
-      } else if (mode === 'turningpoint') {
-        // Turning point mode - clear titles for user input
-        if (updatedSets.set1.title === 'SP - TPX' || !updatedSets.set1.title.trim()) {
-          updatedSets.set1.title = '';
-        }
-        if (updatedSets.set2.title === 'TPX - FP' || !updatedSets.set2.title.trim()) {
-          updatedSets.set2.title = '';
+        if (!newSets.set2.title || newSets.set2.title.trim() === '') {
+          newSets.set2.title = 'TPX - FP';
         }
       }
       
-      return {
-        ...session,
+      const newSession = {
+        ...updatedSession,
         mode,
-        sets: updatedSets,
+        sets: newSets,
         version: session.version + 1,
         updatedAt: new Date().toISOString()
       };
-    });
-  }, [updateCurrentCompetition]);
+      
+      // Create competition with new session
+      const updatedCompetition: Competition = {
+        ...currentCompetition,
+        session: newSession,
+        lastModified: new Date().toISOString(),
+        photoCount: newSession.sets.set1.photos.length + newSession.sets.set2.photos.length
+      };
+      
+      // Update in storage and regenerate blob URLs for loaded photos
+      // Persist any newly added photos from either mode buckets to OPFS
+      await competitionService.updateCompetition(updatedCompetition, { updatePhotos: true });
+      
+      // Reload competition to get proper blob URLs
+      const reloadedCompetition = await competitionService.getCompetition(currentCompetition.id);
+      setCurrentCompetition(reloadedCompetition);
+      
+    } catch (err) {
+      console.error('Failed to update session mode:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update session mode');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentCompetition]);
 
   const updateLayoutMode = useCallback(async (layoutMode: 'landscape' | 'portrait') => {
     await updateCurrentCompetition(session => ({
@@ -524,6 +656,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     
     // Session operations
     session: currentCompetition?.session || null,
+    sessionId: currentCompetition?.session?.id || null,
     addPhotosToSet,
     removePhoto,
     updatePhotoState,

@@ -48,17 +48,10 @@ export class MigrationService {
       // Create first competition from existing session
       const defaultName = getDefaultCompetitionName();
       
-      // Ensure track mode sessions have proper default titles if they're empty
-      if (existingSession.mode === 'track') {
-        if (!existingSession.sets.set1.title || existingSession.sets.set1.title.trim() === '') {
-          existingSession.sets.set1.title = 'SP - TPX';
-        }
-        if (!existingSession.sets.set2.title || existingSession.sets.set2.title.trim() === '') {
-          existingSession.sets.set2.title = 'TPX - FP';
-        }
-      }
+      // Prepare session with proper mode-specific sets for migration
+      const migratedSession = this.prepareMigratedSession(existingSession);
       
-      const competition = await competitionService.createCompetition(defaultName, existingSession);
+      const competition = await competitionService.createCompetition(defaultName, migratedSession);
       
       // Clean up old session directory
       await this.cleanupOldSession();
@@ -76,6 +69,54 @@ export class MigrationService {
         message: `Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
+  }
+
+  /**
+   * Prepare migrated session with proper mode-specific sets structure
+   */
+  private prepareMigratedSession(existingSession: ApiPhotoSession): ApiPhotoSession {
+    // Deep clone to avoid mutating the original
+    const session = JSON.parse(JSON.stringify(existingSession));
+    
+    // Initialize mode-specific storage
+    const emptySet1 = { title: '', photos: [] };
+    const emptySet2 = { title: '', photos: [] };
+    
+    // Check if session already has mode-specific sets (from newer OPFS format)
+    const hasExistingModeStorage = (session as any).setsTrack || (session as any).setsTurning;
+    
+    if (hasExistingModeStorage) {
+      // Session already has mode-specific storage, preserve it
+      session.setsTrack = (session as any).setsTrack || { set1: emptySet1, set2: emptySet2 };
+      session.setsTurning = (session as any).setsTurning || { set1: emptySet1, set2: emptySet2 };
+    } else {
+      // Legacy session without mode-specific storage
+      // Initialize mode-specific storage based on current mode
+      if (session.mode === 'track') {
+        // Current sets belong to track mode
+        session.setsTrack = { ...session.sets };
+        session.setsTurning = { set1: emptySet1, set2: emptySet2 };
+        
+        // Ensure track mode has proper default titles
+        if (!session.setsTrack.set1.title || session.setsTrack.set1.title.trim() === '') {
+          session.setsTrack.set1.title = 'SP - TPX';
+          session.sets.set1.title = 'SP - TPX'; // Update active sets too
+        }
+        if (!session.setsTrack.set2.title || session.setsTrack.set2.title.trim() === '') {
+          session.setsTrack.set2.title = 'TPX - FP';
+          session.sets.set2.title = 'TPX - FP'; // Update active sets too
+        }
+      } else {
+        // Current sets belong to turning point mode
+        session.setsTurning = { ...session.sets };
+        session.setsTrack = { 
+          set1: { title: 'SP - TPX', photos: [] }, 
+          set2: { title: 'TPX - FP', photos: [] } 
+        };
+      }
+    }
+    
+    return session;
   }
 
   /**

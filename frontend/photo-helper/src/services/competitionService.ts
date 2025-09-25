@@ -382,13 +382,35 @@ export class CompetitionService {
   }
 
   private async saveSessionPhotos(session: ApiPhotoSession, photosDir: FileSystemDirectoryHandle): Promise<void> {
-    // Clear existing photos first
-    await clearDirectory(photosDir);
-    
-    // Save photos from both sets
-    const allPhotos = [...session.sets.set1.photos, ...session.sets.set2.photos];
-    
-    for (const photo of allPhotos) {
+    // OPFS-only strategy: do NOT clear directory to avoid removing photos
+    // from the non-active mode bucket. Persist any photos that have fresh
+    // blob URLs; previously saved files remain available for loading.
+
+    // Collect photos across active sets and both mode buckets
+    const collect = (sets?: { set1: any; set2: any }) =>
+      sets ? [...(sets.set1?.photos || []), ...(sets.set2?.photos || [])] : [];
+
+    const activePhotos = collect(session.sets as any);
+    const trackPhotos = collect((session as any).setsTrack);
+    const turningPhotos = collect((session as any).setsTurning);
+
+    // Deduplicate by id while preserving first occurrence with a blob url if available
+    const idToPhoto = new Map<string, any>();
+    const pushPhoto = (p: any) => {
+      if (!p || !p.id) return;
+      if (!idToPhoto.has(p.id)) {
+        idToPhoto.set(p.id, p);
+      } else {
+        const existing = idToPhoto.get(p.id);
+        if ((!existing.url || !existing.url.startsWith('blob:')) && p.url && p.url.startsWith('blob:')) {
+          idToPhoto.set(p.id, p);
+        }
+      }
+    };
+
+    [...activePhotos, ...trackPhotos, ...turningPhotos].forEach(pushPhoto);
+
+    for (const photo of idToPhoto.values()) {
       if (photo.url && photo.url.startsWith('blob:')) {
         try {
           const response = await fetch(photo.url);
@@ -418,6 +440,21 @@ export class CompetitionService {
       return updatedPhotos;
     };
 
+    // Load blob URLs for mode-specific sets as well
+    const loadModeSpecificSets = async (sets: { set1: any; set2: any } | undefined) => {
+      if (!sets) return undefined;
+      return {
+        set1: {
+          ...sets.set1,
+          photos: await loadPhotoUrls(sets.set1.photos || [])
+        },
+        set2: {
+          ...sets.set2,
+          photos: await loadPhotoUrls(sets.set2.photos || [])
+        }
+      };
+    };
+
     return {
       ...session,
       sets: {
@@ -429,7 +466,9 @@ export class CompetitionService {
           ...session.sets.set2,
           photos: await loadPhotoUrls(session.sets.set2.photos)
         }
-      }
+      },
+      setsTrack: await loadModeSpecificSets(session.setsTrack),
+      setsTurning: await loadModeSpecificSets(session.setsTurning)
     };
   }
 }

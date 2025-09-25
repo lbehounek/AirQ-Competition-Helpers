@@ -24,6 +24,13 @@ export const CompetitionSelector: React.FC<CompetitionSelectorProps> = ({
 }) => {
   const { t } = useI18n();
   
+  // Debug logging
+  console.log('CompetitionSelector render:', {
+    competitions: competitions?.length || 0,
+    currentCompetitionId,
+    loading
+  });
+  
   const handleChange = (event: any) => {
     const competitionId = event.target.value;
     if (competitionId && competitionId !== currentCompetitionId) {

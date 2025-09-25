@@ -101,23 +101,26 @@ class ImageCacheManager {
   }
 
   /**
-   * Preload images for a set of photos
+   * Preload images for a set of photos (OPFS-only mode)
    */
   async preloadImages(photos: Array<{ id: string; sessionId: string; url?: string }>) {
     const promises = photos.map(async (photo) => {
       try {
-        if (photo.url) {
+        // OPFS-only mode: Only preload if we have a valid blob URL
+        if (photo.url && photo.url.startsWith('blob:')) {
           return await this.getImageByUrl(photo.url);
         }
-        return await this.getImage(photo.id, photo.sessionId);
+        // Skip photos without valid blob URLs
+        return null;
       } catch (err) {
         console.error(`Failed to preload image ${photo.id}:`, err);
         return null;
       }
     });
     
-    await Promise.all(promises);
-    console.log(`✅ Preloaded ${photos.length} images`);
+    const results = await Promise.all(promises);
+    const successful = results.filter(r => r !== null).length;
+    console.log(`✅ Preloaded ${successful} images`);
   }
 
   /**
@@ -170,6 +173,14 @@ export function useCachedImage(photoId: string, sessionId: string, directUrl?: s
       return;
     }
 
+    // OPFS-only mode: Only load images if we have a valid blob URL
+    if (!directUrl || !directUrl.startsWith('blob:')) {
+      setImage(null);
+      setLoading(false);
+      setError(new Error('No valid blob URL provided - OPFS-only mode'));
+      return;
+    }
+
     const cache = getImageCache();
     let cancelled = false;
 
@@ -177,12 +188,9 @@ export function useCachedImage(photoId: string, sessionId: string, directUrl?: s
       try {
         setLoading(true);
         setError(null);
-        let img: HTMLImageElement;
-        if (directUrl) {
-          img = await cache.getImageByUrl(directUrl);
-        } else {
-          img = await cache.getImage(photoId, sessionId);
-        }
+        
+        // Only use blob URLs - no HTTP fallback
+        const img = await cache.getImageByUrl(directUrl);
         
         if (!cancelled) {
           setImage(img);

@@ -30,4 +30,13 @@ export interface ApiPhotoSession {
     set1: ApiPhotoSet;
     set2: ApiPhotoSet;
   };
+  // Mode-specific photo storage for separate track/turning point collections
+  setsTrack?: {
+    set1: ApiPhotoSet;
+    set2: ApiPhotoSet;
+  };
+  setsTurning?: {
+    set1: ApiPhotoSet;
+    set2: ApiPhotoSet;
+  };
 }

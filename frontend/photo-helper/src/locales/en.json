@@ -87,6 +87,14 @@
     "current": "Current: {{name}}",
     "photos": "{{count}} photos",
     "selectCompetition": "Select Competition",
+    "rename": {
+      "button": "Rename",
+      "title": "Rename Competition",
+      "label": "Competition Name",
+      "placeholder": "Enter new competition name...",
+      "confirm": "Rename",
+      "cancel": "Cancel"
+    },
     "delete": {
       "title": "Delete Competition",
       "message": "Are you sure you want to delete \"{{name}}\"?",

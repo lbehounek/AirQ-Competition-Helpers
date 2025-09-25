@@ -87,6 +87,14 @@
     "current": "Aktuální: {{name}}",
     "photos": "{{count}} fotografií",
     "selectCompetition": "Vybrat soutěž",
+    "rename": {
+      "button": "Přejmenovat",
+      "title": "Přejmenovat soutěž",
+      "label": "Název soutěže",
+      "placeholder": "Zadejte nový název soutěže...",
+      "confirm": "Přejmenovat",
+      "cancel": "Zrušit"
+    },
     "delete": {
       "title": "Smazat soutěž",
       "message": "Opravdu chcete smazat \"{{name}}\"?",

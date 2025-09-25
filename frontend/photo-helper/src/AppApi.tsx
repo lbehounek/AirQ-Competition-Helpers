@@ -22,7 +22,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  TextField
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -126,6 +127,10 @@ function AppApi() {
   // State for delete confirmation dialog
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [competitionToDelete, setCompetitionToDelete] = useState<{ id: string; name: string } | null>(null);
+  
+  // State for rename competition dialog
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameText, setRenameText] = useState('');
   
   // Show loading text after delay
   useEffect(() => {
@@ -252,6 +257,27 @@ function AppApi() {
   const handleDeleteCancel = () => {
     setDeleteConfirmOpen(false);
     setCompetitionToDelete(null);
+  };
+
+  // Rename confirmation handlers
+  const handleRenameClick = () => {
+    if (currentCompetition) {
+      setRenameText(currentCompetition.name);
+      setRenameDialogOpen(true);
+    }
+  };
+
+  const handleRenameConfirm = async () => {
+    if (renameText.trim() && currentCompetition) {
+      await updateCompetitionName(renameText.trim());
+      setRenameDialogOpen(false);
+      setRenameText('');
+    }
+  };
+
+  const handleRenameCancel = () => {
+    setRenameDialogOpen(false);
+    setRenameText('');
   };
 
   const handlePhotoMove = (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
@@ -544,36 +570,32 @@ function AppApi() {
                         loading={loading}
                       />
                       {currentCompetition && (
-                        <Button
-                          variant="outlined"
-                          color="error"
-                          size="small"
-                          onClick={() => handleDeleteCompetitionClick({
-                            id: currentCompetition.id,
-                            name: currentCompetition.name
-                          })}
-                          disabled={loading}
-                          sx={{ minWidth: 'auto' }}
-                        >
-                          {t('common.delete')}
-                        </Button>
+                        <>
+                          <Button
+                            variant="outlined"
+                            color="primary"
+                            size="small"
+                            onClick={handleRenameClick}
+                            disabled={loading}
+                            sx={{ minWidth: 'auto' }}
+                          >
+                            {t('competition.rename.button')}
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            size="small"
+                            onClick={() => handleDeleteCompetitionClick({
+                              id: currentCompetition.id,
+                              name: currentCompetition.name
+                            })}
+                            disabled={loading}
+                            sx={{ minWidth: 'auto' }}
+                          >
+                            {t('common.delete')}
+                          </Button>
+                        </>
                       )}
-                    </Box>
-                  </Box>
-                  {/* Competition Name Editor */}
-                  <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                      Name:
-                    </Typography>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <EditableHeading
-                        value={session?.competition_name || ''}
-                        defaultValue={t('competition.defaultName')}
-                        onChange={updateCompetitionName}
-                        variant="subtitle2"
-                        color="text.primary"
-                        placeholder={t('competition.placeholder')}
-                      />
                     </Box>
                   </Box>
                   {currentCompetition && (
@@ -642,7 +664,7 @@ function AppApi() {
             set2={session.sets.set2}
             loading={loading}
             error={error}
-            onFilesDropped={addPhotosToTurningPoint}
+            onFilesDropped={(setKey, files) => addPhotosToSet(files, setKey)}
             onPhotoClick={handlePhotoClick}
             onPhotoUpdate={handlePhotoUpdate}
             onPhotoRemove={handlePhotoRemove}
@@ -1062,6 +1084,50 @@ function AppApi() {
             disabled={loading}
           >
             {loading ? t('common.loading') : t('competition.delete.confirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Rename Competition Dialog */}
+      <Dialog
+        open={renameDialogOpen}
+        onClose={handleRenameCancel}
+        aria-labelledby="rename-competition-title"
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle id="rename-competition-title">
+          {t('competition.rename.title')}
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label={t('competition.rename.label')}
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={renameText}
+            onChange={(e) => setRenameText(e.target.value)}
+            placeholder={t('competition.rename.placeholder')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && renameText.trim()) {
+                handleRenameConfirm();
+              }
+            }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleRenameCancel}>
+            {t('competition.rename.cancel')}
+          </Button>
+          <Button 
+            onClick={handleRenameConfirm}
+            variant="contained"
+            disabled={!renameText.trim() || loading}
+          >
+            {loading ? t('common.loading') : t('competition.rename.confirm')}
           </Button>
         </DialogActions>
       </Dialog>
