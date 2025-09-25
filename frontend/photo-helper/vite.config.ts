@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => ({
   base: mode === 'production' ? '/photo-helper/' : '/',
   plugins: [react(), tailwindcss()],
   server: {
+    // Security: Only bind to localhost to prevent network exposure
+    host: 'localhost',
     proxy: {
       // Proxy API calls to the backend
       '/api': {
@@ -15,6 +17,27 @@ export default defineConfig(({ mode }) => ({
         changeOrigin: true,
       },
     },
+    fs: {
+      // Security: Explicitly deny access to sensitive files/directories
+      deny: [
+        '.env*',
+        '../../**', // Prevent access outside project root
+        '../**',
+        '**/.git/**',
+        '**/node_modules/**',
+        '**/.ssh/**',
+        '**/.*'
+      ]
+    },
+    // Security: Restrict CORS to prevent malicious cross-origin requests
+    cors: {
+      origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+      credentials: false
+    }
+  },
+  preview: {
+    // Security: Only bind to localhost to prevent network exposure  
+    host: 'localhost'
   },
   define: {
     global: 'globalThis',
