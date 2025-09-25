@@ -397,6 +397,13 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         set1: session.sets?.set1 || { title: '', photos: [] },
         set2: session.sets?.set2 || { title: '', photos: [] }
       };
+      // Revoke blob URL of the photo being removed (if any) before dropping it
+      try {
+        const photoToRemove = (ensuredSets as any)[setKey]?.photos?.find((p: any) => p.id === photoId);
+        if (photoToRemove && typeof photoToRemove.url === 'string' && photoToRemove.url.startsWith('blob:')) {
+          URL.revokeObjectURL(photoToRemove.url);
+        }
+      } catch {}
       
       return {
         ...session,
@@ -496,7 +503,11 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         setsTurning: session.setsTurning || { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } }
       };
       
-      // Save current sets to current mode bucket (remove blob URLs to avoid stale references)
+      // Revoke existing blob URLs before blanking them, then save sanitized copies
+      try {
+        session.sets.set1.photos.forEach(p => { if (p.url && p.url.startsWith('blob:')) URL.revokeObjectURL(p.url); });
+        session.sets.set2.photos.forEach(p => { if (p.url && p.url.startsWith('blob:')) URL.revokeObjectURL(p.url); });
+      } catch {}
       const sanitizedCurrentSets = {
         set1: {
           ...session.sets.set1,
@@ -563,7 +574,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       ...session,
       version: session.version + 1,
       updatedAt: new Date().toISOString(),
-      ...(session as any).layoutMode !== undefined ? { layoutMode } : {}
+      layoutMode
     }));
   }, [updateCurrentCompetition]);
 

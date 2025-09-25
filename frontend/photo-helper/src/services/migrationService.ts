@@ -79,23 +79,23 @@ export class MigrationService {
     const session = JSON.parse(JSON.stringify(existingSession));
     
     // Initialize mode-specific storage
-    const emptySet1 = { title: '', photos: [] };
-    const emptySet2 = { title: '', photos: [] };
+    // Helpers to avoid shared references across buckets
+    const makeEmptySet = () => ({ title: '', photos: [] });
     
     // Check if session already has mode-specific sets (from newer OPFS format)
     const hasExistingModeStorage = (session as any).setsTrack || (session as any).setsTurning;
     
     if (hasExistingModeStorage) {
       // Session already has mode-specific storage, preserve it
-      session.setsTrack = (session as any).setsTrack || { set1: emptySet1, set2: emptySet2 };
-      session.setsTurning = (session as any).setsTurning || { set1: emptySet1, set2: emptySet2 };
+      session.setsTrack = (session as any).setsTrack || { set1: makeEmptySet(), set2: makeEmptySet() };
+      session.setsTurning = (session as any).setsTurning || { set1: makeEmptySet(), set2: makeEmptySet() };
     } else {
       // Legacy session without mode-specific storage
       // Initialize mode-specific storage based on current mode
       if (session.mode === 'track') {
         // Current sets belong to track mode
         session.setsTrack = { ...session.sets };
-        session.setsTurning = { set1: emptySet1, set2: emptySet2 };
+        session.setsTurning = { set1: makeEmptySet(), set2: makeEmptySet() };
         
         // Ensure track mode has proper default titles
         if (!session.setsTrack.set1.title || session.setsTrack.set1.title.trim() === '') {

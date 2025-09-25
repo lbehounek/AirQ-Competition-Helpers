@@ -366,18 +366,25 @@ export class CompetitionService {
   }
 
   private sanitizeSessionForStorage(session: ApiPhotoSession): ApiPhotoSession {
-    return {
-      ...session,
-      sets: {
+    const clearUrls = (sets?: { set1: any; set2: any }) => {
+      if (!sets) return undefined;
+      return {
         set1: {
-          ...session.sets.set1,
-          photos: session.sets.set1.photos.map(p => ({ ...p, url: '' }))
+          ...sets.set1,
+          photos: (sets.set1?.photos || []).map((p: any) => ({ ...p, url: '' }))
         },
         set2: {
-          ...session.sets.set2,
-          photos: session.sets.set2.photos.map(p => ({ ...p, url: '' }))
+          ...sets.set2,
+          photos: (sets.set2?.photos || []).map((p: any) => ({ ...p, url: '' }))
         }
-      }
+      };
+    };
+
+    return {
+      ...session,
+      sets: clearUrls(session.sets) as any,
+      ...(session as any).setsTrack ? { setsTrack: clearUrls((session as any).setsTrack) as any } : {},
+      ...(session as any).setsTurning ? { setsTurning: clearUrls((session as any).setsTurning) as any } : {}
     };
   }
 
