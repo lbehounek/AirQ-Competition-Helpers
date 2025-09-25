@@ -14,6 +14,7 @@ import {
   Box,
   Alert,
   LinearProgress,
+  CircularProgress,
   Chip
 } from '@mui/material';
 import { Add as AddIcon, Warning as WarningIcon } from '@mui/icons-material';
@@ -70,7 +71,7 @@ export const CreateCompetitionButton: React.FC<CreateCompetitionButtonProps> = (
 
   // Format storage info
   const formatBytes = (bytes: number | null): string => {
-    if (!bytes) return 'Unknown';
+    if (bytes == null) return 'Unknown';
     const mb = bytes / 1024 / 1024;
     if (mb < 1024) return `${mb.toFixed(1)}MB`;
     const gb = mb / 1024;
@@ -197,7 +198,7 @@ export const CreateCompetitionButton: React.FC<CreateCompetitionButtonProps> = (
             onClick={handleCreate} 
             variant="contained"
             disabled={creating || isStorageCritical}
-            startIcon={creating ? <LinearProgress size={16} /> : <AddIcon />}
+            startIcon={creating ? <CircularProgress size={16} color="inherit" /> : <AddIcon />}
           >
             {creating ? t('common.loading') : t('common.save')}
           </Button>

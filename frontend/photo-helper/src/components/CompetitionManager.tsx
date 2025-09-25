@@ -90,16 +90,7 @@ export const CompetitionManager: React.FC<CompetitionManagerProps> = ({
           </Grid>
         </Grid>
 
-        {/* Current Competition Info */}
-        {currentCompetition && (
-          <Box sx={{ mt: 2, p: 1, backgroundColor: 'action.hover', borderRadius: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              {t('competition.current', { name: currentCompetition.name })} • {' '}
-              {t('competition.photos', { count: currentCompetition.photoCount })} • {' '}
-              {new Date(currentCompetition.createdAt).toLocaleDateString()}
-            </Typography>
-          </Box>
-        )}
+        {/* Current competition info bar removed per request */}
       </Paper>
 
       {/* Cleanup Modal */}

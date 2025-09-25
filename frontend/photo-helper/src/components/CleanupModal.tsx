@@ -19,7 +19,7 @@ import {
   Alert,
   Chip,
   Divider,
-  LinearProgress
+  CircularProgress
 } from '@mui/material';
 import { 
   CleaningServices as CleanIcon,
@@ -160,7 +160,8 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
                   <ListItemIcon>
                     <Checkbox
                       checked={isSelected}
-                      onChange={() => handleToggleCandidate(candidate.competition.id)}
+                      onClick={(e) => { e.stopPropagation(); }}
+                      onChange={(e) => { e.stopPropagation(); handleToggleCandidate(candidate.competition.id); }}
                       disabled={loading}
                     />
                   </ListItemIcon>
@@ -237,7 +238,7 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
           onClick={handleConfirm}
           variant="contained"
           disabled={selectedCandidates.size === 0 || loading}
-          startIcon={loading ? <LinearProgress size={16} /> : <CleanIcon />}
+          startIcon={loading ? <CircularProgress size={16} color="inherit" /> : <CleanIcon />}
           color="warning"
         >
           {loading 

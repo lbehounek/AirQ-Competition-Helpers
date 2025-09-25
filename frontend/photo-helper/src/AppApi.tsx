@@ -598,27 +598,7 @@ function AppApi() {
                       )}
                     </Box>
                   </Box>
-                  {currentCompetition && (
-                    <Box sx={{ mt: 2, p: 1.5, backgroundColor: 'action.hover', borderRadius: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-                          {t('competition.current', { name: currentCompetition.name })}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-                          •
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-                          {t('competition.photos', { count: currentCompetition.photoCount })}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-                          •
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-                          {new Date(currentCompetition.createdAt).toLocaleDateString()}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  )}
+                  {/* Current competition info bar removed per request */}
                 </Box>
               ) : (
                 /* Legacy single competition name for backend mode */

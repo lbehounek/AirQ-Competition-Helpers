@@ -112,7 +112,7 @@ import { CompetitionSelector } from '../components/CompetitionSelector';
 import { CreateCompetitionButton } from '../components/CreateCompetitionButton';
 
 function Header() {
-  const { competitions, currentCompetition, switchToCompetition } = useCompetitionSystem();
+  const { competitions, currentCompetition, switchToCompetition, createNewCompetition } = useCompetitionSystem();
   
   return (
     <Box>
