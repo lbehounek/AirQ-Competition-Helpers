@@ -147,7 +147,7 @@ export class CompetitionService {
     }
   }
 
-  async updateCompetition(competition: Competition): Promise<void> {
+  async updateCompetition(competition: Competition, options?: { updatePhotos?: boolean }): Promise<void> {
     await this.ensureInitialized();
     
     const competitionDir = await this.competitionsDir!.getDirectoryHandle(competition.id, { create: false });
@@ -157,8 +157,10 @@ export class CompetitionService {
     const sanitizedSession = this.sanitizeSessionForStorage(competition.session);
     await writeJSON(competitionDir, 'session.json', sanitizedSession);
     
-    // Update photos (remove old, add new)
-    await this.saveSessionPhotos(competition.session, photosDir);
+    // Only update photos if explicitly requested (e.g., when photos actually changed)
+    if (options?.updatePhotos) {
+      await this.saveSessionPhotos(competition.session, photosDir);
+    }
     
     // Update metadata in index
     const index = await this.getCompetitionsIndex();

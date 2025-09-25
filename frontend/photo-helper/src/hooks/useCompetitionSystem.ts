@@ -232,17 +232,28 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   }, [currentCompetition, refreshCompetitions]);
 
   // Session Operations (proxied to current competition)
-  const updateCurrentCompetition = useCallback(async (updater: (session: ApiPhotoSession) => ApiPhotoSession) => {
+  const updateCurrentCompetition = useCallback(async (
+    updater: (session: ApiPhotoSession) => ApiPhotoSession,
+    options?: { updatePhotos?: boolean }
+  ) => {
     if (!currentCompetition) return;
     
     try {
-      const updatedSession = updater(currentCompetition.session);
+      const originalSession = currentCompetition.session;
+      const updatedSession = updater(originalSession);
       
       // Check if competition name changed in session and sync it
-      const nameChanged = updatedSession.competition_name !== currentCompetition.session.competition_name;
+      const nameChanged = updatedSession.competition_name !== originalSession.competition_name;
       const newCompetitionName = nameChanged && updatedSession.competition_name.trim() 
         ? updatedSession.competition_name.trim()
         : currentCompetition.name;
+      
+      // Detect if photos have actually changed (not just metadata)
+      const photosChanged = options?.updatePhotos || 
+        originalSession.sets.set1.photos.length !== updatedSession.sets.set1.photos.length ||
+        originalSession.sets.set2.photos.length !== updatedSession.sets.set2.photos.length ||
+        JSON.stringify(originalSession.sets.set1.photos.map(p => p.id)) !== JSON.stringify(updatedSession.sets.set1.photos.map(p => p.id)) ||
+        JSON.stringify(originalSession.sets.set2.photos.map(p => p.id)) !== JSON.stringify(updatedSession.sets.set2.photos.map(p => p.id));
       
       const updatedCompetition: Competition = {
         ...currentCompetition,
@@ -252,7 +263,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         photoCount: updatedSession.sets.set1.photos.length + updatedSession.sets.set2.photos.length
       };
       
-      await competitionService.updateCompetition(updatedCompetition);
+      await competitionService.updateCompetition(updatedCompetition, { updatePhotos: photosChanged });
       setCurrentCompetition(updatedCompetition);
       
       // Refresh competitions list if name changed
@@ -261,11 +272,13 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       }
       
       // Update storage stats after any photo changes
-      try {
-        const stats = await competitionService.getStorageStats();
-        setStorageStats(stats);
-      } catch (err) {
-        console.warn('Failed to update storage stats:', err);
+      if (photosChanged) {
+        try {
+          const stats = await competitionService.getStorageStats();
+          setStorageStats(stats);
+        } catch (err) {
+          console.warn('Failed to update storage stats:', err);
+        }
       }
       
     } catch (err) {
@@ -306,7 +319,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           }
         }
       };
-    });
+    }, { updatePhotos: true });
   }, [updateCurrentCompetition]);
 
   const removePhoto = useCallback(async (setKey: 'set1' | 'set2', photoId: string) => {
@@ -321,7 +334,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           photos: session.sets[setKey].photos.filter(p => p.id !== photoId)
         }
       }
-    }));
+    }), { updatePhotos: true });
   }, [updateCurrentCompetition]);
 
   const updatePhotoState = useCallback(async (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
