@@ -17,20 +17,24 @@ import {
   CardContent,
   useMediaQuery,
   useTheme,
-  Link
+  Link,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  TextField
 } from '@mui/material';
 import {
   FlightTakeoff,
   RestartAlt,
   Close,
-  CheckCircle,
-  CloudOff,
-  Refresh,
   PictureAsPdf,
-  Shuffle
+  Shuffle,
+  Warning
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
-import { usePhotoSessionOPFS } from './hooks/usePhotoSessionOPFS';
+import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { DropZone } from './components/DropZone';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
@@ -43,6 +47,9 @@ import { ModeSelector } from './components/ModeSelector';
 import { TurningPointLayout } from './components/TurningPointLayout';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { LayoutModeSelector } from './components/LayoutModeSelector';
+import { CompetitionSelector } from './components/CompetitionSelector';
+import { CreateCompetitionButton } from './components/CreateCompetitionButton';
+import { CleanupModal } from './components/CleanupModal';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
@@ -55,39 +62,59 @@ import type { ApiPhoto, ApiPhotoSet } from './types/api';
 const LOADING_TEXT_DELAY = 3000; // 3 seconds
 
 const STORAGE_MODE = (import.meta as any).env?.VITE_STORAGE_MODE ?? 'opfs';
-const useSessionHook = STORAGE_MODE === 'backend' ? usePhotoSessionApi : usePhotoSessionOPFS;
+const useSessionHook = STORAGE_MODE === 'backend' ? usePhotoSessionApi : useCompetitionSystem;
 
 function AppApi() {
+  const sessionHookResult = useSessionHook() as any;
   const {
     session,
-    sessionId,
     loading,
     error,
-    backendAvailable,
-    // storage
-    isStorageLow,
-    storagePercentFree,
-    storageUsedBytes,
-    storageQuotaBytes,
-    updateStorageEstimate,
     addPhotosToSet,
-    addPhotosToTurningPoint,
     removePhoto,
     updatePhotoState,
     updateSetTitle,
-    updateSetTitles,
-    reorderPhotos,
-    shufflePhotos,
     updateSessionMode,
     updateLayoutMode,
-    updateCompetitionName,
-    resetSession,
-    clearError,
-    checkBackendHealth,
-    refreshSession,
+    updateSessionCompetitionName,
     getSessionStats,
-    applySettingToAll
-  } = useSessionHook() as any;
+    clearError,
+    // Competition-specific features (only available in OPFS mode)
+    currentCompetition,
+    competitions,
+    createNewCompetition,
+    switchToCompetition,
+    deleteCompetition,
+    cleanupCandidates,
+    storageStats,
+    performCleanup,
+    dismissCleanup,
+    updateStorageStats
+  } = sessionHookResult;
+
+  // Legacy API compatibility
+  const sessionId = session?.id;
+  const backendAvailable = STORAGE_MODE === 'backend' ? sessionHookResult.backendAvailable : true;
+  const isStorageLow = STORAGE_MODE === 'backend' ? sessionHookResult.isStorageLow : storageStats?.isLow;
+  const storagePercentFree = STORAGE_MODE === 'backend' ? sessionHookResult.storagePercentFree : storageStats?.percentUsed ? 100 - storageStats.percentUsed : null;
+  const storageUsedBytes = STORAGE_MODE === 'backend' ? sessionHookResult.storageUsedBytes : storageStats?.usedBytes;
+  const storageQuotaBytes = STORAGE_MODE === 'backend' ? sessionHookResult.storageQuotaBytes : storageStats?.quotaBytes;
+  const updateStorageEstimate = STORAGE_MODE === 'backend' ? sessionHookResult.updateStorageEstimate : updateStorageStats;
+  const addPhotosToTurningPoint = sessionHookResult.addPhotosToTurningPoint || addPhotosToSet;
+  const updateSetTitles = sessionHookResult.updateSetTitles || updateSetTitle;
+  // Feature support flags (default false) and function refs when supported
+  const supportsReorder = Boolean(sessionHookResult.reorderPhotos);
+  const reorderPhotos = supportsReorder ? sessionHookResult.reorderPhotos : undefined;
+  const supportsShuffle = Boolean(sessionHookResult.shufflePhotos);
+  const shufflePhotos = supportsShuffle ? sessionHookResult.shufflePhotos : undefined;
+  const updateCompetitionName = updateSessionCompetitionName;
+  const supportsReset = Boolean(sessionHookResult.resetSession);
+  const resetSession = supportsReset ? sessionHookResult.resetSession : undefined;
+  const checkBackendHealth = sessionHookResult.checkBackendHealth || (() => {});
+  const supportsRefresh = Boolean(sessionHookResult.refreshSession);
+  const refreshSession = supportsRefresh ? sessionHookResult.refreshSession : undefined;
+  const supportsApplyToAll = Boolean(sessionHookResult.applySettingToAll);
+  const applySettingToAll = supportsApplyToAll ? sessionHookResult.applySettingToAll : undefined;
   
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
@@ -98,6 +125,14 @@ function AppApi() {
   
   // State to track if we should show loading text
   const [showLoadingText, setShowLoadingText] = useState(false);
+  
+  // State for delete confirmation dialog
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [competitionToDelete, setCompetitionToDelete] = useState<{ id: string; name: string } | null>(null);
+  
+  // State for rename competition dialog
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameText, setRenameText] = useState('');
   
   // Show loading text after delay
   useEffect(() => {
@@ -207,9 +242,51 @@ function AppApi() {
     }
   };
 
+  // Delete confirmation handlers
+  const handleDeleteCompetitionClick = (competition: { id: string; name: string }) => {
+    setCompetitionToDelete(competition);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (competitionToDelete) {
+      await deleteCompetition(competitionToDelete.id);
+      setDeleteConfirmOpen(false);
+      setCompetitionToDelete(null);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setCompetitionToDelete(null);
+  };
+
+  // Rename confirmation handlers
+  const handleRenameClick = () => {
+    if (currentCompetition) {
+      setRenameText(currentCompetition.name);
+      setRenameDialogOpen(true);
+    }
+  };
+
+  const handleRenameConfirm = async () => {
+    if (renameText.trim() && currentCompetition) {
+      await updateCompetitionName(renameText.trim());
+      setRenameDialogOpen(false);
+      setRenameText('');
+    }
+  };
+
+  const handleRenameCancel = () => {
+    setRenameDialogOpen(false);
+    setRenameText('');
+  };
+
   const handlePhotoMove = (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
     // Use the new reorderPhotos function from the hook
-    reorderPhotos(setKey, fromIndex, toIndex);
+    if (supportsReorder && reorderPhotos) {
+      reorderPhotos(setKey, fromIndex, toIndex);
+    }
   };
 
   const handleShuffle = async () => {
@@ -218,7 +295,9 @@ function AppApi() {
     console.log('🎲 Shuffling photos in both sets...');
     
     // Shuffle both sets in a single state update (no flickering, both sets update!)
-    await shufflePhotos('both');
+    if (supportsShuffle && shufflePhotos) {
+      await shufflePhotos('both');
+    }
 
     console.log('✨ Photo shuffle completed!');
   };
@@ -454,7 +533,12 @@ function AppApi() {
                     </Typography>
                     <Button
                       onClick={handleShuffle}
-                      disabled={loading || !session || (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1)}
+                      disabled={
+                        loading ||
+                        !session ||
+                        !supportsShuffle ||
+                        (session.sets.set1.photos.length <= 1 && session.sets.set2.photos.length <= 1)
+                      }
                       variant="outlined"
                       size="small"
                       startIcon={<Shuffle />}
@@ -472,23 +556,79 @@ function AppApi() {
               </Box>
             </Box>
 
-            {/* Competition Name */}
+            {/* Competition Management */}
             <Box sx={{ p: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                  {t('competition.title')}
-                </Typography>
-                <Box sx={{ flex: '1.5', minWidth: 0 }}>
-                  <EditableHeading
-                    value={session?.competition_name || ''}
-                    defaultValue={t('competition.defaultName')}
-                    onChange={updateCompetitionName}
-                    variant="h6"
-                    color="text.primary"
-                    placeholder={t('competition.placeholder')}
-                  />
+              {STORAGE_MODE === 'opfs' ? (
+                /* Competition system for OPFS mode */
+                <Box>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', mb: 2 }}>
+                    {t('competition.title')}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Box sx={{ flex: '1 1 300px', minWidth: 250 }}>
+                      <CompetitionSelector
+                        competitions={competitions || []}
+                        currentCompetitionId={currentCompetition?.id || null}
+                        onCompetitionChange={switchToCompetition}
+                        loading={loading}
+                      />
+                    </Box>
+                    <Box sx={{ flex: '0 0 auto', display: 'flex', gap: 1 }}>
+                      <CreateCompetitionButton
+                        onCreateCompetition={createNewCompetition}
+                        storageStats={storageStats}
+                        competitionCount={competitions?.length || 0}
+                        loading={loading}
+                      />
+                      {currentCompetition && (
+                        <>
+                          <Button
+                            variant="outlined"
+                            color="primary"
+                            size="small"
+                            onClick={handleRenameClick}
+                            disabled={loading}
+                            sx={{ minWidth: 'auto' }}
+                          >
+                            {t('competition.rename.button')}
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            size="small"
+                            onClick={() => handleDeleteCompetitionClick({
+                              id: currentCompetition.id,
+                              name: currentCompetition.name
+                            })}
+                            disabled={loading}
+                            sx={{ minWidth: 'auto' }}
+                          >
+                            {t('common.delete')}
+                          </Button>
+                        </>
+                      )}
+                    </Box>
+                  </Box>
+                  {/* Current competition info bar removed per request */}
                 </Box>
-              </Box>
+              ) : (
+                /* Legacy single competition name for backend mode */
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                    {t('competition.title')}
+                  </Typography>
+                  <Box sx={{ flex: '1.5', minWidth: 0 }}>
+                    <EditableHeading
+                      value={session?.competition_name || ''}
+                      defaultValue={t('competition.defaultName')}
+                      onChange={updateCompetitionName}
+                      variant="h6"
+                      color="text.primary"
+                      placeholder={t('competition.placeholder')}
+                    />
+                  </Box>
+                </Box>
+              )}
             </Box>
           </Box>
         </Paper>
@@ -515,7 +655,7 @@ function AppApi() {
             set2={session.sets.set2}
             loading={loading}
             error={error}
-            onFilesDropped={addPhotosToTurningPoint}
+            onFilesDropped={(setKey, files) => addPhotosToSet(files, setKey)}
             onPhotoClick={handlePhotoClick}
             onPhotoUpdate={handlePhotoUpdate}
             onPhotoRemove={handlePhotoRemove}
@@ -675,7 +815,7 @@ function AppApi() {
               variant="outlined"
               color="error"
               startIcon={<RestartAlt />}
-              onClick={resetSession}
+              onClick={() => { if (supportsReset && resetSession) resetSession(); }}
               size="large"
               sx={{
                 py: 1.5,
@@ -685,6 +825,7 @@ function AppApi() {
                 borderWidth: 2,
                 '&:hover': { borderWidth: 2 }
               }}
+              disabled={!supportsReset}
             >
               {t('actions.resetSession')}
             </Button>
@@ -746,7 +887,7 @@ function AppApi() {
         <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
           <Box sx={{ p: 2, borderRadius: 2, background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
             <Typography variant="body2" align="center" sx={{ color: 'common.white' }}>
-              {t('footer.copy', { year: 2025, name: 'Lukáš Běhounek' })} {' '}
+              {t('footer.copy', { year: new Date().getFullYear(), name: 'Lukáš Běhounek' })} {' '}
               <Link href="https://behounek.it" target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
                 {t('footer.cta')}
               </Link>
@@ -761,7 +902,9 @@ function AppApi() {
         onClose={() => {
           setSelectedPhoto(null);
           // Immediately refresh session to sync grid with modal changes
-          refreshSession();
+          if (supportsRefresh && refreshSession) {
+            refreshSession();
+          }
         }}
         closeAfterTransition
         slots={{ backdrop: Backdrop }}
@@ -849,14 +992,16 @@ function AppApi() {
                         onClose={() => {
                           setSelectedPhoto(null);
                           // Immediately refresh session to sync grid with modal changes
-                          refreshSession();
+                          if (supportsRefresh && refreshSession) {
+                            refreshSession();
+                          }
                         }}
                         mode="compact-right"
                         showOriginal={showOriginal}
                         onToggleOriginal={() => setShowOriginal(!showOriginal)}
                         circleMode={circleMode}
                         onCircleModeToggle={() => setCircleMode(!circleMode)}
-                        onApplyToAll={(setting, value) => applySettingToAll(setting, value)}
+                        onApplyToAll={supportsApplyToAll && applySettingToAll ? (setting, value) => applySettingToAll(setting, value) : undefined}
                       />
                     </Box>
                   </Box>
@@ -879,12 +1024,14 @@ function AppApi() {
                       onClose={() => {
                         setSelectedPhoto(null);
                         // Immediately refresh session to sync grid with modal changes
-                        refreshSession();
+                        if (supportsRefresh && refreshSession) {
+                          refreshSession();
+                        }
                       }}
                       mode="sliders"
                       showOriginal={showOriginal}
                       onToggleOriginal={() => setShowOriginal(!showOriginal)}
-                      onApplyToAll={(setting, value) => applySettingToAll(setting, value)}
+                      onApplyToAll={supportsApplyToAll && applySettingToAll ? (setting, value) => applySettingToAll(setting, value) : undefined}
                     />
                   </Box>
                 </Box>
@@ -893,6 +1040,95 @@ function AppApi() {
           </Box>
         </Fade>
       </Modal>
+
+      {/* Competition Cleanup Modal - Only show in OPFS mode */}
+      {STORAGE_MODE === 'opfs' && (
+        <CleanupModal
+          open={cleanupCandidates?.length > 0}
+          candidates={cleanupCandidates || []}
+          onConfirm={performCleanup}
+          onCancel={dismissCleanup}
+          loading={loading}
+        />
+      )}
+
+      {/* Delete Competition Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-competition-title"
+        aria-describedby="delete-competition-description"
+      >
+        <DialogTitle id="delete-competition-title" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Warning color="error" />
+          {t('competition.delete.title')}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="delete-competition-description">
+            {competitionToDelete && t('competition.delete.message', { name: competitionToDelete.name })}
+          </DialogContentText>
+          <DialogContentText sx={{ mt: 2, fontWeight: 600, color: 'error.main' }}>
+            {t('competition.delete.warning')}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} variant="outlined">
+            {t('common.cancel')}
+          </Button>
+          <Button 
+            onClick={handleDeleteConfirm} 
+            color="error" 
+            variant="contained"
+            disabled={loading}
+          >
+            {loading ? t('common.loading') : t('competition.delete.confirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Rename Competition Dialog */}
+      <Dialog
+        open={renameDialogOpen}
+        onClose={handleRenameCancel}
+        aria-labelledby="rename-competition-title"
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle id="rename-competition-title">
+          {t('competition.rename.title')}
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label={t('competition.rename.label')}
+            type="text"
+            fullWidth
+            variant="outlined"
+            value={renameText}
+            onChange={(e) => setRenameText(e.target.value)}
+            placeholder={t('competition.rename.placeholder')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && renameText.trim()) {
+                handleRenameConfirm();
+              }
+            }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleRenameCancel}>
+            {t('competition.rename.cancel')}
+          </Button>
+          <Button 
+            onClick={handleRenameConfirm}
+            variant="contained"
+            disabled={!renameText.trim() || loading}
+          >
+            {loading ? t('common.loading') : t('competition.rename.confirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

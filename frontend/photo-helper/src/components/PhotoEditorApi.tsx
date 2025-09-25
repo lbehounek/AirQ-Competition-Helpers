@@ -495,6 +495,19 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const dragRafRef = useRef<number | null>(null);
   const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [dragScaleFactor, setDragScaleFactor] = useState(1);
+  // Idle-based high quality rendering control
+  const [isIdleHQ, setIsIdleHQ] = useState(false);
+  const idleTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  const markInteraction = useCallback(() => {
+    setIsIdleHQ(false);
+    if (idleTimerRef.current) {
+      window.clearTimeout(idleTimerRef.current);
+    }
+    idleTimerRef.current = window.setTimeout(() => {
+      setIsIdleHQ(true);
+    }, 3000);
+  }, []);
   
   // Use cached image loading - provide safe defaults for when photo is null
   const { image: loadedImage, error: imageError } = useCachedImage(
@@ -522,6 +535,34 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     : getCanvasSize(300); // Base size for grid
 
   // Image is now loaded via useCachedImage hook above
+  useEffect(() => {
+    // Start idle timer on mount to allow HQ after initial load settles
+    markInteraction();
+    return () => {
+      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
+    };
+  }, [markInteraction]);
+
+  // Global lightweight activity listeners to reset idle timer (pointer/key)
+  useEffect(() => {
+    const throttleMs = 250;
+    const lastRef = lastMoveTimeRef; // reuse existing ref
+    const handlePointerMove = () => {
+      const now = Date.now();
+      if (now - lastRef.current < throttleMs) return;
+      lastRef.current = now;
+      markInteraction();
+    };
+    const handleKeyDown = () => {
+      markInteraction();
+    };
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    window.addEventListener('keydown', handleKeyDown, { passive: true } as any);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove as any);
+      window.removeEventListener('keydown', handleKeyDown as any);
+    };
+  }, [markInteraction]);
 
   // Sync local states when photo changes
   useEffect(() => {
@@ -653,7 +694,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     }
 
     // Enable high-quality rendering for static (non-dragging) scenarios
-    const useHighQuality = !isDragging && !showOriginal && size === 'large';
+    const useHighQuality = !isDragging && !showOriginal && size === 'large' && isIdleHQ;
 
     // Render to temporary canvas first
     await renderPhotoOnCanvas(
@@ -705,7 +746,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       }
       ctx.drawImage(tempCanvas, 0, 0, canvasSize.width, canvasSize.height);
     }
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview, dragScaleFactor, size]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview, dragScaleFactor, size, isIdleHQ]);
 
   useEffect(() => {
     renderCanvas().catch(error => {
@@ -736,6 +777,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Mouse move handler - no throttling for smoother movement
     const handleDocumentMouseMove = (e: MouseEvent) => {
+      markInteraction();
 
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -860,6 +902,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     };
 
     const handleDocumentMouseUp = () => {
+      markInteraction();
       // Handle circle placement
       if (isDraggingCircle) {
         if (circleStartPos && photo.canvasState.circle) {
@@ -938,7 +981,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       document.body.style.webkitUserSelect = '';
       document.body.style.cursor = '';
     };
-  }, [isDragging, isDraggingCircle, dragStart, localPosition, loadedImage, photo.canvasState, currentRatio, onUpdate, circleStartPos, localCirclePosition]);
+  }, [isDragging, isDraggingCircle, dragStart, localPosition, loadedImage, photo.canvasState, currentRatio, onUpdate, circleStartPos, localCirclePosition, markInteraction]);
 
   // Helper function to check if click is on circle
   const isClickOnCircle = (clickX: number, clickY: number): boolean => {
@@ -972,6 +1015,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     
     // Ignore if already dragging (prevents double-start race condition)
     if (isDragging) return;
+    markInteraction();
     
     // Clear any pending updates
     if (pendingUpdateRef.current) {
@@ -1055,6 +1099,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     if (!loadedImage || !photo?.canvasState) return;
 
     event.preventDefault(); // Prevent page scrolling
+    markInteraction();
 
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();

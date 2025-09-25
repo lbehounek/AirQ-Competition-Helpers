@@ -81,7 +81,33 @@
   "competition": {
     "title": "Soutěž",
     "placeholder": "Zadejte název soutěže...",
-    "defaultName": "Název soutěže"
+    "defaultName": "Název soutěže",
+    "numbered": "Soutěž {{number}}",
+    "createNew": "Vytvořit novou soutěž",
+    "current": "Aktuální: {{name}}",
+    "photos": "{{count}} fotografií",
+    "selectCompetition": "Vybrat soutěž",
+    "rename": {
+      "button": "Přejmenovat",
+      "title": "Přejmenovat soutěž",
+      "label": "Název soutěže",
+      "placeholder": "Zadejte nový název soutěže...",
+      "confirm": "Přejmenovat",
+      "cancel": "Zrušit"
+    },
+    "delete": {
+      "title": "Smazat soutěž",
+      "message": "Opravdu chcete smazat \"{{name}}\"?",
+      "warning": "Tuto akci nelze vrátit zpět. Všechny fotografie a nastavení budou trvale smazány.",
+      "confirm": "Smazat soutěž"
+    }
+    ,
+    "helper": {
+      "leaveEmptyForDefault": "Ponechte prázdné pro výchozí pojmenování"
+    },
+    "currentCount": "Aktuální soutěže",
+    "reachingLimit": "Máte {{count}} soutěží. Jakmile dosáhnete 10, nejstarší bude automaticky navržena k čištění.",
+    "emptyState": "Žádné dostupné soutěže"
   },
   "actions": {
     "title": "Akce",
@@ -193,6 +219,25 @@
   "storage": {
     "warning": "Volné místo: {{percent}}% · Využito {{used}} / Kvóta {{quota}}",
     "recheck": "Znovu zkontrolovat"
+    ,
+    "status": {
+      "critical": "Kritické využití úložiště: {{percent}}%. Zvažte vyčištění starých soutěží.",
+      "high": "Vysoké využití úložiště: {{percent}}%. Zvažte brzké vyčištění starých soutěží.",
+      "normal": "Využití úložiště: {{percent}}%"
+    }
+  },
+  "cleanup": {
+    "title": "Návrhy čištění úložiště",
+    "subtitle": "Nalezeno {{count}} soutěží k vyčištění:",
+    "willFree": "Toto uvolní přibližně {{size}} úložiště.",
+    "currentTotal": "Momentálně máte {{count}} soutěží.",
+    "keepAll": "Ponechat vše",
+    "deleteSelected": "Smazat vybrané",
+    "reviewDetails": "Prohlédnout detaily",
+    "ageReason": "{{days}} dní staré, {{photos}} fotografií",
+    "excessReason": "Přebytek - ponechávám nejnovějších {{max}}",
+    "postpone": "Připomenout později",
+    "autoCleanupInfo": "Automatické návrhy čištění pomáhají udržovat vaše úložiště organizované."
   },
   "opfs": {
     "warning": "Tento prohlížeč nepodporuje trvalé uložení dat (OPFS). Po obnovení stránky se vaše změny nezachovají. Pro plnou funkčnost použijte Chrome, Firefox nebo Edge."
@@ -218,7 +263,10 @@
     "delete": "Smazat",
     "edit": "Upravit",
     "preview": "Náhled",
-    "selected": "Vybráno"
+    "selected": "Vybráno",
+    "selectAll": "Vybrat vše",
+    "selectNone": "Zrušit výběr",
+    "createdOn": "Vytvořeno: {{date}}"
   },
   "pdf": {
     "promotional": {
