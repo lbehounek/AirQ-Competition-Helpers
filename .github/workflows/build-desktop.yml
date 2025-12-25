@@ -83,19 +83,12 @@ jobs:
         working-directory: frontend/desktop
         run: npx electron-builder --win --publish never
 
-      - name: Upload Installer
+      - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: AirQ-Competition-Helpers-Setup
+          name: AirQ-Competition-Helpers
           path: frontend/desktop/dist/*.exe
           if-no-files-found: error
-
-      - name: Upload Portable
-        uses: actions/upload-artifact@v4
-        with:
-          name: AirQ-Competition-Helpers-Portable
-          path: frontend/desktop/dist/*Portable*.exe
-          if-no-files-found: warn
 
   # Create GitHub Release when triggered by tag
   release:
@@ -128,9 +121,7 @@ jobs:
 
             Windows desktop application bundling Photo Helper and Map Corridors.
 
-            ### Downloads
-            - **Setup**: Full installer with Start Menu shortcuts
-            - **Portable**: Single executable, no installation required
+            **Portable executable** - no installation required, just run.
 
             ### System Requirements
             - Windows 10/11 (64-bit)

@@ -12,7 +12,6 @@
     "build:map-corridors": "cd ../map-corridors && npm install && cross-env VITE_DESKTOP_BUILD=true npm run build",
     "package": "npm run build:apps && electron-builder --win",
     "package:dir": "npm run build:apps && electron-builder --win --dir",
-    "package:portable": "npm run build:apps && electron-builder --win portable",
     "dev": "npm run build:apps && electron ."
   },
   "build": {
@@ -43,24 +42,14 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
-          "arch": ["x64"]
-        },
-        {
           "target": "portable",
           "arch": ["x64"]
         }
       ],
       "icon": "icons/icon.ico"
     },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    },
     "portable": {
-      "artifactName": "${productName}-Portable-${version}.${ext}"
+      "artifactName": "${productName}-${version}.${ext}"
     }
   },
   "devDependencies": {
