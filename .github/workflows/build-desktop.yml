@@ -1,0 +1,136 @@
+name: Build Desktop App
+
+on:
+  # Manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: false
+        default: ''
+
+  # Trigger on tags
+  push:
+    tags:
+      - 'desktop-v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/desktop/package-lock.json
+            frontend/photo-helper/package-lock.json
+            frontend/map-corridors/package-lock.json
+
+      - name: Install dependencies - Photo Helper
+        working-directory: frontend/photo-helper
+        run: npm ci
+
+      - name: Install dependencies - Map Corridors
+        working-directory: frontend/map-corridors
+        run: npm ci
+
+      - name: Install dependencies - Desktop
+        working-directory: frontend/desktop
+        run: npm ci
+
+      - name: Build Photo Helper
+        working-directory: frontend/photo-helper
+        env:
+          VITE_DESKTOP_BUILD: 'true'
+        run: npm run build
+
+      - name: Build Map Corridors
+        working-directory: frontend/map-corridors
+        env:
+          VITE_DESKTOP_BUILD: 'true'
+        run: npm run build
+
+      - name: Update version (if provided)
+        if: ${{ github.event.inputs.version != '' }}
+        working-directory: frontend/desktop
+        run: |
+          $json = Get-Content package.json | ConvertFrom-Json
+          $json.version = "${{ github.event.inputs.version }}"
+          $json | ConvertTo-Json -Depth 100 | Set-Content package.json
+
+      - name: Extract version from tag
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        id: tag_version
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^desktop-v', ''
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Update version from tag
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        working-directory: frontend/desktop
+        run: |
+          $json = Get-Content package.json | ConvertFrom-Json
+          $json.version = "${{ steps.tag_version.outputs.VERSION }}"
+          $json | ConvertTo-Json -Depth 100 | Set-Content package.json
+
+      - name: Build Windows executables
+        working-directory: frontend/desktop
+        run: npx electron-builder --win --publish never
+
+      - name: Upload Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirQ-Competition-Helpers-Setup
+          path: frontend/desktop/dist/*.exe
+          if-no-files-found: error
+
+      - name: Upload Portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirQ-Competition-Helpers-Portable
+          path: frontend/desktop/dist/*Portable*.exe
+          if-no-files-found: warn
+
+  # Create GitHub Release when triggered by tag
+  release:
+    needs: build-windows
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Extract version from tag
+        id: tag_version
+        run: echo "VERSION=${GITHUB_REF_NAME#desktop-v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Desktop App v${{ steps.tag_version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/**/*.exe
+          body: |
+            ## AirQ Competition Helpers - Desktop Edition v${{ steps.tag_version.outputs.VERSION }}
+
+            Windows desktop application bundling Photo Helper and Map Corridors.
+
+            ### Downloads
+            - **Setup**: Full installer with Start Menu shortcuts
+            - **Portable**: Single executable, no installation required
+
+            ### System Requirements
+            - Windows 10/11 (64-bit)
