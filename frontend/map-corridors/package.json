@@ -17,6 +17,7 @@
     "@tmcw/togeojson": "^7.1.2",
     "@turf/turf": "^7.2.0",
     "@vis.gl/react-maplibre": "^8.0.4",
+    "mapbox-gl": "^3.17.0",
     "maplibre-gl": "^5.7.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

@@ -1,7 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import MapGL, { Layer, Source, Marker, Popup } from 'react-map-gl/maplibre'
-import type { MapRef } from 'react-map-gl/maplibre'
-import 'maplibre-gl/dist/maplibre-gl.css'
+import MapGL, { Layer, Source, Marker, Popup } from 'react-map-gl'
+import type { MapRef } from 'react-map-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
 import { useI18n } from '../contexts/I18nContext'
 
@@ -260,6 +260,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   return (
     <MapGL
       mapStyle={styleUrl}
+      mapboxAccessToken={providerConfig.accessToken}
+      preserveDrawingBuffer
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}
       onLoad={() => setIsMapLoaded(true)}
