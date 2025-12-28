@@ -2,6 +2,21 @@ const { app, BrowserWindow, protocol, ipcMain, shell, globalShortcut, Menu } = r
 const path = require('path');
 const fs = require('fs');
 
+// Register app:// protocol as privileged before app is ready
+// This enables OPFS and other browser APIs that require a secure origin
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true
+    }
+  }
+]);
+
 // Keep a global reference of the window object
 let mainWindow;
 
