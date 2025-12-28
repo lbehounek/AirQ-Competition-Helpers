@@ -5,7 +5,8 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
   // Ensure assets load correctly when hosted under /photo-helper/
-  base: mode === 'production' ? '/photo-helper/' : '/',
+  // For desktop (Electron) builds, use relative paths
+  base: process.env.VITE_DESKTOP_BUILD === 'true' ? './' : (mode === 'production' ? '/photo-helper/' : '/'),
   plugins: [react(), tailwindcss()],
   server: {
     // Security: Only bind to localhost to prevent network exposure

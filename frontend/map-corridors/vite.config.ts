@@ -2,8 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
-export default defineConfig({
-  base: '/map-corridors/',
+export default defineConfig(({ mode }) => ({
+  // For desktop (Electron) builds, use relative paths
+  base: process.env.VITE_DESKTOP_BUILD === 'true' ? './' : '/map-corridors/',
   plugins: [react()],
   server: {
     // Security: Only bind to localhost to prevent network exposure
@@ -35,4 +36,4 @@ export default defineConfig({
     // Security: Only bind to localhost to prevent network exposure
     host: 'localhost'
   }
-})
+}))
