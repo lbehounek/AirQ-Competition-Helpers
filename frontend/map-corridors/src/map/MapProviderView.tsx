@@ -260,7 +260,6 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   return (
     <MapGL
       mapStyle={styleUrl}
-      preserveDrawingBuffer
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}
       onLoad={() => setIsMapLoaded(true)}
