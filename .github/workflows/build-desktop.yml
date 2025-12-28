@@ -37,52 +37,7 @@ jobs:
 
       - name: Install dependencies - Desktop
         working-directory: frontend/desktop
-        run: npm install
-
-      - name: Generate app icon
-        working-directory: frontend/desktop
-        run: |
-          New-Item -ItemType Directory -Force -Path icons
-          npm install --save-dev png-to-ico sharp
-          node -e "
-            const sharp = require('sharp');
-            const pngToIco = require('png-to-ico');
-            const fs = require('fs');
-            const path = require('path');
-
-            async function generateIcons() {
-              const svgPath = path.join('..', 'icons', 'airq-final-icon-light.svg');
-              const pngPath = path.join('icons', 'icon.png');
-              const icoPath = path.join('icons', 'icon.ico');
-
-              // Convert SVG to PNG (256x256)
-              await sharp(svgPath)
-                .resize(256, 256)
-                .png()
-                .toFile(pngPath);
-
-              console.log('Generated PNG icon');
-
-              // Generate multiple sizes for ICO
-              const sizes = [16, 32, 48, 64, 128, 256];
-              const pngBuffers = await Promise.all(
-                sizes.map(size =>
-                  sharp(svgPath).resize(size, size).png().toBuffer()
-                )
-              );
-
-              // Create ICO from PNGs
-              const icoBuffer = await pngToIco(pngBuffers);
-              fs.writeFileSync(icoPath, icoBuffer);
-
-              console.log('Generated ICO icon');
-            }
-
-            generateIcons().catch(err => {
-              console.error(err);
-              process.exit(1);
-            });
-          "
+        run: npm ci
 
       - name: Build Photo Helper
         working-directory: frontend/photo-helper
