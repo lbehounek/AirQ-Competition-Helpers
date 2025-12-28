@@ -1,17 +1,16 @@
 /**
- * Migration service to convert existing OPFS sessions to competition format
+ * Migration service to convert existing storage sessions to competition format
+ * Works with both OPFS (web) and native filesystem (Electron)
  */
 
 import type { ApiPhotoSession } from '../types/api';
 import type { Competition } from '../types/competition';
 import { competitionService } from './competitionService';
-import { 
-  initOPFS, 
-  readJSON, 
-  ensureSessionDirs, 
+import {
+  initStorage,
+  getStorage,
   loadOrCreateSessionId,
-  deleteSessionDir 
-} from './opfsService';
+} from './storage';
 
 export interface MigrationResult {
   migrated: boolean;
@@ -20,7 +19,7 @@ export interface MigrationResult {
 }
 
 export class MigrationService {
-  
+
   /**
    * Check if migration is needed and perform it
    */
@@ -37,7 +36,7 @@ export class MigrationService {
 
       // Look for existing session in old format
       const existingSession = await this.findExistingSession();
-      
+
       if (!existingSession) {
         return {
           migrated: false,
@@ -47,21 +46,21 @@ export class MigrationService {
 
       // Create first competition from existing session
       const defaultName = getDefaultCompetitionName();
-      
+
       // Prepare session with proper mode-specific sets for migration
       const migratedSession = this.prepareMigratedSession(existingSession);
-      
+
       const competition = await competitionService.createCompetition(defaultName, migratedSession);
-      
+
       // Clean up old session directory
       await this.cleanupOldSession();
-      
+
       return {
         migrated: true,
         competition,
         message: `Successfully migrated existing session to "${defaultName}"`
       };
-      
+
     } catch (error) {
       console.error('Migration failed:', error);
       return {
@@ -77,14 +76,14 @@ export class MigrationService {
   private prepareMigratedSession(existingSession: ApiPhotoSession): ApiPhotoSession {
     // Deep clone to avoid mutating the original
     const session = JSON.parse(JSON.stringify(existingSession));
-    
+
     // Initialize mode-specific storage
     // Helpers to avoid shared references across buckets
     const makeEmptySet = () => ({ title: '', photos: [] });
-    
-    // Check if session already has mode-specific sets (from newer OPFS format)
+
+    // Check if session already has mode-specific sets (from newer storage format)
     const hasExistingModeStorage = (session as any).setsTrack || (session as any).setsTurning;
-    
+
     if (hasExistingModeStorage) {
       // Session already has mode-specific storage, preserve it
       session.setsTrack = (session as any).setsTrack || { set1: makeEmptySet(), set2: makeEmptySet() };
@@ -99,7 +98,7 @@ export class MigrationService {
         const clonedSet2 = JSON.parse(JSON.stringify(session.sets.set2));
         session.setsTrack = { set1: clonedSet1, set2: clonedSet2 };
         session.setsTurning = { set1: makeEmptySet(), set2: makeEmptySet() };
-        
+
         // Ensure track mode has proper default titles
         if (!session.setsTrack.set1.title || session.setsTrack.set1.title.trim() === '') {
           session.setsTrack.set1.title = 'SP - TPX';
@@ -115,40 +114,40 @@ export class MigrationService {
         const clonedSet1 = JSON.parse(JSON.stringify(session.sets.set1));
         const clonedSet2 = JSON.parse(JSON.stringify(session.sets.set2));
         session.setsTurning = { set1: clonedSet1, set2: clonedSet2 };
-        session.setsTrack = { 
-          set1: { title: 'SP - TPX', photos: [] }, 
-          set2: { title: 'TPX - FP', photos: [] } 
+        session.setsTrack = {
+          set1: { title: 'SP - TPX', photos: [] },
+          set2: { title: 'TPX - FP', photos: [] }
         };
       }
     }
-    
+
     return session;
   }
 
   /**
-   * Find existing session in old OPFS format
+   * Find existing session in old storage format
    */
   private async findExistingSession(): Promise<ApiPhotoSession | null> {
     try {
-      const handles = await initOPFS();
+      const storage = await initStorage();
       const sessionId = loadOrCreateSessionId();
-      
+
       // Try to read from old sessions directory structure
-      const { dir } = await ensureSessionDirs(handles, sessionId);
-      const session = await readJSON<ApiPhotoSession>(dir, 'session.json');
-      
+      const { dir } = await storage.ensureSessionDirs(sessionId);
+      const session = await storage.readJSON<ApiPhotoSession>(dir, 'session.json');
+
       if (!session) {
         return null;
       }
 
       // Validate session has meaningful data
       const hasPhotos = (
-        session.sets.set1.photos.length > 0 || 
+        session.sets.set1.photos.length > 0 ||
         session.sets.set2.photos.length > 0
       );
-      
+
       const hasCustomName = (
-        session.competition_name && 
+        session.competition_name &&
         session.competition_name.trim() !== ''
       );
 
@@ -158,7 +157,7 @@ export class MigrationService {
       }
 
       return null;
-      
+
     } catch (error) {
       console.warn('Could not find existing session:', error);
       return null;
@@ -170,14 +169,14 @@ export class MigrationService {
    */
   private async cleanupOldSession(): Promise<void> {
     try {
-      const handles = await initOPFS();
+      const storage = getStorage();
       const sessionId = loadOrCreateSessionId();
-      
+
       // Delete the old session directory
-      await deleteSessionDir(handles.sessions, sessionId);
-      
+      await storage.deleteSessionDir(sessionId);
+
       console.log('Old session directory cleaned up successfully');
-      
+
     } catch (error) {
       console.warn('Could not clean up old session directory:', error);
       // Non-fatal error, migration was successful

@@ -235,6 +235,232 @@ ipcMain.handle('set-menu-locale', (event, locale) => {
   }
 });
 
+// ============================================================================
+// Photo Sessions Storage IPC Handlers
+// ============================================================================
+
+// Get the base path for photo sessions storage
+function getPhotoSessionsPath() {
+  return path.join(app.getPath('userData'), 'photo-sessions');
+}
+
+// Sanitize filename to prevent path traversal
+function sanitizeFileName(input) {
+  const removedUnsafe = input
+    .replace(/[\\/]/g, '-')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .trim();
+  const normalized = removedUnsafe.replace(/[^A-Za-z0-9._-]/g, '-');
+  const truncated = normalized.slice(0, 128);
+  return truncated.length > 0 ? truncated : 'file';
+}
+
+// Ensure a directory exists
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+  return dirPath;
+}
+
+// Initialize storage - create root and sessions directories
+ipcMain.handle('storage-init', async () => {
+  const rootPath = getPhotoSessionsPath();
+  const sessionsPath = path.join(rootPath, 'sessions');
+
+  ensureDir(rootPath);
+  ensureDir(sessionsPath);
+
+  return { rootPath, sessionsPath };
+});
+
+// Ensure session directories exist
+ipcMain.handle('storage-ensure-session-dirs', async (event, sessionId) => {
+  const sessionsPath = path.join(getPhotoSessionsPath(), 'sessions');
+  const dirPath = path.join(sessionsPath, sanitizeFileName(sessionId));
+  const photosPath = path.join(dirPath, 'photos');
+
+  ensureDir(dirPath);
+  ensureDir(photosPath);
+
+  return { dirPath, photosPath };
+});
+
+// Write JSON to a file
+ipcMain.handle('storage-write-json', async (event, dirPath, name, data) => {
+  const filePath = path.join(dirPath, name);
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+});
+
+// Read JSON from a file
+ipcMain.handle('storage-read-json', async (event, dirPath, name) => {
+  const filePath = path.join(dirPath, name);
+  try {
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf8');
+      return JSON.parse(content);
+    }
+  } catch (e) {
+    console.error('Failed to read JSON:', e);
+  }
+  return null;
+});
+
+// Save a photo file (receives base64 data)
+ipcMain.handle('storage-save-photo', async (event, photosPath, photoId, base64Data, mimeType) => {
+  const safeId = sanitizeFileName(photoId);
+
+  // Determine file extension from mime type
+  let ext = '.jpg';
+  if (mimeType) {
+    if (mimeType.includes('png')) ext = '.png';
+    else if (mimeType.includes('gif')) ext = '.gif';
+    else if (mimeType.includes('webp')) ext = '.webp';
+  }
+
+  const filePath = path.join(photosPath, safeId + ext);
+  const buffer = Buffer.from(base64Data, 'base64');
+  fs.writeFileSync(filePath, buffer);
+});
+
+// Get a photo as base64
+ipcMain.handle('storage-get-photo', async (event, photosPath, photoId) => {
+  const safeId = sanitizeFileName(photoId);
+
+  // Try different extensions
+  const extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', ''];
+
+  for (const ext of extensions) {
+    const filePath = path.join(photosPath, safeId + ext);
+    if (fs.existsSync(filePath)) {
+      const buffer = fs.readFileSync(filePath);
+      const base64 = buffer.toString('base64');
+
+      // Determine mime type from extension
+      let mimeType = 'image/jpeg';
+      if (ext === '.png') mimeType = 'image/png';
+      else if (ext === '.gif') mimeType = 'image/gif';
+      else if (ext === '.webp') mimeType = 'image/webp';
+
+      return { base64, mimeType };
+    }
+  }
+
+  return null;
+});
+
+// Delete a photo file
+ipcMain.handle('storage-delete-photo', async (event, photosPath, photoId) => {
+  const safeId = sanitizeFileName(photoId);
+
+  // Try different extensions
+  const extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', ''];
+
+  for (const ext of extensions) {
+    const filePath = path.join(photosPath, safeId + ext);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      return;
+    }
+  }
+});
+
+// Clear a directory (remove all contents)
+ipcMain.handle('storage-clear-directory', async (event, dirPath) => {
+  if (fs.existsSync(dirPath)) {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        fs.rmSync(entryPath, { recursive: true, force: true });
+      } else {
+        fs.unlinkSync(entryPath);
+      }
+    }
+  }
+});
+
+// Delete a session directory
+ipcMain.handle('storage-delete-session', async (event, sessionId) => {
+  const sessionsPath = path.join(getPhotoSessionsPath(), 'sessions');
+  const sessionPath = path.join(sessionsPath, sanitizeFileName(sessionId));
+
+  if (fs.existsSync(sessionPath)) {
+    fs.rmSync(sessionPath, { recursive: true, force: true });
+  }
+});
+
+// Get a directory handle (create if needed)
+ipcMain.handle('storage-get-directory', async (event, parentPath, name, create) => {
+  const dirPath = path.join(parentPath, name);
+
+  if (create) {
+    ensureDir(dirPath);
+  } else if (!fs.existsSync(dirPath)) {
+    throw new Error(`Directory not found: ${dirPath}`);
+  }
+
+  return dirPath;
+});
+
+// List directory contents
+ipcMain.handle('storage-list-directory', async (event, dirPath) => {
+  if (!fs.existsSync(dirPath)) {
+    return [];
+  }
+
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  return entries.map(entry => ({
+    name: entry.name,
+    isDirectory: entry.isDirectory()
+  }));
+});
+
+// Get storage statistics
+ipcMain.handle('storage-get-stats', async () => {
+  try {
+    const rootPath = getPhotoSessionsPath();
+
+    // Calculate actual usage by walking the directory
+    let totalSize = 0;
+
+    function calculateDirSize(dirPath) {
+      if (!fs.existsSync(dirPath)) return 0;
+
+      let size = 0;
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const entryPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          size += calculateDirSize(entryPath);
+        } else {
+          try {
+            const stats = fs.statSync(entryPath);
+            size += stats.size;
+          } catch {
+            // Ignore errors for individual files
+          }
+        }
+      }
+
+      return size;
+    }
+
+    totalSize = calculateDirSize(rootPath);
+
+    // For native filesystem, we don't have a strict quota
+    // Return null for quota to indicate unlimited
+    return {
+      usage: totalSize,
+      quota: null
+    };
+  } catch (e) {
+    console.error('Failed to get storage stats:', e);
+    return { usage: null, quota: null };
+  }
+});
+
 // Show Mapbox token dialog - single window with input field
 async function showMapboxTokenDialog() {
   const currentToken = getConfigValue('mapboxToken') || '';
