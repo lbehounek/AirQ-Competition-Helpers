@@ -1,45 +1,48 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1976D2"/>
-      <stop offset="100%" style="stop-color:#42A5F5"/>
+      <stop offset="0%" stop-color="#1565C0"/>
+      <stop offset="100%" stop-color="#42A5F5"/>
+    </linearGradient>
+    <linearGradient id="plane" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E3F2FD"/>
     </linearGradient>
   </defs>
 
   <!-- Background -->
-  <rect width="512" height="512" rx="80" fill="url(#bg)"/>
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
 
-  <!-- Plane silhouette -->
-  <g transform="translate(256, 240)" fill="white">
+  <!-- Airplane -->
+  <g transform="translate(128, 118)">
     <!-- Fuselage -->
-    <ellipse cx="0" cy="0" rx="140" ry="25"/>
+    <ellipse cx="0" cy="0" rx="65" ry="12" fill="url(#plane)"/>
 
-    <!-- Wings -->
-    <path d="M-40,-15 L-180,-80 L-180,-60 L-40,5 Z"/>
-    <path d="M-40,15 L-180,80 L-180,60 L-40,-5 Z" transform="scale(1,-1)"/>
-    <path d="M40,-15 L180,-80 L180,-60 L40,5 Z" transform="scale(-1,1)"/>
-    <path d="M40,15 L180,80 L180,60 L40,-5 Z" transform="scale(-1,-1)"/>
+    <!-- Left wing -->
+    <path d="M-15,-8 L-85,-45 L-85,-35 L-15,2 Z" fill="url(#plane)"/>
 
-    <!-- Tail -->
-    <path d="M110,-5 L160,-50 L160,-30 L130,-5 Z"/>
-    <path d="M110,5 L160,50 L160,30 L130,5 Z"/>
+    <!-- Right wing -->
+    <path d="M15,-8 L85,-45 L85,-35 L15,2 Z" fill="url(#plane)"/>
 
-    <!-- Propeller -->
-    <circle cx="-135" cy="0" r="8"/>
-    <ellipse cx="-145" cy="0" rx="5" ry="35"/>
+    <!-- Tail fin -->
+    <path d="M55,-3 L80,-28 L80,-18 L60,-3 Z" fill="url(#plane)"/>
+
+    <!-- Horizontal stabilizer -->
+    <path d="M50,-2 L75,-12 L75,-8 L50,2 Z" fill="url(#plane)"/>
+    <path d="M50,2 L75,12 L75,8 L50,-2 Z" fill="url(#plane)"/>
   </g>
 
-  <!-- Camera icon (bottom right) -->
-  <g transform="translate(380, 380)" fill="white" opacity="0.9">
-    <rect x="-40" y="-30" width="80" height="60" rx="8"/>
-    <circle cx="0" cy="0" r="18"/>
-    <circle cx="0" cy="0" r="10" fill="url(#bg)"/>
-    <rect x="25" y="-25" width="12" height="8" rx="2"/>
+  <!-- Camera icon (bottom left) -->
+  <g transform="translate(65, 185)">
+    <rect x="-22" y="-16" width="44" height="32" rx="4" fill="white" opacity="0.9"/>
+    <circle cx="0" cy="0" r="10" fill="none" stroke="#1565C0" stroke-width="2"/>
+    <circle cx="0" cy="0" r="5" fill="#1565C0"/>
+    <rect x="12" y="-13" width="7" height="5" rx="1" fill="#1565C0"/>
   </g>
 
-  <!-- Map marker (bottom left) -->
-  <g transform="translate(132, 380)" fill="white" opacity="0.9">
-    <path d="M0,-40 C22,-40 40,-22 40,0 C40,25 0,50 0,50 C0,50 -40,25 -40,0 C-40,-22 -22,-40 0,-40 Z"/>
-    <circle cx="0" cy="0" r="12" fill="url(#bg)"/>
+  <!-- Map pin icon (bottom right) -->
+  <g transform="translate(191, 185)">
+    <path d="M0,-22 C12,-22 22,-12 22,0 C22,14 0,28 0,28 C0,28 -22,14 -22,0 C-22,-12 -12,-22 0,-22 Z" fill="white" opacity="0.9"/>
+    <circle cx="0" cy="0" r="7" fill="#1565C0"/>
   </g>
 </svg>
