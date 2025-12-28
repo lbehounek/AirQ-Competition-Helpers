@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Go back to the home/landing page
   goHome: () => ipcRenderer.invoke('go-home'),
 
+  // Config management
+  getConfig: (key) => ipcRenderer.invoke('get-config', key),
+  setConfig: (key, value) => ipcRenderer.invoke('set-config', key, value),
+
   // Check if running in Electron
   isElectron: true,
 
