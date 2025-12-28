@@ -50,7 +50,7 @@ jobs:
             const path = require('path');
 
             async function generateIcons() {
-              const svgPath = path.join('icons', 'icon.svg');
+              const svgPath = path.join('..', 'icons', 'airq-final-icon-light.svg');
               const pngPath = path.join('icons', 'icon.png');
               const icoPath = path.join('icons', 'icon.ico');
 
