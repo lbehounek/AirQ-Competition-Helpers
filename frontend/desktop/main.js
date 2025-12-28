@@ -258,7 +258,7 @@ function createMenu() {
               type: 'info',
               title: 'About',
               message: 'AirQ Competition Helpers',
-              detail: 'Desktop application for FAI Rally Flying competitions.\n\nVersion: 1.0.0\n\nTools:\n- Photo Helper\n- Map Corridors'
+              detail: `Desktop application for FAI Rally Flying competitions.\n\nVersion: ${app.getVersion()}\n\nTools:\n- Photo Helper\n- Map Corridors`
             });
           }
         }
