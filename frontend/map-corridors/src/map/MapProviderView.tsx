@@ -1,6 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import MapGL, { Layer, Source, Marker, Popup } from 'react-map-gl'
-import type { MapRef } from 'react-map-gl'
+import MapGL, { Layer, Source, Marker, Popup } from 'react-map-gl/mapbox'
+import type { MapRef } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
 import { useI18n } from '../contexts/I18nContext'
