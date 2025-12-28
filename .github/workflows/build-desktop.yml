@@ -42,6 +42,7 @@ jobs:
       - name: Generate app icon
         working-directory: frontend/desktop
         run: |
+          New-Item -ItemType Directory -Force -Path icons
           npm install --save-dev png-to-ico sharp
           node -e "
             const sharp = require('sharp');
