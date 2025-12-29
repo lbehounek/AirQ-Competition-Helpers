@@ -33,7 +33,10 @@
   },
   "errors": {
     "mapboxTokenRequired": "Vyžadován Mapbox token",
-    "setToken": "Nastavte VITE_MAPBOX_TOKEN v frontend/map-corridors/.env a restartujte dev server.",
+    "mapboxTokenDescription": "Pro zobrazení satelitních snímků a mapových dlaždic je vyžadován Mapbox přístupový token.",
+    "configureToken": "Nastavit Mapbox token",
+    "setTokenWeb": "Přidejte svůj token do proměnné prostředí VITE_MAPBOX_TOKEN a restartujte aplikaci.",
+    "getTokenLink": "Získejte zdarma token na mapbox.com →",
     "noOriginalKml": "Původní KML není k dispozici pro export"
   }
   ,

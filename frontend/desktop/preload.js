@@ -13,6 +13,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: (key) => ipcRenderer.invoke('get-config', key),
   setConfig: (key, value) => ipcRenderer.invoke('set-config', key, value),
 
+  // Open external URL in default browser
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  // Open Mapbox token settings dialog
+  openMapboxSettings: () => ipcRenderer.invoke('open-mapbox-settings'),
+
   // Check if running in Electron
   isElectron: true,
 

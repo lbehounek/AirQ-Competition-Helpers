@@ -32,8 +32,11 @@
     "print": "Print"
   },
   "errors": {
-    "mapboxTokenRequired": "Mapbox token required",
-    "setToken": "Set VITE_MAPBOX_TOKEN in frontend/map-corridors/.env and restart the dev server.",
+    "mapboxTokenRequired": "Mapbox Token Required",
+    "mapboxTokenDescription": "A Mapbox access token is required to display satellite imagery and map tiles.",
+    "configureToken": "Configure Mapbox Token",
+    "setTokenWeb": "Add your token to the VITE_MAPBOX_TOKEN environment variable and restart the app.",
+    "getTokenLink": "Get a free token at mapbox.com →",
     "noOriginalKml": "Original KML file not available for export"
   }
   ,
