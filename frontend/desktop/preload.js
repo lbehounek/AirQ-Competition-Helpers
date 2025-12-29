@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open Mapbox token settings dialog
   openMapboxSettings: () => ipcRenderer.invoke('open-mapbox-settings'),
 
+  // Update menu language
+  setMenuLocale: (locale) => ipcRenderer.invoke('set-menu-locale', locale),
+
   // Check if running in Electron
   isElectron: true,
 
