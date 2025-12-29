@@ -230,7 +230,7 @@ async function showMapboxTokenDialog() {
 
   const inputWindow = new BrowserWindow({
     width: 520,
-    height: 220,
+    height: 280,
     parent: mainWindow,
     modal: true,
     resizable: false,
