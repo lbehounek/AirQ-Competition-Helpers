@@ -105,9 +105,8 @@ function setupProtocol() {
     } else if (url.startsWith('home/')) {
       // Handle home/ path for landing page (fixes Windows URL resolution)
       filePath = path.join(__dirname, 'renderer', url.replace('home/', ''));
-    } else if (url === '' || url === 'index.html') {
-      filePath = path.join(__dirname, 'renderer', 'index.html');
     } else {
+      // Fallback for any other renderer assets
       filePath = path.join(__dirname, 'renderer', url);
     }
 
