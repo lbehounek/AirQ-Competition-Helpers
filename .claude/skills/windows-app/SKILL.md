@@ -81,14 +81,41 @@ gh run download <run-id>
 1. Landing page loads correctly
 2. Navigation to Photo Helper works
 3. Navigation to Map Corridors works
-4. Back to home navigation works
+4. Back to home navigation works (X button)
 5. Mapbox token settings dialog opens and saves
 6. External links open in default browser
 7. Menu items functional (zoom, fullscreen, devtools)
+8. Language switch persists across all apps (homepage, photo-helper, map-corridors)
+9. Menu labels update when language changes
+10. SVG flags display correctly (not emoji)
+
+## Internationalization (i18n)
+
+The app supports Czech (cs/cz) and English (en):
+
+- **Language persistence**: Stored in Electron config (`electronAPI.getConfig('locale')`) - shared across all apps
+- **Menu translations**: `main.js` has `menuTranslations` object, updated via `set-menu-locale` IPC
+- **React apps**: Each has `I18nContext.tsx` that reads/writes locale via Electron config
+- **Homepage**: `renderer/app.js` has full i18n system with `translations` object
+
+When locale changes:
+1. React app calls `setLocale()`
+2. Saves to Electron config via `electronAPI.setConfig('locale', value)`
+3. Calls `electronAPI.setMenuLocale(locale)` to update menu labels
 
 ## Releasing
 
-Releases are auto-tagged on merge to main via GitHub Actions:
-- Default: patch version bump
-- Add `#minor` to PR title/description for minor bump
-- Add `#major` to PR title/description for major bump
+Create a GitHub Release by pushing a version tag:
+
+```bash
+git checkout main && git pull
+git tag desktop-v1.3.0
+git push origin desktop-v1.3.0
+```
+
+This triggers `.github/workflows/build-desktop.yml` which:
+1. Builds both React apps
+2. Packages Windows portable .exe
+3. Creates GitHub Release with .exe attached
+
+Version is auto-detected from the tag name (`desktop-v1.3.0` → `1.3.0`).
