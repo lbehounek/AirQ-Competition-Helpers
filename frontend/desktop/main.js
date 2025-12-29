@@ -280,9 +280,9 @@ async function showMapboxTokenDialog() {
         }
         function save() {
           const token = document.getElementById('token').value.trim();
-          window.electronAPI?.setConfig?.('mapboxToken', token).then(() => {
-            window.close();
-          });
+          window.electronAPI?.setConfig?.('mapboxToken', token)
+            .then(() => window.close())
+            .catch(() => alert('Failed to save token'));
         }
         document.getElementById('token').addEventListener('keydown', (e) => {
           if (e.key === 'Enter') save();

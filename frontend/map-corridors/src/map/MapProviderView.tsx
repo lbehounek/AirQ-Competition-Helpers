@@ -5,6 +5,9 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
 import { useI18n } from '../contexts/I18nContext'
 
+type PhotoLabel = 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T'
+const ALL_LABELS: PhotoLabel[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
+
 type Overlay = {
   id: string
   data: any
@@ -140,7 +143,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
 
   // Mapbox binding reads token via prop
 
-  const isElectron = typeof window !== 'undefined' && (window as any).electronAPI?.isElectron
+  const isElectron = !!(typeof window !== 'undefined' && (window as any).electronAPI?.isElectron)
   const needsToken = !providerConfig.accessToken && typeof styleUrl === 'string' && styleUrl.startsWith('mapbox://')
 
   // Imperative print: hide corridor layers, snapshot canvas, print, restore
@@ -290,8 +293,6 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     )
   }
 
-  const allLabels: ('A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T')[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
-
   return (
     <MapGL
       mapStyle={styleUrl}
@@ -434,7 +435,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 </div>
                 <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>Label</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 6 }}>
-                  {allLabels.map((L) => {
+                  {ALL_LABELS.map((L) => {
                     const used = (props.usedLabels || []).includes(L)
                     const isCurrent = m.label === L
                     const disabled = used && !isCurrent
