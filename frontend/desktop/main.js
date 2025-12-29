@@ -102,6 +102,9 @@ function setupProtocol() {
       } else {
         filePath = path.join(resourcePath, 'map-corridors', url.replace('map-corridors/', ''));
       }
+    } else if (url.startsWith('home/')) {
+      // Handle home/ path for landing page (fixes Windows URL resolution)
+      filePath = path.join(__dirname, 'renderer', url.replace('home/', ''));
     } else if (url === '' || url === 'index.html') {
       filePath = path.join(__dirname, 'renderer', 'index.html');
     } else {
@@ -165,7 +168,7 @@ function createWindow() {
   });
 
   // Load the landing page
-  mainWindow.loadURL('app://index.html');
+  mainWindow.loadURL('app://home/index.html');
 
   // Open DevTools in development
   if (isDev) {
@@ -194,13 +197,13 @@ ipcMain.handle('navigate-to-app', (event, appName) => {
   } else if (appName === 'map-corridors') {
     mainWindow.loadURL('app://map-corridors/index.html');
   } else if (appName === 'home') {
-    mainWindow.loadURL('app://index.html');
+    mainWindow.loadURL('app://home/index.html');
   }
 });
 
 // Handle going back to home
 ipcMain.handle('go-home', () => {
-  mainWindow.loadURL('app://index.html');
+  mainWindow.loadURL('app://home/index.html');
 });
 
 // Handle config get/set
@@ -334,7 +337,7 @@ function createMenu() {
           accelerator: 'Alt+Home',
           click: () => {
             if (mainWindow) {
-              mainWindow.loadURL('app://index.html');
+              mainWindow.loadURL('app://home/index.html');
             }
           }
         },
