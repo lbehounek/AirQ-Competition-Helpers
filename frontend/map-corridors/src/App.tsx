@@ -27,6 +27,17 @@ function App() {
     try { document.title = t('app.title') } catch {}
   }, [t])
   const [provider] = useState<MapProviderId>('mapbox')
+  const [electronMapboxToken, setElectronMapboxToken] = useState<string | null>(null)
+
+  // Fetch Mapbox token from Electron config if running in desktop app
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI
+    if (electronAPI?.getConfig) {
+      electronAPI.getConfig('mapboxToken').then((token: string | undefined) => {
+        if (token) setElectronMapboxToken(token)
+      }).catch(() => {})
+    }
+  }, [])
   const {
     session,
     backendAvailable,
@@ -173,7 +184,14 @@ function App() {
     return out
   }, [markers, corridorPolygons])
 
-  const providerConfig = useMemo(() => mapProviders[provider], [provider])
+  // Use Electron config token if available, otherwise fall back to env var
+  const providerConfig = useMemo(() => {
+    const config = { ...mapProviders[provider] }
+    if (electronMapboxToken && provider === 'mapbox') {
+      config.accessToken = electronMapboxToken
+    }
+    return config
+  }, [provider, electronMapboxToken])
 
   const onFiles = useCallback(async (files: File[]) => {
     const file = files[0]

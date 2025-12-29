@@ -1,0 +1,66 @@
+{
+  "name": "airq-competition-helpers",
+  "version": "1.0.0",
+  "description": "AirQ Competition Helpers - Desktop App for FAI Rally Flying Competitions",
+  "main": "main.js",
+  "author": "AirQ Competition Helpers",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "scripts": {
+    "start": "electron .",
+    "build:apps": "npm run build:photo-helper && npm run build:map-corridors",
+    "build:photo-helper": "cd ../photo-helper && npm install && cross-env VITE_DESKTOP_BUILD=true npm run build",
+    "build:map-corridors": "cd ../map-corridors && npm install && cross-env VITE_DESKTOP_BUILD=true npm run build",
+    "package": "npm run build:apps && electron-builder --win",
+    "package:dir": "npm run build:apps && electron-builder --win --dir",
+    "dev": "npm run build:apps && electron ."
+  },
+  "build": {
+    "appId": "com.airq.competition-helpers",
+    "productName": "AirQ Competition Helpers",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "../photo-helper/dist/**/*",
+      "../map-corridors/dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../photo-helper/dist",
+        "to": "photo-helper",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../map-corridors/dist",
+        "to": "map-corridors",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/icon.ico"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}.${ext}"
+    }
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12"
+  }
+}
