@@ -141,58 +141,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // Mapbox binding reads token via prop
 
   const isElectron = typeof window !== 'undefined' && (window as any).electronAPI?.isElectron
-
-  if (!providerConfig.accessToken && typeof styleUrl === 'string' && styleUrl.startsWith('mapbox://')) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: '100%', height: '100%',
-        color: '#1A202C', background: '#F8FAFC',
-        textAlign: 'center', padding: 24
-      }}>
-        <div style={{ maxWidth: 400 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🗺️</div>
-          <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>{t('errors.mapboxTokenRequired')}</div>
-          <div style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, marginBottom: 20 }}>
-            {t('errors.mapboxTokenDescription')}
-          </div>
-          {isElectron ? (
-            <button
-              onClick={() => (window as any).electronAPI?.openMapboxSettings?.()}
-              style={{
-                padding: '12px 24px',
-                fontSize: 15,
-                fontWeight: 500,
-                background: '#1976D2',
-                color: 'white',
-                border: 'none',
-                borderRadius: 8,
-                cursor: 'pointer'
-              }}
-            >
-              {t('errors.configureToken')}
-            </button>
-          ) : (
-            <div style={{ fontSize: 13, color: '#718096' }}>
-              {t('errors.setTokenWeb')}
-            </div>
-          )}
-          <div style={{ marginTop: 16 }}>
-            <a
-              href="https://mapbox.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ fontSize: 13, color: '#1976D2', textDecoration: 'none' }}
-            >
-              {t('errors.getTokenLink')}
-            </a>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const allLabels: ('A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T')[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
+  const needsToken = !providerConfig.accessToken && typeof styleUrl === 'string' && styleUrl.startsWith('mapbox://')
 
   // Imperative print: hide corridor layers, snapshot canvas, print, restore
   useImperativeHandle(ref, () => ({
@@ -289,7 +238,59 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         }
       }
     }
-  }), [])
+  }), [t])
+
+  if (needsToken) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: '100%', height: '100%',
+        color: '#1A202C', background: '#F8FAFC',
+        textAlign: 'center', padding: 24
+      }}>
+        <div style={{ maxWidth: 400 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🗺️</div>
+          <div style={{ fontSize: 20, fontWeight: 600, marginBottom: 12 }}>{t('errors.mapboxTokenRequired')}</div>
+          <div style={{ fontSize: 14, color: '#4A5568', lineHeight: 1.6, marginBottom: 20 }}>
+            {t('errors.mapboxTokenDescription')}
+          </div>
+          {isElectron ? (
+            <button
+              onClick={() => (window as any).electronAPI?.openMapboxSettings?.()}
+              style={{
+                padding: '12px 24px',
+                fontSize: 15,
+                fontWeight: 500,
+                background: '#1976D2',
+                color: 'white',
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer'
+              }}
+            >
+              {t('errors.configureToken')}
+            </button>
+          ) : (
+            <div style={{ fontSize: 13, color: '#718096' }}>
+              {t('errors.setTokenWeb')}
+            </div>
+          )}
+          <div style={{ marginTop: 16 }}>
+            <a
+              href="https://mapbox.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 13, color: '#1976D2', textDecoration: 'none' }}
+            >
+              {t('errors.getTokenLink')}
+            </a>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const allLabels: ('A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T')[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
 
   return (
     <MapGL
