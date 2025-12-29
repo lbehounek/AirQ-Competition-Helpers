@@ -226,6 +226,15 @@ ipcMain.handle('open-mapbox-settings', () => {
   showMapboxTokenDialog();
 });
 
+// Update menu language
+ipcMain.handle('set-menu-locale', (event, locale) => {
+  // Map 'cz' to 'cs' for internal use
+  const menuLocale = locale === 'cz' ? 'cs' : locale;
+  if (menuLocale !== currentMenuLocale) {
+    createMenu(menuLocale);
+  }
+});
+
 // Show Mapbox token dialog - single window with input field
 async function showMapboxTokenDialog() {
   const currentToken = getConfigValue('mapboxToken') || '';
@@ -299,23 +308,64 @@ async function showMapboxTokenDialog() {
   inputWindow.setMenu(null);
 }
 
+// Menu translations
+const menuTranslations = {
+  en: {
+    navigation: 'Navigation',
+    home: 'Home',
+    photoHelper: 'Photo Helper',
+    mapCorridors: 'Map Corridors',
+    back: 'Back',
+    forward: 'Forward',
+    reload: 'Reload',
+    view: 'View',
+    toggleFullScreen: 'Toggle Full Screen',
+    toggleDevTools: 'Toggle Developer Tools',
+    zoomIn: 'Zoom In',
+    zoomOut: 'Zoom Out',
+    resetZoom: 'Reset Zoom',
+    settings: 'Settings',
+    mapboxToken: 'Mapbox Token...',
+    help: 'Help',
+    about: 'About',
+    aboutDetail: 'Desktop application for FAI Rally Flying competitions.'
+  },
+  cs: {
+    navigation: 'Navigace',
+    home: 'Domů',
+    photoHelper: 'Foto pomocník',
+    mapCorridors: 'Foto koridory',
+    back: 'Zpět',
+    forward: 'Vpřed',
+    reload: 'Obnovit',
+    view: 'Zobrazení',
+    toggleFullScreen: 'Celá obrazovka',
+    toggleDevTools: 'Vývojářské nástroje',
+    zoomIn: 'Přiblížit',
+    zoomOut: 'Oddálit',
+    resetZoom: 'Obnovit zvětšení',
+    settings: 'Nastavení',
+    mapboxToken: 'Mapbox Token...',
+    help: 'Nápověda',
+    about: 'O aplikaci',
+    aboutDetail: 'Desktopová aplikace pro soutěže FAI Rally Flying.'
+  }
+};
+
+// Current menu locale
+let currentMenuLocale = 'cs';
+
 // Create application menu
-function createMenu() {
+function createMenu(locale = 'cs') {
+  currentMenuLocale = locale;
+  const t = menuTranslations[locale] || menuTranslations.cs;
+
   const template = [
     {
-      label: 'Settings',
+      label: t.navigation,
       submenu: [
         {
-          label: 'Mapbox Token...',
-          click: () => showMapboxTokenDialog()
-        }
-      ]
-    },
-    {
-      label: 'Navigation',
-      submenu: [
-        {
-          label: 'Home',
+          label: t.home,
           accelerator: 'Alt+Home',
           click: () => {
             if (mainWindow) {
@@ -324,7 +374,7 @@ function createMenu() {
           }
         },
         {
-          label: 'Photo Helper',
+          label: t.photoHelper,
           accelerator: 'Alt+1',
           click: () => {
             if (mainWindow) {
@@ -333,7 +383,7 @@ function createMenu() {
           }
         },
         {
-          label: 'Map Corridors',
+          label: t.mapCorridors,
           accelerator: 'Alt+2',
           click: () => {
             if (mainWindow) {
@@ -343,7 +393,7 @@ function createMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Back',
+          label: t.back,
           accelerator: 'Alt+Left',
           click: () => {
             if (mainWindow && mainWindow.webContents.canGoBack()) {
@@ -352,7 +402,7 @@ function createMenu() {
           }
         },
         {
-          label: 'Forward',
+          label: t.forward,
           accelerator: 'Alt+Right',
           click: () => {
             if (mainWindow && mainWindow.webContents.canGoForward()) {
@@ -362,7 +412,7 @@ function createMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Reload',
+          label: t.reload,
           accelerator: 'CmdOrCtrl+R',
           click: () => {
             if (mainWindow) {
@@ -373,10 +423,10 @@ function createMenu() {
       ]
     },
     {
-      label: 'View',
+      label: t.view,
       submenu: [
         {
-          label: 'Toggle Full Screen',
+          label: t.toggleFullScreen,
           accelerator: 'F11',
           click: () => {
             if (mainWindow) {
@@ -385,7 +435,7 @@ function createMenu() {
           }
         },
         {
-          label: 'Toggle Developer Tools',
+          label: t.toggleDevTools,
           accelerator: 'CmdOrCtrl+Shift+I',
           click: () => {
             if (mainWindow) {
@@ -395,7 +445,7 @@ function createMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Zoom In',
+          label: t.zoomIn,
           accelerator: 'CmdOrCtrl+Plus',
           click: () => {
             if (mainWindow) {
@@ -405,7 +455,7 @@ function createMenu() {
           }
         },
         {
-          label: 'Zoom Out',
+          label: t.zoomOut,
           accelerator: 'CmdOrCtrl+-',
           click: () => {
             if (mainWindow) {
@@ -415,7 +465,7 @@ function createMenu() {
           }
         },
         {
-          label: 'Reset Zoom',
+          label: t.resetZoom,
           accelerator: 'CmdOrCtrl+0',
           click: () => {
             if (mainWindow) {
@@ -426,17 +476,26 @@ function createMenu() {
       ]
     },
     {
-      label: 'Help',
+      label: t.settings,
       submenu: [
         {
-          label: 'About',
+          label: t.mapboxToken,
+          click: () => showMapboxTokenDialog()
+        }
+      ]
+    },
+    {
+      label: t.help,
+      submenu: [
+        {
+          label: t.about,
           click: () => {
             const { dialog } = require('electron');
             dialog.showMessageBox(mainWindow, {
               type: 'info',
-              title: 'About',
+              title: t.about,
               message: 'AirQ Competition Helpers',
-              detail: `Desktop application for FAI Rally Flying competitions.\n\nVersion: ${app.getVersion()}\n\nTools:\n- Photo Helper\n- Map Corridors`
+              detail: `${t.aboutDetail}\n\nVersion: ${app.getVersion()}\n\nTools:\n- ${t.photoHelper}\n- ${t.mapCorridors}`
             });
           }
         }

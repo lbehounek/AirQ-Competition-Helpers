@@ -32,37 +32,66 @@ interface I18nProviderProps {
 }
 
 export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
-  // Get initial locale from localStorage or use default (SSR-safe)
-  const getInitialLocale = (): Locale => {
-    try {
-      if (typeof window === 'undefined' || !window.localStorage) {
-        return DEFAULT_LOCALE;
-      }
-      const stored = window.localStorage.getItem('app-locale');
-      const codes = SUPPORTED_LOCALES.map(l => l.code);
-      return stored && (codes as string[]).includes(stored) ? (stored as Locale) : DEFAULT_LOCALE;
-    } catch {
-      return DEFAULT_LOCALE;
-    }
-  };
+  const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
+  const [translations, setTranslations] = useState<Translation>(locales[DEFAULT_LOCALE]);
+  const [initialized, setInitialized] = useState(false);
 
-  const [locale, setLocaleState] = useState<Locale>(getInitialLocale);
-  const [translations, setTranslations] = useState<Translation>(locales[locale]);
+  // Load initial locale from Electron config or localStorage
+  useEffect(() => {
+    const loadLocale = async () => {
+      try {
+        let stored: string | null = null;
+
+        // In Electron, use config storage (shared across all app:// origins)
+        if ((window as any).electronAPI?.getConfig) {
+          stored = await (window as any).electronAPI.getConfig('locale');
+        } else if (typeof window !== 'undefined' && window.localStorage) {
+          stored = window.localStorage.getItem('app-locale');
+        }
+
+        const codes = SUPPORTED_LOCALES.map(l => l.code);
+        if (stored && (codes as string[]).includes(stored)) {
+          setLocaleState(stored as Locale);
+        }
+      } catch (e) {
+        console.warn('Failed to load locale:', e);
+      }
+      setInitialized(true);
+    };
+    loadLocale();
+  }, []);
 
   // Update translations when locale changes
   useEffect(() => {
     setTranslations(locales[locale]);
   }, [locale]);
 
-  const setLocale = (newLocale: Locale) => {
+  // Sync menu language on mount and when locale changes
+  useEffect(() => {
+    if (initialized && (window as any).electronAPI?.setMenuLocale) {
+      (window as any).electronAPI.setMenuLocale(locale);
+    }
+  }, [locale, initialized]);
+
+  const setLocale = async (newLocale: Locale) => {
     const codes = SUPPORTED_LOCALES.map(l => l.code);
     const safeLocale = (codes as string[]).includes(newLocale) ? newLocale : DEFAULT_LOCALE;
     setLocaleState(safeLocale as Locale);
+
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
+      // In Electron, use config storage
+      if ((window as any).electronAPI?.setConfig) {
+        await (window as any).electronAPI.setConfig('locale', safeLocale);
+      } else if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem('app-locale', safeLocale);
       }
-    } catch {}
+      // Update Electron menu language
+      if ((window as any).electronAPI?.setMenuLocale) {
+        (window as any).electronAPI.setMenuLocale(safeLocale);
+      }
+    } catch (e) {
+      console.warn('Failed to save locale:', e);
+    }
     console.log(`🌍 Language changed to: ${safeLocale}`);
   };
 
