@@ -147,6 +147,45 @@ Ensure `icons/icon.ico` exists. Generate it from the SVG source.
 
 In development mode, DevTools opens automatically. In production, press `Ctrl+Shift+I` to open DevTools.
 
+## CI/CD & Releases
+
+The desktop app is built and released via GitHub Actions.
+
+### Automatic Builds
+
+The workflow (`.github/workflows/build-desktop.yml`) triggers on:
+
+1. **Manual dispatch** - Run from GitHub Actions UI
+2. **Tag push** - Push a `desktop-v*` tag to create a release
+
+### Creating a Release
+
+```bash
+# 1. Ensure you're on main with latest changes
+git checkout main && git pull
+
+# 2. Create and push a version tag
+git tag desktop-v1.2.0
+git push origin desktop-v1.2.0
+```
+
+This triggers the workflow which:
+1. Builds both React apps (photo-helper, map-corridors)
+2. Packages into Windows portable .exe
+3. Creates a GitHub Release with the .exe attached
+
+### Version Detection
+
+The workflow auto-detects version from:
+1. Manual input (if provided in workflow dispatch)
+2. Tag name (e.g., `desktop-v1.2.0` → version `1.2.0`)
+3. Latest git tag (fallback for manual runs)
+
+### Download
+
+Users download the .exe from:
+`https://github.com/lbehounek/AirQ-Competition-Helpers/releases`
+
 ## License
 
 See [LICENSE.md](../../LICENSE.md) in the repository root.
