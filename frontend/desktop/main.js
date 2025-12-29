@@ -212,106 +212,89 @@ ipcMain.handle('set-config', (event, key, value) => {
   return setConfigValue(key, value);
 });
 
-// Show Mapbox token dialog
+// Open external URL in default browser
+ipcMain.handle('open-external', (event, url) => {
+  if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+    shell.openExternal(url);
+  }
+});
+
+// Open Mapbox token settings dialog
+ipcMain.handle('open-mapbox-settings', () => {
+  showMapboxTokenDialog();
+});
+
+// Show Mapbox token dialog - single window with input field
 async function showMapboxTokenDialog() {
   const currentToken = getConfigValue('mapboxToken') || '';
 
-  // Use a simple prompt dialog
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: 'question',
-    title: 'Mapbox Token',
-    message: 'Enter your Mapbox Access Token',
-    detail: 'Required for satellite imagery in Map Corridors.\nGet a free token at mapbox.com\n\nCurrent: ' + (currentToken ? currentToken.slice(0, 20) + '...' : '(not set)'),
-    buttons: ['Cancel', 'Clear Token', 'Set Token'],
-    defaultId: 2,
-    cancelId: 0
+  const inputWindow = new BrowserWindow({
+    width: 520,
+    height: 220,
+    parent: mainWindow,
+    modal: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
   });
 
-  if (result.response === 1) {
-    // Clear token
-    setConfigValue('mapboxToken', '');
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Token Cleared',
-      message: 'Mapbox token has been cleared.',
-      detail: 'Reload Map Corridors for changes to take effect.'
-    });
-  } else if (result.response === 2) {
-    // Show input dialog using a BrowserWindow (Electron doesn't have native input dialogs)
-    const inputWindow = new BrowserWindow({
-      width: 500,
-      height: 200,
-      parent: mainWindow,
-      modal: true,
-      resizable: false,
-      minimizable: false,
-      maximizable: false,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true
-      }
-    });
-
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          body { font-family: system-ui; padding: 20px; background: #f5f5f5; }
-          h3 { margin: 0 0 10px; }
-          input { width: 100%; padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; margin: 10px 0; }
-          .buttons { text-align: right; margin-top: 15px; }
-          button { padding: 8px 16px; margin-left: 8px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; }
-          button.primary { background: #1976D2; color: white; border: none; }
-        </style>
-      </head>
-      <body>
-        <h3>Mapbox Access Token</h3>
-        <input type="text" id="token" placeholder="pk.eyJ1Ijo..." value="${currentToken}">
-        <div class="buttons">
-          <button onclick="window.close()">Cancel</button>
-          <button class="primary" onclick="save()">Save</button>
-        </div>
-        <script>
-          function save() {
-            const token = document.getElementById('token').value.trim();
-            localStorage.setItem('_mapbox_token_result', token);
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; background: #ffffff; margin: 0; }
+        h3 { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: #1a1a1a; }
+        .hint { font-size: 13px; color: #666; margin-bottom: 16px; }
+        .hint a { color: #1976D2; text-decoration: none; }
+        .hint a:hover { text-decoration: underline; }
+        input { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid #d0d0d0; border-radius: 6px; outline: none; }
+        input:focus { border-color: #1976D2; box-shadow: 0 0 0 2px rgba(25,118,210,0.15); }
+        .buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        button { padding: 9px 18px; font-size: 14px; cursor: pointer; border-radius: 6px; border: 1px solid #d0d0d0; background: #fff; color: #333; }
+        button:hover { background: #f5f5f5; }
+        button.primary { background: #1976D2; color: white; border: none; }
+        button.primary:hover { background: #1565C0; }
+      </style>
+    </head>
+    <body>
+      <h3>Mapbox Access Token</h3>
+      <div class="hint">Required for satellite imagery. Get a free token at <a href="#" onclick="openMapbox()">mapbox.com</a></div>
+      <input type="text" id="token" placeholder="pk.eyJ1Ijo..." value="${currentToken.replace(/"/g, '&quot;')}">
+      <div class="buttons">
+        <button onclick="window.close()">Cancel</button>
+        <button class="primary" onclick="save()">Save</button>
+      </div>
+      <script>
+        function openMapbox() {
+          window.electronAPI?.openExternal?.('https://mapbox.com');
+        }
+        function save() {
+          const token = document.getElementById('token').value.trim();
+          window.electronAPI?.setConfig?.('mapboxToken', token).then(() => {
             window.close();
-          }
-          document.getElementById('token').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') save();
-            if (e.key === 'Escape') window.close();
           });
-          document.getElementById('token').focus();
-        </script>
-      </body>
-      </html>
-    `;
+        }
+        document.getElementById('token').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') save();
+          if (e.key === 'Escape') window.close();
+        });
+        document.getElementById('token').focus();
+        document.getElementById('token').select();
+      </script>
+    </body>
+    </html>
+  `;
 
-    inputWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-    inputWindow.setMenu(null);
-
-    inputWindow.on('closed', () => {
-      // Check if token was set via executeJavaScript
-      mainWindow.webContents.executeJavaScript('localStorage.getItem("_mapbox_token_result")')
-        .then(token => {
-          if (token !== null) {
-            setConfigValue('mapboxToken', token);
-            mainWindow.webContents.executeJavaScript('localStorage.removeItem("_mapbox_token_result")');
-            if (token) {
-              dialog.showMessageBox(mainWindow, {
-                type: 'info',
-                title: 'Token Saved',
-                message: 'Mapbox token has been saved.',
-                detail: 'Reload Map Corridors for changes to take effect.'
-              });
-            }
-          }
-        })
-        .catch(() => {});
-    });
-  }
+  inputWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  inputWindow.setMenu(null);
 }
 
 // Create application menu
