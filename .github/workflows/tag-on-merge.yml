@@ -3,6 +3,10 @@ on:
   pull_request:
     types: [closed]
     branches: [main]
+    paths:
+      - 'frontend/desktop/**'
+      - 'frontend/photo-helper/**'
+      - 'frontend/map-corridors/**'
 
 jobs:
   bump-and-tag:
@@ -16,10 +20,22 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
 
+      - name: Determine version bump
+        id: bump
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          if [[ "$PR_TITLE" == *"#major"* ]]; then
+            echo "bump=major" >> $GITHUB_OUTPUT
+          elif [[ "$PR_TITLE" == *"#minor"* ]]; then
+            echo "bump=minor" >> $GITHUB_OUTPUT
+          else
+            echo "bump=patch" >> $GITHUB_OUTPUT
+          fi
+
       - name: Bump version and push tag
         uses: anothrNick/github-tag-action@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # auto-provided by GitHub
-          TAG_PREFIX: v
-          DEFAULT_BUMP: patch
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_PREFIX: desktop-v
+          DEFAULT_BUMP: ${{ steps.bump.outputs.bump }}
           RELEASE_BRANCHES: main
