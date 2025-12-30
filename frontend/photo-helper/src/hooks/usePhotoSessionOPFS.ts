@@ -2,16 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Photo } from '../types';
 import type { ApiPhoto, ApiPhotoSession } from '../types/api';
 import {
-  detectOPFSWriteSupport,
-  initOPFS,
-  ensureSessionDirs,
-  writeJSON,
-  readJSON,
-  savePhotoFile,
-  getPhotoBlob,
-  deletePhotoFile,
+  isStorageAvailable,
+  initStorage,
+  getStorage,
   loadOrCreateSessionId,
-} from '../services/opfsService';
+  type DirectoryHandle,
+} from '../services/storage';
 
 type LayoutMode = 'landscape' | 'portrait';
 
@@ -42,9 +38,9 @@ export function usePhotoSessionOPFS() {
   const [isStorageLow, setIsStorageLow] = useState<boolean>(false);
 
   const handlesRef = useRef<{
-    sessionsDir?: FileSystemDirectoryHandle;
-    sessionDir?: FileSystemDirectoryHandle;
-    photosDir?: FileSystemDirectoryHandle;
+    sessionsDir?: DirectoryHandle;
+    sessionDir?: DirectoryHandle;
+    photosDir?: DirectoryHandle;
   }>({});
 
   const objectURLsRef = useRef<Map<string, string>>(new Map());
@@ -62,23 +58,24 @@ export function usePhotoSessionOPFS() {
   useEffect(() => {
     (async () => {
       setOpfsAvailable(null);
-      const ok = await detectOPFSWriteSupport();
+      const ok = await isStorageAvailable();
       setOpfsAvailable(ok);
       const id = loadOrCreateSessionId();
       setSessionId(id);
 
       if (!ok) {
         setSession(defaultSession(id));
-        // Try storage estimate even if OPFS not available
+        // Try storage estimate even if storage not available
         updateStorageEstimate();
         return;
       }
 
       try {
-        const { sessions } = await initOPFS();
-        const { dir, photos } = await ensureSessionDirs({ root: {} as any, sessions }, id);
-        handlesRef.current = { sessionsDir: sessions, sessionDir: dir, photosDir: photos };
-        const existing = await readJSON<ApiPhotoSession>(dir, 'session.json');
+        const storage = await initStorage();
+        const handles = await storage.init();
+        const { dir, photos } = await storage.ensureSessionDirs(id);
+        handlesRef.current = { sessionsDir: handles.sessions, sessionDir: dir, photosDir: photos };
+        const existing = await storage.readJSON<ApiPhotoSession>(dir, 'session.json');
         if (existing) {
           // Ensure per-mode sets exist (migration)
           const sAny: any = existing as any;
@@ -126,13 +123,13 @@ export function usePhotoSessionOPFS() {
           (fresh as any).setsTrack = (fresh as any).sets;
           // Turning point titles remain empty by default
           (fresh as any).setsTurning = { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } };
-          await writeJSON(dir, 'session.json', fresh);
+          await storage.writeJSON(dir, 'session.json', fresh);
           setSession(fresh);
         }
         updateStorageEstimate();
       } catch (e) {
         console.error(e);
-        setError('Failed to initialize OPFS');
+        setError('Failed to initialize storage');
         setSession(defaultSession(id));
       }
     })();
@@ -143,7 +140,8 @@ export function usePhotoSessionOPFS() {
     if (cached) return cached;
     const photosDir = handlesRef.current.photosDir;
     if (!photosDir) return '';
-    const blob = await getPhotoBlob(photosDir, photoId);
+    const storage = getStorage();
+    const blob = await storage.getPhotoBlob(photosDir, photoId);
     const url = URL.createObjectURL(blob);
     objectURLsRef.current.set(photoId, url);
     return url;
@@ -169,7 +167,10 @@ export function usePhotoSessionOPFS() {
     // Keep blob URLs in memory for rendering; write a sanitized copy to disk
     setSession(next);
     if (handlesRef.current.sessionDir) {
-      try { await writeJSON(handlesRef.current.sessionDir, 'session.json', sanitizeForDisk(next)); } catch {}
+      try {
+        const storage = getStorage();
+        await storage.writeJSON(handlesRef.current.sessionDir, 'session.json', sanitizeForDisk(next));
+      } catch {}
     }
     updateStorageEstimate();
   }, []);
@@ -177,7 +178,8 @@ export function usePhotoSessionOPFS() {
   // Update storage metrics
   const updateStorageEstimate = useCallback(async () => {
     try {
-      const est: any = await (navigator as any).storage?.estimate?.();
+      const storage = getStorage();
+      const est = await storage.getStorageEstimate();
       const usage = est?.usage ?? null;
       const quota = est?.quota ?? null;
       setStorageUsedBytes(usage);
@@ -209,11 +211,12 @@ export function usePhotoSessionOPFS() {
       const photosDir = handlesRef.current.photosDir;
       const nowISO = new Date().toISOString();
       const newPhotos: ApiPhoto[] = [];
+      const storage = getStorage();
       for (const file of files) {
         if (file.size > 20 * 1024 * 1024) throw new Error('Image file too large (max 20MB)');
         const id = `photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         if (photosDir) {
-          await savePhotoFile(photosDir, id, file);
+          await storage.savePhotoFile(photosDir, id, file);
           const url = await getPhotoURL(id);
           newPhotos.push({
             id,
@@ -277,7 +280,10 @@ export function usePhotoSessionOPFS() {
   const removePhoto = useCallback(async (setKey: 'set1' | 'set2', photoId: string) => {
     if (!session) return;
     try {
-      if (handlesRef.current.photosDir) await deletePhotoFile(handlesRef.current.photosDir, photoId);
+      if (handlesRef.current.photosDir) {
+        const storage = getStorage();
+        await storage.deletePhotoFile(handlesRef.current.photosDir, photoId);
+      }
       const url = objectURLsRef.current.get(photoId);
       if (url) { URL.revokeObjectURL(url); objectURLsRef.current.delete(photoId); }
       const next: ApiPhotoSession = {
@@ -576,10 +582,10 @@ export function usePhotoSessionOPFS() {
       try {
         if (handlesRef.current.sessionsDir && session?.id) {
           // Delete the entire session folder (including photos)
-          const { deleteSessionDir } = await import('../services/opfsService');
-          await deleteSessionDir(handlesRef.current.sessionsDir, session.id);
+          const storage = getStorage();
+          await storage.deleteSessionDir(session.id);
           // Recreate empty dirs
-          const { dir, photos } = await ensureSessionDirs({ root: {} as any, sessions: handlesRef.current.sessionsDir }, session.id);
+          const { dir, photos } = await storage.ensureSessionDirs(session.id);
           handlesRef.current.sessionDir = dir;
           handlesRef.current.photosDir = photos;
         }
@@ -607,7 +613,8 @@ export function usePhotoSessionOPFS() {
       // Reload session.json from disk and rebuild blob URLs
       try {
         if (handlesRef.current.sessionDir) {
-          const existing = await readJSON<ApiPhotoSession>(handlesRef.current.sessionDir, 'session.json');
+          const storage = getStorage();
+          const existing = await storage.readJSON<ApiPhotoSession>(handlesRef.current.sessionDir, 'session.json');
           if (existing) {
             const withUrls: ApiPhotoSession = {
               ...existing,
