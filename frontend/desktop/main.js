@@ -263,6 +263,17 @@ function ensureDir(dirPath) {
   return dirPath;
 }
 
+// Validate that a path is within the allowed storage directory (prevent path traversal)
+function validateStoragePath(inputPath) {
+  const rootPath = path.resolve(getPhotoSessionsPath());
+  const resolved = path.resolve(inputPath);
+
+  if (!resolved.startsWith(rootPath + path.sep) && resolved !== rootPath) {
+    throw new Error(`Access denied: path outside storage directory`);
+  }
+  return resolved;
+}
+
 // Initialize storage - create root and sessions directories
 ipcMain.handle('storage-init', async () => {
   const rootPath = getPhotoSessionsPath();
@@ -288,13 +299,17 @@ ipcMain.handle('storage-ensure-session-dirs', async (event, sessionId) => {
 
 // Write JSON to a file
 ipcMain.handle('storage-write-json', async (event, dirPath, name, data) => {
-  const filePath = path.join(dirPath, name);
+  const safeDirPath = validateStoragePath(dirPath);
+  const safeName = sanitizeFileName(name);
+  const filePath = path.join(safeDirPath, safeName);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
 });
 
 // Read JSON from a file
 ipcMain.handle('storage-read-json', async (event, dirPath, name) => {
-  const filePath = path.join(dirPath, name);
+  const safeDirPath = validateStoragePath(dirPath);
+  const safeName = sanitizeFileName(name);
+  const filePath = path.join(safeDirPath, safeName);
   try {
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, 'utf8');
@@ -308,6 +323,7 @@ ipcMain.handle('storage-read-json', async (event, dirPath, name) => {
 
 // Save a photo file (receives base64 data)
 ipcMain.handle('storage-save-photo', async (event, photosPath, photoId, base64Data, mimeType) => {
+  const safePhotosPath = validateStoragePath(photosPath);
   const safeId = sanitizeFileName(photoId);
 
   // Determine file extension from mime type
@@ -318,20 +334,21 @@ ipcMain.handle('storage-save-photo', async (event, photosPath, photoId, base64Da
     else if (mimeType.includes('webp')) ext = '.webp';
   }
 
-  const filePath = path.join(photosPath, safeId + ext);
+  const filePath = path.join(safePhotosPath, safeId + ext);
   const buffer = Buffer.from(base64Data, 'base64');
   fs.writeFileSync(filePath, buffer);
 });
 
 // Get a photo as base64
 ipcMain.handle('storage-get-photo', async (event, photosPath, photoId) => {
+  const safePhotosPath = validateStoragePath(photosPath);
   const safeId = sanitizeFileName(photoId);
 
   // Try different extensions
   const extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', ''];
 
   for (const ext of extensions) {
-    const filePath = path.join(photosPath, safeId + ext);
+    const filePath = path.join(safePhotosPath, safeId + ext);
     if (fs.existsSync(filePath)) {
       const buffer = fs.readFileSync(filePath);
       const base64 = buffer.toString('base64');
@@ -351,13 +368,14 @@ ipcMain.handle('storage-get-photo', async (event, photosPath, photoId) => {
 
 // Delete a photo file
 ipcMain.handle('storage-delete-photo', async (event, photosPath, photoId) => {
+  const safePhotosPath = validateStoragePath(photosPath);
   const safeId = sanitizeFileName(photoId);
 
   // Try different extensions
   const extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', ''];
 
   for (const ext of extensions) {
-    const filePath = path.join(photosPath, safeId + ext);
+    const filePath = path.join(safePhotosPath, safeId + ext);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       return;
@@ -367,10 +385,11 @@ ipcMain.handle('storage-delete-photo', async (event, photosPath, photoId) => {
 
 // Clear a directory (remove all contents)
 ipcMain.handle('storage-clear-directory', async (event, dirPath) => {
-  if (fs.existsSync(dirPath)) {
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  const safeDirPath = validateStoragePath(dirPath);
+  if (fs.existsSync(safeDirPath)) {
+    const entries = fs.readdirSync(safeDirPath, { withFileTypes: true });
     for (const entry of entries) {
-      const entryPath = path.join(dirPath, entry.name);
+      const entryPath = path.join(safeDirPath, entry.name);
       if (entry.isDirectory()) {
         fs.rmSync(entryPath, { recursive: true, force: true });
       } else {
@@ -392,7 +411,9 @@ ipcMain.handle('storage-delete-session', async (event, sessionId) => {
 
 // Get a directory handle (create if needed)
 ipcMain.handle('storage-get-directory', async (event, parentPath, name, create) => {
-  const dirPath = path.join(parentPath, name);
+  const safeParentPath = validateStoragePath(parentPath);
+  const safeName = sanitizeFileName(name);
+  const dirPath = path.join(safeParentPath, safeName);
 
   if (create) {
     ensureDir(dirPath);
@@ -405,11 +426,12 @@ ipcMain.handle('storage-get-directory', async (event, parentPath, name, create) 
 
 // List directory contents
 ipcMain.handle('storage-list-directory', async (event, dirPath) => {
-  if (!fs.existsSync(dirPath)) {
+  const safeDirPath = validateStoragePath(dirPath);
+  if (!fs.existsSync(safeDirPath)) {
     return [];
   }
 
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  const entries = fs.readdirSync(safeDirPath, { withFileTypes: true });
   return entries.map(entry => ({
     name: entry.name,
     isDirectory: entry.isDirectory()
