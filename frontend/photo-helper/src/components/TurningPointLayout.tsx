@@ -37,9 +37,8 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
 
-  // Calculate turning point labels
-  const totalPhotos = set1.photos.length + set2.photos.length;
-  const turningPointLabels = generateTurningPointLabels(totalPhotos, layoutMode);
+  // Calculate turning point labels based on actual photo counts
+  const turningPointLabels = generateTurningPointLabels(set1.photos.length, set2.photos.length, layoutMode);
 
   return (
     <Box>

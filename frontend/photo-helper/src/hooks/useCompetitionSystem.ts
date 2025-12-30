@@ -457,6 +457,73 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     }, { updatePhotos: true });
   }, [updateCurrentCompetition]);
 
+  const reorderPhotos = useCallback(async (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
+    await updateCurrentCompetition(session => {
+      // Ensure sets structure is valid
+      const ensuredSets = {
+        set1: session.sets?.set1 || { title: '', photos: [] },
+        set2: session.sets?.set2 || { title: '', photos: [] }
+      };
+
+      const photos = [...(ensuredSets[setKey].photos || [])];
+      if (fromIndex < 0 || fromIndex >= photos.length || toIndex < 0 || toIndex >= photos.length) {
+        return session; // Invalid indices, no change
+      }
+
+      // Remove photo from original position and insert at new position
+      const [movedPhoto] = photos.splice(fromIndex, 1);
+      photos.splice(toIndex, 0, movedPhoto);
+
+      return {
+        ...session,
+        version: session.version + 1,
+        updatedAt: new Date().toISOString(),
+        sets: {
+          ...ensuredSets,
+          [setKey]: {
+            ...ensuredSets[setKey],
+            photos
+          }
+        }
+      };
+    });
+  }, [updateCurrentCompetition]);
+
+  const shufflePhotos = useCallback(async (target: 'set1' | 'set2' | 'both') => {
+    await updateCurrentCompetition(session => {
+      // Ensure sets structure is valid
+      const ensuredSets = {
+        set1: session.sets?.set1 || { title: '', photos: [] },
+        set2: session.sets?.set2 || { title: '', photos: [] }
+      };
+
+      // Fisher-Yates shuffle
+      const shuffle = <T,>(arr: T[]): T[] => {
+        const result = [...arr];
+        for (let i = result.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [result[i], result[j]] = [result[j], result[i]];
+        }
+        return result;
+      };
+
+      const newSets = { ...ensuredSets };
+      if (target === 'set1' || target === 'both') {
+        newSets.set1 = { ...ensuredSets.set1, photos: shuffle(ensuredSets.set1.photos || []) };
+      }
+      if (target === 'set2' || target === 'both') {
+        newSets.set2 = { ...ensuredSets.set2, photos: shuffle(ensuredSets.set2.photos || []) };
+      }
+
+      return {
+        ...session,
+        version: session.version + 1,
+        updatedAt: new Date().toISOString(),
+        sets: newSets
+      };
+    });
+  }, [updateCurrentCompetition]);
+
   const updatePhotoState = useCallback(async (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
     await updateCurrentCompetition(session => {
       // Ensure sets structure is valid
@@ -724,8 +791,8 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     updateLayoutMode,
     updateSessionCompetitionName,
     // Methods to align with AppApi expectations
-    reorderPhotos: (() => {}) as any,
-    shufflePhotos: (() => {}) as any,
+    reorderPhotos,
+    shufflePhotos,
     addPhotosToTurningPoint: (async (_files: File[]) => {}) as any,
     refreshSession: (async () => {}) as any,
     applySettingToAll: (async (_setting: string, _value: any, _excludePhotoId?: string) => {}) as any,

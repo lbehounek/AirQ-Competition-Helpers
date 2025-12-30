@@ -192,8 +192,7 @@ function AppApi() {
       // Turning point mode: SP, TP1, TP2, ..., FP
       const set1Count = session.sets.set1.photos.length;
       const set2Count = session.sets.set2.photos.length;
-      const totalPhotos = set1Count + set2Count;
-      const turningPointLabels = generateTurningPointLabels(totalPhotos, session.layoutMode || 'landscape');
+      const turningPointLabels = generateTurningPointLabels(set1Count, set2Count, session.layoutMode || 'landscape');
       
       if (setKey === 'set1') {
         label = turningPointLabels.set1[photoIndex] || 'X';
@@ -328,8 +327,7 @@ function AppApi() {
         // Turning point mode: use SP, TP1, TP2, ..., FP labels
         const set1Count = session.sets.set1.photos.length;
         const set2Count = session.sets.set2.photos.length;
-        const totalPhotos = set1Count + set2Count;
-        const turningPointLabels = generateTurningPointLabels(totalPhotos, session.layoutMode || 'landscape');
+        const turningPointLabels = generateTurningPointLabels(set1Count, set2Count, session.layoutMode || 'landscape');
 
         set1WithLabels = {
           ...session.sets.set1,

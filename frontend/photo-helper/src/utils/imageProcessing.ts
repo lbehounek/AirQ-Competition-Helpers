@@ -121,20 +121,39 @@ export const generatePhotoLabels = (): string[] => {
 
 /**
  * Generate turning point labels: SP, TP1, TP2, ..., FP
+ * Labels are generated dynamically based on actual photo counts:
+ * - First photo: SP (Start Point)
+ * - Middle photos: TP1, TP2, etc.
+ * - Last photo: FP (Final Point)
  */
-export const generateTurningPointLabels = (_totalPhotos: number, layoutMode: 'landscape' | 'portrait' = 'landscape'): { set1: string[], set2: string[] } => {
-  // Always generate the full TP sequence to ensure labels exist for all slots
-  const labels: string[] = ['SP'];
-  for (let i = 1; i <= 16; i++) {
-    labels.push(`TP${i}`);
-  }
-  labels.push('FP');
+export const generateTurningPointLabels = (
+  set1Count: number,
+  set2Count: number,
+  _layoutMode: 'landscape' | 'portrait' = 'landscape'
+): { set1: string[], set2: string[] } => {
+  const totalPhotos = set1Count + set2Count;
 
-  // Distribute based on layout mode: first 9 or 10 to set1, remainder to set2
-  const splitPoint = layoutMode === 'portrait' ? 10 : 9;
+  // No photos - return empty arrays
+  if (totalPhotos === 0) {
+    return { set1: [], set2: [] };
+  }
+
+  // Generate labels based on actual photo count
+  const allLabels: string[] = [];
+  for (let i = 0; i < totalPhotos; i++) {
+    if (i === 0) {
+      allLabels.push('SP'); // First photo is Start Point
+    } else if (i === totalPhotos - 1) {
+      allLabels.push('FP'); // Last photo is Final Point
+    } else {
+      allLabels.push(`TP${i}`); // Middle photos are Turning Points
+    }
+  }
+
+  // Distribute labels to match photo positions in each set
   return {
-    set1: labels.slice(0, splitPoint),
-    set2: labels.slice(splitPoint)
+    set1: allLabels.slice(0, set1Count),
+    set2: allLabels.slice(set1Count)
   };
 };
 
