@@ -25,7 +25,7 @@ build_and_stage() {
     fi
 
     echo "🛠  Building $app..."
-    (cd "$app_dir" && npm run -s build) || { echo "❌ Build failed for $app"; exit 1; }
+    (cd "../frontend" && pnpm --filter "@airq/$app" build) || { echo "❌ Build failed for $app"; exit 1; }
 
     echo "📦 Staging $app build to $subdir"
     mkdir -p "$subdir"

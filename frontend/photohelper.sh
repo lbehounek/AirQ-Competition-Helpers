@@ -15,28 +15,15 @@ cleanup() {
 }
 trap cleanup SIGINT SIGTERM
 
-# Start backend
-#echo "🐍 Starting photo-helper backend..."
-#cd backend/photo-helper
-
-# Setup Python environment
-#if [ ! -d "venv" ]; then
-#    echo "Creating virtual environment..."
-#    python3 -m venv venv
-#fi
-#source venv/bin/activate
-#pip install -q --upgrade pip
-#pip install -q -r requirements.txt
-
-# Start backend server
-#python run.py &
-#echo "✅ Backend: http://localhost:8000"
+# Install dependencies if needed
+if [ ! -d node_modules ]; then
+  echo "Installing dependencies..."
+  pnpm install -q
+fi
 
 # Start frontend
 echo "⚛️ Starting photo-helper frontend..."
-cd "$SCRIPT_DIR/photo-helper" || { echo "❌ Cannot cd to photo-helper"; exit 1; }
-[ ! -d "node_modules" ] && npm install -q
-npm run dev &
+pnpm --filter @airq/photo-helper dev &
 echo "✅ Frontend: http://localhost:5173"
 
 echo ""
