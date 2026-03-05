@@ -1,5 +1,5 @@
 {
-  "name": "map-corridors",
+  "name": "@airq/map-corridors",
   "private": true,
   "version": "0.0.0",
   "type": "module",

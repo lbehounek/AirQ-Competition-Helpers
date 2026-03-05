@@ -1,0 +1,20 @@
+{
+  "name": "airq-competition-helpers",
+  "private": true,
+  "packageManager": "pnpm@10.30.0",
+  "scripts": {
+    "dev:photo-helper": "pnpm --filter @airq/photo-helper dev",
+    "dev:map-corridors": "pnpm --filter @airq/map-corridors dev",
+    "build:all": "pnpm -r build",
+    "lint": "pnpm -r lint"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "canvas",
+      "core-js",
+      "electron",
+      "electron-winstaller",
+      "esbuild"
+    ]
+  }
+}

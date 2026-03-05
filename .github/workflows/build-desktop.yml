@@ -22,34 +22,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: 'frontend/pnpm-lock.yaml'
 
-      - name: Install dependencies - Photo Helper
-        working-directory: frontend/photo-helper
-        run: npm ci
-
-      - name: Install dependencies - Map Corridors
-        working-directory: frontend/map-corridors
-        run: npm ci
-
-      - name: Install dependencies - Desktop
-        working-directory: frontend/desktop
-        run: npm ci
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
 
       - name: Build Photo Helper
-        working-directory: frontend/photo-helper
+        working-directory: frontend
         env:
           VITE_DESKTOP_BUILD: 'true'
-        run: npm run build
+        run: pnpm --filter @airq/photo-helper build
 
       - name: Build Map Corridors
-        working-directory: frontend/map-corridors
+        working-directory: frontend
         env:
           VITE_DESKTOP_BUILD: 'true'
-        run: npm run build
+        run: pnpm --filter @airq/map-corridors build
 
       - name: Get version
         id: get_version
@@ -89,7 +88,7 @@ jobs:
 
       - name: Build Windows executables
         working-directory: frontend/desktop
-        run: npx electron-builder --win --publish never
+        run: pnpm exec electron-builder --win --publish never
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
