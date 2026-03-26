@@ -11,31 +11,17 @@ on:
 jobs:
   bump-and-tag:
     if: github.event.pull_request.merged == true
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
 
-      - name: Determine version bump
-        id: bump
-        run: |
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          if [[ "$PR_TITLE" == *"#major"* ]]; then
-            echo "bump=major" >> $GITHUB_OUTPUT
-          elif [[ "$PR_TITLE" == *"#minor"* ]]; then
-            echo "bump=minor" >> $GITHUB_OUTPUT
-          else
-            echo "bump=patch" >> $GITHUB_OUTPUT
-          fi
-
       - name: Bump version and push tag
-        uses: anothrNick/github-tag-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_PREFIX: desktop-v
-          DEFAULT_BUMP: ${{ steps.bump.outputs.bump }}
-          RELEASE_BRANCHES: main
+        uses: lbehounek/tag-on-merge-action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          tag-prefix: desktop-v
