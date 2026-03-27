@@ -10,7 +10,7 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Chip, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, IconButton, Tooltip, Alert } from '@mui/material'
+import { Box, Button, Chip, Container, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, IconButton, Tooltip, Alert } from '@mui/material'
 import { Download, Place, Print, Home, PhotoCamera } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -425,116 +425,65 @@ function App() {
   return (
     <>
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
-      {/* Blue Header — matches Photo Editor */}
+      {/* Unified blue header */}
       <Box
         sx={{
-          p: 1.5,
-          px: 2,
-          background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          bgcolor: '#1565C0',
+          color: 'white',
         }}
         data-print-hide="true"
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        {/* Title row */}
+        <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {competitionId && (window as any).electronAPI && (
+              <IconButton size="small" onClick={() => (window as any).electronAPI?.goHome()} sx={{ color: 'white' }} title={t('app.backToMenu')}>
+                <Home />
+              </IconButton>
+            )}
+            <Place sx={{ fontSize: 28 }} />
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>{t('app.title')}</Typography>
+            {competitionName && (
+              <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
+            )}
+          </Box>
           {competitionId && (window as any).electronAPI && (
-            <IconButton
-              size="small"
-              onClick={() => (window as any).electronAPI?.goHome()}
-              sx={{ color: 'white' }}
-              title={t('app.backToMenu')}
-            >
-              <Home />
+            <IconButton size="small" onClick={() => (window as any).electronAPI?.navigateToApp('photo-helper', competitionId)} sx={{ color: 'white' }} title="Photo Editor">
+              <PhotoCamera />
             </IconButton>
           )}
-          <Place sx={{ fontSize: 28, color: 'white' }} />
-          <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>{t('app.title')}</Typography>
-          {competitionName && (
-            <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
-          )}
         </Box>
-        {competitionId && (window as any).electronAPI && (
-          <IconButton
-            size="small"
-            onClick={() => (window as any).electronAPI?.navigateToApp('photo-helper', competitionId)}
-            sx={{ color: 'white' }}
-            title="Photo Editor"
-          >
-            <PhotoCamera />
-          </IconButton>
-        )}
-      </Box>
-
-      {/* Controls toolbar */}
-      <AppBar position="static" color="default" elevation={1} data-print-hide="true" sx={{ bgcolor: 'background.paper' }}>
-        <Toolbar variant="dense" sx={{ gap: 1.5, minHeight: 44 }}>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={onFileInputChange}
-            accept=".kml,.gpx,application/vnd.google-earth.kml+xml,application/gpx+xml"
-            style={{ display: 'none' }}
-          />
-          <Button variant="contained" color="primary" size="small" onClick={onClickSelectFile}>
-            {t('app.selectKml')}
-          </Button>
+        {/* Controls row */}
+        <Box sx={{
+          px: 2, py: 0.75,
+          display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap',
+          bgcolor: 'rgba(0,0,0,0.1)',
+          '& .MuiButton-root': { color: 'white', borderColor: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', textTransform: 'none' },
+          '& .MuiButton-contained': { bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } },
+          '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.7)', borderColor: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', py: 0.25, px: 1.5,
+            '&.Mui-selected': { color: 'white', bgcolor: 'rgba(255,255,255,0.2)' } },
+          '& .MuiFormControlLabel-label': { color: 'white', fontSize: '0.8rem' },
+          '& .MuiCheckbox-root': { color: 'rgba(255,255,255,0.7)', '&.Mui-checked': { color: 'white' } },
+        }}>
+          <input type="file" ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,application/vnd.google-earth.kml+xml,application/gpx+xml" style={{ display: 'none' }} />
+          <Button variant="contained" size="small" onClick={onClickSelectFile}>{t('app.selectKml')}</Button>
           {(session?.leftSegments || session?.rightSegments || session?.gates) && (
-            <Button
-              variant="outlined"
-              color="success"
-              size="small"
-              onClick={handleExportKML}
-              startIcon={<Download />}
-            >
-              {t('app.exportKml')}
-            </Button>
+            <Button variant="outlined" size="small" onClick={handleExportKML} startIcon={<Download sx={{ fontSize: 16 }} />}>{t('app.exportKml')}</Button>
           )}
-          <Button
-            variant="outlined"
-            color="primary"
-            size="small"
-            draggable
-            onDragStart={onDragStartMarker}
-            startIcon={<Place />}
-            title={t('app.dragToPlace')}
-          >
-            {t('app.dragToPlace')}
-          </Button>
-          <Button
-            variant="outlined"
-            color="secondary"
-            size="small"
-            onClick={() => mapRef.current?.printMap()}
-          >
-            {t('app.printMap')}
-          </Button>
-          <ToggleButtonGroup
-            value={baseStyle}
-            exclusive
-            onChange={(_, val) => { if (val) setBaseStyle(val) }}
-            size="small"
-            color="primary"
-            aria-label="Base map style"
-          >
-            <ToggleButton value="streets" aria-label={t('app.toggleBase.streets')}>{t('app.toggleBase.streets')}</ToggleButton>
-            <ToggleButton value="satellite" aria-label={t('app.toggleBase.satellite')}>{t('app.toggleBase.satellite')}</ToggleButton>
+          <Button variant="outlined" size="small" draggable onDragStart={onDragStartMarker} startIcon={<Place sx={{ fontSize: 16 }} />} title={t('app.dragToPlace')}>{t('app.dragToPlace')}</Button>
+          <Button variant="outlined" size="small" onClick={() => mapRef.current?.printMap()}>{t('app.printMap')}</Button>
+          <ToggleButtonGroup value={baseStyle} exclusive onChange={(_, val) => { if (val) setBaseStyle(val) }} size="small">
+            <ToggleButton value="streets">{t('app.toggleBase.streets')}</ToggleButton>
+            <ToggleButton value="satellite">{t('app.toggleBase.satellite')}</ToggleButton>
           </ToggleButtonGroup>
           <FormControlLabel
             control={<Checkbox size="small" checked={!!session?.use1NmAfterSp} onChange={(e) => setUse1NmAfterSp(e.target.checked)} />}
-            label={<Typography variant="body2">{t('app.use1NmAfterSp')}</Typography>}
+            label={t('app.use1NmAfterSp')}
           />
           <Box sx={{ flex: 1 }} />
-          <Button
-            variant="outlined"
-            color="inherit"
-            size="small"
-            onClick={() => setAnswerSheetOpen(true)}
-          >
-            {t('app.answerSheet')}
-          </Button>
-        </Toolbar>
-      </AppBar>
+          <Button variant="outlined" size="small" onClick={() => setAnswerSheetOpen(true)}>{t('app.answerSheet')}</Button>
+        </Box>
+      </Box>
       <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>
         <Box
           sx={{ height: '100%', width: '100vw', position: 'relative' }}

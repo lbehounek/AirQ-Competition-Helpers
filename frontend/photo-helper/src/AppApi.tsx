@@ -441,7 +441,7 @@ function AppApi() {
           {/* Blue Header Section */}
           <Box sx={{
             p: 2,
-            background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)',
+            bgcolor: '#1565C0',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between'
@@ -913,7 +913,7 @@ function AppApi() {
       {/* Footer */}
       <Box component="footer" sx={{ py: 2, mt: 4, bgcolor: 'background.default' }}>
         <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
-          <Box sx={{ p: 2, borderRadius: 2, background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
+          <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#1565C0' }}>
             <Typography variant="body2" align="center" sx={{ color: 'common.white' }}>
               {t('footer.copy', { year: new Date().getFullYear(), name: 'Lukáš Běhounek' })} {' '}
               <Link href="https://behounek.it" target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>

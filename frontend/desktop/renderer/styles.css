@@ -276,7 +276,7 @@ header p {
   display: grid;
   place-items: center;
   border-radius: 10px;
-  background: linear-gradient(135deg, #1976D2 0%, #42A5F5 100%);
+  background: #1565C0;
   color: white;
   flex-shrink: 0;
 }
