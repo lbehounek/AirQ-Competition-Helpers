@@ -17,7 +17,10 @@ const translations = {
     'competition.deleteBtn': 'Smazat',
     'competition.confirmDelete': 'Smazat',
     'competition.cancelDelete': 'Zru\u0161it',
-    'competition.deleteConfirmText': 'Opravdu smazat "{name}"? Toto nelze vr\u00e1tit.'
+    'competition.deleteConfirmText': 'Opravdu smazat "{name}"? Toto nelze vr\u00e1tit.',
+    'competition.cleanupAction': 'Vy\u010distit',
+    'competition.cleanupMsg': '{count} sout\u011b\u017e\u00ed je star\u0161\u00edch ne\u017e 30 dn\u00ed. Chcete je smazat?',
+    'competition.cleanupExcess': 'M\u00e1te {count} sout\u011b\u017e\u00ed (max 10). Zva\u017ete smaz\u00e1n\u00ed star\u0161\u00edch.'
   },
   en: {
     title: 'Navigation Flying Tools',
@@ -36,7 +39,10 @@ const translations = {
     'competition.deleteBtn': 'Delete',
     'competition.confirmDelete': 'Delete',
     'competition.cancelDelete': 'Cancel',
-    'competition.deleteConfirmText': 'Delete "{name}"? This cannot be undone.'
+    'competition.deleteConfirmText': 'Delete "{name}"? This cannot be undone.',
+    'competition.cleanupAction': 'Clean up',
+    'competition.cleanupMsg': '{count} competitions are older than 30 days. Delete them?',
+    'competition.cleanupExcess': 'You have {count} competitions (max 10). Consider deleting older ones.'
   }
 };
 
@@ -163,6 +169,7 @@ async function loadCompetitions() {
     }
 
     updateCardsState();
+    checkCleanupNeeded(competitions);
   } catch (err) {
     console.error('Failed to load competitions:', err);
     selectEl.disabled = true;
@@ -275,6 +282,67 @@ async function confirmDelete() {
 deleteBtn.addEventListener('click', showDeleteConfirm);
 deleteCancelBtn.addEventListener('click', hideDeleteConfirm);
 deleteConfirmBtn.addEventListener('click', confirmDelete);
+
+// ============================================================================
+// Cleanup suggestions
+// ============================================================================
+
+const MAX_AGE_DAYS = 30;
+const MAX_COMPETITIONS = 10;
+const cleanupBanner = document.getElementById('cleanup-banner');
+const cleanupText = document.getElementById('cleanup-text');
+const cleanupActionBtn = document.getElementById('cleanup-action');
+const cleanupDismissBtn = document.getElementById('cleanup-dismiss');
+let cleanupCandidateIds = [];
+
+function checkCleanupNeeded(competitions) {
+  if (!competitions || competitions.length === 0) return;
+
+  const now = Date.now();
+  const thirtyDaysMs = MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  const oldComps = competitions.filter(c => (now - new Date(c.createdAt).getTime()) > thirtyDaysMs);
+
+  if (oldComps.length > 0) {
+    cleanupCandidateIds = oldComps.map(c => c.id);
+    cleanupText.textContent = t('competition.cleanupMsg').replace('{count}', String(oldComps.length));
+    cleanupBanner.classList.remove('hidden');
+    return;
+  }
+
+  if (competitions.length > MAX_COMPETITIONS) {
+    // Flag oldest beyond the limit
+    const sorted = [...competitions].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const excess = sorted.slice(0, competitions.length - MAX_COMPETITIONS);
+    cleanupCandidateIds = excess.map(c => c.id);
+    cleanupText.textContent = t('competition.cleanupExcess').replace('{count}', String(competitions.length));
+    cleanupBanner.classList.remove('hidden');
+    return;
+  }
+
+  cleanupBanner.classList.add('hidden');
+  cleanupCandidateIds = [];
+}
+
+cleanupDismissBtn.addEventListener('click', () => {
+  cleanupBanner.classList.add('hidden');
+});
+
+cleanupActionBtn.addEventListener('click', async () => {
+  if (!window.electronAPI?.competitions || cleanupCandidateIds.length === 0) return;
+  try {
+    for (const id of cleanupCandidateIds) {
+      // Don't delete the active competition
+      if (id === activeCompetitionId) continue;
+      await window.electronAPI.competitions.delete(id);
+    }
+    cleanupBanner.classList.add('hidden');
+    cleanupCandidateIds = [];
+    await loadCompetitions();
+    updateCardsState();
+  } catch (err) {
+    console.error('Failed to cleanup competitions:', err);
+  }
+});
 
 // ============================================================================
 // Card navigation

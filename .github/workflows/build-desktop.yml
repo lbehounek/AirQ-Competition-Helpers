@@ -126,7 +126,7 @@ jobs:
           body: |
             ## AirQ Competition Helpers - Desktop Edition v${{ steps.tag_version.outputs.VERSION }}
 
-            Windows desktop application bundling Photo Helper and Map Corridors.
+            Windows desktop application bundling Photo Editor and Photo Placement.
 
             **Portable executable** - no installation required, just run.
 

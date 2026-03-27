@@ -10,7 +10,7 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, IconButton, Tooltip, Alert } from '@mui/material'
+import { AppBar, Box, Button, Chip, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, IconButton, Tooltip, Alert } from '@mui/material'
 import { Download, Place, Print, Home, PhotoCamera } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -37,6 +37,19 @@ function App() {
       return null
     }
   }, [])
+
+  // Fetch competition name from index for display
+  const [competitionName, setCompetitionName] = useState<string | null>(null)
+  useEffect(() => {
+    if (!competitionId) return
+    const electronAPI = (window as any).electronAPI
+    if (electronAPI?.competitions) {
+      electronAPI.competitions.list().then((index: any) => {
+        const comp = index?.competitions?.find((c: any) => c.id === competitionId)
+        if (comp) setCompetitionName(comp.name)
+      }).catch(() => {})
+    }
+  }, [competitionId])
 
   // Fetch Mapbox token from Electron config if running in desktop app
   useEffect(() => {
@@ -424,6 +437,7 @@ function App() {
             </IconButton>
           )}
           <Typography variant="h6" sx={{ mr: 1 }}>{t('app.title')}</Typography>
+          {competitionName && <Chip label={competitionName} size="small" variant="outlined" />}
           {competitionId && (window as any).electronAPI && (
             <IconButton
               size="small"

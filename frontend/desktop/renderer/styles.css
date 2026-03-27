@@ -196,6 +196,40 @@ header p {
   font-weight: 500;
 }
 
+/* Cleanup banner */
+.cleanup-banner {
+  max-width: 720px;
+  margin: 12px auto 0;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 10px;
+  background: #FFFBEB;
+  border: 1px solid #F59E0B;
+  font-size: 0.9rem;
+  color: #92400E;
+}
+
+.cleanup-banner span {
+  flex: 1;
+}
+
+.btn-cleanup {
+  border-color: #F59E0B;
+  color: #92400E;
+  background: #FEF3C7;
+}
+
+.btn-cleanup:hover {
+  background: #FDE68A;
+}
+
+.btn-small {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
 /* App cards */
 .apps {
   max-width: 720px;
