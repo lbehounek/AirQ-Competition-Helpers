@@ -78,6 +78,9 @@ function setupProtocol() {
   protocol.registerFileProtocol('app', (request, callback) => {
     let url = request.url.replace('app://', '');
 
+    // Strip query string and hash before resolving file path
+    url = url.split('?')[0].split('#')[0];
+
     // Decode URL
     url = decodeURIComponent(url);
 
@@ -144,7 +147,12 @@ function setupProtocol() {
       }
     }
 
-    callback({ path: filePath });
+    callback({
+      path: filePath,
+      headers: {
+        'Content-Security-Policy': "default-src 'self' app: blob: data:; script-src 'self' app:; style-src 'self' 'unsafe-inline' app:; img-src 'self' app: blob: data: https:; connect-src 'self' app: blob: https:; worker-src 'self' blob:"
+      }
+    });
   });
 }
 
@@ -190,11 +198,12 @@ function createWindow() {
 }
 
 // Handle navigation between apps
-ipcMain.handle('navigate-to-app', (event, appName) => {
+ipcMain.handle('navigate-to-app', (event, appName, competitionId) => {
+  const qs = competitionId ? `?competitionId=${encodeURIComponent(competitionId)}` : '';
   if (appName === 'photo-helper') {
-    mainWindow.loadURL('app://photo-helper/index.html');
+    mainWindow.loadURL(`app://photo-helper/index.html${qs}`);
   } else if (appName === 'map-corridors') {
-    mainWindow.loadURL('app://map-corridors/index.html');
+    mainWindow.loadURL(`app://map-corridors/index.html${qs}`);
   } else if (appName === 'home') {
     mainWindow.loadURL('app://home/index.html');
   }
@@ -483,6 +492,110 @@ ipcMain.handle('storage-get-stats', async () => {
   }
 });
 
+// ============================================================================
+// Competition Management IPC Handlers
+// ============================================================================
+
+const COMPETITIONS_INDEX_FILE = 'competitions-index.json';
+
+function getCompetitionsIndexPath() {
+  return path.join(getPhotoSessionsPath(), COMPETITIONS_INDEX_FILE);
+}
+
+function readCompetitionsIndex() {
+  const indexPath = getCompetitionsIndexPath();
+  try {
+    if (fs.existsSync(indexPath)) {
+      return JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Failed to read competitions index:', e);
+  }
+  return { competitions: [], activeCompetitionId: null, version: 1 };
+}
+
+function writeCompetitionsIndex(index) {
+  const rootPath = getPhotoSessionsPath();
+  ensureDir(rootPath);
+  const indexPath = getCompetitionsIndexPath();
+  fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf8');
+}
+
+// List all competitions
+ipcMain.handle('competition-list', async () => {
+  return readCompetitionsIndex();
+});
+
+// Create a new competition
+ipcMain.handle('competition-create', async (event, name) => {
+  const id = `comp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const now = new Date().toISOString();
+  const index = readCompetitionsIndex();
+
+  // Create competition directory
+  const competitionsDir = path.join(getPhotoSessionsPath(), 'competitions');
+  ensureDir(competitionsDir);
+  const compDir = path.join(competitionsDir, id);
+  ensureDir(compDir);
+  ensureDir(path.join(compDir, 'photos'));
+
+  // Write empty session.json for photo-helper
+  const emptySession = {
+    id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    mode: 'track',
+    competition_name: name,
+    sets: {
+      set1: { title: 'SP - TPX', photos: [] },
+      set2: { title: 'TPX - FP', photos: [] }
+    },
+    setsTrack: {
+      set1: { title: 'SP - TPX', photos: [] },
+      set2: { title: 'TPX - FP', photos: [] }
+    },
+    setsTurning: {
+      set1: { title: '', photos: [] },
+      set2: { title: '', photos: [] }
+    }
+  };
+  fs.writeFileSync(path.join(compDir, 'session.json'), JSON.stringify(emptySession, null, 2), 'utf8');
+
+  // Set all existing to inactive, add new entry
+  index.competitions.forEach(c => { c.isActive = false; });
+  const metadata = {
+    id,
+    name,
+    createdAt: now,
+    lastModified: now,
+    photoCount: 0,
+    isActive: true
+  };
+  index.competitions.push(metadata);
+  index.activeCompetitionId = id;
+  writeCompetitionsIndex(index);
+
+  // Store in config for quick access by menu shortcuts
+  setConfigValue('activeCompetitionId', id);
+
+  return metadata;
+});
+
+// Set active competition
+ipcMain.handle('competition-set-active', async (event, id) => {
+  const index = readCompetitionsIndex();
+  index.competitions.forEach(c => { c.isActive = (c.id === id); });
+  const target = index.competitions.find(c => c.id === id);
+  if (!target) {
+    throw new Error(`Competition not found: ${id}`);
+  }
+  index.activeCompetitionId = id;
+  writeCompetitionsIndex(index);
+  setConfigValue('activeCompetitionId', id);
+  return target;
+});
+
 // Show Mapbox token dialog - single window with input field
 async function showMapboxTokenDialog() {
   const currentToken = getConfigValue('mapboxToken') || '';
@@ -626,7 +739,9 @@ function createMenu(locale = 'cs') {
           accelerator: 'Alt+1',
           click: () => {
             if (mainWindow) {
-              mainWindow.loadURL('app://photo-helper/index.html');
+              const compId = getConfigValue('activeCompetitionId');
+              const qs = compId ? `?competitionId=${encodeURIComponent(compId)}` : '';
+              mainWindow.loadURL(`app://photo-helper/index.html${qs}`);
             }
           }
         },
@@ -635,7 +750,9 @@ function createMenu(locale = 'cs') {
           accelerator: 'Alt+2',
           click: () => {
             if (mainWindow) {
-              mainWindow.loadURL('app://map-corridors/index.html');
+              const compId = getConfigValue('activeCompetitionId');
+              const qs = compId ? `?competitionId=${encodeURIComponent(compId)}` : '';
+              mainWindow.loadURL(`app://map-corridors/index.html${qs}`);
             }
           }
         },

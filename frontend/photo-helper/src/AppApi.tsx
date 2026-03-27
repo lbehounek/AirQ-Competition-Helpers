@@ -89,7 +89,8 @@ function AppApi() {
     storageStats,
     performCleanup,
     dismissCleanup,
-    updateStorageStats
+    updateStorageStats,
+    isDesktopManaged
   } = sessionHookResult;
 
   // Legacy API compatibility
@@ -554,7 +555,8 @@ function AppApi() {
               </Box>
             </Box>
 
-            {/* Competition Management */}
+            {/* Competition Management — hidden in desktop mode (managed by launcher) */}
+            {!isDesktopManaged && (
             <Box sx={{ p: 2 }}>
               {STORAGE_MODE === 'opfs' ? (
                 /* Competition system for OPFS mode */
@@ -628,6 +630,7 @@ function AppApi() {
                 </Box>
               )}
             </Box>
+            )}
           </Box>
         </Paper>
 

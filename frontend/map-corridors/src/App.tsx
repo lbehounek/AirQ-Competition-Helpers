@@ -29,6 +29,16 @@ function App() {
   const [provider] = useState<MapProviderId>('mapbox')
   const [electronMapboxToken, setElectronMapboxToken] = useState<string | null>(null)
 
+  // Read competition ID from URL (set by desktop launcher)
+  const competitionId = useMemo(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      return params.get('competitionId') || null
+    } catch {
+      return null
+    }
+  }, [])
+
   // Fetch Mapbox token from Electron config if running in desktop app
   useEffect(() => {
     const electronAPI = (window as any).electronAPI
@@ -47,7 +57,7 @@ function App() {
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,
-  } = useCorridorSessionOPFS()
+  } = useCorridorSessionOPFS(competitionId)
   const baseStyle = (session?.baseStyle || 'streets') as 'streets' | 'satellite'
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)

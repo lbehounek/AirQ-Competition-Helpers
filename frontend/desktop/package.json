@@ -7,9 +7,9 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "scripts": {
     "start": "electron .",
-    "build:apps": "pnpm --filter @airq/photo-helper build && pnpm --filter @airq/map-corridors build",
-    "build:photo-helper": "pnpm --filter @airq/photo-helper build",
-    "build:map-corridors": "pnpm --filter @airq/map-corridors build",
+    "build:apps": "cross-env VITE_DESKTOP_BUILD=true pnpm --filter @airq/photo-helper build && cross-env VITE_DESKTOP_BUILD=true pnpm --filter @airq/map-corridors build",
+    "build:photo-helper": "cross-env VITE_DESKTOP_BUILD=true pnpm --filter @airq/photo-helper build",
+    "build:map-corridors": "cross-env VITE_DESKTOP_BUILD=true pnpm --filter @airq/map-corridors build",
     "package": "pnpm run build:apps && pnpm exec electron-builder --win",
     "package:dir": "pnpm run build:apps && pnpm exec electron-builder --win --dir",
     "dev": "pnpm run build:apps && electron ."

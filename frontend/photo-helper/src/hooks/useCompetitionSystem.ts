@@ -21,7 +21,9 @@ export interface UseCompetitionSystemResult {
   competitions: CompetitionMetadata[];
   loading: boolean;
   error: string | null;
-  
+  /** True when competition is managed by the desktop launcher (hide in-app selector) */
+  isDesktopManaged: boolean;
+
   // Competition management
   createNewCompetition: (name?: string) => Promise<void>;
   switchToCompetition: (id: string) => Promise<void>;
@@ -65,6 +67,19 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   
   const migrationPerformed = useRef(false);
 
+  // Read external competition ID from URL (set by desktop launcher)
+  const externalCompetitionId = (() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('competitionId') || null;
+    } catch {
+      return null;
+    }
+  })();
+
+  // Whether we're running in desktop mode with an externally-selected competition
+  const isDesktopManaged = Boolean(externalCompetitionId && (window as any).electronAPI);
+
   // Generate default competition name using i18n
   const getDefaultCompetitionName = useCallback((competitionCount?: number) => {
     const count = competitionCount !== undefined ? competitionCount : competitions.length + 1;
@@ -74,27 +89,43 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   // Initialize the competition system
   const initialize = useCallback(async () => {
     if (migrationPerformed.current) return;
-    
+
     try {
       setLoading(true);
       setError(null);
-      
+
       // Perform migration if needed (use count of 1 for first competition)
       const migrationResult = await migrationService.performMigration(() => getDefaultCompetitionName(1));
-      
+
       if (migrationResult.migrated) {
         console.log('Migration completed:', migrationResult.message);
         migrationPerformed.current = true;
       }
-      
+
+      // If an external competition ID is provided (from desktop launcher),
+      // use it directly instead of relying on the index's activeCompetitionId
+      if (externalCompetitionId) {
+        console.log('Using externally-selected competition:', externalCompetitionId);
+        await competitionService.setActiveCompetition(externalCompetitionId);
+        const competition = await competitionService.getCompetition(externalCompetitionId);
+        if (competition) {
+          setCurrentCompetition(competition);
+          await refreshCompetitions();
+          await checkCleanupNeeded();
+          return;
+        }
+        // If the external ID doesn't exist, fall through to normal flow
+        console.warn('External competition not found, falling back to default');
+      }
+
       // Load active competition first
       const activeCompetition = await competitionService.getActiveCompetition();
-      
+
       // If no competitions exist (fresh install), create the first one
       if (!activeCompetition) {
         console.log('No competitions found, creating first competition');
         const defaultName = getDefaultCompetitionName(1);
-        
+
         // Create new empty session with mode-specific sets
         const emptySession: ApiPhotoSession = {
           id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -117,19 +148,19 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
             set2: { title: '', photos: [] }
           }
         };
-        
+
         const newCompetition = await competitionService.createCompetition(defaultName, emptySession);
         setCurrentCompetition(newCompetition);
       } else {
         setCurrentCompetition(activeCompetition);
       }
-      
+
       // Load competitions list after setting current competition
       await refreshCompetitions();
-      
+
       // Check for cleanup suggestions
       await checkCleanupNeeded();
-      
+
     } catch (err) {
       console.error('Failed to initialize competition system:', err);
       setError(err instanceof Error ? err.message : 'Failed to initialize');
@@ -772,7 +803,8 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     competitions,
     loading,
     error,
-    
+    isDesktopManaged,
+
     // Competition management
     createNewCompetition,
     switchToCompetition,

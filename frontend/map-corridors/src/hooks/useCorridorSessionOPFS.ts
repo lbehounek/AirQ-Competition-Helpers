@@ -47,20 +47,119 @@ const defaultSession = (id: string): CorridorsSession => ({
   markers: [],
 })
 
-export function useCorridorSessionOPFS() {
+// --------------------------------------------------------------------------
+// Electron storage helpers (use existing IPC bridge from preload.js)
+// --------------------------------------------------------------------------
+
+interface ElectronStorageAPI {
+  init: () => Promise<{ rootPath: string; sessionsPath: string }>
+  getDirectoryHandle: (parentPath: string, name: string, create: boolean) => Promise<string>
+  writeJSON: (dirPath: string, name: string, data: unknown) => Promise<void>
+  readJSON: <T>(dirPath: string, name: string) => Promise<T | null>
+}
+
+function getElectronStorage(): ElectronStorageAPI | null {
+  const api = (window as any).electronAPI
+  if (api?.isElectron && api?.storage) return api.storage
+  return null
+}
+
+/**
+ * Initialize corridors directory under a competition in Electron's native fs.
+ * Returns the absolute path to `competitions/{competitionId}/corridors/`.
+ */
+async function initElectronCompetitionDir(competitionId: string): Promise<string> {
+  const api = getElectronStorage()!
+  const { rootPath } = await api.init()
+  const competitionsDir = await api.getDirectoryHandle(rootPath, 'competitions', true)
+  const compDir = await api.getDirectoryHandle(competitionsDir, competitionId, true)
+  const corridorsDir = await api.getDirectoryHandle(compDir, 'corridors', true)
+  return corridorsDir
+}
+
+// --------------------------------------------------------------------------
+// Hook
+// --------------------------------------------------------------------------
+
+export function useCorridorSessionOPFS(competitionId?: string | null) {
   const [session, setSession] = useState<CorridorsSession | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
-  // No loading UI is currently used; keep hook lean
   const [error, setError] = useState<string | null>(null)
   const [opfsAvailable, setOpfsAvailable] = useState<boolean | null>(null)
 
+  // For OPFS mode
   const handlesRef = useRef<{ sessionsDir?: FileSystemDirectoryHandle; sessionDir?: FileSystemDirectoryHandle }>({})
+  // For Electron competition mode
+  const electronDirRef = useRef<string | null>(null)
 
   useEffect(() => {
     (async () => {
       setOpfsAvailable(null)
+      const electronApi = getElectronStorage()
+
+      // ---- Electron + competition mode ----
+      if (electronApi && competitionId) {
+        setOpfsAvailable(true)
+        const id = `corridors-${competitionId}`
+        setSessionId(id)
+        try {
+          const dirPath = await initElectronCompetitionDir(competitionId)
+          electronDirRef.current = dirPath
+          const existing = await electronApi.readJSON<CorridorsSession>(dirPath, 'session.json')
+          if (existing) {
+            setSession({
+              ...defaultSession(id),
+              ...existing,
+              baseStyle: (existing as any).baseStyle || 'streets',
+            })
+          } else {
+            const fresh = defaultSession(id)
+            await electronApi.writeJSON(dirPath, 'session.json', fresh)
+            setSession(fresh)
+          }
+        } catch (e) {
+          console.error('Failed to init Electron corridors storage', e)
+          setError('Failed to initialize storage')
+          setSession(defaultSession(id))
+        }
+        return
+      }
+
+      // ---- OPFS mode (web standalone or OPFS competition) ----
       const ok = await detectOPFSWriteSupport()
       setOpfsAvailable(ok)
+
+      if (competitionId && ok) {
+        // Scope OPFS under competitions/{competitionId}/corridors
+        const id = `corridors-${competitionId}`
+        setSessionId(id)
+        try {
+          const root = await (navigator as any).storage.getDirectory()
+          const competitionsDir = await root.getDirectoryHandle('competitions', { create: true })
+          const compDir = await competitionsDir.getDirectoryHandle(competitionId, { create: true })
+          const corridorsDir = await compDir.getDirectoryHandle('corridors', { create: true })
+          handlesRef.current = { sessionDir: corridorsDir }
+          const existing = await readJSON<CorridorsSession>(corridorsDir, 'session.json')
+          if (existing) {
+            setSession({
+              ...defaultSession(id),
+              ...existing,
+              baseStyle: (existing as any).baseStyle || 'streets',
+            })
+          } else {
+            const fresh = defaultSession(id)
+            await writeJSON(corridorsDir, 'session.json', fresh)
+            setSession(fresh)
+          }
+        } catch (e) {
+          console.error('Failed to init OPFS competition corridors', e)
+          setError('Failed to initialize OPFS')
+          setSession(defaultSession(id))
+        }
+        return
+      }
+
+      // ---- Legacy flat session (no competition context) ----
       const id = loadOrCreateSessionId()
       setSessionId(id)
       if (!ok) {
@@ -90,13 +189,27 @@ export function useCorridorSessionOPFS() {
         setSession(defaultSession(id))
       }
     })()
-  }, [])
+  }, [competitionId])
 
   const persistSession = useCallback(async (next: CorridorsSession) => {
     setSession(next)
+
+    // Electron competition mode
+    const electronApi = getElectronStorage()
+    if (electronApi && electronDirRef.current) {
+      try {
+        await electronApi.writeJSON(electronDirRef.current, 'session.json', next)
+      } catch (e) {
+        console.error('Failed to persist corridors session to Electron storage', e)
+        setError('Failed to persist session')
+      }
+      return
+    }
+
+    // OPFS mode
     if (handlesRef.current.sessionDir) {
-      try { 
-        await writeJSON(handlesRef.current.sessionDir, 'session.json', next) 
+      try {
+        await writeJSON(handlesRef.current.sessionDir, 'session.json', next)
       } catch (e) {
         console.error('Failed to persist corridors session to OPFS', e)
         setError('Failed to persist session')
@@ -124,10 +237,23 @@ export function useCorridorSessionOPFS() {
 
   const saveOriginalKmlText = useCallback(async (text: string | null) => {
     if (!session) return
+
+    // Electron competition mode
+    const electronApi = getElectronStorage()
+    if (electronApi && electronDirRef.current) {
+      try {
+        // Use writeJSON with a text wrapper — the IPC handler writes strings fine
+        await electronApi.writeJSON(electronDirRef.current, 'original.kml.json', { text: text || '' })
+      } catch (e) {
+        console.error('Failed to save original KML text (Electron)', e)
+      }
+      return
+    }
+
+    // OPFS mode
     const dir = handlesRef.current.sessionDir
     if (dir) {
       if (text == null) {
-        // overwrite with empty file for clarity
         await writeTextFile(dir, 'original.kml', '')
       } else {
         await writeTextFile(dir, 'original.kml', text, 'application/vnd.google-earth.kml+xml')
@@ -136,6 +262,18 @@ export function useCorridorSessionOPFS() {
   }, [session])
 
   const loadOriginalKmlText = useCallback(async (): Promise<string | null> => {
+    // Electron competition mode
+    const electronApi = getElectronStorage()
+    if (electronApi && electronDirRef.current) {
+      try {
+        const data = await electronApi.readJSON<{ text: string }>(electronDirRef.current, 'original.kml.json')
+        return data?.text || null
+      } catch {
+        return null
+      }
+    }
+
+    // OPFS mode
     const dir = handlesRef.current.sessionDir
     if (!dir) return null
     return await readTextFile(dir, 'original.kml')
@@ -176,5 +314,3 @@ export function useCorridorSessionOPFS() {
     clearError: () => setError(null),
   }
 }
-
-

@@ -1,20 +1,34 @@
 // Translations
 const translations = {
   cs: {
-    title: 'Nástroje pro navigační soutěže',
-    subtitle: 'Vyberte aplikaci',
+    title: 'N\u00e1stroje pro naviga\u010dn\u00ed sout\u011b\u017ee',
+    subtitle: 'Vyberte sout\u011b\u017e a aplikaci',
     'corridors.title': 'Foto koridory',
-    'corridors.desc': 'Interaktivní vizualizace koridorů',
-    'helper.title': 'Foto pomocník',
-    'helper.desc': 'Organizace a označování soutěžních fotek'
+    'corridors.desc': 'Interaktivn\u00ed vizualizace koridoru',
+    'helper.title': 'Foto pomocn\u00edk',
+    'helper.desc': 'Organizace a ozna\u010dov\u00e1n\u00ed sout\u011b\u017en\u00edch fotek',
+    'competition.label': 'Sout\u011b\u017e',
+    'competition.new': '+ Nov\u00e1 sout\u011b\u017e',
+    'competition.loading': 'Na\u010d\u00edt\u00e1n\u00ed...',
+    'competition.empty': '\u017d\u00e1dn\u00e9 sout\u011b\u017ee \u2013 vytvo\u0159te novou',
+    'competition.promptName': 'N\u00e1zev nov\u00e9 sout\u011b\u017ee:',
+    'competition.defaultName': 'Sout\u011b\u017e',
+    'competition.selectFirst': 'Nejd\u0159\u00edve vyberte sout\u011b\u017e'
   },
   en: {
     title: 'Navigation Flying Tools',
-    subtitle: 'Select an application',
+    subtitle: 'Select a competition and application',
     'corridors.title': 'Photo Corridors',
     'corridors.desc': 'Interactive corridor visualization',
     'helper.title': 'Photo Helper',
-    'helper.desc': 'Organize and label competition photos'
+    'helper.desc': 'Organize and label competition photos',
+    'competition.label': 'Competition',
+    'competition.new': '+ New Competition',
+    'competition.loading': 'Loading...',
+    'competition.empty': 'No competitions \u2013 create one',
+    'competition.promptName': 'New competition name:',
+    'competition.defaultName': 'Competition',
+    'competition.selectFirst': 'Select a competition first'
   }
 };
 
@@ -47,6 +61,7 @@ async function setLocale(locale) {
     localStorage.setItem(LOCALE_KEY, storageValue);
   }
 
+  currentLocale = locale;
   applyTranslations(locale);
   updateLangButtons(locale);
   document.documentElement.lang = locale;
@@ -57,12 +72,19 @@ async function setLocale(locale) {
   }
 }
 
+let currentLocale = 'cs';
+
+function t(key) {
+  const dict = translations[currentLocale] || translations.cs;
+  return dict[key] || key;
+}
+
 function applyTranslations(locale) {
-  const t = translations[locale] || translations.cs;
+  const dict = translations[locale] || translations.cs;
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.dataset.i18n;
-    if (t[key]) {
-      el.textContent = t[key];
+    if (dict[key]) {
+      el.textContent = dict[key];
     }
   });
 }
@@ -73,35 +95,154 @@ function updateLangButtons(locale) {
   });
 }
 
-// Initialize language
-(async () => {
-  const currentLocale = await getLocale();
-  applyTranslations(currentLocale);
-  updateLangButtons(currentLocale);
-  document.documentElement.lang = currentLocale;
-  // Set initial menu language
-  if (window.electronAPI?.setMenuLocale) {
-    const storageValue = currentLocale === 'cs' ? 'cz' : currentLocale;
-    window.electronAPI.setMenuLocale(storageValue);
-  }
-})();
+// ============================================================================
+// Competition Management
+// ============================================================================
 
-// Language switcher
-document.querySelectorAll('.lang-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    setLocale(btn.dataset.lang);
+let activeCompetitionId = null;
+
+const selectEl = document.getElementById('competition-select');
+const newBtn = document.getElementById('competition-new');
+
+async function loadCompetitions() {
+  if (!window.electronAPI?.competitions) {
+    // Web fallback — no competition management available
+    selectEl.disabled = true;
+    return;
+  }
+
+  try {
+    const index = await window.electronAPI.competitions.list();
+    const competitions = index.competitions || [];
+
+    selectEl.innerHTML = '';
+
+    if (competitions.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = t('competition.empty');
+      selectEl.appendChild(opt);
+      selectEl.disabled = true;
+      activeCompetitionId = null;
+      updateCardsState();
+      return;
+    }
+
+    // Sort by lastModified descending
+    const sorted = [...competitions].sort((a, b) =>
+      new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
+    );
+
+    sorted.forEach(comp => {
+      const opt = document.createElement('option');
+      opt.value = comp.id;
+      const date = new Date(comp.createdAt).toLocaleDateString();
+      opt.textContent = comp.name + ' (' + date + ')';
+      selectEl.appendChild(opt);
+    });
+
+    selectEl.disabled = false;
+
+    // Select active competition
+    if (index.activeCompetitionId && sorted.find(c => c.id === index.activeCompetitionId)) {
+      selectEl.value = index.activeCompetitionId;
+      activeCompetitionId = index.activeCompetitionId;
+    } else {
+      // Default to first
+      selectEl.value = sorted[0].id;
+      activeCompetitionId = sorted[0].id;
+      await window.electronAPI.competitions.setActive(activeCompetitionId);
+    }
+
+    updateCardsState();
+  } catch (err) {
+    console.error('Failed to load competitions:', err);
+    selectEl.disabled = true;
+  }
+}
+
+function updateCardsState() {
+  document.querySelectorAll('.card').forEach(card => {
+    if (activeCompetitionId) {
+      card.classList.remove('disabled');
+    } else {
+      card.classList.add('disabled');
+    }
   });
+}
+
+// Competition change handler
+selectEl.addEventListener('change', async () => {
+  const id = selectEl.value;
+  if (!id || id === activeCompetitionId) return;
+
+  try {
+    await window.electronAPI.competitions.setActive(id);
+    activeCompetitionId = id;
+    updateCardsState();
+  } catch (err) {
+    console.error('Failed to set active competition:', err);
+  }
 });
 
+// New competition — inline form
+const barSelect = document.getElementById('competition-bar-select');
+const barCreate = document.getElementById('competition-bar-create');
+const nameInput = document.getElementById('competition-name-input');
+const confirmBtn = document.getElementById('competition-create-confirm');
+const cancelBtn = document.getElementById('competition-create-cancel');
+
+function showCreateForm() {
+  barSelect.classList.add('hidden');
+  barCreate.classList.remove('hidden');
+  nameInput.value = t('competition.defaultName');
+  nameInput.focus();
+  nameInput.select();
+}
+
+function hideCreateForm() {
+  barCreate.classList.add('hidden');
+  barSelect.classList.remove('hidden');
+}
+
+async function confirmCreate() {
+  const name = nameInput.value.trim();
+  if (!name) return;
+  if (!window.electronAPI?.competitions) return;
+
+  try {
+    const metadata = await window.electronAPI.competitions.create(name);
+    hideCreateForm();
+    await loadCompetitions();
+    selectEl.value = metadata.id;
+    activeCompetitionId = metadata.id;
+    updateCardsState();
+  } catch (err) {
+    console.error('Failed to create competition:', err);
+  }
+}
+
+newBtn.addEventListener('click', showCreateForm);
+cancelBtn.addEventListener('click', hideCreateForm);
+confirmBtn.addEventListener('click', confirmCreate);
+nameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') confirmCreate();
+  if (e.key === 'Escape') hideCreateForm();
+});
+
+// ============================================================================
 // Card navigation
+// ============================================================================
+
 document.querySelectorAll('.card').forEach(card => {
   const navigate = () => {
+    if (!activeCompetitionId) return;
     const appName = card.dataset.app;
     if (window.electronAPI) {
-      window.electronAPI.navigateToApp(appName);
+      window.electronAPI.navigateToApp(appName, activeCompetitionId);
     } else {
       // Fallback for testing in browser
-      window.location.href = `../${appName}/index.html`;
+      window.location.href = `../${appName}/index.html?competitionId=${encodeURIComponent(activeCompetitionId)}`;
     }
   };
 
@@ -113,3 +254,32 @@ document.querySelectorAll('.card').forEach(card => {
     }
   });
 });
+
+// ============================================================================
+// Language switcher
+// ============================================================================
+
+document.querySelectorAll('.lang-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    setLocale(btn.dataset.lang);
+  });
+});
+
+// ============================================================================
+// Initialize
+// ============================================================================
+
+(async () => {
+  const locale = await getLocale();
+  currentLocale = locale;
+  applyTranslations(locale);
+  updateLangButtons(locale);
+  document.documentElement.lang = locale;
+  // Set initial menu language
+  if (window.electronAPI?.setMenuLocale) {
+    const storageValue = locale === 'cs' ? 'cz' : locale;
+    window.electronAPI.setMenuLocale(storageValue);
+  }
+  // Load competitions
+  await loadCompetitions();
+})();

@@ -54,7 +54,24 @@ export class CompetitionService {
     );
 
     if (existing) {
+      // Validate: if index says empty but competition dirs exist, rebuild
+      if (existing.competitions.length === 0) {
+        const rebuilt = await this.rebuildIndexFromDirs();
+        if (rebuilt && rebuilt.competitions.length > 0) {
+          console.warn('Rebuilt competitions index from directories:', rebuilt.competitions.length, 'competitions');
+          await this.saveCompetitionsIndex(rebuilt);
+          return rebuilt;
+        }
+      }
       return existing;
+    }
+
+    // No index file — try to rebuild from existing directories
+    const rebuilt = await this.rebuildIndexFromDirs();
+    if (rebuilt && rebuilt.competitions.length > 0) {
+      console.log('Created competitions index from existing directories:', rebuilt.competitions.length, 'competitions');
+      await this.saveCompetitionsIndex(rebuilt);
+      return rebuilt;
     }
 
     // Create empty index
@@ -66,6 +83,59 @@ export class CompetitionService {
 
     await this.saveCompetitionsIndex(newIndex);
     return newIndex;
+  }
+
+  /**
+   * Attempt to rebuild the index by scanning the competitions directory.
+   * This recovers from cases where the index was lost or corrupted.
+   */
+  private async rebuildIndexFromDirs(): Promise<CompetitionsIndex | null> {
+    try {
+      await this.ensureInitialized();
+      const entries = await this.storage!.listDirectory(this.competitionsDir!);
+      const compDirs = entries.filter(e => e.isDirectory && e.name.startsWith('comp-'));
+
+      if (compDirs.length === 0) return null;
+
+      const competitions: CompetitionMetadata[] = [];
+      for (const dir of compDirs) {
+        try {
+          const compDir = await this.storage!.getDirectoryHandle(
+            this.competitionsDir!, dir.name, { create: false }
+          );
+          const session = await this.storage!.readJSON<any>(compDir, 'session.json');
+          const name = session?.competition_name || dir.name;
+          const createdAt = session?.createdAt || new Date().toISOString();
+          const lastModified = session?.updatedAt || createdAt;
+          const photoCount = (session?.sets?.set1?.photos?.length || 0) + (session?.sets?.set2?.photos?.length || 0);
+
+          competitions.push({
+            id: dir.name,
+            name,
+            createdAt,
+            lastModified,
+            photoCount,
+            isActive: false
+          });
+        } catch {
+          // Skip directories that can't be read
+        }
+      }
+
+      if (competitions.length === 0) return null;
+
+      // Mark the most recently modified as active
+      competitions.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
+      competitions[0].isActive = true;
+
+      return {
+        competitions,
+        activeCompetitionId: competitions[0].id,
+        version: 1
+      };
+    } catch {
+      return null;
+    }
   }
 
   async saveCompetitionsIndex(index: CompetitionsIndex): Promise<void> {
@@ -108,6 +178,7 @@ export class CompetitionService {
 
     // Update index
     const index = await this.getCompetitionsIndex();
+    console.log('createCompetition: index before update has', index.competitions.length, 'entries');
     const metadata: CompetitionMetadata = {
       id: competition.id,
       name: competition.name,
@@ -122,6 +193,7 @@ export class CompetitionService {
     index.competitions.push(metadata);
     index.activeCompetitionId = id;
 
+    console.log('createCompetition: index after update has', index.competitions.length, 'entries');
     await this.saveCompetitionsIndex(index);
     return competition;
   }
