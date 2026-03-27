@@ -442,7 +442,7 @@ function App() {
               </IconButton>
             )}
             <Place sx={{ fontSize: 28 }} />
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>{t('app.title')}</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 600, color: 'white' }}>{t('app.title')}</Typography>
             {competitionName && (
               <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
             )}
