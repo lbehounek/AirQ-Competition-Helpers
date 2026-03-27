@@ -425,28 +425,50 @@ function App() {
   return (
     <>
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
-      <AppBar position="static" color="default" elevation={1} data-print-hide="true">
-        <Toolbar sx={{ gap: 2 }}>
+      {/* Blue Header — matches Photo Editor */}
+      <Box
+        sx={{
+          p: 1.5,
+          px: 2,
+          background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+        data-print-hide="true"
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {competitionId && (window as any).electronAPI && (
             <IconButton
               size="small"
               onClick={() => (window as any).electronAPI?.goHome()}
+              sx={{ color: 'white' }}
               title={t('app.backToMenu')}
             >
               <Home />
             </IconButton>
           )}
-          <Typography variant="h6" sx={{ mr: 1 }}>{t('app.title')}</Typography>
-          {competitionName && <Chip label={competitionName} size="small" variant="outlined" />}
-          {competitionId && (window as any).electronAPI && (
-            <IconButton
-              size="small"
-              onClick={() => (window as any).electronAPI?.navigateToApp('photo-helper', competitionId)}
-              title="Photo Editor"
-            >
-              <PhotoCamera />
-            </IconButton>
+          <Place sx={{ fontSize: 28, color: 'white' }} />
+          <Typography variant="h6" sx={{ color: 'white', fontWeight: 600 }}>{t('app.title')}</Typography>
+          {competitionName && (
+            <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
           )}
+        </Box>
+        {competitionId && (window as any).electronAPI && (
+          <IconButton
+            size="small"
+            onClick={() => (window as any).electronAPI?.navigateToApp('photo-helper', competitionId)}
+            sx={{ color: 'white' }}
+            title="Photo Editor"
+          >
+            <PhotoCamera />
+          </IconButton>
+        )}
+      </Box>
+
+      {/* Controls toolbar */}
+      <AppBar position="static" color="default" elevation={1} data-print-hide="true" sx={{ bgcolor: 'background.paper' }}>
+        <Toolbar variant="dense" sx={{ gap: 1.5, minHeight: 44 }}>
           <input
             type="file"
             ref={fileInputRef}
@@ -454,13 +476,14 @@ function App() {
             accept=".kml,.gpx,application/vnd.google-earth.kml+xml,application/gpx+xml"
             style={{ display: 'none' }}
           />
-          <Button variant="contained" color="primary" onClick={onClickSelectFile}>
+          <Button variant="contained" color="primary" size="small" onClick={onClickSelectFile}>
             {t('app.selectKml')}
           </Button>
           {(session?.leftSegments || session?.rightSegments || session?.gates) && (
-            <Button 
-              variant="outlined" 
-              color="success" 
+            <Button
+              variant="outlined"
+              color="success"
+              size="small"
               onClick={handleExportKML}
               startIcon={<Download />}
             >
@@ -470,6 +493,7 @@ function App() {
           <Button
             variant="outlined"
             color="primary"
+            size="small"
             draggable
             onDragStart={onDragStartMarker}
             startIcon={<Place />}
@@ -480,6 +504,7 @@ function App() {
           <Button
             variant="outlined"
             color="secondary"
+            size="small"
             onClick={() => mapRef.current?.printMap()}
           >
             {t('app.printMap')}
@@ -488,38 +513,23 @@ function App() {
             value={baseStyle}
             exclusive
             onChange={(_, val) => { if (val) setBaseStyle(val) }}
-            size="medium"
+            size="small"
             color="primary"
             aria-label="Base map style"
-            sx={{
-              borderRadius: 1.5,
-              height: 36,
-              '& .MuiToggleButton-root': {
-                minHeight: 36,
-                lineHeight: 1.5,
-                fontSize: 14,
-                px: 2
-              },
-              '& .MuiToggleButtonGroup-grouped': {
-                borderRadius: 1.5,
-                px: 2,
-                '&:not(:first-of-type)': { borderLeft: '1px solid', borderColor: 'divider' }
-              }
-            }}
           >
             <ToggleButton value="streets" aria-label={t('app.toggleBase.streets')}>{t('app.toggleBase.streets')}</ToggleButton>
             <ToggleButton value="satellite" aria-label={t('app.toggleBase.satellite')}>{t('app.toggleBase.satellite')}</ToggleButton>
           </ToggleButtonGroup>
           <FormControlLabel
             control={<Checkbox size="small" checked={!!session?.use1NmAfterSp} onChange={(e) => setUse1NmAfterSp(e.target.checked)} />}
-            label={t('app.use1NmAfterSp')}
+            label={<Typography variant="body2">{t('app.use1NmAfterSp')}</Typography>}
           />
-          {/* Provider selection removed to use Mapbox only */}
+          <Box sx={{ flex: 1 }} />
           <Button
             variant="outlined"
             color="inherit"
+            size="small"
             onClick={() => setAnswerSheetOpen(true)}
-            sx={{ ml: 'auto' }}
           >
             {t('app.answerSheet')}
           </Button>
