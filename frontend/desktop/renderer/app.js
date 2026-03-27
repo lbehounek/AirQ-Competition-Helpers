@@ -13,7 +13,11 @@ const translations = {
     'competition.empty': '\u017d\u00e1dn\u00e9 sout\u011b\u017ee \u2013 vytvo\u0159te novou',
     'competition.promptName': 'N\u00e1zev nov\u00e9 sout\u011b\u017ee:',
     'competition.defaultName': 'Sout\u011b\u017e',
-    'competition.selectFirst': 'Nejd\u0159\u00edve vyberte sout\u011b\u017e'
+    'competition.selectFirst': 'Nejd\u0159\u00edve vyberte sout\u011b\u017e',
+    'competition.deleteBtn': 'Smazat',
+    'competition.confirmDelete': 'Smazat',
+    'competition.cancelDelete': 'Zru\u0161it',
+    'competition.deleteConfirmText': 'Opravdu smazat "{name}"? Toto nelze vr\u00e1tit.'
   },
   en: {
     title: 'Navigation Flying Tools',
@@ -28,7 +32,11 @@ const translations = {
     'competition.empty': 'No competitions \u2013 create one',
     'competition.promptName': 'New competition name:',
     'competition.defaultName': 'Competition',
-    'competition.selectFirst': 'Select a competition first'
+    'competition.selectFirst': 'Select a competition first',
+    'competition.deleteBtn': 'Delete',
+    'competition.confirmDelete': 'Delete',
+    'competition.cancelDelete': 'Cancel',
+    'competition.deleteConfirmText': 'Delete "{name}"? This cannot be undone.'
   }
 };
 
@@ -162,13 +170,12 @@ async function loadCompetitions() {
 }
 
 function updateCardsState() {
+  const hasComp = Boolean(activeCompetitionId);
   document.querySelectorAll('.card').forEach(card => {
-    if (activeCompetitionId) {
-      card.classList.remove('disabled');
-    } else {
-      card.classList.add('disabled');
-    }
+    card.classList.toggle('disabled', !hasComp);
   });
+  const delBtn = document.getElementById('competition-delete');
+  if (delBtn) delBtn.disabled = !hasComp;
 }
 
 // Competition change handler
@@ -229,6 +236,45 @@ nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') confirmCreate();
   if (e.key === 'Escape') hideCreateForm();
 });
+
+// Delete competition — inline confirmation
+const deleteBtn = document.getElementById('competition-delete');
+const barDelete = document.getElementById('competition-bar-delete');
+const deleteConfirmText = document.getElementById('delete-confirm-text');
+const deleteConfirmBtn = document.getElementById('competition-delete-confirm');
+const deleteCancelBtn = document.getElementById('competition-delete-cancel');
+
+function showDeleteConfirm() {
+  if (!activeCompetitionId) return;
+  const opt = selectEl.options[selectEl.selectedIndex];
+  const name = opt ? opt.textContent : activeCompetitionId;
+  const msg = t('competition.deleteConfirmText').replace('{name}', name);
+  deleteConfirmText.textContent = msg;
+  barSelect.classList.add('hidden');
+  barDelete.classList.remove('hidden');
+}
+
+function hideDeleteConfirm() {
+  barDelete.classList.add('hidden');
+  barSelect.classList.remove('hidden');
+}
+
+async function confirmDelete() {
+  if (!activeCompetitionId || !window.electronAPI?.competitions) return;
+  try {
+    const result = await window.electronAPI.competitions.delete(activeCompetitionId);
+    hideDeleteConfirm();
+    activeCompetitionId = result.activeCompetitionId;
+    await loadCompetitions();
+    updateCardsState();
+  } catch (err) {
+    console.error('Failed to delete competition:', err);
+  }
+}
+
+deleteBtn.addEventListener('click', showDeleteConfirm);
+deleteCancelBtn.addEventListener('click', hideDeleteConfirm);
+deleteConfirmBtn.addEventListener('click', confirmDelete);
 
 // ============================================================================
 // Card navigation

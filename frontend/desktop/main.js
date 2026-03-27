@@ -596,6 +596,40 @@ ipcMain.handle('competition-set-active', async (event, id) => {
   return target;
 });
 
+// Delete a competition
+ipcMain.handle('competition-delete', async (event, id) => {
+  const index = readCompetitionsIndex();
+  const target = index.competitions.find(c => c.id === id);
+  if (!target) {
+    throw new Error(`Competition not found: ${id}`);
+  }
+
+  // Delete competition directory
+  const compDir = path.join(getPhotoSessionsPath(), 'competitions', id);
+  if (fs.existsSync(compDir)) {
+    fs.rmSync(compDir, { recursive: true, force: true });
+  }
+
+  // Update index
+  index.competitions = index.competitions.filter(c => c.id !== id);
+  if (index.activeCompetitionId === id) {
+    if (index.competitions.length > 0) {
+      index.competitions[0].isActive = true;
+      index.activeCompetitionId = index.competitions[0].id;
+    } else {
+      index.activeCompetitionId = null;
+    }
+  }
+  writeCompetitionsIndex(index);
+
+  // Update config
+  if (getConfigValue('activeCompetitionId') === id) {
+    setConfigValue('activeCompetitionId', index.activeCompetitionId);
+  }
+
+  return { activeCompetitionId: index.activeCompetitionId };
+});
+
 // Show Mapbox token dialog - single window with input field
 async function showMapboxTokenDialog() {
   const currentToken = getConfigValue('mapboxToken') || '';

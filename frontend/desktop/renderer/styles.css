@@ -164,6 +164,38 @@ header p {
   background: #DBEAFE;
 }
 
+.btn-delete {
+  border-color: #E53E3E;
+  color: #E53E3E;
+  background: #FFF5F5;
+  padding: 8px 12px;
+}
+
+.btn-delete:hover {
+  background: #FED7D7;
+}
+
+.btn-delete:disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
+.btn-delete-confirm {
+  border-color: #E53E3E;
+  color: #fff;
+  background: #E53E3E;
+}
+
+.btn-delete-confirm:hover {
+  background: #C53030;
+}
+
+.delete-warning {
+  color: #E53E3E;
+  font-weight: 500;
+}
+
 /* App cards */
 .apps {
   max-width: 720px;

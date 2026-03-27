@@ -11,13 +11,12 @@ import type { GeoJSON } from 'geojson'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
 import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, IconButton, Tooltip, Alert } from '@mui/material'
-import { Download, Place, Print } from '@mui/icons-material'
+import { Download, Place, Print, Home, PhotoCamera } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } from '@turf/turf'
 import { calculateDistance } from './corridors/segments'
 import { useI18n } from './contexts/I18nContext'
-import { LanguageSwitcher } from './components/LanguageSwitcher'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 
 function App() {
@@ -415,7 +414,25 @@ function App() {
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
       <AppBar position="static" color="default" elevation={1} data-print-hide="true">
         <Toolbar sx={{ gap: 2 }}>
+          {competitionId && (window as any).electronAPI && (
+            <IconButton
+              size="small"
+              onClick={() => (window as any).electronAPI?.goHome()}
+              title={t('app.backToMenu')}
+            >
+              <Home />
+            </IconButton>
+          )}
           <Typography variant="h6" sx={{ mr: 1 }}>{t('app.title')}</Typography>
+          {competitionId && (window as any).electronAPI && (
+            <IconButton
+              size="small"
+              onClick={() => (window as any).electronAPI?.navigateToApp('photo-helper', competitionId)}
+              title="Photo Editor"
+            >
+              <PhotoCamera />
+            </IconButton>
+          )}
           <input
             type="file"
             ref={fileInputRef}
@@ -492,7 +509,6 @@ function App() {
           >
             {t('app.answerSheet')}
           </Button>
-          <LanguageSwitcher />
         </Toolbar>
       </AppBar>
       <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>

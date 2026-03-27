@@ -64,15 +64,9 @@ function getElectronAPI() {
  * Electron native filesystem storage implementation
  */
 export class ElectronStorage implements StorageInterface {
-  private rootPath: string | null = null;
-  private sessionsPath: string | null = null;
-
   async init(): Promise<StorageHandles> {
     const api = getElectronAPI();
     const { rootPath, sessionsPath } = await api.init();
-
-    this.rootPath = rootPath;
-    this.sessionsPath = sessionsPath;
 
     return {
       root: createPathHandle(rootPath),

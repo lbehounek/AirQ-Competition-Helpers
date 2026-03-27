@@ -7,7 +7,7 @@ import {
   getStorage,
   loadOrCreateSessionId,
   type DirectoryHandle,
-} from '../services/storage';
+} from '@airq/shared-storage';
 
 type LayoutMode = 'landscape' | 'portrait';
 

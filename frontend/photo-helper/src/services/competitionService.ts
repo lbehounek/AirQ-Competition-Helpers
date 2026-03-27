@@ -18,7 +18,7 @@ import {
   type StorageInterface,
   type DirectoryHandle,
   type StorageHandles,
-} from './storage';
+} from '@airq/shared-storage';
 
 const COMPETITIONS_INDEX_FILE = 'competitions-index.json';
 const MAX_COMPETITIONS = 10;

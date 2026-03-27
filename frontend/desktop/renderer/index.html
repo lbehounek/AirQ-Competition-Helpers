@@ -41,12 +41,18 @@
           <option value="" data-i18n="competition.loading">Nacitani...</option>
         </select>
         <button id="competition-new" class="btn btn-new" data-i18n="competition.new" title="Nova soutez">+ Nova soutez</button>
+        <button id="competition-delete" class="btn btn-delete" data-i18n="competition.deleteBtn" title="Smazat" disabled>X</button>
       </div>
       <div class="competition-bar hidden" id="competition-bar-create">
         <label class="competition-label" data-i18n="competition.promptName" for="competition-name-input">Nazev nove souteze:</label>
         <input id="competition-name-input" class="competition-input" type="text" maxlength="60" autocomplete="off" />
         <button id="competition-create-confirm" class="btn btn-new">OK</button>
         <button id="competition-create-cancel" class="btn">X</button>
+      </div>
+      <div class="competition-bar hidden" id="competition-bar-delete">
+        <span class="competition-label delete-warning" id="delete-confirm-text"></span>
+        <button id="competition-delete-confirm" class="btn btn-delete-confirm" data-i18n="competition.confirmDelete">Smazat</button>
+        <button id="competition-delete-cancel" class="btn" data-i18n="competition.cancelDelete">Zrusit</button>
       </div>
     </section>
 
