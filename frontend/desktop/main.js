@@ -674,8 +674,8 @@ const menuTranslations = {
   en: {
     navigation: 'Navigation',
     home: 'Home',
-    photoHelper: 'Photo Helper',
-    mapCorridors: 'Map Corridors',
+    photoHelper: 'Photo Editor',
+    mapCorridors: 'Photo Placement',
     back: 'Back',
     forward: 'Forward',
     reload: 'Reload',
@@ -694,8 +694,8 @@ const menuTranslations = {
   cs: {
     navigation: 'Navigace',
     home: 'Domů',
-    photoHelper: 'Foto pomocník',
-    mapCorridors: 'Foto koridory',
+    photoHelper: 'Foto editor',
+    mapCorridors: 'Umístění fotek',
     back: 'Zpět',
     forward: 'Vpřed',
     reload: 'Obnovit',
