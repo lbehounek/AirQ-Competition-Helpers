@@ -53,7 +53,7 @@
       "icon": "icons/icon.ico"
     },
     "portable": {
-      "artifactName": "${productName}-${version}.${ext}"
+      "artifactName": "photo-helper-v${version}.${ext}"
     }
   },
   "devDependencies": {

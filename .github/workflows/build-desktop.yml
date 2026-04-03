@@ -93,7 +93,7 @@ jobs:
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: AirQ-Competition-Helpers
+          name: photo-helper-v${{ steps.get_version.outputs.VERSION }}
           path: frontend/desktop/dist/*.exe
           if-no-files-found: error
 
