@@ -150,7 +150,7 @@ function setupProtocol() {
     callback({
       path: filePath,
       headers: {
-        'Content-Security-Policy': "default-src 'self' app: blob: data:; script-src 'self' app:; style-src 'self' 'unsafe-inline' app:; img-src 'self' app: blob: data: https:; connect-src 'self' app: blob: https:; worker-src 'self' blob:"
+        'Content-Security-Policy': "default-src 'self' app: blob: data:; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' app:; style-src 'self' 'unsafe-inline' app:; img-src 'self' app: blob: data: https:; connect-src 'self' app: blob: data: https:; worker-src 'self' blob:"
       }
     });
   });
