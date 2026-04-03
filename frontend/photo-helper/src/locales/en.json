@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Photo Helper",
+    "title": "Photo Editor",
     "subtitle": "Organize your navigation flight photos into standardized PDF layouts",
     "backToMenu": "Back to main menu"
   },
@@ -208,7 +208,7 @@
     "newSessionInfo": "A new session will be created automatically when you upload your first photo.",
     "preview": "Preview",
     "instructions": {
-      "title": "Welcome to Photo Helper!",
+      "title": "Welcome to Photo Editor!",
       "subtitle": "Here's how to get started:",
       "step1": "1. Upload photos to Set 1 and Set 2 using the drag & drop zones above",
       "step2": "2. Click on any photo to edit brightness, contrast, cropping and positioning",

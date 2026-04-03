@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Foto Pomocník",
+    "title": "Foto editor",
     "subtitle": "Organizujte fotografie z navigačního letu do standardizovaných PDF rozvržení",
     "backToMenu": "Zpět do hlavního menu"
   },
@@ -207,7 +207,7 @@
     "newSessionInfo": "Nová relace bude automaticky vytvořena při nahrání první fotografie.",
     "preview": "Náhled",
     "instructions": {
-      "title": "Vítejte v Foto Pomocníkovi!",
+      "title": "Vítejte ve Foto editoru!",
       "subtitle": "Zde je návod, jak začít:",
       "step1": "1. Nahrajte fotografie do Sady 1 a Sady 2 pomocí oblastí pro přetahování výše",
       "step2": "2. Klikněte na libovolnou fotografii pro úpravu jasu, kontrastu, ořezu a pozice",

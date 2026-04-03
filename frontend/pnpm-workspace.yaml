@@ -1,4 +1,5 @@
 packages:
+  - shared-storage
   - photo-helper
   - map-corridors
   - desktop

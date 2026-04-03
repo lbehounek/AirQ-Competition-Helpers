@@ -10,7 +10,7 @@ import {
   initStorage,
   getStorage,
   loadOrCreateSessionId,
-} from './storage';
+} from '@airq/shared-storage';
 
 export interface MigrationResult {
   migrated: boolean;

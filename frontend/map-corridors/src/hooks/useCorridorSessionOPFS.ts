@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GeoJSON } from 'geojson'
 import {
-  detectOPFSWriteSupport,
-  ensureSessionDir,
-  initOPFS,
+  initStorage,
+  isStorageAvailable,
   loadOrCreateSessionId,
-  readJSON,
-  readTextFile,
-  writeJSON,
-  writeTextFile,
-} from '../services/opfsService'
+  type StorageInterface,
+  type DirectoryHandle,
+} from '@airq/shared-storage'
 
 type BaseStyle = 'streets' | 'satellite'
 
@@ -47,58 +44,84 @@ const defaultSession = (id: string): CorridorsSession => ({
   markers: [],
 })
 
-export function useCorridorSessionOPFS() {
+export function useCorridorSessionOPFS(competitionId?: string | null) {
   const [session, setSession] = useState<CorridorsSession | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
-  // No loading UI is currently used; keep hook lean
   const [error, setError] = useState<string | null>(null)
-  const [opfsAvailable, setOpfsAvailable] = useState<boolean | null>(null)
+  const [storageAvailable, setStorageAvailable] = useState<boolean | null>(null)
 
-  const handlesRef = useRef<{ sessionsDir?: FileSystemDirectoryHandle; sessionDir?: FileSystemDirectoryHandle }>({})
+  const storageRef = useRef<StorageInterface | null>(null)
+  const sessionDirRef = useRef<DirectoryHandle | null>(null)
 
   useEffect(() => {
     (async () => {
-      setOpfsAvailable(null)
-      const ok = await detectOPFSWriteSupport()
-      setOpfsAvailable(ok)
-      const id = loadOrCreateSessionId()
-      setSessionId(id)
+      setStorageAvailable(null)
+
+      const ok = await isStorageAvailable()
+      setStorageAvailable(ok)
+
       if (!ok) {
+        const id = competitionId ? `corridors-${competitionId}` : loadOrCreateSessionId()
+        setSessionId(id)
         setSession(defaultSession(id))
         return
       }
+
       try {
-        const { root, sessions } = await initOPFS()
-        const { dir } = await ensureSessionDir({ root, sessions }, id)
-        handlesRef.current = { sessionsDir: sessions, sessionDir: dir }
-        const existing = await readJSON<CorridorsSession>(dir, 'session.json')
+        const storage = await initStorage()
+        storageRef.current = storage
+        const handles = await storage.init()
+
+        let corridorsDir: DirectoryHandle
+        let id: string
+
+        if (competitionId) {
+          // Scope under competitions/{competitionId}/corridors/
+          id = `corridors-${competitionId}`
+          const competitionsDir = await storage.getDirectoryHandle(handles.root, 'competitions', { create: true })
+          const compDir = await storage.getDirectoryHandle(competitionsDir, competitionId, { create: true })
+          corridorsDir = await storage.getDirectoryHandle(compDir, 'corridors', { create: true })
+        } else {
+          // Legacy flat session
+          id = loadOrCreateSessionId()
+          const sessionsDir = await storage.getDirectoryHandle(handles.root, 'sessions', { create: true })
+          corridorsDir = await storage.getDirectoryHandle(sessionsDir, id, { create: true })
+        }
+
+        sessionDirRef.current = corridorsDir
+        setSessionId(id)
+
+        const existing = await storage.readJSON<CorridorsSession>(corridorsDir, 'session.json')
         if (existing) {
-          const withDefaults: CorridorsSession = {
+          setSession({
             ...defaultSession(id),
             ...existing,
             baseStyle: (existing as any).baseStyle || 'streets',
-          }
-          setSession(withDefaults)
+          })
         } else {
           const fresh = defaultSession(id)
-          await writeJSON(dir, 'session.json', fresh)
+          await storage.writeJSON(corridorsDir, 'session.json', fresh)
           setSession(fresh)
         }
       } catch (e) {
-        console.error(e)
-        setError('Failed to initialize OPFS')
+        console.error('Failed to initialize corridors storage', e)
+        setError('Failed to initialize storage')
+        const id = competitionId ? `corridors-${competitionId}` : loadOrCreateSessionId()
+        setSessionId(id)
         setSession(defaultSession(id))
       }
     })()
-  }, [])
+  }, [competitionId])
 
   const persistSession = useCallback(async (next: CorridorsSession) => {
     setSession(next)
-    if (handlesRef.current.sessionDir) {
-      try { 
-        await writeJSON(handlesRef.current.sessionDir, 'session.json', next) 
+    const storage = storageRef.current
+    const dir = sessionDirRef.current
+    if (storage && dir) {
+      try {
+        await storage.writeJSON(dir, 'session.json', next)
       } catch (e) {
-        console.error('Failed to persist corridors session to OPFS', e)
+        console.error('Failed to persist corridors session', e)
         setError('Failed to persist session')
       }
     }
@@ -124,21 +147,28 @@ export function useCorridorSessionOPFS() {
 
   const saveOriginalKmlText = useCallback(async (text: string | null) => {
     if (!session) return
-    const dir = handlesRef.current.sessionDir
-    if (dir) {
-      if (text == null) {
-        // overwrite with empty file for clarity
-        await writeTextFile(dir, 'original.kml', '')
-      } else {
-        await writeTextFile(dir, 'original.kml', text, 'application/vnd.google-earth.kml+xml')
+    const storage = storageRef.current
+    const dir = sessionDirRef.current
+    if (storage && dir) {
+      try {
+        // Store KML text as JSON wrapper (works for both OPFS and Electron)
+        await storage.writeJSON(dir, 'original-kml.json', { text: text || '' })
+      } catch (e) {
+        console.error('Failed to save original KML text', e)
       }
     }
   }, [session])
 
   const loadOriginalKmlText = useCallback(async (): Promise<string | null> => {
-    const dir = handlesRef.current.sessionDir
-    if (!dir) return null
-    return await readTextFile(dir, 'original.kml')
+    const storage = storageRef.current
+    const dir = sessionDirRef.current
+    if (!storage || !dir) return null
+    try {
+      const data = await storage.readJSON<{ text: string }>(dir, 'original-kml.json')
+      return data?.text || null
+    } catch {
+      return null
+    }
   }, [])
 
   const setComputedData = useCallback(async (payload: {
@@ -164,7 +194,7 @@ export function useCorridorSessionOPFS() {
     session,
     sessionId,
     error,
-    backendAvailable: opfsAvailable,
+    backendAvailable: storageAvailable,
     // actions
     setBaseStyle,
     setUse1NmAfterSp,
@@ -176,5 +206,3 @@ export function useCorridorSessionOPFS() {
     clearError: () => setError(null),
   }
 }
-
-

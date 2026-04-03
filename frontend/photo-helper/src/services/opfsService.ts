@@ -41,4 +41,4 @@ export {
   opfsStorage,
   ElectronStorage,
   electronStorage,
-} from './storage';
+} from '@airq/shared-storage';

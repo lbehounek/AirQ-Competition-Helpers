@@ -51,7 +51,6 @@ function unwrapOPFSHandle(handle: DirectoryHandle): FileSystemDirectoryHandle {
  * OPFS Storage implementation
  */
 export class OPFSStorage implements StorageInterface {
-  private rootHandle: FileSystemDirectoryHandle | null = null;
   private sessionsHandle: FileSystemDirectoryHandle | null = null;
 
   async init(): Promise<StorageHandles> {
@@ -62,8 +61,6 @@ export class OPFSStorage implements StorageInterface {
 
     const root: FileSystemDirectoryHandle = await storage.getDirectory();
     const sessions = await root.getDirectoryHandle('sessions', { create: true });
-
-    this.rootHandle = root;
     this.sessionsHandle = sessions;
 
     return {

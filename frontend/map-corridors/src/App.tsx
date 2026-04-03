@@ -10,14 +10,13 @@ import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates } from './corridors/preciseCorridor'
 
-import { AppBar, Box, Button, Container, Toolbar, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, IconButton, Tooltip, Alert } from '@mui/material'
-import { Download, Place, Print } from '@mui/icons-material'
+import { Box, Button, Chip, Container, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, Checkbox, FormControlLabel, IconButton, Tooltip, Alert } from '@mui/material'
+import { Download, Place, Print, Home, PhotoCamera } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } from '@turf/turf'
 import { calculateDistance } from './corridors/segments'
 import { useI18n } from './contexts/I18nContext'
-import { LanguageSwitcher } from './components/LanguageSwitcher'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 
 function App() {
@@ -28,6 +27,29 @@ function App() {
   }, [t])
   const [provider] = useState<MapProviderId>('mapbox')
   const [electronMapboxToken, setElectronMapboxToken] = useState<string | null>(null)
+
+  // Read competition ID from URL (set by desktop launcher)
+  const competitionId = useMemo(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      return params.get('competitionId') || null
+    } catch {
+      return null
+    }
+  }, [])
+
+  // Fetch competition name from index for display
+  const [competitionName, setCompetitionName] = useState<string | null>(null)
+  useEffect(() => {
+    if (!competitionId) return
+    const electronAPI = (window as any).electronAPI
+    if (electronAPI?.competitions) {
+      electronAPI.competitions.list().then((index: any) => {
+        const comp = index?.competitions?.find((c: any) => c.id === competitionId)
+        if (comp) setCompetitionName(comp.name)
+      }).catch(() => {})
+    }
+  }, [competitionId])
 
   // Fetch Mapbox token from Electron config if running in desktop app
   useEffect(() => {
@@ -47,7 +69,7 @@ function App() {
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,
-  } = useCorridorSessionOPFS()
+  } = useCorridorSessionOPFS(competitionId)
   const baseStyle = (session?.baseStyle || 'streets') as 'streets' | 'satellite'
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -403,88 +425,65 @@ function App() {
   return (
     <>
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
-      <AppBar position="static" color="default" elevation={1} data-print-hide="true">
-        <Toolbar sx={{ gap: 2 }}>
-          <Typography variant="h6" sx={{ mr: 1 }}>{t('app.title')}</Typography>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={onFileInputChange}
-            accept=".kml,.gpx,application/vnd.google-earth.kml+xml,application/gpx+xml"
-            style={{ display: 'none' }}
-          />
-          <Button variant="contained" color="primary" onClick={onClickSelectFile}>
-            {t('app.selectKml')}
-          </Button>
-          {(session?.leftSegments || session?.rightSegments || session?.gates) && (
-            <Button 
-              variant="outlined" 
-              color="success" 
-              onClick={handleExportKML}
-              startIcon={<Download />}
-            >
-              {t('app.exportKml')}
-            </Button>
+      {/* Unified blue header */}
+      <Box
+        sx={{
+          bgcolor: '#1565C0',
+          color: 'white',
+        }}
+        data-print-hide="true"
+      >
+        {/* Title row */}
+        <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {competitionId && (window as any).electronAPI && (
+              <IconButton size="small" onClick={() => (window as any).electronAPI?.goHome()} sx={{ color: 'white' }} title={t('app.backToMenu')}>
+                <Home />
+              </IconButton>
+            )}
+            <Place sx={{ fontSize: 28 }} />
+            <Typography variant="h6" sx={{ fontWeight: 600, color: 'white' }}>{t('app.title')}</Typography>
+            {competitionName && (
+              <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
+            )}
+          </Box>
+          {competitionId && (window as any).electronAPI && (
+            <IconButton size="small" onClick={() => (window as any).electronAPI?.navigateToApp('photo-helper', competitionId)} sx={{ color: 'white' }} title="Photo Editor">
+              <PhotoCamera />
+            </IconButton>
           )}
-          <Button
-            variant="outlined"
-            color="primary"
-            draggable
-            onDragStart={onDragStartMarker}
-            startIcon={<Place />}
-            title={t('app.dragToPlace')}
-          >
-            {t('app.dragToPlace')}
-          </Button>
-          <Button
-            variant="outlined"
-            color="secondary"
-            onClick={() => mapRef.current?.printMap()}
-          >
-            {t('app.printMap')}
-          </Button>
-          <ToggleButtonGroup
-            value={baseStyle}
-            exclusive
-            onChange={(_, val) => { if (val) setBaseStyle(val) }}
-            size="medium"
-            color="primary"
-            aria-label="Base map style"
-            sx={{
-              borderRadius: 1.5,
-              height: 36,
-              '& .MuiToggleButton-root': {
-                minHeight: 36,
-                lineHeight: 1.5,
-                fontSize: 14,
-                px: 2
-              },
-              '& .MuiToggleButtonGroup-grouped': {
-                borderRadius: 1.5,
-                px: 2,
-                '&:not(:first-of-type)': { borderLeft: '1px solid', borderColor: 'divider' }
-              }
-            }}
-          >
-            <ToggleButton value="streets" aria-label={t('app.toggleBase.streets')}>{t('app.toggleBase.streets')}</ToggleButton>
-            <ToggleButton value="satellite" aria-label={t('app.toggleBase.satellite')}>{t('app.toggleBase.satellite')}</ToggleButton>
+        </Box>
+        {/* Controls row */}
+        <Box sx={{
+          px: 2, py: 0.75,
+          display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap',
+          bgcolor: 'rgba(0,0,0,0.1)',
+          '& .MuiButton-root': { color: 'white', borderColor: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', textTransform: 'none' },
+          '& .MuiButton-contained': { bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } },
+          '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.7)', borderColor: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', py: 0.25, px: 1.5,
+            '&.Mui-selected': { color: 'white', bgcolor: 'rgba(255,255,255,0.2)' } },
+          '& .MuiFormControlLabel-label': { color: 'white', fontSize: '0.8rem' },
+          '& .MuiCheckbox-root': { color: 'rgba(255,255,255,0.7)', '&.Mui-checked': { color: 'white' } },
+        }}>
+          <input type="file" ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,application/vnd.google-earth.kml+xml,application/gpx+xml" style={{ display: 'none' }} />
+          <Button variant="contained" size="small" onClick={onClickSelectFile}>{t('app.selectKml')}</Button>
+          {(session?.leftSegments || session?.rightSegments || session?.gates) && (
+            <Button variant="outlined" size="small" onClick={handleExportKML} startIcon={<Download sx={{ fontSize: 16 }} />}>{t('app.exportKml')}</Button>
+          )}
+          <Button variant="outlined" size="small" draggable onDragStart={onDragStartMarker} startIcon={<Place sx={{ fontSize: 16 }} />} title={t('app.dragToPlace')}>{t('app.dragToPlace')}</Button>
+          <Button variant="outlined" size="small" onClick={() => mapRef.current?.printMap()}>{t('app.printMap')}</Button>
+          <ToggleButtonGroup value={baseStyle} exclusive onChange={(_, val) => { if (val) setBaseStyle(val) }} size="small">
+            <ToggleButton value="streets">{t('app.toggleBase.streets')}</ToggleButton>
+            <ToggleButton value="satellite">{t('app.toggleBase.satellite')}</ToggleButton>
           </ToggleButtonGroup>
           <FormControlLabel
             control={<Checkbox size="small" checked={!!session?.use1NmAfterSp} onChange={(e) => setUse1NmAfterSp(e.target.checked)} />}
             label={t('app.use1NmAfterSp')}
           />
-          {/* Provider selection removed to use Mapbox only */}
-          <Button
-            variant="outlined"
-            color="inherit"
-            onClick={() => setAnswerSheetOpen(true)}
-            sx={{ ml: 'auto' }}
-          >
-            {t('app.answerSheet')}
-          </Button>
-          <LanguageSwitcher />
-        </Toolbar>
-      </AppBar>
+          <Box sx={{ flex: 1 }} />
+          <Button variant="outlined" size="small" onClick={() => setAnswerSheetOpen(true)}>{t('app.answerSheet')}</Button>
+        </Box>
+      </Box>
       <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>
         <Box
           sx={{ height: '100%', width: '100vw', position: 'relative' }}

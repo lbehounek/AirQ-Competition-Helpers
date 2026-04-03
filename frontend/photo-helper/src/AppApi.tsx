@@ -31,7 +31,9 @@ import {
   Close,
   PictureAsPdf,
   Shuffle,
-  Warning
+  Warning,
+  Home,
+  Map
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
@@ -45,7 +47,6 @@ import { AspectRatioSelector } from './components/AspectRatioSelector';
 import { LabelingSelector } from './components/LabelingSelector';
 import { ModeSelector } from './components/ModeSelector';
 import { TurningPointLayout } from './components/TurningPointLayout';
-import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { LayoutModeSelector } from './components/LayoutModeSelector';
 import { CompetitionSelector } from './components/CompetitionSelector';
 import { CreateCompetitionButton } from './components/CreateCompetitionButton';
@@ -89,7 +90,8 @@ function AppApi() {
     storageStats,
     performCleanup,
     dismissCleanup,
-    updateStorageStats
+    updateStorageStats,
+    isDesktopManaged
   } = sessionHookResult;
 
   // Legacy API compatibility
@@ -437,20 +439,46 @@ function AppApi() {
         {/* Unified Header and Controls */}
         <Paper elevation={2} sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
           {/* Blue Header Section */}
-          <Box sx={{ 
-            p: 2, 
-            background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)',
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between' 
+          <Box sx={{
+            p: 2,
+            bgcolor: '#1565C0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
           }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              {isDesktopManaged && (
+                <IconButton
+                  size="small"
+                  onClick={() => (window as any).electronAPI?.goHome()}
+                  sx={{ color: 'white', mr: 0.5 }}
+                  title={t('app.backToMenu')}
+                >
+                  <Home />
+                </IconButton>
+              )}
               <FlightTakeoff sx={{ fontSize: 32, color: 'white', mr: 1.5 }} />
               <Typography variant="h5" component="h1" sx={{ color: 'white', fontWeight: 600 }}>
                 {t('app.title')}
               </Typography>
+              {currentCompetition && isDesktopManaged && (
+                <Chip label={currentCompetition.name} size="small" sx={{ ml: 2, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
+              )}
             </Box>
-            <LanguageSwitcher compact />
+            {isDesktopManaged && (
+              <IconButton
+                size="small"
+                onClick={() => {
+                  const params = new URLSearchParams(window.location.search);
+                  const compId = params.get('competitionId');
+                  (window as any).electronAPI?.navigateToApp('map-corridors', compId);
+                }}
+                sx={{ color: 'white' }}
+                title={t('app.switchToPlacement') || 'Photo Placement'}
+              >
+                <Map />
+              </IconButton>
+            )}
           </Box>
 
           {/* White Content Section */}
@@ -554,7 +582,8 @@ function AppApi() {
               </Box>
             </Box>
 
-            {/* Competition Management */}
+            {/* Competition Management — hidden in desktop mode (managed by launcher) */}
+            {!isDesktopManaged && (
             <Box sx={{ p: 2 }}>
               {STORAGE_MODE === 'opfs' ? (
                 /* Competition system for OPFS mode */
@@ -628,6 +657,7 @@ function AppApi() {
                 </Box>
               )}
             </Box>
+            )}
           </Box>
         </Paper>
 
@@ -883,7 +913,7 @@ function AppApi() {
       {/* Footer */}
       <Box component="footer" sx={{ py: 2, mt: 4, bgcolor: 'background.default' }}>
         <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
-          <Box sx={{ p: 2, borderRadius: 2, background: 'linear-gradient(135deg, #1976D2 0%, #42A5F5 100%)' }}>
+          <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#1565C0' }}>
             <Typography variant="body2" align="center" sx={{ color: 'common.white' }}>
               {t('footer.copy', { year: new Date().getFullYear(), name: 'Lukáš Běhounek' })} {' '}
               <Link href="https://behounek.it" target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>

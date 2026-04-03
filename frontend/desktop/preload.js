@@ -3,8 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose protected methods that allow the renderer process to use
 // ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Navigate to a specific app
-  navigateToApp: (appName) => ipcRenderer.invoke('navigate-to-app', appName),
+  // Navigate to a specific app (with optional competition context)
+  navigateToApp: (appName, competitionId) => ipcRenderer.invoke('navigate-to-app', appName, competitionId),
 
   // Go back to the home/landing page
   goHome: () => ipcRenderer.invoke('go-home'),
@@ -21,6 +21,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Update menu language
   setMenuLocale: (locale) => ipcRenderer.invoke('set-menu-locale', locale),
+
+  // Competition management
+  competitions: {
+    list: () => ipcRenderer.invoke('competition-list'),
+    create: (name) => ipcRenderer.invoke('competition-create', name),
+    setActive: (id) => ipcRenderer.invoke('competition-set-active', id),
+    delete: (id) => ipcRenderer.invoke('competition-delete', id),
+  },
 
   // Check if running in Electron
   isElectron: true,
