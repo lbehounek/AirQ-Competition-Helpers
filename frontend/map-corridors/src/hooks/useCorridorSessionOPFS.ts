@@ -73,22 +73,22 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
         const handles = await storage.init()
 
         let corridorsDir: DirectoryHandle
+        let id: string
 
         if (competitionId) {
           // Scope under competitions/{competitionId}/corridors/
+          id = `corridors-${competitionId}`
           const competitionsDir = await storage.getDirectoryHandle(handles.root, 'competitions', { create: true })
           const compDir = await storage.getDirectoryHandle(competitionsDir, competitionId, { create: true })
           corridorsDir = await storage.getDirectoryHandle(compDir, 'corridors', { create: true })
         } else {
           // Legacy flat session
-          const id = loadOrCreateSessionId()
-          setSessionId(id)
+          id = loadOrCreateSessionId()
           const sessionsDir = await storage.getDirectoryHandle(handles.root, 'sessions', { create: true })
           corridorsDir = await storage.getDirectoryHandle(sessionsDir, id, { create: true })
         }
 
         sessionDirRef.current = corridorsDir
-        const id = competitionId ? `corridors-${competitionId}` : (sessionId || loadOrCreateSessionId())
         setSessionId(id)
 
         const existing = await storage.readJSON<CorridorsSession>(corridorsDir, 'session.json')

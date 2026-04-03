@@ -1,26 +1,26 @@
 // Translations
 const translations = {
   cs: {
-    title: 'N\u00e1stroje pro naviga\u010dn\u00ed sout\u011b\u017ee',
-    subtitle: 'Vyberte sout\u011b\u017e a aplikaci',
-    'corridors.title': 'Um\u00edst\u011bn\u00ed fotek',
-    'corridors.desc': 'Ur\u010den\u00ed polohy sout\u011b\u017en\u00edch fotek na trati',
+    title: 'Nástroje pro navigační soutěže',
+    subtitle: 'Vyberte soutěž a aplikaci',
+    'corridors.title': 'Umístění fotek',
+    'corridors.desc': 'Určení polohy soutěžních fotek na trati',
     'helper.title': 'Foto editor',
-    'helper.desc': 'Organizace a ozna\u010dov\u00e1n\u00ed sout\u011b\u017en\u00edch fotek',
-    'competition.label': 'Sout\u011b\u017e',
-    'competition.new': '+ Nov\u00e1 sout\u011b\u017e',
-    'competition.loading': 'Na\u010d\u00edt\u00e1n\u00ed...',
-    'competition.empty': '\u017d\u00e1dn\u00e9 sout\u011b\u017ee \u2013 vytvo\u0159te novou',
-    'competition.promptName': 'N\u00e1zev nov\u00e9 sout\u011b\u017ee:',
-    'competition.defaultName': 'Sout\u011b\u017e',
-    'competition.selectFirst': 'Nejd\u0159\u00edve vyberte sout\u011b\u017e',
+    'helper.desc': 'Organizace a označování soutěžních fotek',
+    'competition.label': 'Soutěž',
+    'competition.new': '+ Nová soutěž',
+    'competition.loading': 'Načítání...',
+    'competition.empty': 'Žádné soutěže – vytvořte novou',
+    'competition.promptName': 'Název nové soutěže:',
+    'competition.defaultName': 'Soutěž',
+    'competition.selectFirst': 'Nejdříve vyberte soutěž',
     'competition.deleteBtn': 'Smazat',
     'competition.confirmDelete': 'Smazat',
-    'competition.cancelDelete': 'Zru\u0161it',
-    'competition.deleteConfirmText': 'Opravdu smazat "{name}"? Toto nelze vr\u00e1tit.',
-    'competition.cleanupAction': 'Vy\u010distit',
-    'competition.cleanupMsg': '{count} sout\u011b\u017e\u00ed je star\u0161\u00edch ne\u017e 30 dn\u00ed. Chcete je smazat?',
-    'competition.cleanupExcess': 'M\u00e1te {count} sout\u011b\u017e\u00ed (max 10). Zva\u017ete smaz\u00e1n\u00ed star\u0161\u00edch.'
+    'competition.cancelDelete': 'Zrušit',
+    'competition.deleteConfirmText': 'Opravdu smazat "{name}"? Toto nelze vrátit.',
+    'competition.cleanupAction': 'Vyčistit',
+    'competition.cleanupMsg': '{count} soutěží je starších než 30 dní. Chcete je smazat?',
+    'competition.cleanupExcess': 'Máte {count} soutěží (max 10). Zvažte smazání starších.'
   },
   en: {
     title: 'Navigation Flying Tools',
@@ -330,9 +330,14 @@ cleanupDismissBtn.addEventListener('click', () => {
 cleanupActionBtn.addEventListener('click', async () => {
   if (!window.electronAPI?.competitions || cleanupCandidateIds.length === 0) return;
   try {
-    for (const id of cleanupCandidateIds) {
-      // Don't delete the active competition
-      if (id === activeCompetitionId) continue;
+    const toDelete = cleanupCandidateIds.filter(id => id !== activeCompetitionId);
+    if (toDelete.length === 0) {
+      // All candidates are the active competition — nothing to delete
+      cleanupBanner.classList.add('hidden');
+      cleanupCandidateIds = [];
+      return;
+    }
+    for (const id of toDelete) {
       await window.electronAPI.competitions.delete(id);
     }
     cleanupBanner.classList.add('hidden');

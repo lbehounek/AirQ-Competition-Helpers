@@ -532,10 +532,10 @@ ipcMain.handle('competition-create', async (event, name) => {
   const now = new Date().toISOString();
   const index = readCompetitionsIndex();
 
-  // Create competition directory
+  // Create competition directory (validate path to prevent traversal)
   const competitionsDir = path.join(getPhotoSessionsPath(), 'competitions');
   ensureDir(competitionsDir);
-  const compDir = path.join(competitionsDir, id);
+  const compDir = validateStoragePath(path.join(competitionsDir, sanitizeFileName(id)));
   ensureDir(compDir);
   ensureDir(path.join(compDir, 'photos'));
 
@@ -604,8 +604,8 @@ ipcMain.handle('competition-delete', async (event, id) => {
     throw new Error(`Competition not found: ${id}`);
   }
 
-  // Delete competition directory
-  const compDir = path.join(getPhotoSessionsPath(), 'competitions', id);
+  // Delete competition directory (validate path to prevent traversal)
+  const compDir = validateStoragePath(path.join(getPhotoSessionsPath(), 'competitions', sanitizeFileName(id)));
   if (fs.existsSync(compDir)) {
     fs.rmSync(compDir, { recursive: true, force: true });
   }
