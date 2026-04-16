@@ -199,7 +199,14 @@ function createWindow() {
 
 // Handle navigation between apps
 ipcMain.handle('navigate-to-app', (event, appName, competitionId) => {
-  const qs = competitionId ? `?competitionId=${encodeURIComponent(competitionId)}` : '';
+  let qs = competitionId ? `?competitionId=${encodeURIComponent(competitionId)}` : '';
+  if (competitionId) {
+    const index = readCompetitionsIndex();
+    const comp = index.competitions.find(c => c.id === competitionId);
+    if (comp && comp.discipline) {
+      qs += `&discipline=${encodeURIComponent(comp.discipline)}`;
+    }
+  }
   if (appName === 'photo-helper') {
     mainWindow.loadURL(`app://photo-helper/index.html${qs}`);
   } else if (appName === 'map-corridors') {
@@ -567,6 +574,7 @@ ipcMain.handle('competition-create', async (event, name) => {
   const metadata = {
     id,
     name,
+    discipline: 'rally',
     createdAt: now,
     lastModified: now,
     photoCount: 0,
@@ -593,6 +601,22 @@ ipcMain.handle('competition-set-active', async (event, id) => {
   index.activeCompetitionId = id;
   writeCompetitionsIndex(index);
   setConfigValue('activeCompetitionId', id);
+  return target;
+});
+
+// Set discipline for a competition
+ipcMain.handle('competition-set-discipline', async (event, id, discipline) => {
+  if (discipline !== 'precision' && discipline !== 'rally') {
+    throw new Error(`Invalid discipline: ${discipline}`);
+  }
+  const index = readCompetitionsIndex();
+  const target = index.competitions.find(c => c.id === id);
+  if (!target) {
+    throw new Error(`Competition not found: ${id}`);
+  }
+  target.discipline = discipline;
+  target.lastModified = new Date().toISOString();
+  writeCompetitionsIndex(index);
   return target;
 });
 
@@ -774,7 +798,12 @@ function createMenu(locale = 'cs') {
           click: () => {
             if (mainWindow) {
               const compId = getConfigValue('activeCompetitionId');
-              const qs = compId ? `?competitionId=${encodeURIComponent(compId)}` : '';
+              let qs = compId ? `?competitionId=${encodeURIComponent(compId)}` : '';
+              if (compId) {
+                const idx = readCompetitionsIndex();
+                const comp = idx.competitions.find(c => c.id === compId);
+                if (comp && comp.discipline) qs += `&discipline=${encodeURIComponent(comp.discipline)}`;
+              }
               mainWindow.loadURL(`app://photo-helper/index.html${qs}`);
             }
           }
@@ -785,7 +814,12 @@ function createMenu(locale = 'cs') {
           click: () => {
             if (mainWindow) {
               const compId = getConfigValue('activeCompetitionId');
-              const qs = compId ? `?competitionId=${encodeURIComponent(compId)}` : '';
+              let qs = compId ? `?competitionId=${encodeURIComponent(compId)}` : '';
+              if (compId) {
+                const idx = readCompetitionsIndex();
+                const comp = idx.competitions.find(c => c.id === compId);
+                if (comp && comp.discipline) qs += `&discipline=${encodeURIComponent(comp.discipline)}`;
+              }
               mainWindow.loadURL(`app://map-corridors/index.html${qs}`);
             }
           }

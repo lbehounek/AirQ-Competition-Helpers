@@ -20,7 +20,9 @@ const translations = {
     'competition.deleteConfirmText': 'Opravdu smazat "{name}"? Toto nelze vrátit.',
     'competition.cleanupAction': 'Vyčistit',
     'competition.cleanupMsg': '{count} soutěží je starších než 30 dní. Chcete je smazat?',
-    'competition.cleanupExcess': 'Máte {count} soutěží (max 10). Zvažte smazání starších.'
+    'competition.cleanupExcess': 'Máte {count} soutěží (max 10). Zvažte smazání starších.',
+    'discipline.precision': 'Precision',
+    'discipline.rally': 'Rally'
   },
   en: {
     title: 'Navigation Flying Tools',
@@ -42,7 +44,9 @@ const translations = {
     'competition.deleteConfirmText': 'Delete "{name}"? This cannot be undone.',
     'competition.cleanupAction': 'Clean up',
     'competition.cleanupMsg': '{count} competitions are older than 30 days. Delete them?',
-    'competition.cleanupExcess': 'You have {count} competitions (max 10). Consider deleting older ones.'
+    'competition.cleanupExcess': 'You have {count} competitions (max 10). Consider deleting older ones.',
+    'discipline.precision': 'Precision',
+    'discipline.rally': 'Rally'
   }
 };
 
@@ -114,6 +118,7 @@ function updateLangButtons(locale) {
 // ============================================================================
 
 let activeCompetitionId = null;
+let competitionsList = [];
 
 const selectEl = document.getElementById('competition-select');
 const newBtn = document.getElementById('competition-new');
@@ -131,6 +136,8 @@ async function loadCompetitions() {
 
     selectEl.innerHTML = '';
 
+    competitionsList = competitions;
+
     if (competitions.length === 0) {
       const opt = document.createElement('option');
       opt.value = '';
@@ -139,6 +146,7 @@ async function loadCompetitions() {
       selectEl.disabled = true;
       activeCompetitionId = null;
       updateCardsState();
+      updateDisciplineToggle();
       return;
     }
 
@@ -169,12 +177,45 @@ async function loadCompetitions() {
     }
 
     updateCardsState();
+    updateDisciplineToggle();
     checkCleanupNeeded(competitions);
   } catch (err) {
     console.error('Failed to load competitions:', err);
     selectEl.disabled = true;
   }
 }
+
+// Discipline toggle
+function updateDisciplineToggle() {
+  const toggle = document.getElementById('discipline-toggle');
+  if (!activeCompetitionId) {
+    toggle.style.opacity = '0.4';
+    toggle.style.pointerEvents = 'none';
+    return;
+  }
+  toggle.style.opacity = '1';
+  toggle.style.pointerEvents = 'auto';
+  const comp = competitionsList.find(c => c.id === activeCompetitionId);
+  const discipline = (comp && comp.discipline) || 'rally';
+  toggle.querySelectorAll('.discipline-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.discipline === discipline);
+  });
+}
+
+document.querySelectorAll('.discipline-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (!activeCompetitionId || !window.electronAPI?.competitions) return;
+    const discipline = btn.dataset.discipline;
+    try {
+      await window.electronAPI.competitions.setDiscipline(activeCompetitionId, discipline);
+      const comp = competitionsList.find(c => c.id === activeCompetitionId);
+      if (comp) comp.discipline = discipline;
+      updateDisciplineToggle();
+    } catch (err) {
+      console.error('Failed to set discipline:', err);
+    }
+  });
+});
 
 function updateCardsState() {
   const hasComp = Boolean(activeCompetitionId);
@@ -194,6 +235,7 @@ selectEl.addEventListener('change', async () => {
     await window.electronAPI.competitions.setActive(id);
     activeCompetitionId = id;
     updateCardsState();
+    updateDisciplineToggle();
   } catch (err) {
     console.error('Failed to set active competition:', err);
   }

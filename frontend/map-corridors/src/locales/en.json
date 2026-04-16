@@ -12,6 +12,10 @@
     "answerSheet": "Show Answer Sheet",
     "dragToPlace": "Drag to place photo marker",
     "use1NmAfterSp": "Corridor 1 NM after start point",
+    "discipline": {
+      "precision": "Precision",
+      "rally": "Rally"
+    },
     "backToMenu": "Back to main menu"
   },
   "popup": {

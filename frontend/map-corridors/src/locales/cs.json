@@ -12,6 +12,10 @@
     "answerSheet": "Zobrazit answer sheet",
     "dragToPlace": "Přetáhni pro umístění fotky",
     "use1NmAfterSp": "Koridor začíná 1 NM po SP",
+    "discipline": {
+      "precision": "Precision",
+      "rally": "Rally"
+    },
     "backToMenu": "Zpět do hlavního menu"
   },
   "popup": {

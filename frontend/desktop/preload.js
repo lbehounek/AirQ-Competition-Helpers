@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     list: () => ipcRenderer.invoke('competition-list'),
     create: (name) => ipcRenderer.invoke('competition-create', name),
     setActive: (id) => ipcRenderer.invoke('competition-set-active', id),
+    setDiscipline: (id, discipline) => ipcRenderer.invoke('competition-set-discipline', id, discipline),
     delete: (id) => ipcRenderer.invoke('competition-delete', id),
   },
 

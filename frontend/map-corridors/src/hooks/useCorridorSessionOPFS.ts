@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GeoJSON } from 'geojson'
+import type { Discipline } from '../corridors/preciseCorridor'
 import {
   initStorage,
   isStorageAvailable,
@@ -16,6 +17,7 @@ export type CorridorsSession = {
   createdAt: string
   updatedAt: string
   baseStyle: BaseStyle
+  discipline: Discipline
   use1NmAfterSp: boolean
   // Persisted artifacts
   geojson: GeoJSON | null
@@ -34,6 +36,7 @@ const defaultSession = (id: string): CorridorsSession => ({
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   baseStyle: 'streets',
+  discipline: 'rally',
   use1NmAfterSp: false,
   geojson: null,
   leftSegments: null,
@@ -97,6 +100,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
             ...defaultSession(id),
             ...existing,
             baseStyle: (existing as any).baseStyle || 'streets',
+            discipline: (existing as any).discipline || 'rally',
           })
         } else {
           const fresh = defaultSession(id)
@@ -130,6 +134,12 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
   const setBaseStyle = useCallback(async (style: BaseStyle) => {
     if (!session) return
     const next: CorridorsSession = { ...session, baseStyle: style, version: session.version + 1, updatedAt: new Date().toISOString() }
+    await persistSession(next)
+  }, [session, persistSession])
+
+  const setDiscipline = useCallback(async (discipline: Discipline) => {
+    if (!session) return
+    const next: CorridorsSession = { ...session, discipline, version: session.version + 1, updatedAt: new Date().toISOString() }
     await persistSession(next)
   }, [session, persistSession])
 
@@ -197,6 +207,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     backendAvailable: storageAvailable,
     // actions
     setBaseStyle,
+    setDiscipline,
     setUse1NmAfterSp,
     setMarkers,
     setComputedData,

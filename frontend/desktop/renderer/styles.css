@@ -132,6 +132,38 @@ header p {
   box-shadow: 0 0 0 2px rgba(25,118,210,0.15);
 }
 
+/* Discipline toggle */
+.discipline-toggle {
+  display: flex;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.discipline-btn {
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: none;
+  background: #F8FAFC;
+  color: #4A5568;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.discipline-btn:not(:last-child) {
+  border-right: 1px solid #E2E8F0;
+}
+
+.discipline-btn:hover:not(.active) {
+  background: #EDF2F7;
+}
+
+.discipline-btn.active {
+  background: #1976D2;
+  color: #fff;
+}
+
 .hidden {
   display: none !important;
 }
