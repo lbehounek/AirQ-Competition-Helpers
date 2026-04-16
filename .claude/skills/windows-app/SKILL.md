@@ -155,3 +155,48 @@ This triggers `.github/workflows/build-desktop.yml` which:
 3. Creates GitHub Release with .exe attached
 
 Version is auto-detected from the tag name (`desktop-v2.1.0` → `2.1.0`).
+
+### Update CHANGELOG.md before every release
+
+`CHANGELOG.md` at the repo root is the single source of truth for what shipped in
+each `desktop-v*` release. The release-notes template in
+`.github/workflows/build-desktop.yml` links to it from every GitHub Release.
+
+Before tagging a new release — or before merging a PR with `#minor`/`#major`
+that will auto-tag — add a section to `CHANGELOG.md`:
+
+```markdown
+## [2.5.0] - YYYY-MM-DD
+
+### Added / Changed / Fixed / Security
+- One concise bullet per user-visible change, prefixed with the sub-app name
+  (**Photo Helper:** / **Map Corridors:** / **Desktop launcher:**) when applicable.
+```
+
+Follow [Keep a Changelog](https://keepachangelog.com) conventions. Skip empty
+sections. Cross-reference PR numbers where available.
+
+## Code signing — decision: unsigned
+
+The Windows .exe is shipped **unsigned** by design. This is a deliberate
+cost-benefit decision, not an oversight.
+
+**Rationale:**
+- Attackers routinely buy legitimate OV certs through shell companies or steal
+  them from compromised devs (Stuxnet, ShadowHammer, Lazarus). Signing without
+  SLSA-style build provenance is security theater.
+- OV certs (~$200/yr) only clear SmartScreen *after* reputation-building (weeks,
+  thousands of downloads). EV certs (~$400–700/yr + cloud HSM) clear it
+  immediately but add significant pipeline complexity.
+- Our distribution is small (flying-competition community); the user impact of
+  the SmartScreen warning is acceptable given the cost savings.
+
+**User experience:** Windows SmartScreen shows "Windows protected your PC" on
+first run. Users click **More info → Run anyway**. This should be documented in
+the user-facing README.
+
+**If this decision changes:** the simplest path is to buy an OV cert (Sectigo /
+SSL.com), base64-encode the `.pfx` into a `CSC_LINK` GH Actions secret, put the
+password in `CSC_KEY_PASSWORD`, and add both to the `env:` block of the "Build
+Windows executables" step in `build-desktop.yml`. electron-builder picks them up
+automatically — no further config needed.
