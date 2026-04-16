@@ -14,6 +14,7 @@ import type { ApiPhotoSession } from '../types/api';
 import { competitionService } from '../services/competitionService';
 import { migrationService } from '../services/migrationService';
 import { useI18n } from '../contexts/I18nContext';
+import { applySettingToAllPhotos } from '../utils/canvasStatePatch';
 
 export interface UseCompetitionSystemResult {
   // Current state
@@ -555,6 +556,25 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     });
   }, [updateCurrentCompetition]);
 
+  const applySettingToAll = useCallback(async (setting: string, value: any, excludePhotoId?: string) => {
+    await updateCurrentCompetition(session => {
+      const ensuredSets = {
+        set1: session.sets?.set1 || { title: '', photos: [] },
+        set2: session.sets?.set2 || { title: '', photos: [] }
+      };
+
+      return {
+        ...session,
+        version: session.version + 1,
+        updatedAt: new Date().toISOString(),
+        sets: {
+          set1: { ...ensuredSets.set1, photos: applySettingToAllPhotos(ensuredSets.set1.photos || [], setting, value, excludePhotoId) },
+          set2: { ...ensuredSets.set2, photos: applySettingToAllPhotos(ensuredSets.set2.photos || [], setting, value, excludePhotoId) },
+        }
+      };
+    });
+  }, [updateCurrentCompetition]);
+
   const updatePhotoState = useCallback(async (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
     await updateCurrentCompetition(session => {
       // Ensure sets structure is valid
@@ -827,7 +847,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     shufflePhotos,
     addPhotosToTurningPoint: (async (_files: File[]) => {}) as any,
     refreshSession: (async () => {}) as any,
-    applySettingToAll: (async (_setting: string, _value: any, _excludePhotoId?: string) => {}) as any,
+    applySettingToAll,
     
     // Cleanup & storage
     cleanupCandidates,
