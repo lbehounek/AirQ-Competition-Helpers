@@ -10,6 +10,24 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [Unreleased]
+
+### Security
+- Resolved all 64 Dependabot vulnerabilities (3 critical, 32 high, 25 moderate,
+  4 low) flagged on `main`:
+  - **Removed** unused direct deps `jspdf` and `fabric` from `photo-helper` —
+    neither was imported anywhere in the codebase. Kills both criticals and
+    most jspdf/fabric highs at the source.
+  - **Bumped direct deps to exact patched versions:** `vite` 7.3.0 → 7.3.2
+    (photo-helper + map-corridors; fixes CVE-2026-39363/39364/39365);
+    `electron` ^39.2.7 → 39.8.8 (fixes 11 Electron CVEs).
+  - **Added pnpm `overrides`** in the workspace root for remaining
+    transitive-only chains (all dev/build-time, not shipped in the .exe):
+    `@xmldom/xmldom` ≥ 0.8.12, `flatted` ≥ 3.4.2, `lodash` ≥ 4.18.1,
+    `picomatch` ≥ 4.0.4, `tar` ≥ 7.5.11, `yaml@<1.10.3` → ≥ 1.10.3,
+    `brace-expansion` per-major patched versions.
+- `pnpm audit` now reports **zero vulnerabilities** across the workspace.
+
 ## [2.4.0] - 2026-04-16
 
 ### Fixed
