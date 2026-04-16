@@ -10,7 +10,7 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
-## [Unreleased]
+## [2.4.1] - 2026-04-16
 
 ### Security
 - Resolved all 64 Dependabot vulnerabilities (3 critical, 32 high, 25 moderate,
@@ -150,6 +150,7 @@ format.
 - Tighten photo-helper types (remove `any` on idle-timer surface, add global
   activity listeners).
 
+[2.4.1]: https://github.com/lbehounek/AirQ-Competition-Helpers/releases/tag/desktop-v2.4.1
 [2.4.0]: https://github.com/lbehounek/AirQ-Competition-Helpers/releases/tag/desktop-v2.4.0
 [2.3.0]: https://github.com/lbehounek/AirQ-Competition-Helpers/releases/tag/desktop-v2.3.0
 [2.2.0]: https://github.com/lbehounek/AirQ-Competition-Helpers/releases/tag/desktop-v2.2.0
