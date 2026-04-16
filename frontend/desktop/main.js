@@ -1,6 +1,7 @@
-const { app, BrowserWindow, protocol, ipcMain, shell, globalShortcut, Menu, dialog } = require('electron');
+const { app, BrowserWindow, protocol, ipcMain, shell, globalShortcut, Menu, dialog, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 
 // Config file path in user data directory
 function getConfigPath() {
@@ -73,86 +74,83 @@ function getResourcePath() {
   return path.join(process.resourcesPath);
 }
 
+// Resolve app:// URL to local file path
+function resolveAppUrl(requestUrl) {
+  let url = requestUrl.replace('app://', '');
+  url = url.split('?')[0].split('#')[0];
+  url = decodeURIComponent(url);
+  if (process.platform === 'win32' && url.startsWith('/')) {
+    url = url.substring(1);
+  }
+
+  const resourcePath = getResourcePath();
+  let filePath;
+  let baseDir;
+
+  if (url.startsWith('photo-helper/')) {
+    baseDir = isDev
+      ? path.join(resourcePath, 'photo-helper', 'dist')
+      : path.join(resourcePath, 'photo-helper');
+    filePath = path.join(baseDir, url.replace('photo-helper/', ''));
+  } else if (url.startsWith('map-corridors/')) {
+    baseDir = isDev
+      ? path.join(resourcePath, 'map-corridors', 'dist')
+      : path.join(resourcePath, 'map-corridors');
+    filePath = path.join(baseDir, url.replace('map-corridors/', ''));
+  } else if (url.startsWith('home/')) {
+    baseDir = path.join(__dirname, 'renderer');
+    filePath = path.join(baseDir, url.replace('home/', ''));
+  } else {
+    baseDir = path.join(__dirname, 'renderer');
+    filePath = path.join(baseDir, url);
+  }
+
+  // Path traversal protection: ensure resolved path stays within base directory
+  const resolvedBase = path.resolve(baseDir);
+  const resolvedFile = path.resolve(filePath);
+  if (!resolvedFile.startsWith(resolvedBase + path.sep) && resolvedFile !== resolvedBase) {
+    filePath = path.join(resolvedBase, 'index.html');
+  }
+
+  // SPA fallback: if file doesn't exist, serve the app's index.html
+  if (url.startsWith('photo-helper/') || url.startsWith('map-corridors/')) {
+    try { fs.statSync(filePath); } catch {
+      const appName = url.startsWith('photo-helper/') ? 'photo-helper' : 'map-corridors';
+      filePath = isDev
+        ? path.join(resourcePath, appName, 'dist', 'index.html')
+        : path.join(resourcePath, appName, 'index.html');
+    }
+  }
+
+  return filePath;
+}
+
+const CSP = "default-src 'self' app: blob: data:; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' app:; style-src 'self' 'unsafe-inline' app:; img-src 'self' app: blob: data: https:; connect-src 'self' app: blob: data: https:; worker-src 'self' blob:";
+
 // Create custom protocol to serve local files
+// Uses protocol.handle() (modern API) to set proper response headers
 function setupProtocol() {
-  protocol.registerFileProtocol('app', (request, callback) => {
-    let url = request.url.replace('app://', '');
-
-    // Strip query string and hash before resolving file path
-    url = url.split('?')[0].split('#')[0];
-
-    // Decode URL
-    url = decodeURIComponent(url);
-
-    // Remove leading slash on Windows
-    if (process.platform === 'win32' && url.startsWith('/')) {
-      url = url.substring(1);
-    }
-
-    // Determine which app to serve
-    const resourcePath = getResourcePath();
-    let filePath;
-
-    if (url.startsWith('photo-helper/')) {
+  protocol.handle('app', async (request) => {
+    try {
+      const filePath = resolveAppUrl(request.url);
+      const fileUrl = pathToFileURL(filePath).href;
+      const original = await net.fetch(fileUrl);
+      // Copy response but add our headers
+      const headers = new Headers(original.headers);
+      headers.set('Content-Security-Policy', CSP);
       if (isDev) {
-        filePath = path.join(resourcePath, 'photo-helper', 'dist', url.replace('photo-helper/', ''));
-      } else {
-        filePath = path.join(resourcePath, 'photo-helper', url.replace('photo-helper/', ''));
+        headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        headers.set('Pragma', 'no-cache');
       }
-    } else if (url.startsWith('map-corridors/')) {
-      if (isDev) {
-        filePath = path.join(resourcePath, 'map-corridors', 'dist', url.replace('map-corridors/', ''));
-      } else {
-        filePath = path.join(resourcePath, 'map-corridors', url.replace('map-corridors/', ''));
-      }
-    } else if (url.startsWith('home/')) {
-      // Handle home/ path for landing page (fixes Windows URL resolution)
-      filePath = path.join(__dirname, 'renderer', url.replace('home/', ''));
-    } else {
-      // Fallback for any other renderer assets
-      filePath = path.join(__dirname, 'renderer', url);
+      return new Response(original.body, {
+        status: original.status,
+        statusText: original.statusText,
+        headers,
+      });
+    } catch (err) {
+      console.error(`Protocol handler error for ${request.url}:`, err);
+      return new Response('Not Found', { status: 404 });
     }
-
-    // For SPA routing in photo-helper and map-corridors, check if file exists
-    // Only do this check for the apps, not for the landing page
-    // Note: Use require('original-fs') for asar-compatible file checks, or just skip the check
-    // and let the protocol handler return a 404 naturally
-    if (url.startsWith('photo-helper/') || url.startsWith('map-corridors/')) {
-      // Try to check if file exists, with fallback for asar archives
-      let fileExists = false;
-      try {
-        // In packaged app, fs.existsSync may not work for asar files
-        // Use synchronous stat which works with asar
-        fs.statSync(filePath);
-        fileExists = true;
-      } catch {
-        fileExists = false;
-      }
-
-      if (!fileExists) {
-        // For SPA routing, serve the app's index.html
-        if (url.startsWith('photo-helper/')) {
-          if (isDev) {
-            filePath = path.join(resourcePath, 'photo-helper', 'dist', 'index.html');
-          } else {
-            filePath = path.join(resourcePath, 'photo-helper', 'index.html');
-          }
-        } else if (url.startsWith('map-corridors/')) {
-          if (isDev) {
-            filePath = path.join(resourcePath, 'map-corridors', 'dist', 'index.html');
-          } else {
-            filePath = path.join(resourcePath, 'map-corridors', 'index.html');
-          }
-        }
-      }
-    }
-
-    callback({
-      path: filePath,
-      headers: {
-        'Content-Security-Policy': "default-src 'self' app: blob: data:; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' app:; style-src 'self' 'unsafe-inline' app:; img-src 'self' app: blob: data: https:; connect-src 'self' app: blob: data: https:; worker-src 'self' blob:"
-      }
-    });
   });
 }
 
@@ -654,6 +652,24 @@ ipcMain.handle('competition-delete', async (event, id) => {
   return { activeCompetitionId: index.activeCompetitionId };
 });
 
+// Save map print image via native save dialog
+ipcMain.handle('save-map-image', async (event, base64Data) => {
+  if (typeof base64Data !== 'string' || base64Data.length === 0) {
+    throw new Error('Invalid image data');
+  }
+  if (base64Data.length > 50 * 1024 * 1024) {
+    throw new Error('Image data too large');
+  }
+  const { filePath } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: `map-print-${new Date().toISOString().slice(0, 10)}.png`,
+    filters: [{ name: 'PNG Images', extensions: ['png'] }]
+  });
+  if (!filePath) return null;
+  const buffer = Buffer.from(base64Data, 'base64');
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+});
+
 // Show Mapbox token dialog - single window with input field
 async function showMapboxTokenDialog() {
   const currentToken = getConfigValue('mapboxToken') || '';
@@ -941,7 +957,12 @@ function createMenu(locale = 'cs') {
 }
 
 // This method will be called when Electron has finished initialization
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Clear disk cache in dev so rebuilt files are always loaded fresh
+  if (isDev) {
+    const { session } = require('electron');
+    await session.defaultSession.clearCache();
+  }
   setupProtocol();
   createMenu();
   createWindow();

@@ -16,6 +16,7 @@
       "precision": "Precision",
       "rally": "Rally"
     },
+    "printMap": "Print Map",
     "backToMenu": "Back to main menu"
   },
   "popup": {
@@ -41,7 +42,8 @@
     "configureToken": "Configure Mapbox Token",
     "setTokenWeb": "Add your token to the VITE_MAPBOX_TOKEN environment variable and restart the app.",
     "getTokenLink": "Get a free token at mapbox.com →",
-    "noOriginalKml": "Original KML file not available for export"
+    "noOriginalKml": "Original KML file not available for export",
+    "printFailed": "Map print failed"
   }
   ,
   "opfs": {

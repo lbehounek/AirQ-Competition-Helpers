@@ -4,6 +4,7 @@ import type { MapRef } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
 import { useI18n } from '../contexts/I18nContext'
+import { captureMapForPrint } from '../utils/mapCapture'
 
 type PhotoLabel = 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T'
 const ALL_LABELS: PhotoLabel[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
@@ -16,7 +17,9 @@ type Overlay = {
   layout?: any
 }
 
-export type MapProviderViewHandle = Record<string, never>
+export type MapProviderViewHandle = {
+  captureForPrint: () => Promise<Blob>
+}
 
 export const MapProviderView = forwardRef<MapProviderViewHandle, {
   provider: MapProviderId
@@ -144,7 +147,41 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   const isElectron = !!(typeof window !== 'undefined' && (window as any).electronAPI?.isElectron)
   const needsToken = !providerConfig.accessToken && typeof styleUrl === 'string' && styleUrl.startsWith('mapbox://')
 
-  useImperativeHandle(ref, () => ({}), [])
+  useImperativeHandle(ref, () => ({
+    async captureForPrint() {
+      // Compute bbox from the track overlay
+      const trackOverlay = (geojsonOverlays || []).find(ov => ov.id === 'uploaded-geojson')
+      if (!trackOverlay) throw new Error('No track data to print')
+      const bbox = computeBbox(trackOverlay.data)
+      if (!bbox) throw new Error('Could not compute track bounds')
+
+      // Only include track line, gates, and exact-point labels — no corridors
+      const printOverlayIds = new Set(['uploaded-geojson', 'gates', 'exact-points'])
+      const printOverlays = (geojsonOverlays || [])
+        .filter(ov => printOverlayIds.has(ov.id))
+        .map(ov => ({
+          id: ov.id,
+          data: ov.data,
+          type: ov.type as 'line' | 'circle',
+          paint: ov.paint,
+          layout: ov.layout,
+        }))
+
+      const printMarkers = (props.markers || []).map(m => ({
+        lng: m.lng,
+        lat: m.lat,
+        label: m.label,
+      }))
+
+      return captureMapForPrint({
+        bbox: bbox as [[number, number], [number, number]],
+        style: styleUrl,
+        accessToken: providerConfig.accessToken,
+        overlays: printOverlays,
+        markers: printMarkers,
+      })
+    }
+  }), [geojsonOverlays, props.markers, styleUrl, providerConfig.accessToken])
 
   if (needsToken) {
     return (
