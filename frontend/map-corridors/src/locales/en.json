@@ -17,7 +17,39 @@
       "rally": "Rally"
     },
     "printMap": "Print Map",
+    "dragToPlaceGround": "Drag to place ground marker",
     "backToMenu": "Back to main menu"
+  },
+  "groundPopup": {
+    "type": "Marker type"
+  },
+  "groundTypes": {
+    "LETTER_A": "Letter A",
+    "LETTER_C": "Letter C",
+    "LETTER_E": "Letter E",
+    "LETTER_F": "Letter F",
+    "LETTER_G": "Letter G",
+    "LETTER_I": "Letter I",
+    "LETTER_K": "Letter K",
+    "LETTER_L": "Letter L",
+    "LETTER_O": "Letter O",
+    "LETTER_P": "Letter P",
+    "LETTER_R": "Letter R",
+    "LETTER_S": "Letter S",
+    "PARALLELOGRAM": "Parallelogram",
+    "PI": "Pi",
+    "CROSSED_LEGS": "Crossed legs",
+    "TRIANGLE": "Triangle with bar",
+    "SQUARE_DIAGONAL": "Square with diagonal",
+    "SPLIT_RECT": "Split rectangle",
+    "FIGURE_8": "Figure 8",
+    "SMALL_TRIANGLE": "Triangle",
+    "THREE_BARS": "Three bars",
+    "TRIANGLE_ON_LINE": "Triangle on line",
+    "PERPENDICULAR": "Perpendicular",
+    "WANG": "Wang",
+    "SLANTED_CROSS": "Slanted cross",
+    "HOOK": "Hook"
   },
   "popup": {
     "name": "Name",

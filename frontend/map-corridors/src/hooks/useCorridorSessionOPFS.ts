@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GeoJSON } from 'geojson'
 import type { Discipline } from '../corridors/preciseCorridor'
+import type { PhotoMarker, GroundMarker } from '../types/markers'
+import { sanitizeGroundMarkers, sanitizePhotoMarkers } from '../types/markers'
 import {
   initStorage,
   isStorageAvailable,
@@ -27,7 +29,8 @@ export type CorridorsSession = {
   points: GeoJSON | null
   exactPoints: GeoJSON | null
   // UI data
-  markers: { id: string; lng: number; lat: number; name: string; label?: 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T' }[]
+  markers: readonly PhotoMarker[]
+  groundMarkers: readonly GroundMarker[]
 }
 
 const defaultSession = (id: string): CorridorsSession => ({
@@ -45,6 +48,7 @@ const defaultSession = (id: string): CorridorsSession => ({
   points: null,
   exactPoints: null,
   markers: [],
+  groundMarkers: [],
 })
 
 export function useCorridorSessionOPFS(competitionId?: string | null) {
@@ -96,11 +100,32 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
 
         const existing = await storage.readJSON<CorridorsSession>(corridorsDir, 'session.json')
         if (existing) {
+          // Validate untrusted persisted data before it flows into render paths
+          // (dangerouslySetInnerHTML lookup, map.project, KML export). A malformed
+          // marker — wrong type, out-of-range coords, missing id — is dropped with
+          // a console warning instead of crashing the map view.
+          const asRec = existing as Record<string, unknown>
+          const rawGm = asRec.groundMarkers
+          const rawPm = asRec.markers
+          const cleanGm = sanitizeGroundMarkers(rawGm)
+          const cleanPm = sanitizePhotoMarkers(rawPm)
+          if (Array.isArray(rawGm) && cleanGm.length !== rawGm.length) {
+            console.warn(`[session] Dropped ${rawGm.length - cleanGm.length} invalid ground marker(s) from persisted session`)
+          } else if (rawGm !== undefined && !Array.isArray(rawGm)) {
+            console.warn('[session] Persisted groundMarkers was not an array, resetting', rawGm)
+          }
+          if (Array.isArray(rawPm) && cleanPm.length !== rawPm.length) {
+            console.warn(`[session] Dropped ${rawPm.length - cleanPm.length} invalid photo marker(s) from persisted session`)
+          } else if (rawPm !== undefined && !Array.isArray(rawPm)) {
+            console.warn('[session] Persisted markers was not an array, resetting', rawPm)
+          }
           setSession({
             ...defaultSession(id),
             ...existing,
-            baseStyle: (existing as any).baseStyle || 'streets',
-            discipline: (existing as any).discipline || 'rally',
+            baseStyle: (asRec.baseStyle as CorridorsSession['baseStyle']) || 'streets',
+            discipline: (asRec.discipline as CorridorsSession['discipline']) || 'rally',
+            markers: cleanPm,
+            groundMarkers: cleanGm,
           })
         } else {
           const fresh = defaultSession(id)
@@ -149,9 +174,17 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     await persistSession(next)
   }, [session, persistSession])
 
-  const setMarkers = useCallback(async (updater: (prev: CorridorsSession['markers']) => CorridorsSession['markers']) => {
+  // Updaters receive a readonly view so callers can't mutate in place (e.g. prev.push).
+  // Returning the same reference (e.g. early-return `prev` on no-op) is also allowed.
+  const setMarkers = useCallback(async (updater: (prev: readonly PhotoMarker[]) => readonly PhotoMarker[]) => {
     if (!session) return
     const next: CorridorsSession = { ...session, markers: updater(session.markers), version: session.version + 1, updatedAt: new Date().toISOString() }
+    await persistSession(next)
+  }, [session, persistSession])
+
+  const setGroundMarkers = useCallback(async (updater: (prev: readonly GroundMarker[]) => readonly GroundMarker[]) => {
+    if (!session) return
+    const next: CorridorsSession = { ...session, groundMarkers: updater(session.groundMarkers || []), version: session.version + 1, updatedAt: new Date().toISOString() }
     await persistSession(next)
   }, [session, persistSession])
 
@@ -210,6 +243,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setDiscipline,
     setUse1NmAfterSp,
     setMarkers,
+    setGroundMarkers,
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,

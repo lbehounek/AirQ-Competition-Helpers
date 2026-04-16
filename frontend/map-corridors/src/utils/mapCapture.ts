@@ -1,17 +1,29 @@
 import mapboxgl from 'mapbox-gl'
+import type { LngLatBoundsLike } from 'mapbox-gl'
+import type { GeoJSON } from 'geojson'
+import { groundMarkerSvgString } from '../components/GroundMarkerIcons'
+import type { GroundMarkerType, PhotoLabel } from '../types/markers'
 
 type OverlayConfig = {
   id: string
-  data: any
+  data: GeoJSON
   type: 'line' | 'circle'
-  paint?: Record<string, any>
-  layout?: Record<string, any>
+  // Mapbox paint/layout shapes are a layer-type-keyed discriminated union;
+  // `Record<string, unknown>` is narrow enough to catch typos without enumerating it.
+  paint?: Record<string, unknown>
+  layout?: Record<string, unknown>
 }
 
 type MarkerConfig = {
   lng: number
   lat: number
-  label?: string
+  label?: PhotoLabel
+}
+
+type GroundMarkerPrintConfig = {
+  lng: number
+  lat: number
+  type: GroundMarkerType
 }
 
 type PrintOptions = {
@@ -20,6 +32,15 @@ type PrintOptions = {
   accessToken?: string
   overlays: OverlayConfig[]
   markers: MarkerConfig[]
+  groundMarkers?: GroundMarkerPrintConfig[]
+}
+
+// Result of a print capture. `warnings` lists non-fatal issues (e.g. ground-marker
+// SVGs that failed to load and were substituted with the diamond fallback) so the
+// caller can surface them to the user rather than silently shipping a wrong map.
+export type PrintCaptureResult = {
+  blob: Blob
+  warnings: string[]
 }
 
 // A4 at 300 DPI
@@ -32,8 +53,9 @@ const PADDING = 100 // pixels padding around track in print
  * Render a high-resolution offscreen map at A4 300 DPI.
  * Auto-detects landscape vs portrait from the track bounding box.
  */
-export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
+export async function captureMapForPrint(options: PrintOptions): Promise<PrintCaptureResult> {
   const { bbox, style, accessToken, overlays, markers } = options
+  const warnings: string[] = []
 
   const dims = detectOrientation(bbox)
 
@@ -59,7 +81,7 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
     fadeDuration: 0,
     attributionControl: false,
     pixelRatio: 1,
-  })
+  } as mapboxgl.MapOptions)
 
   try {
     // Wait for style to load
@@ -70,18 +92,24 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
     )
 
     // Fit to track bounds
-    map.fitBounds(bbox as any, { padding: PADDING, duration: 0 })
+    map.fitBounds(bbox as LngLatBoundsLike, { padding: PADDING, duration: 0 })
 
     // Add GeoJSON overlays (track line, gates, exact-point labels)
     for (const ov of overlays) {
       map.addSource(ov.id, { type: 'geojson', data: ov.data })
 
       if (ov.type === 'line') {
+        const isTrack = ov.id === 'uploaded-geojson'
+        const basePaint = { 'line-color': '#00b3ff', 'line-width': 8, ...(ov.paint || {}) }
+        // Boost line widths for print legibility
+        const printPaint = isTrack
+          ? { ...basePaint, 'line-width': 12 }
+          : { ...basePaint, 'line-width': Math.max(6, (basePaint['line-width'] as number) * 4) }
         map.addLayer({
           id: `${ov.id}-line`,
           type: 'line',
           source: ov.id,
-          paint: { 'line-color': '#00b3ff', 'line-width': 3, ...(ov.paint || {}) },
+          paint: printPaint,
           layout: ov.layout ?? {},
         })
       } else if (ov.type === 'circle') {
@@ -95,11 +123,11 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
           id: `${ov.id}-labels`,
           type: 'symbol',
           source: ov.id,
-          paint: { 'text-color': '#000000', 'text-halo-color': '#ffffff', 'text-halo-width': 2 },
+          paint: { 'text-color': '#000000', 'text-halo-color': '#ffffff', 'text-halo-width': 4 },
           layout: {
             'text-field': ['get', 'name'],
             'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-            'text-size': 16,
+            'text-size': 36,
             'text-offset': [0, -2],
             'text-anchor': 'bottom',
             'text-allow-overlap': true,
@@ -130,9 +158,9 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
     const scaleX = mapCanvas.width / dims.width
     const scaleY = mapCanvas.height / dims.height
 
-    // Composite photo markers
-    const markerRadius = 6 * scaleX
-    const fontSize = Math.round(14 * scaleX)
+    // Composite photo markers (3x size for print legibility)
+    const markerRadius = 18 * scaleX
+    const fontSize = Math.round(42 * scaleX)
 
     for (const m of markers) {
       const px = map.project([m.lng, m.lat])
@@ -171,6 +199,66 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
       }
     }
 
+    // Composite ground markers (SVG icons).
+    // SVG load failures are collected into `warnings` so the caller can surface them —
+    // silently substituting a diamond for the wrong shape on a printed competition map
+    // is a correctness bug, not a cosmetic one.
+    const gms = options.groundMarkers || []
+    if (gms.length) {
+      const iconSize = Math.round(72 * scaleX)
+      const uniqueTypes = [...new Set(gms.map(gm => gm.type))]
+      const gmImages = new Map<GroundMarkerType, HTMLImageElement>()
+      const failedTypes = new Set<GroundMarkerType>()
+      await Promise.all(uniqueTypes.map(async (type) => {
+        const svgStr = groundMarkerSvgString(type, iconSize)
+        if (!svgStr) {
+          failedTypes.add(type)
+          warnings.push(`Unknown ground marker type "${type}" — rendered as fallback diamond`)
+          return
+        }
+        try {
+          const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgStr)}`
+          const img = new Image()
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve()
+            img.onerror = () => reject(new Error(`image onerror for ${type}`))
+            img.src = dataUrl
+          })
+          gmImages.set(type, img)
+        } catch (err) {
+          failedTypes.add(type)
+          const reason = err instanceof Error ? err.message : String(err)
+          warnings.push(`Failed to rasterize ground marker "${type}" (${reason}) — rendered as fallback diamond`)
+        }
+      }))
+      if (failedTypes.size) {
+        console.warn('[mapCapture] Ground marker SVG load failures:', Array.from(failedTypes))
+      }
+      for (const gm of gms) {
+        const px = map.project([gm.lng, gm.lat])
+        const x = px.x * scaleX
+        const y = px.y * scaleY
+        const img = gmImages.get(gm.type)
+        if (img) {
+          ctx.drawImage(img, x - img.width / 2, y - img.height / 2, img.width, img.height)
+        } else {
+          // Fallback: orange diamond (shape unavailable — see `warnings`)
+          const r = 24 * scaleX
+          ctx.beginPath()
+          ctx.moveTo(x, y - r)
+          ctx.lineTo(x + r, y)
+          ctx.lineTo(x, y + r)
+          ctx.lineTo(x - r, y)
+          ctx.closePath()
+          ctx.fillStyle = '#FF9800'
+          ctx.fill()
+          ctx.strokeStyle = '#333'
+          ctx.lineWidth = 1 * scaleX
+          ctx.stroke()
+        }
+      }
+    }
+
     // Attribution
     const attrSize = Math.round(10 * scaleX)
     ctx.font = `${attrSize}px Arial, sans-serif`
@@ -179,12 +267,13 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
     ctx.fillText('\u00A9 Mapbox \u00A9 OpenStreetMap', offscreen.width - 8 * scaleX, offscreen.height - 4 * scaleY)
 
-    return await new Promise<Blob>((resolve, reject) => {
-      offscreen.toBlob(blob => {
-        if (blob) resolve(blob)
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      offscreen.toBlob(b => {
+        if (b) resolve(b)
         else reject(new Error('Canvas toBlob returned null'))
       }, 'image/png')
     })
+    return { blob, warnings }
   } finally {
     map.remove()
     document.body.removeChild(container)

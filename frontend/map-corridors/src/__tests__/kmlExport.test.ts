@@ -70,4 +70,44 @@ describe('appendFeaturesToKML', () => {
     expect(result).toContain('FP')
     expect(result).toContain('TP 1')
   })
+
+  it('ground markers appear under ground_markers folder with raw enum names', () => {
+    const kml = loadFixtureText('RED.kml')
+    const fc: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { name: 'LETTER_A', role: 'ground_markers', markerType: 'LETTER_A' },
+          geometry: { type: 'Point', coordinates: [14.1, 50.1] }
+        },
+        {
+          type: 'Feature',
+          properties: { name: 'HOOK', role: 'ground_markers', markerType: 'HOOK' },
+          geometry: { type: 'Point', coordinates: [14.2, 50.2] }
+        }
+      ]
+    }
+    const result = appendFeaturesToKML(kml, fc, 'test_export')
+    // Raw enum names (not localized labels) so external tooling can parse them
+    expect(result).toContain('ground_markers')
+    expect(result).toContain('LETTER_A')
+    expect(result).toContain('HOOK')
+  })
+
+  it('XML-escapes attacker-controlled characters in ground marker names', () => {
+    // Even though sanitizeGroundMarkers filters unknown types at the session boundary,
+    // the KML layer must defense-in-depth escape any string that ends up in <name>.
+    const kml = loadFixtureText('RED.kml')
+    const fc: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: { name: '<script>x</script>&"', role: 'ground_markers' },
+        geometry: { type: 'Point', coordinates: [14, 50] }
+      }]
+    }
+    const result = appendFeaturesToKML(kml, fc, 'test_export')
+    expect(result).not.toContain('<script>x</script>')
+  })
 })

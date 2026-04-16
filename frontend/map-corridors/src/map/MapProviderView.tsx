@@ -1,24 +1,29 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import MapGL, { Layer, Source, Marker, Popup } from 'react-map-gl/mapbox'
-import type { MapRef } from 'react-map-gl/mapbox'
+import type { MapRef, MarkerDragEvent, MarkerEvent } from 'react-map-gl/mapbox'
+import type { GeoJSON, Geometry, Position } from 'geojson'
+import type { LngLatBoundsLike, LngLatLike } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
 import { useI18n } from '../contexts/I18nContext'
 import { captureMapForPrint } from '../utils/mapCapture'
-
-type PhotoLabel = 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T'
-const ALL_LABELS: PhotoLabel[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
+import type { PrintCaptureResult } from '../utils/mapCapture'
+import type { PhotoLabel, GroundMarkerCallbacks } from '../types/markers'
+import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
+import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
 
 type Overlay = {
   id: string
-  data: any
+  data: GeoJSON
   type: 'line' | 'fill' | 'circle'
-  paint?: any
-  layout?: any
+  // Mapbox paint/layout prop shapes are a large discriminated union keyed by layer type.
+  // `Record<string, unknown>` is narrow enough to catch typos without enumerating the union here.
+  paint?: Record<string, unknown>
+  layout?: Record<string, unknown>
 }
 
 export type MapProviderViewHandle = {
-  captureForPrint: () => Promise<Blob>
+  captureForPrint: () => Promise<PrintCaptureResult>
 }
 
 export const MapProviderView = forwardRef<MapProviderViewHandle, {
@@ -26,7 +31,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   baseStyle: 'streets' | 'satellite'
   providerConfig: ProviderConfig
   geojsonOverlays?: Overlay[]
-  markers?: { id: string; lng: number; lat: number; name: string; label?: 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T' }[]
+  markers?: readonly { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
   activeMarkerId?: string | null
   usedLabels?: string[]
   markerDistanceNmById?: Record<string, number | null>
@@ -35,8 +40,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   onMarkerClick?: (id: string | null) => void
   onMarkerNameChange?: (id: string, name: string) => void
   onMarkerDelete?: (id: string) => void
-  onMarkerLabelChange?: (id: string, label: 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T') => void
+  onMarkerLabelChange?: (id: string, label: PhotoLabel) => void
   onMarkerLabelClear?: (id: string) => void
+  groundMarkerProps?: GroundMarkerCallbacks
 }>(function MapProviderView(props, ref) {
   const { baseStyle, providerConfig, geojsonOverlays } = props
 
@@ -54,21 +60,41 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     const map = mapRef.current.getMap()
     const canvas = map.getCanvas()
     const onDragOver = (e: DragEvent) => {
-      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('application/x-photo-marker')) {
+      const dt = e.dataTransfer
+      if (!dt) return
+      const types = Array.from(dt.types)
+      const wantsPhoto = types.includes('application/x-photo-marker') && !!props.onMarkerAdd
+      const wantsGround = types.includes('application/x-ground-marker') && !!props.groundMarkerProps
+      if (wantsPhoto || wantsGround) {
         e.preventDefault()
-        e.dataTransfer.dropEffect = 'copy'
+        dt.dropEffect = 'copy'
       }
     }
     const onDrop = (e: DragEvent) => {
       if (!mapRef.current) return
       const dt = e.dataTransfer
-      if (dt && Array.from(dt.types).includes('application/x-photo-marker')) {
-        e.preventDefault()
+      if (!dt) return
+      const types = Array.from(dt.types)
+      const unprojectAt = (clientX: number, clientY: number) => {
         const rect = (canvas as HTMLCanvasElement).getBoundingClientRect()
-        const x = e.clientX - rect.left
-        const y = e.clientY - rect.top
-        const lngLat = mapRef.current.getMap().unproject([x, y])
-        props.onMarkerAdd?.(lngLat.lng, lngLat.lat)
+        return mapRef.current!.getMap().unproject([clientX - rect.left, clientY - rect.top])
+      }
+      if (types.includes('application/x-photo-marker')) {
+        if (!props.onMarkerAdd) {
+          console.error('[MapProviderView] Photo marker drop received but onMarkerAdd is not configured')
+          return
+        }
+        e.preventDefault()
+        const lngLat = unprojectAt(e.clientX, e.clientY)
+        props.onMarkerAdd(lngLat.lng, lngLat.lat)
+      } else if (types.includes('application/x-ground-marker')) {
+        if (!props.groundMarkerProps) {
+          console.error('[MapProviderView] Ground marker drop received but groundMarkerProps is not configured')
+          return
+        }
+        e.preventDefault()
+        const lngLat = unprojectAt(e.clientX, e.clientY)
+        props.groundMarkerProps.onGroundMarkerAdd(lngLat.lng, lngLat.lat)
       }
     }
     canvas.addEventListener('dragover', onDragOver)
@@ -77,21 +103,21 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       canvas.removeEventListener('dragover', onDragOver)
       canvas.removeEventListener('drop', onDrop)
     }
-  }, [isMapLoaded, props.onMarkerAdd])
+  }, [isMapLoaded, props.onMarkerAdd, props.groundMarkerProps])
 
   const uploadedGeojson = useMemo(() => {
     return geojsonOverlays?.find((o) => o.id === 'uploaded-geojson')?.data
   }, [geojsonOverlays])
 
-  function computeBbox(geojson: any): [[number, number], [number, number]] | null {
+  function computeBbox(geojson: GeoJSON | null | undefined): [[number, number], [number, number]] | null {
     if (!geojson) return null
     let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
 
-    function processPosition(pos: any) {
+    function processPosition(pos: Position | Position[] | Position[][] | Position[][][]) {
       if (!Array.isArray(pos)) return
       if (typeof pos[0] === 'number' && typeof pos[1] === 'number') {
-        const lng = pos[0]
-        const lat = pos[1]
+        const lng = pos[0] as number
+        const lat = pos[1] as number
         if (Number.isFinite(lng) && Number.isFinite(lat)) {
           if (lng < minLng) minLng = lng
           if (lat < minLat) minLat = lat
@@ -100,21 +126,20 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         }
         return
       }
-      for (const p of pos) processPosition(p)
+      for (const p of pos as Position[] | Position[][] | Position[][][]) processPosition(p)
     }
 
-    function processGeometry(geom: any) {
+    function processGeometry(geom: Geometry | null | undefined) {
       if (!geom) return
-      const type = geom.type
-      if (type === 'GeometryCollection') {
-        for (const g of geom.geometries || []) processGeometry(g)
+      if (geom.type === 'GeometryCollection') {
+        for (const g of geom.geometries) processGeometry(g)
         return
       }
       processPosition(geom.coordinates)
     }
 
     if (geojson.type === 'FeatureCollection') {
-      for (const f of geojson.features || []) processGeometry(f.geometry)
+      for (const f of geojson.features) processGeometry(f.geometry)
     } else if (geojson.type === 'Feature') {
       processGeometry(geojson.geometry)
     } else {
@@ -136,15 +161,15 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     // If it's a single point, fly to it with a high zoom
     const isPoint = bounds[0][0] === bounds[1][0] && bounds[0][1] === bounds[1][1]
     if (isPoint) {
-      ref.flyTo({ center: bounds[0] as any, zoom: 18, duration: 600 })
+      ref.flyTo({ center: bounds[0] as LngLatLike, zoom: 18, duration: 600 })
       return
     }
-    ref.fitBounds(bounds as any, { padding: 40, maxZoom: 19, duration: 600 })
+    ref.fitBounds(bounds as LngLatBoundsLike, { padding: 40, maxZoom: 19, duration: 600 })
   }, [isMapLoaded, uploadedGeojson])
 
   // Mapbox binding reads token via prop
 
-  const isElectron = !!(typeof window !== 'undefined' && (window as any).electronAPI?.isElectron)
+  const isElectron = !!(typeof window !== 'undefined' && window.electronAPI?.isElectron)
   const needsToken = !providerConfig.accessToken && typeof styleUrl === 'string' && styleUrl.startsWith('mapbox://')
 
   useImperativeHandle(ref, () => ({
@@ -173,15 +198,22 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         label: m.label,
       }))
 
+      const printGroundMarkers = (props.groundMarkerProps?.groundMarkers || []).map(gm => ({
+        lng: gm.lng,
+        lat: gm.lat,
+        type: gm.type,
+      }))
+
       return captureMapForPrint({
         bbox: bbox as [[number, number], [number, number]],
         style: styleUrl,
         accessToken: providerConfig.accessToken,
         overlays: printOverlays,
         markers: printMarkers,
+        groundMarkers: printGroundMarkers,
       })
     }
-  }), [geojsonOverlays, props.markers, styleUrl, providerConfig.accessToken])
+  }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, styleUrl, providerConfig.accessToken])
 
   if (needsToken) {
     return (
@@ -199,7 +231,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           </div>
           {isElectron ? (
             <button
-              onClick={() => (window as any).electronAPI?.openMapboxSettings?.()}
+              onClick={() => window.electronAPI?.openMapboxSettings?.()}
               style={{
                 padding: '12px 24px',
                 fontSize: 15,
@@ -241,7 +273,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}
       onLoad={() => setIsMapLoaded(true)}
-      ref={mapRef as any}
+      ref={mapRef}
     >
       {geojsonOverlays?.map((ov) => (
         <Source id={ov.id} key={ov.id} type="geojson" data={ov.data}>
@@ -284,33 +316,32 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
             longitude={m.lng}
             latitude={m.lat}
             draggable
-            onClick={(ev: any) => {
+            onClick={(ev: MarkerEvent<MouseEvent>) => {
               const moved = dragMovedPxRef.current.get(m.id) || 0
               if (moved < 8) {
-                ev?.preventDefault?.()
-                ev?.originalEvent?.stopPropagation?.()
+                ev.originalEvent?.stopPropagation?.()
                 props.onMarkerClick?.(m.id)
               }
               dragStartLngLatRef.current.delete(m.id)
               dragMovedPxRef.current.delete(m.id)
             }}
-            onDragStart={(ev: any) => {
+            onDragStart={(ev: MarkerDragEvent) => {
               const ll = ev.lngLat
               dragStartLngLatRef.current.set(m.id, { lng: ll.lng, lat: ll.lat })
               dragMovedPxRef.current.set(m.id, 0)
             }}
-            onDrag={(ev: any) => {
+            onDrag={(ev: MarkerDragEvent) => {
               const start = dragStartLngLatRef.current.get(m.id)
               if (!start || !mapRef.current) return
               const map = mapRef.current.getMap()
-              const p0 = map.project([start.lng, start.lat] as any)
-              const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat] as any)
+              const p0 = map.project([start.lng, start.lat])
+              const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat])
               const dx = p1.x - p0.x
               const dy = p1.y - p0.y
               const dist = Math.sqrt(dx*dx + dy*dy)
               dragMovedPxRef.current.set(m.id, dist)
             }}
-            onDragEnd={(ev: any) => {
+            onDragEnd={(ev: MarkerDragEvent) => {
               const moved = dragMovedPxRef.current.get(m.id) || 0
               dragStartLngLatRef.current.delete(m.id)
               dragMovedPxRef.current.delete(m.id)
@@ -351,7 +382,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           </Marker>
           {props.activeMarkerId === m.id && (
             <Popup longitude={m.lng} latitude={m.lat} anchor="top" closeButton={true} closeOnMove={false}
-              onClose={() => props.onMarkerClick?.(null as any)}
+              onClose={() => props.onMarkerClick?.(null)}
             >
               <div style={{ minWidth: 220, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <label style={{ fontSize: 12, color: '#374151' }}>Name</label>
@@ -375,7 +406,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 </div>
                 <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>Label</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 6 }}>
-                  {ALL_LABELS.map((L) => {
+                  {ALL_PHOTO_LABELS.map((L) => {
                     const used = (props.usedLabels || []).includes(L)
                     const isCurrent = m.label === L
                     const disabled = used && !isCurrent
@@ -418,7 +449,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                         {t('popup.cancel')}
                       </button>
                       <button
-                        onClick={() => { props.onMarkerDelete?.(m.id); setConfirmDeleteForId(null); props.onMarkerClick?.(null as any) }}
+                        onClick={() => { props.onMarkerDelete?.(m.id); setConfirmDeleteForId(null); props.onMarkerClick?.(null) }}
                         style={{
                           background: '#ef4444',
                           color: 'white',
@@ -464,7 +495,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                       {t('popup.delete')}
                     </button>
                     <button
-                      onClick={() => props.onMarkerClick?.(null as any)}
+                      onClick={() => props.onMarkerClick?.(null)}
                       style={{
                         padding: '6px 10px',
                         borderRadius: 6,
@@ -484,6 +515,140 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           )}
         </React.Fragment>
       ))}
+      {/* Ground markers */}
+      {props.groundMarkerProps?.groundMarkers.map(gm => {
+        const gmp = props.groundMarkerProps!
+        const Icon = GROUND_MARKER_ICON[gm.type]
+        // Defense in depth: a persisted session with an unknown type would crash React here
+        // without this guard. Session load already runs sanitizeGroundMarkers, but any future
+        // code path that bypasses that validation (KML import, tests, migrations) is covered.
+        if (!Icon) {
+          console.error('[MapProviderView] Unknown ground marker type in session:', gm.type, gm.id)
+          return null
+        }
+        return (
+          <React.Fragment key={`gm-${gm.id}`}>
+            <Marker
+              longitude={gm.lng}
+              latitude={gm.lat}
+              draggable
+              onClick={(ev: MarkerEvent<MouseEvent>) => {
+                const moved = dragMovedPxRef.current.get(gm.id) || 0
+                if (moved < 8) {
+                  ev.originalEvent?.stopPropagation?.()
+                  gmp.onGroundMarkerClick(gm.id)
+                }
+                dragStartLngLatRef.current.delete(gm.id)
+                dragMovedPxRef.current.delete(gm.id)
+              }}
+              onDragStart={(ev: MarkerDragEvent) => {
+                const ll = ev.lngLat
+                dragStartLngLatRef.current.set(gm.id, { lng: ll.lng, lat: ll.lat })
+                dragMovedPxRef.current.set(gm.id, 0)
+              }}
+              onDrag={(ev: MarkerDragEvent) => {
+                const start = dragStartLngLatRef.current.get(gm.id)
+                if (!start || !mapRef.current) return
+                const map = mapRef.current.getMap()
+                const p0 = map.project([start.lng, start.lat])
+                const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat])
+                const dx = p1.x - p0.x
+                const dy = p1.y - p0.y
+                dragMovedPxRef.current.set(gm.id, Math.sqrt(dx*dx + dy*dy))
+              }}
+              onDragEnd={(ev: MarkerDragEvent) => {
+                const moved = dragMovedPxRef.current.get(gm.id) || 0
+                dragStartLngLatRef.current.delete(gm.id)
+                dragMovedPxRef.current.delete(gm.id)
+                if (moved < 8) {
+                  gmp.onGroundMarkerClick(gm.id)
+                } else {
+                  const ll = ev.lngLat
+                  gmp.onGroundMarkerDragEnd(gm.id, ll.lng, ll.lat)
+                  gmp.onGroundMarkerClick(gm.id)
+                }
+              }}
+            >
+              <div style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                background: '#FF9800',
+                border: '1px solid #333333',
+                cursor: 'pointer',
+                position: 'relative'
+              }} />
+              {/* Type icon label near the marker */}
+              <div style={{
+                position: 'absolute',
+                transform: 'translate(10px, -6px)',
+                background: 'rgba(255,255,255,0.9)',
+                borderRadius: 4,
+                padding: '2px',
+                border: '1px solid #e5e7eb',
+                display: 'flex',
+                alignItems: 'center',
+              }}>
+                <Icon size={16} />
+              </div>
+            </Marker>
+            {gmp.activeGroundMarkerId === gm.id && (
+              <Popup longitude={gm.lng} latitude={gm.lat} anchor="top" closeButton closeOnMove={false}
+                onClose={() => gmp.onGroundMarkerClick(null)}
+              >
+                <div style={{ minWidth: 200, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#374151' }}>{t('groundPopup.type')}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
+                    {GROUND_MARKER_TYPES.map(type => {
+                      const TypeIcon = GROUND_MARKER_ICON[type]
+                      const isCurrent = gm.type === type
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => gmp.onGroundMarkerTypeChange(gm.id, type)}
+                          title={t(`groundTypes.${type}`)}
+                          style={{
+                            padding: 4,
+                            borderRadius: 6,
+                            border: isCurrent ? '2px solid #1d4ed8' : '1px solid #cbd5e1',
+                            background: isCurrent ? '#eff6ff' : '#ffffff',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <TypeIcon size={20} />
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+                    <button
+                      onClick={() => { gmp.onGroundMarkerDelete(gm.id); gmp.onGroundMarkerClick(null) }}
+                      style={{
+                        background: '#ef4444', color: 'white', border: 'none', borderRadius: 6,
+                        padding: '6px 10px', fontSize: 13, cursor: 'pointer'
+                      }}
+                    >
+                      {t('popup.delete')}
+                    </button>
+                    <button
+                      onClick={() => gmp.onGroundMarkerClick(null)}
+                      style={{
+                        padding: '6px 10px', borderRadius: 6, border: '1px solid #1d4ed8',
+                        background: '#1d4ed8', color: '#ffffff', cursor: 'pointer', fontSize: 13
+                      }}
+                    >
+                      {t('popup.ok')}
+                    </button>
+                  </div>
+                </div>
+              </Popup>
+            )}
+          </React.Fragment>
+        )
+      })}
     </MapGL>
   )
 })
