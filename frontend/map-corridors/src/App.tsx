@@ -390,8 +390,9 @@ function App() {
       }
     } catch (err) {
       console.error('Map print failed:', err)
+      alert(err instanceof Error ? err.message : t('errors.printFailed'))
     }
-  }, [])
+  }, [t])
 
   // Drag source for placing markers
   const onDragStartMarker = useCallback((e: React.DragEvent) => {

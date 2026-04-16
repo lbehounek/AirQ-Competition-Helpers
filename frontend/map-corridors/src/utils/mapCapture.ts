@@ -35,11 +35,7 @@ const PADDING = 100 // pixels padding around track in print
 export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
   const { bbox, style, accessToken, overlays, markers } = options
 
-  // Detect orientation from bbox aspect ratio (adjusted for Mercator projection)
-  const midLat = (bbox[0][1] + bbox[1][1]) / 2
-  const lngSpan = Math.abs(bbox[1][0] - bbox[0][0]) * Math.cos(midLat * Math.PI / 180)
-  const latSpan = Math.abs(bbox[1][1] - bbox[0][1])
-  const dims = lngSpan >= latSpan ? A4_LANDSCAPE : A4_PORTRAIT
+  const dims = detectOrientation(bbox)
 
   // Create hidden container
   const container = document.createElement('div')
@@ -62,6 +58,7 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
     interactive: false,
     fadeDuration: 0,
     attributionControl: false,
+    pixelRatio: 1,
   })
 
   try {
@@ -125,7 +122,8 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
     const offscreen = document.createElement('canvas')
     offscreen.width = mapCanvas.width
     offscreen.height = mapCanvas.height
-    const ctx = offscreen.getContext('2d')!
+    const ctx = offscreen.getContext('2d')
+    if (!ctx) throw new Error('Failed to create 2D canvas context — image may be too large for this device')
     ctx.drawImage(mapCanvas, 0, 0)
 
     // Scale factor: canvas pixels may differ from CSS pixels
@@ -193,7 +191,15 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+/** Detect landscape vs portrait from bbox aspect ratio, adjusted for Mercator projection. */
+export function detectOrientation(bbox: [[number, number], [number, number]]) {
+  const midLat = (bbox[0][1] + bbox[1][1]) / 2
+  const lngSpan = Math.abs(bbox[1][0] - bbox[0][0]) * Math.cos(midLat * Math.PI / 180)
+  const latSpan = Math.abs(bbox[1][1] - bbox[0][1])
+  return lngSpan >= latSpan ? A4_LANDSCAPE : A4_PORTRAIT
+}
+
+export function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), ms)
     promise.then(

@@ -85,19 +85,31 @@ function resolveAppUrl(requestUrl) {
 
   const resourcePath = getResourcePath();
   let filePath;
+  let baseDir;
 
   if (url.startsWith('photo-helper/')) {
-    filePath = isDev
-      ? path.join(resourcePath, 'photo-helper', 'dist', url.replace('photo-helper/', ''))
-      : path.join(resourcePath, 'photo-helper', url.replace('photo-helper/', ''));
+    baseDir = isDev
+      ? path.join(resourcePath, 'photo-helper', 'dist')
+      : path.join(resourcePath, 'photo-helper');
+    filePath = path.join(baseDir, url.replace('photo-helper/', ''));
   } else if (url.startsWith('map-corridors/')) {
-    filePath = isDev
-      ? path.join(resourcePath, 'map-corridors', 'dist', url.replace('map-corridors/', ''))
-      : path.join(resourcePath, 'map-corridors', url.replace('map-corridors/', ''));
+    baseDir = isDev
+      ? path.join(resourcePath, 'map-corridors', 'dist')
+      : path.join(resourcePath, 'map-corridors');
+    filePath = path.join(baseDir, url.replace('map-corridors/', ''));
   } else if (url.startsWith('home/')) {
-    filePath = path.join(__dirname, 'renderer', url.replace('home/', ''));
+    baseDir = path.join(__dirname, 'renderer');
+    filePath = path.join(baseDir, url.replace('home/', ''));
   } else {
-    filePath = path.join(__dirname, 'renderer', url);
+    baseDir = path.join(__dirname, 'renderer');
+    filePath = path.join(baseDir, url);
+  }
+
+  // Path traversal protection: ensure resolved path stays within base directory
+  const resolvedBase = path.resolve(baseDir);
+  const resolvedFile = path.resolve(filePath);
+  if (!resolvedFile.startsWith(resolvedBase + path.sep) && resolvedFile !== resolvedBase) {
+    filePath = path.join(resolvedBase, 'index.html');
   }
 
   // SPA fallback: if file doesn't exist, serve the app's index.html
@@ -119,21 +131,26 @@ const CSP = "default-src 'self' app: blob: data:; script-src 'self' 'unsafe-eval
 // Uses protocol.handle() (modern API) to set proper response headers
 function setupProtocol() {
   protocol.handle('app', async (request) => {
-    const filePath = resolveAppUrl(request.url);
-    const fileUrl = pathToFileURL(filePath).href;
-    const original = await net.fetch(fileUrl);
-    // Copy response but add our headers
-    const headers = new Headers(original.headers);
-    headers.set('Content-Security-Policy', CSP);
-    if (isDev) {
-      headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-      headers.set('Pragma', 'no-cache');
+    try {
+      const filePath = resolveAppUrl(request.url);
+      const fileUrl = pathToFileURL(filePath).href;
+      const original = await net.fetch(fileUrl);
+      // Copy response but add our headers
+      const headers = new Headers(original.headers);
+      headers.set('Content-Security-Policy', CSP);
+      if (isDev) {
+        headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        headers.set('Pragma', 'no-cache');
+      }
+      return new Response(original.body, {
+        status: original.status,
+        statusText: original.statusText,
+        headers,
+      });
+    } catch (err) {
+      console.error(`Protocol handler error for ${request.url}:`, err);
+      return new Response('Not Found', { status: 404 });
     }
-    return new Response(original.body, {
-      status: original.status,
-      statusText: original.statusText,
-      headers,
-    });
   });
 }
 
@@ -637,6 +654,12 @@ ipcMain.handle('competition-delete', async (event, id) => {
 
 // Save map print image via native save dialog
 ipcMain.handle('save-map-image', async (event, base64Data) => {
+  if (typeof base64Data !== 'string' || base64Data.length === 0) {
+    throw new Error('Invalid image data');
+  }
+  if (base64Data.length > 50 * 1024 * 1024) {
+    throw new Error('Image data too large');
+  }
   const { filePath } = await dialog.showSaveDialog(mainWindow, {
     defaultPath: `map-print-${new Date().toISOString().slice(0, 10)}.png`,
     filters: [{ name: 'PNG Images', extensions: ['png'] }]
