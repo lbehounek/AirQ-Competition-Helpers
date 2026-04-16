@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GeoJSON } from 'geojson'
 import type { Discipline } from '../corridors/preciseCorridor'
+import type { PhotoMarker, GroundMarker } from '../types/markers'
 import {
   initStorage,
   isStorageAvailable,
@@ -27,7 +28,8 @@ export type CorridorsSession = {
   points: GeoJSON | null
   exactPoints: GeoJSON | null
   // UI data
-  markers: { id: string; lng: number; lat: number; name: string; label?: 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T' }[]
+  markers: PhotoMarker[]
+  groundMarkers: GroundMarker[]
 }
 
 const defaultSession = (id: string): CorridorsSession => ({
@@ -45,6 +47,7 @@ const defaultSession = (id: string): CorridorsSession => ({
   points: null,
   exactPoints: null,
   markers: [],
+  groundMarkers: [],
 })
 
 export function useCorridorSessionOPFS(competitionId?: string | null) {
@@ -155,6 +158,12 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     await persistSession(next)
   }, [session, persistSession])
 
+  const setGroundMarkers = useCallback(async (updater: (prev: GroundMarker[]) => GroundMarker[]) => {
+    if (!session) return
+    const next: CorridorsSession = { ...session, groundMarkers: updater(session.groundMarkers || []), version: session.version + 1, updatedAt: new Date().toISOString() }
+    await persistSession(next)
+  }, [session, persistSession])
+
   const saveOriginalKmlText = useCallback(async (text: string | null) => {
     if (!session) return
     const storage = storageRef.current
@@ -210,6 +219,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setDiscipline,
     setUse1NmAfterSp,
     setMarkers,
+    setGroundMarkers,
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,

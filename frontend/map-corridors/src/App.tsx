@@ -12,13 +12,15 @@ import { buildPreciseCorridorsAndGates, DISCIPLINE_CONFIGS } from './corridors/p
 import type { Discipline } from './corridors/preciseCorridor'
 
 import { Box, Button, Chip, Container, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, IconButton, Tooltip, Alert } from '@mui/material'
-import { Download, Place, Print, Home, PhotoCamera } from '@mui/icons-material'
+import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } from '@turf/turf'
 import { calculateDistance } from './corridors/segments'
 import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
+import type { PhotoLabel, GroundMarkerType, GroundMarker } from './types/markers'
+import { ALL_PHOTO_LABELS } from './types/markers'
 
 function App() {
   const { t } = useI18n()
@@ -75,6 +77,7 @@ function App() {
     backendAvailable,
     setBaseStyle,
     setMarkers: persistMarkers,
+    setGroundMarkers: persistGroundMarkers,
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,
@@ -83,7 +86,6 @@ function App() {
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const mapRef = useRef<MapProviderViewHandle | null>(null)
-  type PhotoLabel = 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T'
   const markers = (session?.markers || []) as { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
   const [isAnswerSheetOpen, setAnswerSheetOpen] = useState(false)
@@ -93,7 +95,10 @@ function App() {
     for (const m of markers) if (m.label) set.add(m.label)
     return Array.from(set)
   }, [markers])
-  const allLabels: PhotoLabel[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
+
+  // Ground markers state
+  const groundMarkers = (session?.groundMarkers || []) as GroundMarker[]
+  const [activeGroundMarkerId, setActiveGroundMarkerId] = useState<string | null>(null)
   const labelToMarker = useMemo(() => {
     const mp = new Map<PhotoLabel, { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }>()
     for (const m of markers) if (m.label) mp.set(m.label, m)
@@ -278,7 +283,7 @@ function App() {
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
-    const isMarkerDrag = types.includes('application/x-photo-marker')
+    const isMarkerDrag = types.includes('application/x-photo-marker') || types.includes('application/x-ground-marker')
     const isFileDrag = (types.includes('Files') || types.includes('public.file-url')) && !isMarkerDrag
     if (!isFileDrag) return
     e.preventDefault()
@@ -294,7 +299,7 @@ function App() {
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
-    const isMarkerDrag = types.includes('application/x-photo-marker')
+    const isMarkerDrag = types.includes('application/x-photo-marker') || types.includes('application/x-ground-marker')
     const isFileDrag = (types.includes('Files') || types.includes('public.file-url')) && !isMarkerDrag
     if (!isFileDrag) return
     e.preventDefault()
@@ -337,7 +342,7 @@ function App() {
       alert(t('errors.noOriginalKml'))
       return
     }
-    // Export only photo markers — no corridors, gates, or exact point labels
+    // Export photo markers and ground markers — no corridors, gates, or exact point labels
     const features: any[] = []
     if (markers.length) {
       const markerFeatures = markers.map(m => ({
@@ -350,6 +355,18 @@ function App() {
         geometry: { type: 'Point', coordinates: [m.lng, m.lat] }
       }))
       features.push(...markerFeatures as any)
+    }
+    if (groundMarkers.length) {
+      const gmFeatures = groundMarkers.map(gm => ({
+        type: 'Feature',
+        properties: {
+          name: gm.type,
+          role: 'ground_markers',
+          markerType: gm.type,
+        },
+        geometry: { type: 'Point', coordinates: [gm.lng, gm.lat] }
+      }))
+      features.push(...gmFeatures as any)
     }
     const combinedGeoJSON = {
       type: 'FeatureCollection' as const,
@@ -394,9 +411,15 @@ function App() {
     }
   }, [t])
 
-  // Drag source for placing markers
+  // Drag source for placing photo markers
   const onDragStartMarker = useCallback((e: React.DragEvent) => {
     e.dataTransfer.setData('application/x-photo-marker', '1')
+    e.dataTransfer.effectAllowed = 'copy'
+  }, [])
+
+  // Drag source for placing ground markers
+  const onDragStartGroundMarker = useCallback((e: React.DragEvent) => {
+    e.dataTransfer.setData('application/x-ground-marker', '1')
     e.dataTransfer.effectAllowed = 'copy'
   }, [])
 
@@ -453,6 +476,30 @@ function App() {
     persistMarkers(prev => prev.map(m => m.id === id ? ({ ...m, label: undefined }) : m))
   }, [persistMarkers])
 
+  // Ground marker callbacks
+  const handleGroundMarkerAdd = useCallback((lng: number, lat: number) => {
+    const id = Math.random().toString(36).slice(2)
+    persistGroundMarkers(prev => [...prev, { id, lng, lat, type: 'LETTER_A' as GroundMarkerType }])
+    setActiveGroundMarkerId(id)
+  }, [persistGroundMarkers])
+
+  const handleGroundMarkerDragEnd = useCallback((id: string, lng: number, lat: number) => {
+    persistGroundMarkers(prev => prev.map(gm => gm.id === id ? { ...gm, lng, lat } : gm))
+  }, [persistGroundMarkers])
+
+  const handleGroundMarkerClick = useCallback((id: string | null) => {
+    setActiveGroundMarkerId(id)
+  }, [])
+
+  const handleGroundMarkerTypeChange = useCallback((id: string, type: GroundMarkerType) => {
+    persistGroundMarkers(prev => prev.map(gm => gm.id === id ? { ...gm, type } : gm))
+  }, [persistGroundMarkers])
+
+  const handleGroundMarkerDelete = useCallback((id: string) => {
+    persistGroundMarkers(prev => prev.filter(gm => gm.id !== id))
+    setActiveGroundMarkerId(current => current === id ? null : current)
+  }, [persistGroundMarkers])
+
   return (
     <>
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
@@ -505,6 +552,7 @@ function App() {
             <Button variant="outlined" size="small" onClick={handlePrintMap} startIcon={<Print sx={{ fontSize: 16 }} />}>{t('app.printMap')}</Button>
           )}
           <Button variant="outlined" size="small" draggable onDragStart={onDragStartMarker} startIcon={<Place sx={{ fontSize: 16 }} />} title={t('app.dragToPlace')}>{t('app.dragToPlace')}</Button>
+          <Button variant="outlined" size="small" draggable onDragStart={onDragStartGroundMarker} startIcon={<Flag sx={{ fontSize: 16 }} />} title={t('app.dragToPlaceGround')}>{t('app.dragToPlaceGround')}</Button>
           <ToggleButtonGroup value={baseStyle} exclusive onChange={(_, val) => { if (val) setBaseStyle(val) }} size="small">
             <ToggleButton value="streets">{t('app.toggleBase.streets')}</ToggleButton>
             <ToggleButton value="satellite">{t('app.toggleBase.satellite')}</ToggleButton>
@@ -548,7 +596,7 @@ function App() {
             baseStyle={baseStyle}
             providerConfig={providerConfig}
             geojsonOverlays={[
-              session?.geojson ? { id: 'uploaded-geojson', data: session.geojson, type: 'line' as const, paint: { 'line-color': '#f7ca00', 'line-width': 2 } } : null,
+              session?.geojson ? { id: 'uploaded-geojson', data: session.geojson, type: 'line' as const, paint: { 'line-color': '#d32f2f', 'line-width': 3 } } : null,
               // Segmented corridor borders in green
               session?.leftSegments ? { id: 'left-segments', data: session.leftSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               session?.rightSegments && (urlDiscipline || session?.discipline || 'rally') !== 'precision' ? { id: 'right-segments', data: session.rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
@@ -570,6 +618,15 @@ function App() {
             onMarkerDelete={handleMarkerDelete}
             onMarkerLabelChange={handleMarkerLabelChange}
             onMarkerLabelClear={handleMarkerLabelClear}
+            groundMarkerProps={{
+              groundMarkers,
+              activeGroundMarkerId,
+              onGroundMarkerAdd: handleGroundMarkerAdd,
+              onGroundMarkerDragEnd: handleGroundMarkerDragEnd,
+              onGroundMarkerClick: handleGroundMarkerClick,
+              onGroundMarkerTypeChange: handleGroundMarkerTypeChange,
+              onGroundMarkerDelete: handleGroundMarkerDelete,
+            }}
           />
         </Box>
       </Container>
@@ -592,7 +649,7 @@ function App() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {allLabels.map((L) => {
+            {ALL_PHOTO_LABELS.map((L) => {
               const m = labelToMarker.get(L)
               const dist = m ? markerDistanceNmById[m.id] : null
               const from = m ? (markerFromTpById[m.id] || '') : ''

@@ -5,9 +5,9 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
 import { useI18n } from '../contexts/I18nContext'
 import { captureMapForPrint } from '../utils/mapCapture'
-
-type PhotoLabel = 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T'
-const ALL_LABELS: PhotoLabel[] = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T']
+import type { PhotoLabel, GroundMarkerCallbacks } from '../types/markers'
+import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
+import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
 
 type Overlay = {
   id: string
@@ -26,7 +26,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   baseStyle: 'streets' | 'satellite'
   providerConfig: ProviderConfig
   geojsonOverlays?: Overlay[]
-  markers?: { id: string; lng: number; lat: number; name: string; label?: 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T' }[]
+  markers?: { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
   activeMarkerId?: string | null
   usedLabels?: string[]
   markerDistanceNmById?: Record<string, number | null>
@@ -35,8 +35,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   onMarkerClick?: (id: string | null) => void
   onMarkerNameChange?: (id: string, name: string) => void
   onMarkerDelete?: (id: string) => void
-  onMarkerLabelChange?: (id: string, label: 'A'|'B'|'C'|'D'|'E'|'F'|'G'|'H'|'I'|'J'|'K'|'L'|'M'|'N'|'O'|'P'|'Q'|'R'|'S'|'T') => void
+  onMarkerLabelChange?: (id: string, label: PhotoLabel) => void
   onMarkerLabelClear?: (id: string) => void
+  groundMarkerProps?: GroundMarkerCallbacks
 }>(function MapProviderView(props, ref) {
   const { baseStyle, providerConfig, geojsonOverlays } = props
 
@@ -54,21 +55,31 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     const map = mapRef.current.getMap()
     const canvas = map.getCanvas()
     const onDragOver = (e: DragEvent) => {
-      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('application/x-photo-marker')) {
+      const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : []
+      if (types.includes('application/x-photo-marker') || types.includes('application/x-ground-marker')) {
         e.preventDefault()
-        e.dataTransfer.dropEffect = 'copy'
+        e.dataTransfer!.dropEffect = 'copy'
       }
     }
     const onDrop = (e: DragEvent) => {
       if (!mapRef.current) return
       const dt = e.dataTransfer
-      if (dt && Array.from(dt.types).includes('application/x-photo-marker')) {
+      if (!dt) return
+      const types = Array.from(dt.types)
+      if (types.includes('application/x-photo-marker')) {
         e.preventDefault()
         const rect = (canvas as HTMLCanvasElement).getBoundingClientRect()
         const x = e.clientX - rect.left
         const y = e.clientY - rect.top
         const lngLat = mapRef.current.getMap().unproject([x, y])
         props.onMarkerAdd?.(lngLat.lng, lngLat.lat)
+      } else if (types.includes('application/x-ground-marker')) {
+        e.preventDefault()
+        const rect = (canvas as HTMLCanvasElement).getBoundingClientRect()
+        const x = e.clientX - rect.left
+        const y = e.clientY - rect.top
+        const lngLat = mapRef.current.getMap().unproject([x, y])
+        props.groundMarkerProps?.onGroundMarkerAdd(lngLat.lng, lngLat.lat)
       }
     }
     canvas.addEventListener('dragover', onDragOver)
@@ -77,7 +88,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       canvas.removeEventListener('dragover', onDragOver)
       canvas.removeEventListener('drop', onDrop)
     }
-  }, [isMapLoaded, props.onMarkerAdd])
+  }, [isMapLoaded, props.onMarkerAdd, props.groundMarkerProps])
 
   const uploadedGeojson = useMemo(() => {
     return geojsonOverlays?.find((o) => o.id === 'uploaded-geojson')?.data
@@ -173,15 +184,22 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         label: m.label,
       }))
 
+      const printGroundMarkers = (props.groundMarkerProps?.groundMarkers || []).map(gm => ({
+        lng: gm.lng,
+        lat: gm.lat,
+        type: gm.type,
+      }))
+
       return captureMapForPrint({
         bbox: bbox as [[number, number], [number, number]],
         style: styleUrl,
         accessToken: providerConfig.accessToken,
         overlays: printOverlays,
         markers: printMarkers,
+        groundMarkers: printGroundMarkers,
       })
     }
-  }), [geojsonOverlays, props.markers, styleUrl, providerConfig.accessToken])
+  }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, styleUrl, providerConfig.accessToken])
 
   if (needsToken) {
     return (
@@ -375,7 +393,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 </div>
                 <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>Label</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 6 }}>
-                  {ALL_LABELS.map((L) => {
+                  {ALL_PHOTO_LABELS.map((L) => {
                     const used = (props.usedLabels || []).includes(L)
                     const isCurrent = m.label === L
                     const disabled = used && !isCurrent
@@ -484,6 +502,134 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           )}
         </React.Fragment>
       ))}
+      {/* Ground markers */}
+      {props.groundMarkerProps?.groundMarkers.map(gm => {
+        const gmp = props.groundMarkerProps!
+        const Icon = GROUND_MARKER_ICON[gm.type]
+        return (
+          <React.Fragment key={`gm-${gm.id}`}>
+            <Marker
+              longitude={gm.lng}
+              latitude={gm.lat}
+              draggable
+              onClick={(ev: any) => {
+                const moved = dragMovedPxRef.current.get(gm.id) || 0
+                if (moved < 8) {
+                  ev?.preventDefault?.()
+                  ev?.originalEvent?.stopPropagation?.()
+                  gmp.onGroundMarkerClick(gm.id)
+                }
+                dragStartLngLatRef.current.delete(gm.id)
+                dragMovedPxRef.current.delete(gm.id)
+              }}
+              onDragStart={(ev: any) => {
+                const ll = ev.lngLat
+                dragStartLngLatRef.current.set(gm.id, { lng: ll.lng, lat: ll.lat })
+                dragMovedPxRef.current.set(gm.id, 0)
+              }}
+              onDrag={(ev: any) => {
+                const start = dragStartLngLatRef.current.get(gm.id)
+                if (!start || !mapRef.current) return
+                const map = mapRef.current.getMap()
+                const p0 = map.project([start.lng, start.lat] as any)
+                const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat] as any)
+                const dx = p1.x - p0.x
+                const dy = p1.y - p0.y
+                dragMovedPxRef.current.set(gm.id, Math.sqrt(dx*dx + dy*dy))
+              }}
+              onDragEnd={(ev: any) => {
+                const moved = dragMovedPxRef.current.get(gm.id) || 0
+                dragStartLngLatRef.current.delete(gm.id)
+                dragMovedPxRef.current.delete(gm.id)
+                if (moved < 8) {
+                  gmp.onGroundMarkerClick(gm.id)
+                } else {
+                  const ll = ev.lngLat
+                  gmp.onGroundMarkerDragEnd(gm.id, ll.lng, ll.lat)
+                  gmp.onGroundMarkerClick(gm.id)
+                }
+              }}
+            >
+              <div style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                background: '#FF9800',
+                border: '1px solid #333333',
+                cursor: 'pointer',
+                position: 'relative'
+              }} />
+              {/* Type icon label near the marker */}
+              <div style={{
+                position: 'absolute',
+                transform: 'translate(10px, -6px)',
+                background: 'rgba(255,255,255,0.9)',
+                borderRadius: 4,
+                padding: '2px',
+                border: '1px solid #e5e7eb',
+                display: 'flex',
+                alignItems: 'center',
+              }}>
+                <Icon size={16} />
+              </div>
+            </Marker>
+            {gmp.activeGroundMarkerId === gm.id && (
+              <Popup longitude={gm.lng} latitude={gm.lat} anchor="top" closeButton closeOnMove={false}
+                onClose={() => gmp.onGroundMarkerClick(null)}
+              >
+                <div style={{ minWidth: 200, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#374151' }}>{t('groundPopup.type')}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
+                    {GROUND_MARKER_TYPES.map(type => {
+                      const TypeIcon = GROUND_MARKER_ICON[type]
+                      const isCurrent = gm.type === type
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => gmp.onGroundMarkerTypeChange(gm.id, type)}
+                          title={t(`groundTypes.${type}`)}
+                          style={{
+                            padding: 4,
+                            borderRadius: 6,
+                            border: isCurrent ? '2px solid #1d4ed8' : '1px solid #cbd5e1',
+                            background: isCurrent ? '#eff6ff' : '#ffffff',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <TypeIcon size={20} />
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+                    <button
+                      onClick={() => { gmp.onGroundMarkerDelete(gm.id); gmp.onGroundMarkerClick(null) }}
+                      style={{
+                        background: '#ef4444', color: 'white', border: 'none', borderRadius: 6,
+                        padding: '6px 10px', fontSize: 13, cursor: 'pointer'
+                      }}
+                    >
+                      {t('popup.delete')}
+                    </button>
+                    <button
+                      onClick={() => gmp.onGroundMarkerClick(null)}
+                      style={{
+                        padding: '6px 10px', borderRadius: 6, border: '1px solid #1d4ed8',
+                        background: '#1d4ed8', color: '#ffffff', cursor: 'pointer', fontSize: 13
+                      }}
+                    >
+                      {t('popup.ok')}
+                    </button>
+                  </div>
+                </div>
+              </Popup>
+            )}
+          </React.Fragment>
+        )
+      })}
     </MapGL>
   )
 })

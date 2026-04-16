@@ -1,4 +1,5 @@
 import mapboxgl from 'mapbox-gl'
+import { groundMarkerSvgString } from '../components/GroundMarkerIcons'
 
 type OverlayConfig = {
   id: string
@@ -14,12 +15,19 @@ type MarkerConfig = {
   label?: string
 }
 
+type GroundMarkerPrintConfig = {
+  lng: number
+  lat: number
+  type: string
+}
+
 type PrintOptions = {
   bbox: [[number, number], [number, number]] // [[minLng, minLat], [maxLng, maxLat]]
   style: string
   accessToken?: string
   overlays: OverlayConfig[]
   markers: MarkerConfig[]
+  groundMarkers?: GroundMarkerPrintConfig[]
 }
 
 // A4 at 300 DPI
@@ -59,7 +67,7 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
     fadeDuration: 0,
     attributionControl: false,
     pixelRatio: 1,
-  })
+  } as mapboxgl.MapOptions)
 
   try {
     // Wait for style to load
@@ -77,11 +85,17 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
       map.addSource(ov.id, { type: 'geojson', data: ov.data })
 
       if (ov.type === 'line') {
+        const isTrack = ov.id === 'uploaded-geojson'
+        const basePaint = { 'line-color': '#00b3ff', 'line-width': 8, ...(ov.paint || {}) }
+        // Boost line widths for print legibility
+        const printPaint = isTrack
+          ? { ...basePaint, 'line-width': 12 }
+          : { ...basePaint, 'line-width': Math.max(6, (basePaint['line-width'] as number) * 4) }
         map.addLayer({
           id: `${ov.id}-line`,
           type: 'line',
           source: ov.id,
-          paint: { 'line-color': '#00b3ff', 'line-width': 3, ...(ov.paint || {}) },
+          paint: printPaint,
           layout: ov.layout ?? {},
         })
       } else if (ov.type === 'circle') {
@@ -95,11 +109,11 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
           id: `${ov.id}-labels`,
           type: 'symbol',
           source: ov.id,
-          paint: { 'text-color': '#000000', 'text-halo-color': '#ffffff', 'text-halo-width': 2 },
+          paint: { 'text-color': '#000000', 'text-halo-color': '#ffffff', 'text-halo-width': 4 },
           layout: {
             'text-field': ['get', 'name'],
             'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-            'text-size': 16,
+            'text-size': 36,
             'text-offset': [0, -2],
             'text-anchor': 'bottom',
             'text-allow-overlap': true,
@@ -130,9 +144,9 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
     const scaleX = mapCanvas.width / dims.width
     const scaleY = mapCanvas.height / dims.height
 
-    // Composite photo markers
-    const markerRadius = 6 * scaleX
-    const fontSize = Math.round(14 * scaleX)
+    // Composite photo markers (3x size for print legibility)
+    const markerRadius = 18 * scaleX
+    const fontSize = Math.round(42 * scaleX)
 
     for (const m of markers) {
       const px = map.project([m.lng, m.lat])
@@ -168,6 +182,53 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
         ctx.stroke()
         ctx.fillStyle = '#111111'
         ctx.fillText(m.label, labelX, y)
+      }
+    }
+
+    // Composite ground markers (SVG icons)
+    const gms = options.groundMarkers || []
+    if (gms.length) {
+      const iconSize = Math.round(72 * scaleX)
+      const uniqueTypes = [...new Set(gms.map(gm => gm.type))]
+      const gmImages = new Map<string, HTMLImageElement>()
+      await Promise.all(uniqueTypes.map(async (type) => {
+        try {
+          const svgStr = groundMarkerSvgString(type as any, iconSize)
+          if (!svgStr) return
+          const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgStr)}`
+          const img = new Image()
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve()
+            img.onerror = () => reject()
+            img.src = dataUrl
+          })
+          gmImages.set(type, img)
+        } catch {
+          // fallback: will draw diamond below
+        }
+      }))
+      for (const gm of gms) {
+        const px = map.project([gm.lng, gm.lat])
+        const x = px.x * scaleX
+        const y = px.y * scaleY
+        const img = gmImages.get(gm.type)
+        if (img) {
+          ctx.drawImage(img, x - img.width / 2, y - img.height / 2, img.width, img.height)
+        } else {
+          // Fallback: orange diamond
+          const r = 24 * scaleX
+          ctx.beginPath()
+          ctx.moveTo(x, y - r)
+          ctx.lineTo(x + r, y)
+          ctx.lineTo(x, y + r)
+          ctx.lineTo(x - r, y)
+          ctx.closePath()
+          ctx.fillStyle = '#FF9800'
+          ctx.fill()
+          ctx.strokeStyle = '#333'
+          ctx.lineWidth = 1 * scaleX
+          ctx.stroke()
+        }
       }
     }
 
