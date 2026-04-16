@@ -264,8 +264,6 @@ describe('RED_SC.kml (precision, TP1 format, SC gates)', () => {
       const pCoords = precision.leftSegments[0].geometry.coordinates
       const rCoords = rally.leftSegments[0].geometry.coordinates
       // Rally corridor should be wider (first point's longitude further from track)
-      const pSpread = Math.abs(pCoords[0][0] - pCoords[pCoords.length - 1][0])
-      const rSpread = Math.abs(rCoords[0][0] - rCoords[rCoords.length - 1][0])
       // Just verify both generated something meaningful
       expect(pCoords.length).toBeGreaterThan(1)
       expect(rCoords.length).toBeGreaterThan(1)
