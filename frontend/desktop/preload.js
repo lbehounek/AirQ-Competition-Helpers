@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     delete: (id) => ipcRenderer.invoke('competition-delete', id),
   },
 
+  // Save map print image via native save dialog
+  saveMapImage: (base64Data) => ipcRenderer.invoke('save-map-image', base64Data),
+
   // Check if running in Electron
   isElectron: true,
 

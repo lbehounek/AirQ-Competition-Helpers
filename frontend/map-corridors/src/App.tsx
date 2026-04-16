@@ -359,6 +359,40 @@ function App() {
     downloadKML(mergedKml, 'corridors_export.kml')
   }, [markers, loadOriginalKmlText, t])
 
+  const handlePrintMap = useCallback(async () => {
+    if (!mapRef.current) return
+    try {
+      const blob = await mapRef.current.captureForPrint()
+      const electronAPI = (window as any).electronAPI
+
+      if (electronAPI?.saveMapImage) {
+        // Electron: save via native dialog
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const result = reader.result as string
+            resolve(result.split(',')[1]) // strip data:image/png;base64, prefix
+          }
+          reader.onerror = () => reject(reader.error)
+          reader.readAsDataURL(blob)
+        })
+        await electronAPI.saveMapImage(base64)
+      } else {
+        // Browser: download via anchor
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `map-print-${new Date().toISOString().slice(0, 10)}.png`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+      }
+    } catch (err) {
+      console.error('Map print failed:', err)
+    }
+  }, [])
+
   // Drag source for placing markers
   const onDragStartMarker = useCallback((e: React.DragEvent) => {
     e.dataTransfer.setData('application/x-photo-marker', '1')
@@ -465,6 +499,9 @@ function App() {
           <Button variant="contained" size="small" onClick={onClickSelectFile}>{t('app.selectKml')}</Button>
           {(session?.leftSegments || session?.rightSegments || session?.gates) && (
             <Button variant="outlined" size="small" onClick={handleExportKML} startIcon={<Download sx={{ fontSize: 16 }} />}>{t('app.exportKml')}</Button>
+          )}
+          {session?.geojson && (
+            <Button variant="outlined" size="small" onClick={handlePrintMap} startIcon={<Print sx={{ fontSize: 16 }} />}>{t('app.printMap')}</Button>
           )}
           <Button variant="outlined" size="small" draggable onDragStart={onDragStartMarker} startIcon={<Place sx={{ fontSize: 16 }} />} title={t('app.dragToPlace')}>{t('app.dragToPlace')}</Button>
           <ToggleButtonGroup value={baseStyle} exclusive onChange={(_, val) => { if (val) setBaseStyle(val) }} size="small">
