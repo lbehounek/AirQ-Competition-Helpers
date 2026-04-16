@@ -38,6 +38,7 @@ import {
   Remove
 } from '@mui/icons-material';
 import type { Photo } from '../types';
+import type { CanvasSetting } from '../utils/canvasStatePatch';
 import { useI18n } from '../contexts/I18nContext';
 
 interface PhotoControlsProps {
@@ -72,7 +73,7 @@ interface PhotoControlsProps {
   onToggleOriginal?: () => void;
   circleMode?: boolean;
   onCircleModeToggle?: () => void;
-  onApplyToAll?: (setting: string, value: any) => void; // Apply setting to all photos
+  onApplyToAll?: (setting: CanvasSetting, value: number) => void; // Apply setting to all photos
 }
 
 type LabelPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';

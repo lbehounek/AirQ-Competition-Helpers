@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Photo } from '../types';
 import type { ApiPhoto, ApiPhotoSession } from '../types/api';
-import { applySettingToAllPhotos } from '../utils/canvasStatePatch';
+import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
 import {
   isStorageAvailable,
   initStorage,
@@ -328,19 +328,13 @@ export function usePhotoSessionOPFS() {
   }, [session, persistSession]);
 
   // Apply a single setting to all photos across active sets in one atomic update
-  const applySettingToAll = useCallback(async (setting: string, value: any, excludePhotoId?: string) => {
+  const applySettingToAll = useCallback(async (setting: CanvasSetting, value: number, excludePhotoId?: string) => {
     if (!session) return;
 
-    const next: ApiPhotoSession = {
-      ...session,
-      version: session.version + 1,
-      updatedAt: new Date().toISOString(),
-      sets: {
-        set1: { ...session.sets.set1, photos: applySettingToAllPhotos(session.sets.set1.photos as any, setting, value, excludePhotoId) },
-        set2: { ...session.sets.set2, photos: applySettingToAllPhotos(session.sets.set2.photos as any, setting, value, excludePhotoId) },
-      },
-    };
-    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    const next: ApiPhotoSession = applySettingToAllInSession(session, setting, value, excludePhotoId);
+    // Mirror the active `sets` into the mode-specific bucket so a later mode
+    // switch doesn't lose the adjustments.
+    (next as ApiPhotoSession)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
     await updateStorageEstimate();
   }, [session, persistSession]);

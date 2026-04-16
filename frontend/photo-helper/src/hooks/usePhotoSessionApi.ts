@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { PhotoSession, Photo, PhotoSet } from '../types';
 import { api, ApiError } from '../services/api';
-import { applySettingToAllPhotos } from '../utils/canvasStatePatch';
+import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
 
 /**
  * Enhanced Photo type for API integration
@@ -204,19 +204,13 @@ export const usePhotoSessionApi = () => {
   }, [sessionId, backendAvailable]);
 
   // Apply a setting to all photos across active sets, then refresh from backend
-  const applySettingToAll = useCallback(async (setting: string, value: any, excludePhotoId?: string) => {
+  const applySettingToAll = useCallback(async (setting: CanvasSetting, value: number, excludePhotoId?: string) => {
     if (!session || !sessionId || !backendAvailable) return;
     try {
       // Optimistically update local state for responsiveness
       setSession((current) => {
         if (!current) return current;
-        return {
-          ...current,
-          sets: {
-            set1: { ...current.sets.set1, photos: applySettingToAllPhotos(current.sets.set1.photos as any, setting, value, excludePhotoId) },
-            set2: { ...current.sets.set2, photos: applySettingToAllPhotos(current.sets.set2.photos as any, setting, value, excludePhotoId) },
-          }
-        } as any;
+        return applySettingToAllInSession(current, setting, value, excludePhotoId);
       });
       // TODO: Add backend bulk update endpoint; for now, keep optimistic state
       // Skip immediate refresh to avoid overwriting local changes

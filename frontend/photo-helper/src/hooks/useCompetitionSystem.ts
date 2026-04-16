@@ -14,7 +14,7 @@ import type { ApiPhotoSession } from '../types/api';
 import { competitionService } from '../services/competitionService';
 import { migrationService } from '../services/migrationService';
 import { useI18n } from '../contexts/I18nContext';
-import { applySettingToAllPhotos } from '../utils/canvasStatePatch';
+import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
 
 export interface UseCompetitionSystemResult {
   // Current state
@@ -556,22 +556,16 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     });
   }, [updateCurrentCompetition]);
 
-  const applySettingToAll = useCallback(async (setting: string, value: any, excludePhotoId?: string) => {
+  const applySettingToAll = useCallback(async (setting: CanvasSetting, value: number, excludePhotoId?: string) => {
     await updateCurrentCompetition(session => {
-      const ensuredSets = {
-        set1: session.sets?.set1 || { title: '', photos: [] },
-        set2: session.sets?.set2 || { title: '', photos: [] }
-      };
-
-      return {
+      const normalized = {
         ...session,
-        version: session.version + 1,
-        updatedAt: new Date().toISOString(),
         sets: {
-          set1: { ...ensuredSets.set1, photos: applySettingToAllPhotos(ensuredSets.set1.photos || [], setting, value, excludePhotoId) },
-          set2: { ...ensuredSets.set2, photos: applySettingToAllPhotos(ensuredSets.set2.photos || [], setting, value, excludePhotoId) },
-        }
+          set1: session.sets?.set1 || { title: '', photos: [] },
+          set2: session.sets?.set2 || { title: '', photos: [] },
+        },
       };
+      return applySettingToAllInSession(normalized, setting, value, excludePhotoId);
     });
   }, [updateCurrentCompetition]);
 
