@@ -96,6 +96,9 @@ ukazky/
 deploy.conf
 public_html
 
+# Claude Code local settings (per-user permissions allowlist)
+.claude/settings.local.json
+
 # Backend photo-helper specific
 backend/photo-helper/venv/
 backend/photo-helper/.deps_installed
