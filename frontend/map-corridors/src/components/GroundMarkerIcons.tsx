@@ -37,8 +37,14 @@ const SVG_CONTENT: Record<GroundMarkerType, string> = {
 
 const SVG_ATTRS_PRINT = 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" stroke="black" stroke-width="10" fill="none" stroke-linecap="square" stroke-linejoin="miter"'
 
+function lookupSvgContent(type: GroundMarkerType): string {
+  // Guard against prototype keys (`toString`, `constructor`, ...) leaking through.
+  // Only own keys of the literal SVG_CONTENT record are valid content.
+  return Object.prototype.hasOwnProperty.call(SVG_CONTENT, type) ? SVG_CONTENT[type] : ''
+}
+
 function GroundMarkerSvg({ type, size = 24 }: { type: GroundMarkerType; size?: number }) {
-  const content = SVG_CONTENT[type]
+  const content = lookupSvgContent(type)
   return (
     <svg
       width={size}
@@ -64,9 +70,11 @@ export const GROUND_MARKER_ICON: Record<GroundMarkerType, React.FC<{ size?: numb
     ])
   ) as Record<GroundMarkerType, React.FC<{ size?: number }>>
 
-// Raw SVG string for canvas print rendering (mapCapture.ts) — double stroke width for print
+// Raw SVG string for canvas print rendering (mapCapture.ts) — double stroke width for print.
+// Returns '' for unknown types so callers can detect the miss and surface a warning
+// (see mapCapture.ts). The guard uses hasOwnProperty to reject prototype keys.
 export function groundMarkerSvgString(type: GroundMarkerType, size: number): string {
-  const content = SVG_CONTENT[type]
+  const content = lookupSvgContent(type)
   if (!content) return ''
   return `<svg ${SVG_ATTRS_PRINT} width="${size}" height="${size}">${content}</svg>`
 }

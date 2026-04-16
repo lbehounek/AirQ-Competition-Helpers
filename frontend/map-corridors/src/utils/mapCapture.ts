@@ -1,5 +1,6 @@
 import mapboxgl from 'mapbox-gl'
 import { groundMarkerSvgString } from '../components/GroundMarkerIcons'
+import type { GroundMarkerType, PhotoLabel } from '../types/markers'
 
 type OverlayConfig = {
   id: string
@@ -12,13 +13,13 @@ type OverlayConfig = {
 type MarkerConfig = {
   lng: number
   lat: number
-  label?: string
+  label?: PhotoLabel
 }
 
 type GroundMarkerPrintConfig = {
   lng: number
   lat: number
-  type: string
+  type: GroundMarkerType
 }
 
 type PrintOptions = {
@@ -28,6 +29,14 @@ type PrintOptions = {
   overlays: OverlayConfig[]
   markers: MarkerConfig[]
   groundMarkers?: GroundMarkerPrintConfig[]
+}
+
+// Result of a print capture. `warnings` lists non-fatal issues (e.g. ground-marker
+// SVGs that failed to load and were substituted with the diamond fallback) so the
+// caller can surface them to the user rather than silently shipping a wrong map.
+export type PrintCaptureResult = {
+  blob: Blob
+  warnings: string[]
 }
 
 // A4 at 300 DPI
@@ -40,8 +49,9 @@ const PADDING = 100 // pixels padding around track in print
  * Render a high-resolution offscreen map at A4 300 DPI.
  * Auto-detects landscape vs portrait from the track bounding box.
  */
-export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
+export async function captureMapForPrint(options: PrintOptions): Promise<PrintCaptureResult> {
   const { bbox, style, accessToken, overlays, markers } = options
+  const warnings: string[] = []
 
   const dims = detectOrientation(bbox)
 
@@ -185,28 +195,41 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
       }
     }
 
-    // Composite ground markers (SVG icons)
+    // Composite ground markers (SVG icons).
+    // SVG load failures are collected into `warnings` so the caller can surface them —
+    // silently substituting a diamond for the wrong shape on a printed competition map
+    // is a correctness bug, not a cosmetic one.
     const gms = options.groundMarkers || []
     if (gms.length) {
       const iconSize = Math.round(72 * scaleX)
       const uniqueTypes = [...new Set(gms.map(gm => gm.type))]
-      const gmImages = new Map<string, HTMLImageElement>()
+      const gmImages = new Map<GroundMarkerType, HTMLImageElement>()
+      const failedTypes = new Set<GroundMarkerType>()
       await Promise.all(uniqueTypes.map(async (type) => {
+        const svgStr = groundMarkerSvgString(type, iconSize)
+        if (!svgStr) {
+          failedTypes.add(type)
+          warnings.push(`Unknown ground marker type "${type}" — rendered as fallback diamond`)
+          return
+        }
         try {
-          const svgStr = groundMarkerSvgString(type as any, iconSize)
-          if (!svgStr) return
           const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgStr)}`
           const img = new Image()
           await new Promise<void>((resolve, reject) => {
             img.onload = () => resolve()
-            img.onerror = () => reject()
+            img.onerror = () => reject(new Error(`image onerror for ${type}`))
             img.src = dataUrl
           })
           gmImages.set(type, img)
-        } catch {
-          // fallback: will draw diamond below
+        } catch (err) {
+          failedTypes.add(type)
+          const reason = err instanceof Error ? err.message : String(err)
+          warnings.push(`Failed to rasterize ground marker "${type}" (${reason}) — rendered as fallback diamond`)
         }
       }))
+      if (failedTypes.size) {
+        console.warn('[mapCapture] Ground marker SVG load failures:', Array.from(failedTypes))
+      }
       for (const gm of gms) {
         const px = map.project([gm.lng, gm.lat])
         const x = px.x * scaleX
@@ -215,7 +238,7 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
         if (img) {
           ctx.drawImage(img, x - img.width / 2, y - img.height / 2, img.width, img.height)
         } else {
-          // Fallback: orange diamond
+          // Fallback: orange diamond (shape unavailable — see `warnings`)
           const r = 24 * scaleX
           ctx.beginPath()
           ctx.moveTo(x, y - r)
@@ -240,12 +263,13 @@ export async function captureMapForPrint(options: PrintOptions): Promise<Blob> {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
     ctx.fillText('\u00A9 Mapbox \u00A9 OpenStreetMap', offscreen.width - 8 * scaleX, offscreen.height - 4 * scaleY)
 
-    return await new Promise<Blob>((resolve, reject) => {
-      offscreen.toBlob(blob => {
-        if (blob) resolve(blob)
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      offscreen.toBlob(b => {
+        if (b) resolve(b)
         else reject(new Error('Canvas toBlob returned null'))
       }, 'image/png')
     })
+    return { blob, warnings }
   } finally {
     map.remove()
     document.body.removeChild(container)

@@ -19,8 +19,8 @@ import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } fro
 import { calculateDistance } from './corridors/segments'
 import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
-import type { PhotoLabel, GroundMarkerType, GroundMarker } from './types/markers'
-import { ALL_PHOTO_LABELS } from './types/markers'
+import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
+import { ALL_PHOTO_LABELS, DEFAULT_GROUND_MARKER_TYPE } from './types/markers'
 
 function App() {
   const { t } = useI18n()
@@ -86,7 +86,7 @@ function App() {
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const mapRef = useRef<MapProviderViewHandle | null>(null)
-  const markers = (session?.markers || []) as { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
+  const markers = session?.markers ?? []
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
   const [isAnswerSheetOpen, setAnswerSheetOpen] = useState(false)
   const answerSheetRef = useRef<HTMLDivElement | null>(null)
@@ -97,10 +97,10 @@ function App() {
   }, [markers])
 
   // Ground markers state
-  const groundMarkers = (session?.groundMarkers || []) as GroundMarker[]
+  const groundMarkers: readonly GroundMarker[] = session?.groundMarkers ?? []
   const [activeGroundMarkerId, setActiveGroundMarkerId] = useState<string | null>(null)
   const labelToMarker = useMemo(() => {
-    const mp = new Map<PhotoLabel, { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }>()
+    const mp = new Map<PhotoLabel, typeof markers[number]>()
     for (const m of markers) if (m.label) mp.set(m.label, m)
     return mp
   }, [markers])
@@ -379,7 +379,7 @@ function App() {
   const handlePrintMap = useCallback(async () => {
     if (!mapRef.current) return
     try {
-      const blob = await mapRef.current.captureForPrint()
+      const { blob, warnings } = await mapRef.current.captureForPrint()
       const electronAPI = (window as any).electronAPI
 
       if (electronAPI?.saveMapImage) {
@@ -404,6 +404,12 @@ function App() {
         link.click()
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
+      }
+
+      // Surface non-fatal warnings (e.g. ground markers rendered as fallback diamonds
+      // because their SVG failed to load). On a competition map this matters.
+      if (warnings.length) {
+        alert(`${t('app.printMap')}:\n\n${warnings.join('\n')}`)
       }
     } catch (err) {
       console.error('Map print failed:', err)
@@ -438,9 +444,11 @@ function App() {
     try { w.close() } catch {}
   }, [t])
 
-  // Marker callbacks passed to map
+  // Marker callbacks passed to map.
+  // IDs are prefixed per marker kind so the shared drag-state refs in MapProviderView
+  // (dragStartLngLatRef, dragMovedPxRef) cannot collide between photo and ground markers.
   const handleMarkerAdd = useCallback((lng: number, lat: number) => {
-    const id = Math.random().toString(36).slice(2)
+    const id = `pm-${Math.random().toString(36).slice(2)}`
     persistMarkers(prev => [...prev, { id, lng, lat, name: '' }])
     setActiveMarkerId(id)
   }, [persistMarkers])
@@ -478,8 +486,8 @@ function App() {
 
   // Ground marker callbacks
   const handleGroundMarkerAdd = useCallback((lng: number, lat: number) => {
-    const id = Math.random().toString(36).slice(2)
-    persistGroundMarkers(prev => [...prev, { id, lng, lat, type: 'LETTER_A' as GroundMarkerType }])
+    const id = `gm-${Math.random().toString(36).slice(2)}`
+    persistGroundMarkers(prev => [...prev, { id, lng, lat, type: DEFAULT_GROUND_MARKER_TYPE }])
     setActiveGroundMarkerId(id)
   }, [persistGroundMarkers])
 

@@ -5,6 +5,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
 import { useI18n } from '../contexts/I18nContext'
 import { captureMapForPrint } from '../utils/mapCapture'
+import type { PrintCaptureResult } from '../utils/mapCapture'
 import type { PhotoLabel, GroundMarkerCallbacks } from '../types/markers'
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
@@ -18,7 +19,7 @@ type Overlay = {
 }
 
 export type MapProviderViewHandle = {
-  captureForPrint: () => Promise<Blob>
+  captureForPrint: () => Promise<PrintCaptureResult>
 }
 
 export const MapProviderView = forwardRef<MapProviderViewHandle, {
@@ -55,10 +56,14 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     const map = mapRef.current.getMap()
     const canvas = map.getCanvas()
     const onDragOver = (e: DragEvent) => {
-      const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : []
-      if (types.includes('application/x-photo-marker') || types.includes('application/x-ground-marker')) {
+      const dt = e.dataTransfer
+      if (!dt) return
+      const types = Array.from(dt.types)
+      const wantsPhoto = types.includes('application/x-photo-marker') && !!props.onMarkerAdd
+      const wantsGround = types.includes('application/x-ground-marker') && !!props.groundMarkerProps
+      if (wantsPhoto || wantsGround) {
         e.preventDefault()
-        e.dataTransfer!.dropEffect = 'copy'
+        dt.dropEffect = 'copy'
       }
     }
     const onDrop = (e: DragEvent) => {
@@ -66,20 +71,26 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       const dt = e.dataTransfer
       if (!dt) return
       const types = Array.from(dt.types)
+      const unprojectAt = (clientX: number, clientY: number) => {
+        const rect = (canvas as HTMLCanvasElement).getBoundingClientRect()
+        return mapRef.current!.getMap().unproject([clientX - rect.left, clientY - rect.top])
+      }
       if (types.includes('application/x-photo-marker')) {
+        if (!props.onMarkerAdd) {
+          console.error('[MapProviderView] Photo marker drop received but onMarkerAdd is not configured')
+          return
+        }
         e.preventDefault()
-        const rect = (canvas as HTMLCanvasElement).getBoundingClientRect()
-        const x = e.clientX - rect.left
-        const y = e.clientY - rect.top
-        const lngLat = mapRef.current.getMap().unproject([x, y])
-        props.onMarkerAdd?.(lngLat.lng, lngLat.lat)
+        const lngLat = unprojectAt(e.clientX, e.clientY)
+        props.onMarkerAdd(lngLat.lng, lngLat.lat)
       } else if (types.includes('application/x-ground-marker')) {
+        if (!props.groundMarkerProps) {
+          console.error('[MapProviderView] Ground marker drop received but groundMarkerProps is not configured')
+          return
+        }
         e.preventDefault()
-        const rect = (canvas as HTMLCanvasElement).getBoundingClientRect()
-        const x = e.clientX - rect.left
-        const y = e.clientY - rect.top
-        const lngLat = mapRef.current.getMap().unproject([x, y])
-        props.groundMarkerProps?.onGroundMarkerAdd(lngLat.lng, lngLat.lat)
+        const lngLat = unprojectAt(e.clientX, e.clientY)
+        props.groundMarkerProps.onGroundMarkerAdd(lngLat.lng, lngLat.lat)
       }
     }
     canvas.addEventListener('dragover', onDragOver)
@@ -506,6 +517,13 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       {props.groundMarkerProps?.groundMarkers.map(gm => {
         const gmp = props.groundMarkerProps!
         const Icon = GROUND_MARKER_ICON[gm.type]
+        // Defense in depth: a persisted session with an unknown type would crash React here
+        // without this guard. Session load already runs sanitizeGroundMarkers, but any future
+        // code path that bypasses that validation (KML import, tests, migrations) is covered.
+        if (!Icon) {
+          console.error('[MapProviderView] Unknown ground marker type in session:', gm.type, gm.id)
+          return null
+        }
         return (
           <React.Fragment key={`gm-${gm.id}`}>
             <Marker
