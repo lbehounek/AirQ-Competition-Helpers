@@ -428,7 +428,8 @@ function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[]): { sp?: LonLa
   const trackLine = lineString(track.map(c => [c[0], c[1]]) as Position[])
 
   function attachExact(name: string, approx: LonLatAlt): LonLatAlt | undefined {
-    // Find the candidate whose center is nearest to approx
+    // Find the candidate whose center is nearest to approx AND intersects the track
+    // Filter by proximity first to avoid SC gates far from this waypoint
     let bestIdx = -1
     let bestD2 = Infinity
     for (let i = 0; i < candidates.length; i++) {
@@ -436,6 +437,11 @@ function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[]): { sp?: LonLa
       const dx = c[0] - approx[0]
       const dy = c[1] - approx[1]
       const d2 = dx*dx + dy*dy
+      // Skip candidates too far away (> ~2km in degrees, roughly 0.02°)
+      if (d2 > 0.0004) continue
+      const gate = candidates[i].line
+      const ints = lineIntersect(trackLine, gate)
+      if (!ints || !ints.features.length) continue
       if (d2 < bestD2) { bestD2 = d2; bestIdx = i }
     }
     if (bestIdx !== -1) {

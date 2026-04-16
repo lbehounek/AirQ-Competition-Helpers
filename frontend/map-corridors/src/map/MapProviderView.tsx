@@ -291,7 +291,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               width: 8,
               height: 8,
               borderRadius: 4,
-              background: '#FFD600',
+              background: '#FFFF00',
               border: '1px solid #333333',
               cursor: 'pointer',
               position: 'relative'

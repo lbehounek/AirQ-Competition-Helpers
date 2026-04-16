@@ -519,7 +519,7 @@ function App() {
               // Hide original KML waypoint labels to avoid duplicates; keep exactPoints labels
               session?.points ? { id: 'waypoints', data: session.points, type: 'circle' as const, paint: { 'circle-opacity': 0 }, layout: { 'text-field': '' } } : null,
               // Exact waypoints: hide dot markers (keep labels via symbol layout below)
-              session?.exactPoints ? { id: 'exact-points', data: session.exactPoints, type: 'circle' as const, paint: { 'circle-radius': 0, 'circle-color': '#111111' }, layout: { 'text-field': ['get', 'name'], 'text-offset': [0, 1.2], 'text-anchor': 'top' } } : null,
+              session?.exactPoints ? { id: 'exact-points', data: session.exactPoints, type: 'circle' as const, paint: { 'circle-radius': 0, 'circle-color': '#111111' }, layout: { 'text-field': ['get', 'name'], 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-allow-overlap': true, 'text-ignore-placement': true } } : null,
             ].filter(Boolean) as any}
             markers={markers}
             activeMarkerId={activeMarkerId}

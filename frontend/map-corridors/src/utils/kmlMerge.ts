@@ -112,7 +112,7 @@ export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName
 
   // Ensure styles for appended content
   ensureStyle(xml, 'greenLine', '<LineStyle><color>ff00ff00</color><width>2</width></LineStyle>')
-  ensureStyle(xml, 'labelPoint', '<IconStyle><color>ff000000</color><scale>0.8</scale></IconStyle><LabelStyle><scale>1</scale></LabelStyle>')
+  ensureStyle(xml, 'labelPoint', '<IconStyle><color>ff00ffff</color><scale>0.8</scale></IconStyle><LabelStyle><scale>1</scale></LabelStyle>')
 
   const features = extra.type === 'FeatureCollection' ? (extra as FeatureCollection).features : [extra as Feature]
 
