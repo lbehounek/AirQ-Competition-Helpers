@@ -606,6 +606,9 @@ ipcMain.handle('competition-set-active', async (event, id) => {
 
 // Set discipline for a competition
 ipcMain.handle('competition-set-discipline', async (event, id, discipline) => {
+  if (discipline !== 'precision' && discipline !== 'rally') {
+    throw new Error(`Invalid discipline: ${discipline}`);
+  }
   const index = readCompetitionsIndex();
   const target = index.competitions.find(c => c.id === id);
   if (!target) {
