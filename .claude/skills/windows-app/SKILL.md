@@ -22,20 +22,39 @@ frontend/
 
 ## Local Build
 
-1. Build the sub-apps first:
+Use the build script:
 
 ```bash
-cd frontend/map-corridors && npm run build
-cd frontend/photo-helper && npm run build
+cd frontend/desktop && bash build.sh          # unpacked directory (always works)
+cd frontend/desktop && bash build.sh portable # single portable .exe
 ```
 
-2. Build the desktop app:
+Or manually:
 
 ```bash
-cd frontend/desktop && npm run build
+# 1. Build sub-apps
+cd frontend/map-corridors && VITE_DESKTOP_BUILD=true npm run build
+cd frontend/photo-helper && VITE_DESKTOP_BUILD=true npm run build
+
+# 2. Detect Electron version (hoisted in workspace, electron-builder can't find it)
+ELECTRON_VERSION=$(node -e "console.log(require('electron/package.json').version)")
+
+# 3. Package
+cd frontend/desktop
+npx electron-builder --win --dir -c.electronVersion=$ELECTRON_VERSION   # unpacked
+npx electron-builder --win -c.electronVersion=$ELECTRON_VERSION          # portable .exe
 ```
 
-The Windows executable will be in `frontend/desktop/dist/`.
+Output: `frontend/desktop/dist/win-unpacked/AirQ Competition Helpers.exe`
+
+### Known Issue: winCodeSign symlink error
+
+On Windows without Developer Mode, the portable .exe build fails with "Cannot create symbolic link" during winCodeSign extraction. This happens because the winCodeSign archive contains macOS symlinks.
+
+**Fixes:**
+- Enable Windows Developer Mode (Settings > For Developers > Developer Mode)
+- Or use the unpacked build (`--dir` flag) for local testing — fully functional
+- GitHub Actions CI does not have this issue
 
 ## GitHub Actions Build
 
@@ -103,14 +122,31 @@ When locale changes:
 2. Saves to Electron config via `electronAPI.setConfig('locale', value)`
 3. Calls `electronAPI.setMenuLocale(locale)` to update menu labels
 
-## Releasing
+## Versioning & Releasing
 
-Create a GitHub Release by pushing a version tag:
+The version in `frontend/desktop/package.json` controls the .exe filename (`photo-helper-v${version}.exe`).
+The latest release tag is the source of truth for the current version.
+
+### Every build: bump the version
+
+Before every build, bump the patch version in `package.json` to be one patch above the latest `desktop-v*` tag:
+
+```bash
+# Check latest tag
+git tag --list 'desktop-*' --sort=-v:refname | head -1
+# e.g. desktop-v2.0.1 → set package.json version to 2.0.2
+```
+
+This ensures every .exe has a unique version, even from feature branches.
+
+### Releasing to GitHub
+
+Create a GitHub Release by pushing a version tag from main:
 
 ```bash
 git checkout main && git pull
-git tag desktop-v1.3.0
-git push origin desktop-v1.3.0
+git tag desktop-v2.1.0
+git push origin desktop-v2.1.0
 ```
 
 This triggers `.github/workflows/build-desktop.yml` which:
@@ -118,4 +154,4 @@ This triggers `.github/workflows/build-desktop.yml` which:
 2. Packages Windows portable .exe
 3. Creates GitHub Release with .exe attached
 
-Version is auto-detected from the tag name (`desktop-v1.3.0` → `1.3.0`).
+Version is auto-detected from the tag name (`desktop-v2.1.0` → `2.1.0`).
