@@ -29,8 +29,8 @@ export type CorridorsSession = {
   points: GeoJSON | null
   exactPoints: GeoJSON | null
   // UI data
-  markers: PhotoMarker[]
-  groundMarkers: GroundMarker[]
+  markers: readonly PhotoMarker[]
+  groundMarkers: readonly GroundMarker[]
 }
 
 const defaultSession = (id: string): CorridorsSession => ({
@@ -174,13 +174,15 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     await persistSession(next)
   }, [session, persistSession])
 
-  const setMarkers = useCallback(async (updater: (prev: CorridorsSession['markers']) => CorridorsSession['markers']) => {
+  // Updaters receive a readonly view so callers can't mutate in place (e.g. prev.push).
+  // Returning the same reference (e.g. early-return `prev` on no-op) is also allowed.
+  const setMarkers = useCallback(async (updater: (prev: readonly PhotoMarker[]) => readonly PhotoMarker[]) => {
     if (!session) return
     const next: CorridorsSession = { ...session, markers: updater(session.markers), version: session.version + 1, updatedAt: new Date().toISOString() }
     await persistSession(next)
   }, [session, persistSession])
 
-  const setGroundMarkers = useCallback(async (updater: (prev: GroundMarker[]) => GroundMarker[]) => {
+  const setGroundMarkers = useCallback(async (updater: (prev: readonly GroundMarker[]) => readonly GroundMarker[]) => {
     if (!session) return
     const next: CorridorsSession = { ...session, groundMarkers: updater(session.groundMarkers || []), version: session.version + 1, updatedAt: new Date().toISOString() }
     await persistSession(next)

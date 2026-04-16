@@ -1,6 +1,8 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import MapGL, { Layer, Source, Marker, Popup } from 'react-map-gl/mapbox'
-import type { MapRef } from 'react-map-gl/mapbox'
+import type { MapRef, MarkerDragEvent, MarkerEvent } from 'react-map-gl/mapbox'
+import type { GeoJSON, Geometry, Position } from 'geojson'
+import type { LngLatBoundsLike, LngLatLike } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import type { MapProviderId, ProviderConfig } from './providers'
 import { useI18n } from '../contexts/I18nContext'
@@ -12,10 +14,12 @@ import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
 
 type Overlay = {
   id: string
-  data: any
+  data: GeoJSON
   type: 'line' | 'fill' | 'circle'
-  paint?: any
-  layout?: any
+  // Mapbox paint/layout prop shapes are a large discriminated union keyed by layer type.
+  // `Record<string, unknown>` is narrow enough to catch typos without enumerating the union here.
+  paint?: Record<string, unknown>
+  layout?: Record<string, unknown>
 }
 
 export type MapProviderViewHandle = {
@@ -27,7 +31,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   baseStyle: 'streets' | 'satellite'
   providerConfig: ProviderConfig
   geojsonOverlays?: Overlay[]
-  markers?: { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
+  markers?: readonly { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
   activeMarkerId?: string | null
   usedLabels?: string[]
   markerDistanceNmById?: Record<string, number | null>
@@ -105,15 +109,15 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     return geojsonOverlays?.find((o) => o.id === 'uploaded-geojson')?.data
   }, [geojsonOverlays])
 
-  function computeBbox(geojson: any): [[number, number], [number, number]] | null {
+  function computeBbox(geojson: GeoJSON | null | undefined): [[number, number], [number, number]] | null {
     if (!geojson) return null
     let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity
 
-    function processPosition(pos: any) {
+    function processPosition(pos: Position | Position[] | Position[][] | Position[][][]) {
       if (!Array.isArray(pos)) return
       if (typeof pos[0] === 'number' && typeof pos[1] === 'number') {
-        const lng = pos[0]
-        const lat = pos[1]
+        const lng = pos[0] as number
+        const lat = pos[1] as number
         if (Number.isFinite(lng) && Number.isFinite(lat)) {
           if (lng < minLng) minLng = lng
           if (lat < minLat) minLat = lat
@@ -122,21 +126,20 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         }
         return
       }
-      for (const p of pos) processPosition(p)
+      for (const p of pos as Position[] | Position[][] | Position[][][]) processPosition(p)
     }
 
-    function processGeometry(geom: any) {
+    function processGeometry(geom: Geometry | null | undefined) {
       if (!geom) return
-      const type = geom.type
-      if (type === 'GeometryCollection') {
-        for (const g of geom.geometries || []) processGeometry(g)
+      if (geom.type === 'GeometryCollection') {
+        for (const g of geom.geometries) processGeometry(g)
         return
       }
       processPosition(geom.coordinates)
     }
 
     if (geojson.type === 'FeatureCollection') {
-      for (const f of geojson.features || []) processGeometry(f.geometry)
+      for (const f of geojson.features) processGeometry(f.geometry)
     } else if (geojson.type === 'Feature') {
       processGeometry(geojson.geometry)
     } else {
@@ -158,15 +161,15 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     // If it's a single point, fly to it with a high zoom
     const isPoint = bounds[0][0] === bounds[1][0] && bounds[0][1] === bounds[1][1]
     if (isPoint) {
-      ref.flyTo({ center: bounds[0] as any, zoom: 18, duration: 600 })
+      ref.flyTo({ center: bounds[0] as LngLatLike, zoom: 18, duration: 600 })
       return
     }
-    ref.fitBounds(bounds as any, { padding: 40, maxZoom: 19, duration: 600 })
+    ref.fitBounds(bounds as LngLatBoundsLike, { padding: 40, maxZoom: 19, duration: 600 })
   }, [isMapLoaded, uploadedGeojson])
 
   // Mapbox binding reads token via prop
 
-  const isElectron = !!(typeof window !== 'undefined' && (window as any).electronAPI?.isElectron)
+  const isElectron = !!(typeof window !== 'undefined' && window.electronAPI?.isElectron)
   const needsToken = !providerConfig.accessToken && typeof styleUrl === 'string' && styleUrl.startsWith('mapbox://')
 
   useImperativeHandle(ref, () => ({
@@ -228,7 +231,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           </div>
           {isElectron ? (
             <button
-              onClick={() => (window as any).electronAPI?.openMapboxSettings?.()}
+              onClick={() => window.electronAPI?.openMapboxSettings?.()}
               style={{
                 padding: '12px 24px',
                 fontSize: 15,
@@ -270,7 +273,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}
       onLoad={() => setIsMapLoaded(true)}
-      ref={mapRef as any}
+      ref={mapRef}
     >
       {geojsonOverlays?.map((ov) => (
         <Source id={ov.id} key={ov.id} type="geojson" data={ov.data}>
@@ -313,33 +316,32 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
             longitude={m.lng}
             latitude={m.lat}
             draggable
-            onClick={(ev: any) => {
+            onClick={(ev: MarkerEvent<MouseEvent>) => {
               const moved = dragMovedPxRef.current.get(m.id) || 0
               if (moved < 8) {
-                ev?.preventDefault?.()
-                ev?.originalEvent?.stopPropagation?.()
+                ev.originalEvent?.stopPropagation?.()
                 props.onMarkerClick?.(m.id)
               }
               dragStartLngLatRef.current.delete(m.id)
               dragMovedPxRef.current.delete(m.id)
             }}
-            onDragStart={(ev: any) => {
+            onDragStart={(ev: MarkerDragEvent) => {
               const ll = ev.lngLat
               dragStartLngLatRef.current.set(m.id, { lng: ll.lng, lat: ll.lat })
               dragMovedPxRef.current.set(m.id, 0)
             }}
-            onDrag={(ev: any) => {
+            onDrag={(ev: MarkerDragEvent) => {
               const start = dragStartLngLatRef.current.get(m.id)
               if (!start || !mapRef.current) return
               const map = mapRef.current.getMap()
-              const p0 = map.project([start.lng, start.lat] as any)
-              const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat] as any)
+              const p0 = map.project([start.lng, start.lat])
+              const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat])
               const dx = p1.x - p0.x
               const dy = p1.y - p0.y
               const dist = Math.sqrt(dx*dx + dy*dy)
               dragMovedPxRef.current.set(m.id, dist)
             }}
-            onDragEnd={(ev: any) => {
+            onDragEnd={(ev: MarkerDragEvent) => {
               const moved = dragMovedPxRef.current.get(m.id) || 0
               dragStartLngLatRef.current.delete(m.id)
               dragMovedPxRef.current.delete(m.id)
@@ -380,7 +382,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           </Marker>
           {props.activeMarkerId === m.id && (
             <Popup longitude={m.lng} latitude={m.lat} anchor="top" closeButton={true} closeOnMove={false}
-              onClose={() => props.onMarkerClick?.(null as any)}
+              onClose={() => props.onMarkerClick?.(null)}
             >
               <div style={{ minWidth: 220, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <label style={{ fontSize: 12, color: '#374151' }}>Name</label>
@@ -447,7 +449,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                         {t('popup.cancel')}
                       </button>
                       <button
-                        onClick={() => { props.onMarkerDelete?.(m.id); setConfirmDeleteForId(null); props.onMarkerClick?.(null as any) }}
+                        onClick={() => { props.onMarkerDelete?.(m.id); setConfirmDeleteForId(null); props.onMarkerClick?.(null) }}
                         style={{
                           background: '#ef4444',
                           color: 'white',
@@ -493,7 +495,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                       {t('popup.delete')}
                     </button>
                     <button
-                      onClick={() => props.onMarkerClick?.(null as any)}
+                      onClick={() => props.onMarkerClick?.(null)}
                       style={{
                         padding: '6px 10px',
                         borderRadius: 6,
@@ -530,32 +532,31 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               longitude={gm.lng}
               latitude={gm.lat}
               draggable
-              onClick={(ev: any) => {
+              onClick={(ev: MarkerEvent<MouseEvent>) => {
                 const moved = dragMovedPxRef.current.get(gm.id) || 0
                 if (moved < 8) {
-                  ev?.preventDefault?.()
-                  ev?.originalEvent?.stopPropagation?.()
+                  ev.originalEvent?.stopPropagation?.()
                   gmp.onGroundMarkerClick(gm.id)
                 }
                 dragStartLngLatRef.current.delete(gm.id)
                 dragMovedPxRef.current.delete(gm.id)
               }}
-              onDragStart={(ev: any) => {
+              onDragStart={(ev: MarkerDragEvent) => {
                 const ll = ev.lngLat
                 dragStartLngLatRef.current.set(gm.id, { lng: ll.lng, lat: ll.lat })
                 dragMovedPxRef.current.set(gm.id, 0)
               }}
-              onDrag={(ev: any) => {
+              onDrag={(ev: MarkerDragEvent) => {
                 const start = dragStartLngLatRef.current.get(gm.id)
                 if (!start || !mapRef.current) return
                 const map = mapRef.current.getMap()
-                const p0 = map.project([start.lng, start.lat] as any)
-                const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat] as any)
+                const p0 = map.project([start.lng, start.lat])
+                const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat])
                 const dx = p1.x - p0.x
                 const dy = p1.y - p0.y
                 dragMovedPxRef.current.set(gm.id, Math.sqrt(dx*dx + dy*dy))
               }}
-              onDragEnd={(ev: any) => {
+              onDragEnd={(ev: MarkerDragEvent) => {
                 const moved = dragMovedPxRef.current.get(gm.id) || 0
                 dragStartLngLatRef.current.delete(gm.id)
                 dragMovedPxRef.current.delete(gm.id)

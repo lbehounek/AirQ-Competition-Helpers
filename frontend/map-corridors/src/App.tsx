@@ -54,7 +54,7 @@ function App() {
   const [competitionName, setCompetitionName] = useState<string | null>(null)
   useEffect(() => {
     if (!competitionId) return
-    const electronAPI = (window as any).electronAPI
+    const electronAPI = window.electronAPI
     if (electronAPI?.competitions) {
       electronAPI.competitions.list().then((index: any) => {
         const comp = index?.competitions?.find((c: any) => c.id === competitionId)
@@ -65,7 +65,7 @@ function App() {
 
   // Fetch Mapbox token from Electron config if running in desktop app
   useEffect(() => {
-    const electronAPI = (window as any).electronAPI
+    const electronAPI = window.electronAPI
     if (electronAPI?.getConfig) {
       electronAPI.getConfig('mapboxToken').then((token: string | undefined) => {
         if (token) setElectronMapboxToken(token)
@@ -380,7 +380,7 @@ function App() {
     if (!mapRef.current) return
     try {
       const { blob, warnings } = await mapRef.current.captureForPrint()
-      const electronAPI = (window as any).electronAPI
+      const electronAPI = window.electronAPI
 
       if (electronAPI?.saveMapImage) {
         // Electron: save via native dialog
@@ -522,8 +522,8 @@ function App() {
         {/* Title row */}
         <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {competitionId && (window as any).electronAPI && (
-              <IconButton size="small" onClick={() => (window as any).electronAPI?.goHome()} sx={{ color: 'white' }} title={t('app.backToMenu')}>
+            {competitionId && window.electronAPI && (
+              <IconButton size="small" onClick={() => window.electronAPI?.goHome?.()} sx={{ color: 'white' }} title={t('app.backToMenu')}>
                 <Home />
               </IconButton>
             )}
@@ -533,8 +533,8 @@ function App() {
               <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
             )}
           </Box>
-          {competitionId && (window as any).electronAPI && (
-            <IconButton size="small" onClick={() => (window as any).electronAPI?.navigateToApp('photo-helper', competitionId)} sx={{ color: 'white' }} title="Photo Editor">
+          {competitionId && window.electronAPI && (
+            <IconButton size="small" onClick={() => window.electronAPI?.navigateToApp?.('photo-helper', competitionId)} sx={{ color: 'white' }} title="Photo Editor">
               <PhotoCamera />
             </IconButton>
           )}

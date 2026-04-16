@@ -1,13 +1,17 @@
 import mapboxgl from 'mapbox-gl'
+import type { LngLatBoundsLike } from 'mapbox-gl'
+import type { GeoJSON } from 'geojson'
 import { groundMarkerSvgString } from '../components/GroundMarkerIcons'
 import type { GroundMarkerType, PhotoLabel } from '../types/markers'
 
 type OverlayConfig = {
   id: string
-  data: any
+  data: GeoJSON
   type: 'line' | 'circle'
-  paint?: Record<string, any>
-  layout?: Record<string, any>
+  // Mapbox paint/layout shapes are a layer-type-keyed discriminated union;
+  // `Record<string, unknown>` is narrow enough to catch typos without enumerating it.
+  paint?: Record<string, unknown>
+  layout?: Record<string, unknown>
 }
 
 type MarkerConfig = {
@@ -88,7 +92,7 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     )
 
     // Fit to track bounds
-    map.fitBounds(bbox as any, { padding: PADDING, duration: 0 })
+    map.fitBounds(bbox as LngLatBoundsLike, { padding: PADDING, duration: 0 })
 
     // Add GeoJSON overlays (track line, gates, exact-point labels)
     for (const ov of overlays) {
