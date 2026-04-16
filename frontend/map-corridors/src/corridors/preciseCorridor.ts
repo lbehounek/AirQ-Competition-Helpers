@@ -108,15 +108,15 @@ export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ 
         const c = p.coordinates as LonLatAlt
         if (name === 'SP') out.sp = c
         else if (name === 'FP') out.fp = c
-        else if (name.startsWith('TP ')) out.tps.push({ name, coord: c })
+        else if (/^TP\s?\d/i.test(name)) out.tps.push({ name, coord: c })
       }
     }
   }
   scan(input)
   // sort TPs by number if present
   out.tps.sort((a, b) => {
-    const na = parseInt(a.name.split(' ').pop() || '0', 10)
-    const nb = parseInt(b.name.split(' ').pop() || '0', 10)
+    const na = parseInt(a.name.replace(/\D/g, '') || '0', 10)
+    const nb = parseInt(b.name.replace(/\D/g, '') || '0', 10)
     return na - nb
   })
   return out
@@ -478,8 +478,8 @@ function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[]): { sp?: LonLa
 
   // keep TP order
   result.tps.sort((a, b) => {
-    const na = parseInt(a.name.split(' ').pop() || '0', 10)
-    const nb = parseInt(b.name.split(' ').pop() || '0', 10)
+    const na = parseInt(a.name.replace(/\D/g, '') || '0', 10)
+    const nb = parseInt(b.name.replace(/\D/g, '') || '0', 10)
     return na - nb
   })
 
