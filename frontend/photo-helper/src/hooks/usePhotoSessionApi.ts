@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { PhotoSession, Photo, PhotoSet } from '../types';
 import { api, ApiError } from '../services/api';
+import { applySettingToAllPhotos } from '../utils/canvasStatePatch';
 
 /**
  * Enhanced Photo type for API integration
@@ -209,31 +210,11 @@ export const usePhotoSessionApi = () => {
       // Optimistically update local state for responsiveness
       setSession((current) => {
         if (!current) return current;
-        const defaultCanvasState: any = {
-          position: { x: 0, y: 0 },
-          scale: 1,
-          brightness: 0,
-          contrast: 1,
-          sharpness: 0,
-          whiteBalance: { temperature: 0, tint: 0, auto: false },
-          labelPosition: 'bottom-left'
-        };
-        const applyPatch = (cs: any) => {
-          const next = { ...defaultCanvasState, ...cs };
-          if (setting === 'scale') next.scale = Math.max(1, Number(value));
-          else if (setting === 'brightness') next.brightness = Number(value);
-          else if (setting === 'contrast') next.contrast = Number(value);
-          else if (setting === 'sharpness') next.sharpness = Number(value);
-          else if (setting === 'whiteBalance.temperature') { const wb = { ...(next.whiteBalance || defaultCanvasState.whiteBalance) }; wb.temperature = Number(value); wb.auto = false; next.whiteBalance = wb; }
-          else if (setting === 'whiteBalance.tint') { const wb = { ...(next.whiteBalance || defaultCanvasState.whiteBalance) }; wb.tint = Number(value); wb.auto = false; next.whiteBalance = wb; }
-          return next;
-        };
-        const mapPhotos = (photos: any[]) => photos.map(p => (p.id === excludePhotoId ? p : { ...p, canvasState: applyPatch(p.canvasState) }));
         return {
           ...current,
           sets: {
-            set1: { ...current.sets.set1, photos: mapPhotos(current.sets.set1.photos as any) },
-            set2: { ...current.sets.set2, photos: mapPhotos(current.sets.set2.photos as any) },
+            set1: { ...current.sets.set1, photos: applySettingToAllPhotos(current.sets.set1.photos as any, setting, value, excludePhotoId) },
+            set2: { ...current.sets.set2, photos: applySettingToAllPhotos(current.sets.set2.photos as any, setting, value, excludePhotoId) },
           }
         } as any;
       });
