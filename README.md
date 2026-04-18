@@ -43,11 +43,8 @@ Will be used to generate relay instructions for construction, which is feasible 
 ├── public_html/                # Built static assets for deployment
 ├── deploy.dev.sh               # Development deployment script
 ├── deploy.prod.sh              # Production deployment script
-├── photohelper.sh              # Local helper script (legacy/dev)
 └── README.md
 ```
-
-There are additional backend-related directories in this repository used historically and for experimentation. They are not required for running the two public tools described above.
 
 ## Quick Start (frontend tools)
 
