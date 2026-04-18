@@ -18,7 +18,18 @@ interface TurningPointLayoutProps {
   onPhotoRemove: (setKey: 'set1' | 'set2', photoId: string) => void;
   onPhotoMove: (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => void;
   totalPhotoCount: number;
+  /**
+   * Precision discipline only uses a single set of up to 9 photos
+   * (SP + TP1…TP7 + FP) — user feedback 2026-04-18. Rally keeps the
+   * existing two-set 18-photo flow.
+   */
+  isPrecision?: boolean;
 }
+
+// Precision turning-point mode caps at 9 photos per feedback 2026-04-18:
+// SP + up to 7 turning points + FP.
+const PRECISION_TURNING_MAX_PHOTOS = 9;
+const RALLY_TURNING_MAX_PHOTOS = 18;
 
 export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   set1,
@@ -30,15 +41,20 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   onPhotoUpdate,
   onPhotoRemove,
   onPhotoMove,
-  totalPhotoCount
+  totalPhotoCount,
+  isPrecision = false
 }) => {
   const { t } = useI18n();
   const { layoutMode } = useLayoutMode();
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
 
-  // Calculate turning point labels based on actual photo counts
-  const turningPointLabels = generateTurningPointLabels(set1.photos.length, set2.photos.length, layoutMode);
+  // Calculate turning point labels based on actual photo counts. In precision
+  // mode set2 is hidden, so we pass 0 for its count — the label generator
+  // produces SP + TP1..TPn + FP from the (capped) total.
+  const effectiveSet2Count = isPrecision ? 0 : set2.photos.length;
+  const turningPointLabels = generateTurningPointLabels(set1.photos.length, effectiveSet2Count, layoutMode);
+  const initialDropMax = isPrecision ? PRECISION_TURNING_MAX_PHOTOS : RALLY_TURNING_MAX_PHOTOS;
 
   return (
     <Box>
@@ -53,7 +69,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
           <GridSizedDropZone
             onFilesDropped={(files) => onFilesDropped('set1', files)}
             setName={t('turningpoint.photos')}
-            maxPhotos={18}
+            maxPhotos={initialDropMax}
             loading={loading}
             error={error}
           />
@@ -100,6 +116,11 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
               />
             </Paper>
           );
+
+          // Precision: only ever render the first set (no second page).
+          if (isPrecision) {
+            return <Box>{Set1}</Box>;
+          }
 
           const shouldSideBySide = isLargeScreen && layoutMode === 'portrait';
           if (shouldSideBySide) {

@@ -58,25 +58,35 @@ function addLinePlacemark(doc: Document, name: string, coords: number[][], style
   documentEl.appendChild(pm)
 }
 
-function addPointPlacemark(doc: Document, name: string, coord: number[], role?: string) {
-  const parentEl = role === 'track_photos' 
-    ? ensureFolder(doc, 'track_photos') 
+function addPointPlacemark(doc: Document, name: string, coord: number[], role?: string, styleId?: string, markerType?: string) {
+  const parentEl = role === 'track_photos'
+    ? ensureFolder(doc, 'track_photos')
     : (doc.getElementsByTagName('Document')[0] || doc.documentElement)
   const pm = doc.createElementNS(KML_NS, 'Placemark')
   const nm = doc.createElementNS(KML_NS, 'name')
   nm.textContent = name
-  if (role) {
-    const ext = doc.createElementNS(KML_NS, 'ExtendedData')
+  const ext = (role || markerType) ? doc.createElementNS(KML_NS, 'ExtendedData') : null
+  if (ext && role) {
     const data = doc.createElementNS(KML_NS, 'Data')
     data.setAttribute('name', 'role')
     const val = doc.createElementNS(KML_NS, 'value')
     val.textContent = role
     data.appendChild(val)
     ext.appendChild(data)
-    pm.appendChild(ext)
   }
+  if (ext && markerType) {
+    // Preserve the raw enum so round-tripping the KML (re-import / external
+    // tooling) can recover the shape without parsing the icon image.
+    const data = doc.createElementNS(KML_NS, 'Data')
+    data.setAttribute('name', 'markerType')
+    const val = doc.createElementNS(KML_NS, 'value')
+    val.textContent = markerType
+    data.appendChild(val)
+    ext.appendChild(data)
+  }
+  if (ext) pm.appendChild(ext)
   const styleUrl = doc.createElementNS(KML_NS, 'styleUrl')
-  styleUrl.textContent = '#labelPoint'
+  styleUrl.textContent = `#${styleId || 'labelPoint'}`
   const pt = doc.createElementNS(KML_NS, 'Point')
   const coordsEl = doc.createElementNS(KML_NS, 'coordinates')
   coordsEl.textContent = `${coord[0]},${coord[1]},${coord[2] || 0}`
@@ -87,7 +97,35 @@ function addPointPlacemark(doc: Document, name: string, coord: number[], role?: 
   parentEl.appendChild(pm)
 }
 
-export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName?: string): string {
+function escapeXmlAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function ensureGroundMarkerStyle(doc: Document, type: string, iconHref: string) {
+  const id = `groundMarker_${type}`
+  // LabelStyle scale=0 hides the visible `<name>` text (feedback 2026-04-18:
+  // labels cluttered the map; users want the icon only).
+  // hotSpot anchors the icon's centre on the point so the shape lands exactly
+  // where the user placed it.
+  ensureStyle(
+    doc,
+    id,
+    `<IconStyle><scale>1.2</scale><Icon><href>${escapeXmlAttr(iconHref)}</href></Icon><hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0</scale></LabelStyle>`,
+  )
+  return id
+}
+
+export type AppendOptions = {
+  /**
+   * Optional map of ground marker type → PNG data URI. When provided, each
+   * ground marker placemark gets its own IconStyle pointing at the raster of
+   * the shape users see in the app (see `rasterizeGroundMarkerSet`). Missing
+   * entries fall back to the default yellow-dot style.
+   */
+  groundMarkerIcons?: Record<string, string>
+}
+
+export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName?: string, options?: AppendOptions): string {
   const parser = new DOMParser()
   const xml = parser.parseFromString(originalKml, 'application/xml')
   let documentEl = xml.getElementsByTagName('Document')[0]
@@ -114,6 +152,15 @@ export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName
   ensureStyle(xml, 'greenLine', '<LineStyle><color>ff00ff00</color><width>2</width></LineStyle>')
   ensureStyle(xml, 'labelPoint', '<IconStyle><color>ff00ffff</color><scale>0.8</scale></IconStyle><LabelStyle><scale>1</scale></LabelStyle>')
 
+  // Register one IconStyle per used ground-marker type (feedback 2026-04-18:
+  // KML should show the same shapes as screen + print, not just generic pins).
+  const iconMap = options?.groundMarkerIcons || {}
+  const groundMarkerStyleIds = new Map<string, string>()
+  for (const [type, href] of Object.entries(iconMap)) {
+    if (!type || !href) continue
+    groundMarkerStyleIds.set(type, ensureGroundMarkerStyle(xml, type, href))
+  }
+
   const features = extra.type === 'FeatureCollection' ? (extra as FeatureCollection).features : [extra as Feature]
 
   for (const feature of features) {
@@ -127,8 +174,15 @@ export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName
       addLinePlacemark(xml, name, ls.coordinates as any, style, role)
     } else if (feature.geometry.type === 'Point') {
       const pt = feature.geometry as Point
-      const name = (props as any).name || (props as any).role || 'point'
-      addPointPlacemark(xml, name, pt.coordinates as any, (props as any).role)
+      // Treat an explicit empty `name` as intentional (feedback 2026-04-18:
+      // hide ground-marker label text in Google Earth) rather than falling
+      // through to the role/'point' fallback.
+      const rawName = (props as any).name
+      const name = typeof rawName === 'string' ? rawName : ((props as any).role || 'point')
+      const role = (props as any).role as string | undefined
+      const markerType = (props as any).markerType as string | undefined
+      const customStyleId = role === 'ground_markers' && markerType ? groundMarkerStyleIds.get(markerType) : undefined
+      addPointPlacemark(xml, name, pt.coordinates as any, role, customStyleId, markerType)
     }
   }
 

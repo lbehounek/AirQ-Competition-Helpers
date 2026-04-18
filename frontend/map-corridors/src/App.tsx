@@ -11,10 +11,12 @@ import type { GeoJSON } from 'geojson'
 import { buildPreciseCorridorsAndGates, DISCIPLINE_CONFIGS } from './corridors/preciseCorridor'
 import type { Discipline } from './corridors/preciseCorridor'
 
-import { Box, Button, Chip, Container, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, IconButton, Tooltip, Alert } from '@mui/material'
+import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, IconButton, Tooltip, Alert } from '@mui/material'
 import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
+import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
+import { parseDisciplineFromSearch } from './utils/parseDiscipline'
 import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } from '@turf/turf'
 import { calculateDistance } from './corridors/segments'
 import { useI18n } from './contexts/I18nContext'
@@ -41,14 +43,7 @@ function App() {
     }
   }, [])
 
-  const urlDiscipline = useMemo(() => {
-    try {
-      const params = new URLSearchParams(window.location.search)
-      const d = params.get('discipline')
-      if (d === 'precision' || d === 'rally') return d
-    } catch {}
-    return null
-  }, [])
+  const urlDiscipline = useMemo(() => parseDisciplineFromSearch(window.location.search), [])
 
   // Fetch competition name from index for display
   const [competitionName, setCompetitionName] = useState<string | null>(null)
@@ -78,6 +73,7 @@ function App() {
     setBaseStyle,
     setMarkers: persistMarkers,
     setGroundMarkers: persistGroundMarkers,
+    setUse1NmAfterSp,
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,
@@ -106,7 +102,20 @@ function App() {
   }, [markers])
 
   // Avoid infinite recompute loops by memoizing last compute signature
-  const lastComputeSigRef = useRef<{ geojson: GeoJSON; discipline: Discipline } | null>(null)
+  const lastComputeSigRef = useRef<{ geojson: GeoJSON; discipline: Discipline; use1NmAfterSp: boolean } | null>(null)
+
+  // Rally-only toggle: start the corridor 1 NM after SP instead of the 5 NM default.
+  // Precision disciplines ignore this flag — the value came back in user feedback
+  // 2026-04-18 and is persisted per-competition via `session.use1NmAfterSp`.
+  const use1NmAfterSp = !!session?.use1NmAfterSp
+  const effectiveDiscipline: Discipline = (urlDiscipline || session?.discipline || 'rally')
+  const effectiveConfig = useMemo(() => {
+    const base = DISCIPLINE_CONFIGS[effectiveDiscipline]
+    if (effectiveDiscipline === 'rally' && use1NmAfterSp) {
+      return { ...base, spAfterNm: 1.0 }
+    }
+    return base
+  }, [effectiveDiscipline, use1NmAfterSp])
 
   // Precompute corridor polygons and start TP coordinates
   const corridorPolygons = useMemo(() => {
@@ -237,11 +246,10 @@ function App() {
     await saveOriginalKmlText(file.name.toLowerCase().endsWith('.kml') ? fileText : '')
     const { parseFileToGeoJSON } = await import('./parsers/detect')
     const parsed = await parseFileToGeoJSON(file)
-    // compute corridors using discipline from URL param (desktop) or session fallback (web)
-    const discipline = urlDiscipline || session?.discipline || 'rally'
-    const config = DISCIPLINE_CONFIGS[discipline]
+    // compute corridors using discipline from URL param (desktop) or session fallback (web).
+    // Rally honors the `use1NmAfterSp` flag; see `effectiveConfig` for details.
     try {
-      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(parsed, config)
+      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(parsed, effectiveConfig)
       await setComputedData({
         geojson: parsed,
         gates: gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null,
@@ -253,19 +261,17 @@ function App() {
     } catch {
       await setComputedData({ geojson: parsed, gates: null, points: null, exactPoints: null, leftSegments: null, rightSegments: null })
     }
-  }, [saveOriginalKmlText, urlDiscipline, session?.discipline, setComputedData])
+  }, [saveOriginalKmlText, effectiveConfig, setComputedData])
 
-  // Recompute when discipline changes
+  // Recompute when discipline or the rally 1NM toggle changes
   useEffect(() => {
     if (!session?.geojson) return
     const input = session.geojson
-    const discipline = urlDiscipline || session.discipline || 'rally'
     const last = lastComputeSigRef.current
-    // Only recompute when input or discipline changed
-    if (last && last.geojson === input && last.discipline === discipline) return
-    const config = DISCIPLINE_CONFIGS[discipline]
+    // Only recompute when input, discipline, or the 1NM flag changed
+    if (last && last.geojson === input && last.discipline === effectiveDiscipline && last.use1NmAfterSp === use1NmAfterSp) return
     try {
-      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(input, config)
+      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(input, effectiveConfig)
       setComputedData({
         geojson: input,
         gates: gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null,
@@ -277,9 +283,9 @@ function App() {
     } catch {
       setComputedData({ geojson: input, gates: null, points: null, exactPoints: null, leftSegments: null, rightSegments: null })
     } finally {
-      lastComputeSigRef.current = { geojson: input, discipline }
+      lastComputeSigRef.current = { geojson: input, discipline: effectiveDiscipline, use1NmAfterSp }
     }
-  }, [session?.geojson, urlDiscipline, session?.discipline])
+  }, [session?.geojson, effectiveDiscipline, use1NmAfterSp, effectiveConfig])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
@@ -345,22 +351,32 @@ function App() {
     // Export photo markers and ground markers — no corridors, gates, or exact point labels
     const features: any[] = []
     if (markers.length) {
-      const markerFeatures = markers.map(m => ({
-        type: 'Feature',
-        properties: {
-          name: m.label ? `${m.label} - ${m.name || 'photo'}` : (m.name || 'photo'),
-          role: 'track_photos',
-          label: m.label || undefined
-        },
-        geometry: { type: 'Point', coordinates: [m.lng, m.lat] }
-      }))
+      const markerFeatures = markers.map(m => {
+        // Feedback 2026-04-18: drop the " - photo" fallback suffix — readers asked
+        // for clean label-only names. Keep the filename only when the user supplied one.
+        const displayName = m.label && m.name
+          ? `${m.label} - ${m.name}`
+          : (m.label || m.name || '')
+        return {
+          type: 'Feature',
+          properties: {
+            name: displayName,
+            role: 'track_photos',
+            label: m.label || undefined
+          },
+          geometry: { type: 'Point', coordinates: [m.lng, m.lat] }
+        }
+      })
       features.push(...markerFeatures as any)
     }
     if (groundMarkers.length) {
       const gmFeatures = groundMarkers.map(gm => ({
         type: 'Feature',
         properties: {
-          name: gm.type,
+          // Feedback 2026-04-18: ground-marker labels cluttered the KML view.
+          // Keep the type in ExtendedData (markerType) so round-tripping works,
+          // but hide it from the visible <name>.
+          name: '',
           role: 'ground_markers',
           markerType: gm.type,
         },
@@ -372,9 +388,23 @@ function App() {
       type: 'FeatureCollection' as const,
       features
     }
-    const mergedKml = appendFeaturesToKML(originalKmlText, combinedGeoJSON, 'corridors_export')
+    // Rasterize each used ground-marker shape to a PNG data URI so the exported
+    // KML renders the same icons as the app and print output (feedback 2026-04-18).
+    // Missing types fall back to the default yellow-dot style inside kmlMerge;
+    // we surface the list of failures so the user knows the KML is partial.
+    const uniqueTypes = Array.from(new Set(groundMarkers.map(gm => gm.type)))
+    let groundMarkerIcons: Record<string, string> | undefined
+    if (uniqueTypes.length) {
+      const { icons, failed } = await rasterizeGroundMarkerSet(uniqueTypes, 128)
+      groundMarkerIcons = icons
+      if (failed.length) {
+        console.warn('[kmlExport] Ground-marker rasterization failed for:', failed)
+        alert(t('errors.someGroundMarkersFailed', { types: failed.join(', ') }))
+      }
+    }
+    const mergedKml = appendFeaturesToKML(originalKmlText, combinedGeoJSON, 'corridors_export', { groundMarkerIcons })
     downloadKML(mergedKml, 'corridors_export.kml')
-  }, [markers, loadOriginalKmlText, t])
+  }, [markers, groundMarkers, loadOriginalKmlText, t])
 
   const handlePrintMap = useCallback(async () => {
     if (!mapRef.current) return
@@ -566,10 +596,22 @@ function App() {
             <ToggleButton value="satellite">{t('app.toggleBase.satellite')}</ToggleButton>
           </ToggleButtonGroup>
           <Chip
-            label={(urlDiscipline || session?.discipline || 'rally') === 'precision' ? t('app.discipline.precision') : t('app.discipline.rally')}
+            label={effectiveDiscipline === 'precision' ? t('app.discipline.precision') : t('app.discipline.rally')}
             size="small"
             sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 600 }}
           />
+          {effectiveDiscipline === 'rally' && (
+            <FormControlLabel
+              control={
+                <Checkbox
+                  size="small"
+                  checked={use1NmAfterSp}
+                  onChange={(e) => setUse1NmAfterSp(e.target.checked)}
+                />
+              }
+              label={t('app.use1NmAfterSp')}
+            />
+          )}
           <Box sx={{ flex: 1 }} />
           <Button variant="outlined" size="small" onClick={() => setAnswerSheetOpen(true)}>{t('app.answerSheet')}</Button>
         </Box>
@@ -607,7 +649,7 @@ function App() {
               session?.geojson ? { id: 'uploaded-geojson', data: session.geojson, type: 'line' as const, paint: { 'line-color': '#d32f2f', 'line-width': 3 } } : null,
               // Segmented corridor borders in green
               session?.leftSegments ? { id: 'left-segments', data: session.leftSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
-              session?.rightSegments && (urlDiscipline || session?.discipline || 'rally') !== 'precision' ? { id: 'right-segments', data: session.rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
+              session?.rightSegments && effectiveDiscipline !== 'precision' ? { id: 'right-segments', data: session.rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               // Gates as red perpendicular lines marking corridor start points
               session?.gates ? { id: 'gates', data: session.gates, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
               // Hide original KML waypoint labels to avoid duplicates; keep exactPoints labels

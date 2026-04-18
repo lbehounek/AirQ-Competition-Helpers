@@ -109,6 +109,32 @@ describe('DISCIPLINE_CONFIGS', () => {
     expect(c.leftDistanceM).toBe(300)
     expect(c.rightDistanceM).toBe(300)
   })
+
+  // Feedback 2026-04-18: the rally "1 NM after SP" checkbox must produce
+  // a corridor that is 1 NM — not 5 NM — past the start point, and it must
+  // NOT mutate the module-level DISCIPLINE_CONFIGS record (a regression
+  // from `base.spAfterNm = 1.0` instead of `{...base, spAfterNm: 1.0}`
+  // would poison every subsequent session).
+  it('rally-1NM override clones base config without mutating it', () => {
+    const base = DISCIPLINE_CONFIGS.rally
+    const overridden = { ...base, spAfterNm: 1.0 }
+    expect(overridden.spAfterNm).toBe(1.0)
+    expect(overridden.tpAfterNm).toBe(1.0)
+    expect(overridden.leftDistanceM).toBe(300)
+    // Module-level record must stay at the default.
+    expect(DISCIPLINE_CONFIGS.rally.spAfterNm).toBe(5.0)
+  })
+
+  it('buildPreciseCorridorsAndGates accepts spAfterNm=1.0 without throwing', () => {
+    const geojson = loadFixture('RED.kml')
+    const result = buildPreciseCorridorsAndGates(geojson, {
+      ...DISCIPLINE_CONFIGS.rally,
+      spAfterNm: 1.0,
+    })
+    expect(result.leftSegments.length).toBeGreaterThan(0)
+    expect(result.rightSegments.length).toBeGreaterThan(0)
+    expect(result.gates.length).toBeGreaterThan(0)
+  })
 })
 
 // ---------------------------------------------------------------------------

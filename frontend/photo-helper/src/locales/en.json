@@ -141,7 +141,8 @@
     "photos": "photos",
     "slotsAvailable": "{{count}} {{slotText}} available",
     "slot": "slot",
-    "slots": "slots"
+    "slots": "slots",
+    "addTenthPhoto": "Add 10th photo"
   },
   "photo": {
     "clickToEdit": "Click to Edit",

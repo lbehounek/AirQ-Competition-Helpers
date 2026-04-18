@@ -141,7 +141,8 @@
     "photos": "fotografií",
     "slotsAvailable": "{{count}} {{slotText}} k dispozici",
     "slot": "místo",
-    "slots": "míst"
+    "slots": "míst",
+    "addTenthPhoto": "Přidat 10. fotku"
   },
   "photo": {
     "clickToEdit": "Klikněte pro úpravu",

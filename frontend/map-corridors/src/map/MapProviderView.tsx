@@ -180,8 +180,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       const bbox = computeBbox(trackOverlay.data)
       if (!bbox) throw new Error('Could not compute track bounds')
 
-      // Only include track line, gates, and exact-point labels — no corridors
-      const printOverlayIds = new Set(['uploaded-geojson', 'gates', 'exact-points'])
+      // Only include track line and exact-point labels — no corridors, no gates.
+      // Gates (perpendicular start lines) cluttered the printed A4 (2026-04-18 feedback).
+      const printOverlayIds = new Set(['uploaded-geojson', 'exact-points'])
       const printOverlays = (geojsonOverlays || [])
         .filter(ov => printOverlayIds.has(ov.id))
         .map(ov => ({
