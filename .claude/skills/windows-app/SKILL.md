@@ -47,6 +47,48 @@ npx electron-builder --win -c.electronVersion=$ELECTRON_VERSION          # porta
 
 Output: `frontend/desktop/dist/win-unpacked/AirQ Competition Helpers.exe`
 
+### Known Issue: stale bundles after rebuild (dev mode)
+
+When you rebuild a sub-app and re-launch Electron (or navigate between sub-apps
+via the launcher), the window can keep running the **previous** JS bundle — the
+console will show an `index-<old-hash>.js` in stack traces that doesn't match
+what's currently in `dist/`. Symptom: the fix you just made doesn't appear and
+reloading doesn't help.
+
+This happens because two separate caches are independent of `dist/`:
+1. **Electron HTTP cache** for the `app://` protocol — fetched HTML + JS can be
+   reused across window loads.
+2. **V8 code cache** — Electron stores parsed bytecode for the previous bundle
+   on disk and serves it when the same URL loads, even after the source file
+   on disk has changed.
+
+`session.defaultSession.clearCache()` only covers (1). You also need:
+- `webPreferences.v8CacheOptions = 'none'` in dev so V8 never caches bytecode.
+- `mainWindow.webContents.session.clearCache()` **before every `loadURL`** in
+  dev — the startup-time clear doesn't help once the window has navigated.
+
+Both are wired up in `main.js` (`createWindow` + `navigate-to-app` handler).
+If you add a new `loadURL` call, mirror the `isDev` clearCache guard. If a
+rebuild appears to do nothing, kill every `electron.exe` (`taskkill /IM
+electron.exe /F`) before re-running `pnpm dev`.
+
+### Known Issue: "An API access token is required to use Mapbox GL"
+
+This error fires from `setStyle(mapbox://…)` inside `_makeAPIURL`, which reads
+the **module-level singleton** `mapboxgl.accessToken`. react-map-gl mirrors the
+`mapboxAccessToken` prop into that singleton, but the assignment lags one
+microtask behind `mapStyle` prop updates — so if a token and a style change
+commit in the same React batch, `setStyle` can run before the new token is
+visible and throw.
+
+**Fix** (already applied in `config/mapProviders.ts`): inside
+`setProviderToken('mapbox', …)`, synchronously write
+`mapboxgl.accessToken = value || ''`. This is the same singleton Mapbox GL
+reads during `setStyle`, so any `mapbox://` URL returned by `getStyleForId`
+is guaranteed to have the matching token in place. **Do not rely on the
+react-map-gl prop alone** when you're the one deciding which style URL to
+hand it.
+
 ### Known Issue: winCodeSign symlink error
 
 On Windows without Developer Mode, the portable .exe build fails with "Cannot create symbolic link" during winCodeSign extraction. This happens because the winCodeSign archive contains macOS symlinks.

@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open Mapbox token settings dialog
   openMapboxSettings: () => ipcRenderer.invoke('open-mapbox-settings'),
 
+  // Open Mapy.cz API-key settings dialog (Czech maps provider — feedback 2026-04-18)
+  openMapySettings: () => ipcRenderer.invoke('open-mapy-settings'),
+
   // Update menu language
   setMenuLocale: (locale) => ipcRenderer.invoke('set-menu-locale', locale),
 

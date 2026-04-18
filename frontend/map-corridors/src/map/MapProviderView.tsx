@@ -2,9 +2,8 @@ import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, use
 import MapGL, { Layer, Source, Marker, Popup } from 'react-map-gl/mapbox'
 import type { MapRef, MarkerDragEvent, MarkerEvent } from 'react-map-gl/mapbox'
 import type { GeoJSON, Geometry, Position } from 'geojson'
-import type { LngLatBoundsLike, LngLatLike } from 'mapbox-gl'
+import type { LngLatBoundsLike, LngLatLike, StyleSpecification } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import type { MapProviderId, ProviderConfig } from './providers'
 import { useI18n } from '../contexts/I18nContext'
 import { captureMapForPrint } from '../utils/mapCapture'
 import type { PrintCaptureResult } from '../utils/mapCapture'
@@ -27,9 +26,16 @@ export type MapProviderViewHandle = {
 }
 
 export const MapProviderView = forwardRef<MapProviderViewHandle, {
-  provider: MapProviderId
-  baseStyle: 'streets' | 'satellite'
-  providerConfig: ProviderConfig
+  /**
+   * Already-resolved Mapbox style: either a `mapbox://` URL, a
+   * hosted style JSON URL, or an inline `StyleSpecification` (raster
+   * or vector). The caller resolves this from the selected style id
+   * via `getStyleForId()` so the map doesn't need to know about the
+   * provider registry.
+   */
+  mapStyle: string | StyleSpecification
+  /** Mapbox access token — required for `mapbox://` styles, optional otherwise. */
+  mapboxAccessToken?: string
   geojsonOverlays?: Overlay[]
   markers?: readonly { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
   activeMarkerId?: string | null
@@ -44,9 +50,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   onMarkerLabelClear?: (id: string) => void
   groundMarkerProps?: GroundMarkerCallbacks
 }>(function MapProviderView(props, ref) {
-  const { baseStyle, providerConfig, geojsonOverlays } = props
+  const { mapStyle, mapboxAccessToken, geojsonOverlays } = props
 
-  const styleUrl = providerConfig.styles[baseStyle]
   const { t } = useI18n()
 
   const mapRef = useRef<MapRef | null>(null)
@@ -167,10 +172,11 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     ref.fitBounds(bounds as LngLatBoundsLike, { padding: 40, maxZoom: 19, duration: 600 })
   }, [isMapLoaded, uploadedGeojson])
 
-  // Mapbox binding reads token via prop
-
   const isElectron = !!(typeof window !== 'undefined' && window.electronAPI?.isElectron)
-  const needsToken = !providerConfig.accessToken && typeof styleUrl === 'string' && styleUrl.startsWith('mapbox://')
+  // Only block the map when the currently selected style *needs* a Mapbox
+  // token we don't have. Non-mapbox styles (OSM, Mapy.cz, ESRI) work with
+  // no token, so we must not show the "configure token" wall for them.
+  const needsToken = !mapboxAccessToken && typeof mapStyle === 'string' && mapStyle.startsWith('mapbox://')
 
   useImperativeHandle(ref, () => ({
     async captureForPrint() {
@@ -207,14 +213,14 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
 
       return captureMapForPrint({
         bbox: bbox as [[number, number], [number, number]],
-        style: styleUrl,
-        accessToken: providerConfig.accessToken,
+        style: mapStyle,
+        accessToken: mapboxAccessToken,
         overlays: printOverlays,
         markers: printMarkers,
         groundMarkers: printGroundMarkers,
       })
     }
-  }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, styleUrl, providerConfig.accessToken])
+  }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, mapStyle, mapboxAccessToken])
 
   if (needsToken) {
     return (
@@ -268,8 +274,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
 
   return (
     <MapGL
-      mapStyle={styleUrl}
-      mapboxAccessToken={providerConfig.accessToken}
+      mapStyle={mapStyle}
+      mapboxAccessToken={mapboxAccessToken}
       preserveDrawingBuffer
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}

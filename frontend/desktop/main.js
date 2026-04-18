@@ -165,7 +165,13 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: true
+      webSecurity: true,
+      // Disable V8 bytecode cache in dev so the window always runs the
+      // freshly-built bundle. Without this, Electron keeps a compiled copy
+      // of the previous bundle on disk and serves it when the HTML loads,
+      // which silently eats every hot rebuild. `clearCache()` only touches
+      // the HTTP cache — V8's code cache is separate and not covered.
+      ...(isDev ? { v8CacheOptions: 'none' } : {})
     },
     icon: path.join(__dirname, 'icons', 'icon.png'),
     title: 'AirQ Competition Helpers',
@@ -196,7 +202,7 @@ function createWindow() {
 }
 
 // Handle navigation between apps
-ipcMain.handle('navigate-to-app', (event, appName, competitionId) => {
+ipcMain.handle('navigate-to-app', async (event, appName, competitionId) => {
   let qs = competitionId ? `?competitionId=${encodeURIComponent(competitionId)}` : '';
   if (competitionId) {
     const index = readCompetitionsIndex();
@@ -204,6 +210,13 @@ ipcMain.handle('navigate-to-app', (event, appName, competitionId) => {
     if (comp && comp.discipline) {
       qs += `&discipline=${encodeURIComponent(comp.discipline)}`;
     }
+  }
+  // Flush cache on every navigation in dev so rebuilt sub-app bundles
+  // replace the old ones. Electron's HTTP cache can otherwise hand the
+  // navigating window a stale index.html whose <script src> points at a
+  // bundle hash we've since replaced in `dist/`.
+  if (isDev && mainWindow) {
+    try { await mainWindow.webContents.session.clearCache(); } catch {}
   }
   if (appName === 'photo-helper') {
     mainWindow.loadURL(`app://photo-helper/index.html${qs}`);
@@ -238,6 +251,11 @@ ipcMain.handle('open-external', (event, url) => {
 // Open Mapbox token settings dialog
 ipcMain.handle('open-mapbox-settings', () => {
   showMapboxTokenDialog();
+});
+
+// Open Mapy.cz token settings dialog (Czech maps provider)
+ipcMain.handle('open-mapy-settings', () => {
+  showMapyTokenDialog();
 });
 
 // Update menu language
@@ -743,6 +761,82 @@ async function showMapboxTokenDialog() {
   inputWindow.setMenu(null);
 }
 
+// Show Mapy.cz API key dialog. Mirrors the Mapbox dialog: single-input window
+// that writes to `mapyToken` in the Electron config. The renderer reads that
+// key on startup and calls `setProviderToken('mapy', ...)` so the
+// `MapStyleSelector` can offer Mapy.com styles.
+async function showMapyTokenDialog() {
+  const currentToken = getConfigValue('mapyToken') || '';
+
+  const inputWindow = new BrowserWindow({
+    width: 520,
+    height: 300,
+    parent: mainWindow,
+    modal: true,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
+    }
+  });
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; background: #ffffff; margin: 0; }
+        h3 { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: #1a1a1a; }
+        .hint { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.5; }
+        .hint a { color: #1976D2; text-decoration: none; }
+        .hint a:hover { text-decoration: underline; }
+        input { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid #d0d0d0; border-radius: 6px; outline: none; }
+        input:focus { border-color: #1976D2; box-shadow: 0 0 0 2px rgba(25,118,210,0.15); }
+        .buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        button { padding: 9px 18px; font-size: 14px; cursor: pointer; border-radius: 6px; border: 1px solid #d0d0d0; background: #fff; color: #333; }
+        button:hover { background: #f5f5f5; }
+        button.primary { background: #1976D2; color: white; border: none; }
+        button.primary:hover { background: #1565C0; }
+      </style>
+    </head>
+    <body>
+      <h3>Mapy.cz API Key</h3>
+      <div class="hint">Enables Czech street/aerial maps (dense village-level labels). Register a free key at <a href="#" onclick="openMapy()">developer.mapy.com</a>.</div>
+      <input type="text" id="token" placeholder="your-mapy-api-key" value="${currentToken.replace(/"/g, '&quot;')}">
+      <div class="buttons">
+        <button onclick="window.close()">Cancel</button>
+        <button class="primary" onclick="save()">Save</button>
+      </div>
+      <script>
+        function openMapy() {
+          window.electronAPI?.openExternal?.('https://developer.mapy.com/en/rest-api-mapy-com/');
+        }
+        function save() {
+          const token = document.getElementById('token').value.trim();
+          window.electronAPI?.setConfig?.('mapyToken', token)
+            .then(() => window.close())
+            .catch(() => alert('Failed to save token'));
+        }
+        document.getElementById('token').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') save();
+          if (e.key === 'Escape') window.close();
+        });
+        document.getElementById('token').focus();
+        document.getElementById('token').select();
+      </script>
+    </body>
+    </html>
+  `;
+
+  inputWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  inputWindow.setMenu(null);
+}
+
 // Menu translations
 const menuTranslations = {
   en: {
@@ -761,6 +855,7 @@ const menuTranslations = {
     resetZoom: 'Reset Zoom',
     settings: 'Settings',
     mapboxToken: 'Mapbox Token...',
+    mapyToken: 'Mapy.cz API Key...',
     help: 'Help',
     about: 'About',
     aboutDetail: 'Desktop application for FAI Rally Flying competitions.'
@@ -781,6 +876,7 @@ const menuTranslations = {
     resetZoom: 'Obnovit zvětšení',
     settings: 'Nastavení',
     mapboxToken: 'Mapbox Token...',
+    mapyToken: 'Mapy.cz API klíč...',
     help: 'Nápověda',
     about: 'O aplikaci',
     aboutDetail: 'Desktopová aplikace pro soutěže FAI Rally Flying.'
@@ -930,6 +1026,10 @@ function createMenu(locale = 'cs') {
         {
           label: t.mapboxToken,
           click: () => showMapboxTokenDialog()
+        },
+        {
+          label: t.mapyToken,
+          click: () => showMapyTokenDialog()
         }
       ]
     },
