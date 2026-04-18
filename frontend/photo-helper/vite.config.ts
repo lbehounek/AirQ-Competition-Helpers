@@ -1,11 +1,17 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import path from 'node:path'
+
+// Shared `.env` at the monorepo root (same pattern as map-corridors) — keeps
+// Mapbox/Mapy tokens and other VITE_* vars in one place.
+const ENV_DIR = path.resolve(__dirname, '../..')
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
+  const env = loadEnv(mode, ENV_DIR, '')
   return {
+    envDir: ENV_DIR,
     // Ensure assets load correctly when hosted under /photo-helper/
     // For desktop (Electron) builds, use relative paths
     base: env.VITE_DESKTOP_BUILD === 'true' ? './' : (mode === 'production' ? '/photo-helper/' : '/'),

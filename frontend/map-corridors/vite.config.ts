@@ -1,10 +1,17 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'node:path'
+
+// Monorepo-wide env file sits at the repo root so Mapbox/Mapy tokens don't
+// have to be duplicated per sub-app. `envDir` points Vite there for both
+// `loadEnv()` (build-time reads) and `import.meta.env` injection.
+const ENV_DIR = path.resolve(__dirname, '../..')
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
+  const env = loadEnv(mode, ENV_DIR, '')
   return {
+    envDir: ENV_DIR,
     // For desktop (Electron) builds, use relative paths
     base: env.VITE_DESKTOP_BUILD === 'true' ? './' : '/map-corridors/',
     plugins: [react()],

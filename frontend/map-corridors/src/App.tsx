@@ -1,22 +1,30 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import './App.css'
 
 import { MapProviderView } from './map/MapProviderView'
 import type { MapProviderViewHandle } from './map/MapProviderView'
-import type { MapProviderId } from './map/providers'
-import { mapProviders } from './map/providers'
 // DropZone removed; map area acts as drop target
 import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
 import { buildPreciseCorridorsAndGates, DISCIPLINE_CONFIGS } from './corridors/preciseCorridor'
 import type { Discipline } from './corridors/preciseCorridor'
 
-import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, ToggleButton, ToggleButtonGroup, IconButton, Tooltip, Alert } from '@mui/material'
+import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert } from '@mui/material'
 import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
 import { parseDisciplineFromSearch } from './utils/parseDiscipline'
+import { MapStyleSelector } from './components/MapStyleSelector'
+import { useMapStyle } from './hooks/useMapStyle'
+import {
+  getStyleForId,
+  setProviderToken,
+  subscribeToProvider,
+  getProviderSnapshot,
+  getMapboxAccessToken,
+  type MapStyleId,
+} from './config/mapProviders'
 import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } from '@turf/turf'
 import { calculateDistance } from './corridors/segments'
 import { useI18n } from './contexts/I18nContext'
@@ -30,8 +38,11 @@ function App() {
   useEffect(() => {
     try { document.title = t('app.title') } catch {}
   }, [t])
-  const [provider] = useState<MapProviderId>('mapbox')
-  const [electronMapboxToken, setElectronMapboxToken] = useState<string | null>(null)
+  // Both provider tokens live in the shared `mapProviders.ts` module. We
+  // don't mirror them into React state because the style resolver and the
+  // `<MapProviderView>` token prop both read from that module directly —
+  // keeping React state would introduce an extra render where `mapStyle`
+  // and `mapboxAccessToken` could diverge.
 
   // Read competition ID and discipline from URL (set by desktop launcher)
   const competitionId = useMemo(() => {
@@ -58,19 +69,49 @@ function App() {
     }
   }, [competitionId])
 
-  // Fetch Mapbox token from Electron config if running in desktop app
+  // Fetch Mapbox + Mapy.cz tokens from Electron config if running in desktop app,
+  // falling back to Vite env vars in the browser build. Tokens are pushed into
+  // the shared mapProviders module so the MapStyleSelector only offers styles
+  // the user can actually render.
   useEffect(() => {
+    // Vite replaces `import.meta.env.VITE_*` statically at build time — only
+    // when the access is plain dot-form. Optional chaining / `(… as any)`
+    // casts defeat that static analysis and leave literal `VITE_MAPY_TOKEN`
+    // string lookups in the bundle, which of course return undefined at
+    // runtime. Keep this direct.
+    const envMapbox = import.meta.env.VITE_MAPBOX_TOKEN || null
+    const envMapy = import.meta.env.VITE_MAPYCZ_TOKEN || null
+    // Dev-only diagnostic: did Vite actually inline the env vars? (Log-free
+    // in production to avoid leaking even 4-char token prefixes to DevTools.)
+    if (import.meta.env.DEV) {
+      const mask = (v: unknown) => typeof v === 'string' && v.length > 4 ? `${v.slice(0, 4)}…(${v.length})` : (v ? 'set' : 'missing')
+      const env = import.meta.env as Record<string, unknown>
+      const detected = Object.keys(env).filter(k => k.startsWith('VITE_MAP'))
+      console.info('[map tokens] VITE_MAPBOX_TOKEN:', mask(envMapbox), 'VITE_MAPYCZ_TOKEN:', mask(envMapy), 'detected keys:', detected)
+    }
     const electronAPI = window.electronAPI
     if (electronAPI?.getConfig) {
       electronAPI.getConfig('mapboxToken').then((token: string | undefined) => {
-        if (token) setElectronMapboxToken(token)
-      }).catch(() => {})
+        setProviderToken('mapbox', token || envMapbox)
+      }).catch((err: unknown) => {
+        console.warn('[map tokens] getConfig("mapboxToken") failed, falling back to env:', err)
+        setProviderToken('mapbox', envMapbox)
+      })
+      electronAPI.getConfig('mapyToken').then((token: string | undefined) => {
+        setProviderToken('mapy', token || envMapy)
+      }).catch((err: unknown) => {
+        console.warn('[map tokens] getConfig("mapyToken") failed, falling back to env:', err)
+        setProviderToken('mapy', envMapy)
+      })
+    } else {
+      setProviderToken('mapbox', envMapbox)
+      setProviderToken('mapy', envMapy)
     }
   }, [])
   const {
     session,
     backendAvailable,
-    setBaseStyle,
+    setMapStyleId,
     setMarkers: persistMarkers,
     setGroundMarkers: persistGroundMarkers,
     setUse1NmAfterSp,
@@ -78,7 +119,28 @@ function App() {
     saveOriginalKmlText,
     loadOriginalKmlText,
   } = useCorridorSessionOPFS(competitionId)
-  const baseStyle = (session?.baseStyle || 'streets') as 'streets' | 'satellite'
+  // Map-style selector — the hook resolves the user's persisted preference
+  // against the currently-available styles (tokens can arrive async). The
+  // resolved id is passed through `getStyleForId` to obtain either a
+  // `mapbox://` URL or an inline raster style spec for MapProviderView.
+  const persistMapStyleId = useCallback((id: MapStyleId) => {
+    // OPFS writes can fail (quota, invalidated handle, backend down). Without
+    // a `.catch`, the rejection becomes an unhandledrejection and the user
+    // sees the new style for one render but it silently reverts on reload.
+    setMapStyleId(id).catch((err: unknown) => {
+      console.error('[session] Failed to persist mapStyleId — selection will not survive reload:', err)
+    })
+  }, [setMapStyleId])
+  const [mapStyleId, selectMapStyleId, availableStyles] = useMapStyle({
+    preferredId: session?.mapStyleId,
+    onChange: persistMapStyleId,
+  })
+  // Subscribe to token changes so `getStyleForId` is re-evaluated once an
+  // async-arriving Mapbox/Mapy key lands. Without this, the memo would stay
+  // on the first-render fallback style and handing a `mapbox://` URL to the
+  // map before the token propagates throws "API access token required".
+  const tokenVersion = useSyncExternalStore(subscribeToProvider, getProviderSnapshot, getProviderSnapshot)
+  const resolvedStyle = useMemo(() => getStyleForId(mapStyleId), [mapStyleId, tokenVersion])
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const mapRef = useRef<MapProviderViewHandle | null>(null)
@@ -228,15 +290,6 @@ function App() {
     }
     return out
   }, [markers, corridorPolygons])
-
-  // Use Electron config token if available, otherwise fall back to env var
-  const providerConfig = useMemo(() => {
-    const config = { ...mapProviders[provider] }
-    if (electronMapboxToken && provider === 'mapbox') {
-      config.accessToken = electronMapboxToken
-    }
-    return config
-  }, [provider, electronMapboxToken])
 
   const onFiles = useCallback(async (files: File[]) => {
     const file = files[0]
@@ -591,10 +644,13 @@ function App() {
           )}
           <Button variant="outlined" size="small" draggable onDragStart={onDragStartMarker} startIcon={<Place sx={{ fontSize: 16 }} />} title={t('app.dragToPlace')}>{t('app.dragToPlace')}</Button>
           <Button variant="outlined" size="small" draggable onDragStart={onDragStartGroundMarker} startIcon={<Flag sx={{ fontSize: 16 }} />} title={t('app.dragToPlaceGround')}>{t('app.dragToPlaceGround')}</Button>
-          <ToggleButtonGroup value={baseStyle} exclusive onChange={(_, val) => { if (val) setBaseStyle(val) }} size="small">
-            <ToggleButton value="streets">{t('app.toggleBase.streets')}</ToggleButton>
-            <ToggleButton value="satellite">{t('app.toggleBase.satellite')}</ToggleButton>
-          </ToggleButtonGroup>
+          <MapStyleSelector
+            mapStyle={mapStyleId}
+            setMapStyle={selectMapStyleId}
+            availableStyles={availableStyles}
+            streetsLabel={t('app.toggleBase.streets')}
+            aerialLabel={t('app.toggleBase.satellite')}
+          />
           <Chip
             label={effectiveDiscipline === 'precision' ? t('app.discipline.precision') : t('app.discipline.rally')}
             size="small"
@@ -642,9 +698,12 @@ function App() {
           )}
           <MapProviderView
             ref={mapRef as any}
-            provider={provider}
-            baseStyle={baseStyle}
-            providerConfig={providerConfig}
+            mapStyle={resolvedStyle}
+            // Pull the Mapbox token from the same module-scoped store the
+            // style resolver reads, not from React state — otherwise the
+            // token prop can lag one render behind `resolvedStyle` when a
+            // `mapbox://` URL resolves in the same batch the token arrived.
+            mapboxAccessToken={getMapboxAccessToken()}
             geojsonOverlays={[
               session?.geojson ? { id: 'uploaded-geojson', data: session.geojson, type: 'line' as const, paint: { 'line-color': '#d32f2f', 'line-width': 3 } } : null,
               // Segmented corridor borders in green

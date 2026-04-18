@@ -11,14 +11,67 @@ import {
   type DirectoryHandle,
 } from '@airq/shared-storage'
 
-type BaseStyle = 'streets' | 'satellite'
+/**
+ * Legacy two-value base style. New sessions use the richer `mapStyleId`
+ * (see `config/mapProviders`). Kept on the session for migration only —
+ * readers should prefer `mapStyleId`.
+ */
+type LegacyBaseStyle = 'streets' | 'satellite'
+
+const LEGACY_BASE_STYLE_MAP: Record<LegacyBaseStyle, string> = {
+  streets: 'mapbox-streets',
+  satellite: 'mapbox-satellite',
+}
+
+function isLegacyBaseStyle(value: unknown): value is LegacyBaseStyle {
+  return value === 'streets' || value === 'satellite'
+}
+
+/**
+ * Resolve the `mapStyleId` for a persisted session record.
+ *
+ * Precedence:
+ *   1. `mapStyleId` if present and a non-empty string (new-schema sessions)
+ *   2. `baseStyle` if a recognised legacy value (old-schema sessions)
+ *   3. `defaultId` (caller supplies, usually `defaultSession(id).mapStyleId`)
+ *
+ * Invalid or unknown values at any step are logged and fall through so the
+ * user is visibly reset to the default rather than silently stuck on a
+ * corrupted id. Exported for unit testing — the migration is the one code
+ * path that can permanently corrupt persisted user state across upgrades.
+ */
+export function resolveMapStyleIdFromPersisted(record: unknown, defaultId: string): string {
+  const asRec = (record && typeof record === 'object') ? record as Record<string, unknown> : {}
+
+  const storedRaw = asRec.mapStyleId
+  if (typeof storedRaw === 'string' && storedRaw.length > 0) {
+    return storedRaw
+  } else if (storedRaw !== undefined) {
+    console.warn('[session] Persisted mapStyleId was not a non-empty string, ignoring:', storedRaw)
+  }
+
+  const legacyRaw = asRec.baseStyle
+  if (isLegacyBaseStyle(legacyRaw)) {
+    return LEGACY_BASE_STYLE_MAP[legacyRaw]
+  } else if (legacyRaw !== undefined) {
+    console.warn('[session] Unknown legacy baseStyle, resetting to default:', legacyRaw)
+  }
+
+  return defaultId
+}
 
 export type CorridorsSession = {
   id: string
   version: number
   createdAt: string
   updatedAt: string
-  baseStyle: BaseStyle
+  /**
+   * One of the `MapStyleId` values from `config/mapProviders.ts`. We use a
+   * plain `string` here to keep the session type free of a runtime import
+   * and to tolerate unknown ids from older builds — resolution falls back
+   * to the first available style if the id is unknown.
+   */
+  mapStyleId: string
   discipline: Discipline
   use1NmAfterSp: boolean
   // Persisted artifacts
@@ -38,7 +91,7 @@ const defaultSession = (id: string): CorridorsSession => ({
   version: 1,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
-  baseStyle: 'streets',
+  mapStyleId: 'mapbox-streets',
   discipline: 'rally',
   use1NmAfterSp: false,
   geojson: null,
@@ -119,10 +172,14 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
           } else if (rawPm !== undefined && !Array.isArray(rawPm)) {
             console.warn('[session] Persisted markers was not an array, resetting', rawPm)
           }
+          // Migrate old `baseStyle: 'streets'|'satellite'` sessions to the
+          // new `mapStyleId` field so users don't lose their current pick.
+          // Logic extracted to `resolveMapStyleIdFromPersisted` for unit tests.
+          const mapStyleId = resolveMapStyleIdFromPersisted(asRec, defaultSession(id).mapStyleId)
           setSession({
             ...defaultSession(id),
             ...existing,
-            baseStyle: (asRec.baseStyle as CorridorsSession['baseStyle']) || 'streets',
+            mapStyleId,
             discipline: (asRec.discipline as CorridorsSession['discipline']) || 'rally',
             markers: cleanPm,
             groundMarkers: cleanGm,
@@ -156,9 +213,9 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     }
   }, [])
 
-  const setBaseStyle = useCallback(async (style: BaseStyle) => {
+  const setMapStyleId = useCallback(async (mapStyleId: string) => {
     if (!session) return
-    const next: CorridorsSession = { ...session, baseStyle: style, version: session.version + 1, updatedAt: new Date().toISOString() }
+    const next: CorridorsSession = { ...session, mapStyleId, version: session.version + 1, updatedAt: new Date().toISOString() }
     await persistSession(next)
   }, [session, persistSession])
 
@@ -239,7 +296,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     error,
     backendAvailable: storageAvailable,
     // actions
-    setBaseStyle,
+    setMapStyleId,
     setDiscipline,
     setUse1NmAfterSp,
     setMarkers,

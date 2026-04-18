@@ -10,6 +10,96 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.5.0] - 2026-04-18
+
+### Added
+- **Map Corridors:** Multi-provider map style selector replacing the old
+  Streets/Satellite toggle. Users can now pick between **Mapy.com**, **Mapbox
+  Streets**, and **OpenStreetMap (CARTO Voyager)** for street maps, and
+  **Mapbox Satellite**, **Mapy.com Aerial**, and **ESRI Satellite** for
+  aerial imagery. Each category shows a dropdown when more than one provider
+  is configured. Mapy.com is the default street layer because its
+  village-level Czech labels are denser than Mapbox defaults. (PR #42)
+- **Map Corridors:** Prominent city labels on printed A4 — settlement /
+  place / town / city symbol layers on vector styles get `text-size` boosted
+  1.8× with a 2 px white halo so small towns remain legible at print scale.
+  Raster styles (Mapy.cz, OSM, ESRI) bake labels into their tiles and read
+  well as-is. (PR #42, feedback 2026-04-18)
+- **Desktop launcher:** New **Settings → Mapy.cz API klíč…** menu entry that
+  mirrors the existing Mapbox Token dialog. Enables Czech-focused street /
+  aerial maps. Token persists in the Electron user config. (PR #42)
+- **Monorepo env:** Root `.env` at the repo root is now read by both
+  map-corridors and photo-helper sub-apps (`envDir: <repo-root>`), so
+  `VITE_MAPBOX_TOKEN` / `VITE_MAPYCZ_TOKEN` can be configured once.
+
+### Fixed
+- **Map Corridors:** Mapbox GL race fix — `setStyle('mapbox://…')` could
+  throw "An API access token is required" when both the style URL and the
+  token arrived in the same React commit, because react-map-gl's mirror of
+  `mapboxgl.accessToken` lags one microtask behind its `mapStyle` prop.
+  `setProviderToken('mapbox', …)` now writes the Mapbox GL module singleton
+  synchronously, closing the race.
+- **Map Corridors:** `import.meta.env.VITE_*` reads were cast through
+  `(import.meta as any)?.env?.VITE_…` which defeated Vite's static-replace
+  regex, leaving literal `"VITE_MAPY_TOKEN"` string lookups in the bundle.
+  Symptom: Mapy.com never appeared in the selector regardless of `.env`
+  content. Reads are now in the direct dot-form Vite recognises.
+- **Desktop launcher:** Stale-bundle episodes after a rebuild traced back to
+  V8's code cache (separate from Electron's HTTP cache). `clearCache()` only
+  flushes (1). Fixed with `webPreferences.v8CacheOptions: 'none'` in dev
+  plus a per-`loadURL` `session.clearCache()` call on navigation — documented
+  in `.claude/skills/windows-app/SKILL.md` under a new "Known Issue"
+  section. Production builds are unaffected.
+- **Map Corridors:** Session migration from legacy
+  `baseStyle: 'streets' | 'satellite'` to the new `mapStyleId` field no
+  longer silently discards corrupted values. Malformed records now log a
+  warning and fall back to a default instead of pretending to succeed.
+  The migration logic was extracted to a pure helper with unit tests so
+  this code path — which touches every upgrading user's persisted state —
+  is pinned against regressions.
+
+### Security
+- **Desktop launcher:** Both token-input dialogs (Mapbox + Mapy.cz) hardened:
+  - HTML-attribute escaping now covers `& < > " '` instead of only `"`.
+  - Each dialog's inline HTML now carries a strict `Content-Security-Policy`
+    meta tag with a crypto-random per-dialog nonce, so inline scripts can
+    only run from the template we shipped.
+  - Inline `onclick=` handlers replaced with `addEventListener` bindings that
+    the CSP explicitly permits, removing the most common XSS foothold.
+- **Map Corridors:** Mapy.cz API key is now `encodeURIComponent`-wrapped in
+  tile URLs so a key containing `&`, `#`, or whitespace cannot inject extra
+  query parameters or corrupt the URL. Defense-in-depth against tampered
+  config values.
+- **Map Corridors:** Production bundles no longer log token prefixes — the
+  four-char debug preview is now guarded by `import.meta.env.DEV`.
+
+### Changed
+- **Map Corridors:** `CorridorsSession.baseStyle` field renamed to
+  `mapStyleId` (string). One-way migration reads either field from legacy
+  sessions on load; `baseStyle` is no longer written to new sessions.
+  Readers of the session type should use `mapStyleId` via `getStyleForId()`
+  from `config/mapProviders`.
+- **Map Corridors:** Error handling audit from the PR code review — fire-
+  and-forget OPFS writes, swallowed IPC errors, and bare `.catch(() => …)`
+  token-fallback branches now log on failure so broken persistence no
+  longer looks like a silent success in the console.
+
+### Tests
+- **Map Corridors:** Test count 99 → 132 (+33 cases, 3 new files):
+  - `mapProviders.test.ts` extended — token-clearing paths, subscribe/notify
+    leak check, monotonic snapshot, `isMapStyleId` / `normalizeStyleId`,
+    Mapbox-URL-never-embeds-token invariant, URL-encoded Mapy API key,
+    `MAP_STYLE_IDS` drift guard.
+  - `sessionMigration.test.ts` — migration precedence (new schema > legacy
+    baseStyle > default), malformed records, empty-string and non-string
+    mapStyleId handling.
+  - `boostSettlementLabels.test.ts` — layer matching, expression wrapping,
+    undefined-text-size skip, partial-mutation fix (halo applied even when
+    text-size write throws).
+- `pnpm audit` still reports **zero vulnerabilities** across the workspace
+  (trivy `pnpm-lock.yaml` scan confirms 0 in shipped deps). Semgrep baseline
+  scan against `main`: 0 findings on changed files.
+
 ## [2.4.1] - 2026-04-16
 
 ### Security

@@ -1,5 +1,5 @@
 import mapboxgl from 'mapbox-gl'
-import type { LngLatBoundsLike } from 'mapbox-gl'
+import type { LngLatBoundsLike, StyleSpecification } from 'mapbox-gl'
 import type { GeoJSON } from 'geojson'
 import { groundMarkerSvgString } from '../components/GroundMarkerIcons'
 import type { GroundMarkerType, PhotoLabel } from '../types/markers'
@@ -28,7 +28,8 @@ type GroundMarkerPrintConfig = {
 
 type PrintOptions = {
   bbox: [[number, number], [number, number]] // [[minLng, minLat], [maxLng, maxLat]]
-  style: string
+  /** `mapbox://` URL, hosted style JSON URL, or an inline `StyleSpecification`. */
+  style: string | StyleSpecification
   accessToken?: string
   overlays: OverlayConfig[]
   markers: MarkerConfig[]
@@ -70,6 +71,12 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
   document.body.appendChild(container)
 
   if (accessToken) {
+    // Writes the Mapbox singleton directly instead of going through
+    // `setProviderToken` so this utility stays dep-free of the mapProviders
+    // module. The caller is expected to pass the same value the rest of the
+    // app uses (`getMapboxAccessToken()`), so this is normally a no-op write.
+    // If a caller ever passes a different value, the module-scoped
+    // `_tokens.mapbox` will briefly lag until the next `setProviderToken`.
     mapboxgl.accessToken = accessToken
   }
 
@@ -90,6 +97,13 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
       TIMEOUT_MS,
       'Map style load timed out'
     )
+
+    // Boost settlement/place labels so printed A4 maps have prominent town
+    // names (feedback 2026-04-18). This only affects vector Mapbox styles —
+    // raster styles (Mapy.cz, OSM, ESRI) bake labels into the tile image and
+    // can't be re-styled at render time, but Mapy.cz's default Czech label
+    // density is already strong enough.
+    boostSettlementLabels(map)
 
     // Fit to track bounds
     map.fitBounds(bbox as LngLatBoundsLike, { padding: PADDING, duration: 0 })
@@ -322,6 +336,54 @@ export function detectOrientation(bbox: [[number, number], [number, number]]) {
   const lngSpan = Math.abs(bbox[1][0] - bbox[0][0]) * Math.cos(midLat * Math.PI / 180)
   const latSpan = Math.abs(bbox[1][1] - bbox[0][1])
   return lngSpan >= latSpan ? A4_LANDSCAPE : A4_PORTRAIT
+}
+
+/**
+ * Vector Mapbox styles expose town / village labels as symbol layers whose
+ * ids contain "settlement" or "place". Bump their `text-size` by 1.8× and
+ * widen the halo so small towns don't disappear at print scale.
+ *
+ * Silent on raster styles (no matching layers). Silent on any layer whose
+ * existing `text-size` is an expression we can't multiply — better to leave
+ * it unchanged than throw and lose the whole print.
+ */
+export function boostSettlementLabels(map: mapboxgl.Map): void {
+  const style = map.getStyle?.()
+  if (!style || !Array.isArray(style.layers)) return
+  const targetIdFragments = ['settlement', 'place-label', 'place_label', 'town-label', 'city-label']
+  for (const layer of style.layers) {
+    if (layer.type !== 'symbol') continue
+    const id = String(layer.id)
+    if (!targetIdFragments.some(frag => id.includes(frag))) continue
+
+    // Split the three property writes so a failure on one doesn't skip the
+    // others. Previously a single try/catch could leave a layer with boosted
+    // text but no halo, making small towns unreadable on satellite imagery.
+    let sizeBoosted = false
+    try {
+      const curr = map.getLayoutProperty(id, 'text-size')
+      if (curr === undefined) {
+        // Default Mapbox text-size applies; wrapping `undefined` in an
+        // expression ('*', 1.8, undefined) would produce an invalid spec.
+        // Skip rather than silently crashing the layer.
+      } else {
+        // Wrap existing value in a multiply expression so zoom-dependent
+        // ramps keep their shape — just scaled up.
+        const boosted = typeof curr === 'number' ? curr * 1.8 : ['*', 1.8, curr]
+        map.setLayoutProperty(id, 'text-size', boosted as unknown as number)
+        sizeBoosted = true
+      }
+    } catch (err) {
+      console.warn(`[mapCapture] boostSettlementLabels: text-size failed for layer "${id}":`, err)
+    }
+
+    try {
+      map.setPaintProperty(id, 'text-halo-width', 2)
+      map.setPaintProperty(id, 'text-halo-color', '#ffffff')
+    } catch (err) {
+      console.warn(`[mapCapture] boostSettlementLabels: halo failed for layer "${id}" (size boosted: ${sizeBoosted}):`, err)
+    }
+  }
 }
 
 export function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
