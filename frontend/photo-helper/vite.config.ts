@@ -19,13 +19,6 @@ export default defineConfig(({ mode }) => {
     server: {
       // Security: Only bind to localhost to prevent network exposure
       host: 'localhost',
-      proxy: {
-        // Proxy API calls to the backend
-        '/api': {
-          target: 'http://localhost:8000',
-          changeOrigin: true,
-        },
-      },
       fs: {
         // Security: Explicitly deny access to sensitive files/directories
         deny: [

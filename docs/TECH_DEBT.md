@@ -8,18 +8,7 @@ surface in code review / release notes.
 
 ## Open
 
-### 1. Delete `legacy/backend/` (Python/Flask leftovers)
-- **Why:** Keeps 4 open Dependabot alerts alive (`pillow` high/high,
-  `python-multipart` medium/high) that can never be fixed by updating the
-  desktop build — the code isn't shipped or built in CI, but Dependabot still
-  counts it against `main`.
-- **Action:** Grep for any remaining references to `legacy/backend/` paths
-  (Docker, CI, README, scripts); delete the directory; remove from any build
-  config; push as one PR.
-- **Effort:** ~30 min.
-- **Tags:** `security`, `cleanup`
-
-### 2. Pin remaining `^` ranges to exact versions
+### 1. Pin remaining `^` ranges to exact versions
 - **Why:** CLAUDE.md global rule ("Always use exact versions … reason: axios
   supply chain attack 2026-03-31"). We pin new deps exact, but most existing
   ones still use caret ranges: `@emotion/*`, `@mui/*`, `react`, `react-dom`,
@@ -31,7 +20,7 @@ surface in code review / release notes.
 - **Effort:** ~1 hour.
 - **Tags:** `security`, `hygiene`
 
-### 3. Code-split vite bundles
+### 2. Code-split vite bundles
 - **Why:** Both production builds emit the 500 kB chunk warning:
   - `photo-helper/dist/assets/index-*.js` — **2.4 MB** (775 kB gzipped)
   - `map-corridors/dist/assets/index-*.js` — **2.2 MB** (638 kB gzipped)
@@ -43,7 +32,7 @@ surface in code review / release notes.
 - **Effort:** ~1–2 hours.
 - **Tags:** `perf`, `ux`
 
-### 4. Remove lingering `as any` in `useCompetitionSystem`
+### 3. Remove lingering `as any` in `useCompetitionSystem`
 - **Why:** Two stub placeholders remain in the return object at
   `frontend/photo-helper/src/hooks/useCompetitionSystem.ts` (lines ~848–849):
   `addPhotosToTurningPoint: (...) as any` and `refreshSession: (...) as any`.
@@ -56,7 +45,7 @@ surface in code review / release notes.
 - **Effort:** ~30 min for option (b); ~2–4 hours for option (a).
 - **Tags:** `types`, `correctness`
 
-### 5. Hook-level regression tests for `applySettingToAll` wiring
+### 4. Hook-level regression tests for `applySettingToAll` wiring
 - **Why:** PR #39 extracted `applySettingToAllInSession` and tested that pure
   function heavily, but we still don't test the *hook's* call to it. A future
   rebase/refactor re-introducing a no-op stub (the exact class of bug #39
@@ -68,7 +57,7 @@ surface in code review / release notes.
 - **Effort:** ~2 hours.
 - **Tags:** `tests`, `regression`
 
-### 6. ESLint 9 → 10 upgrade
+### 5. ESLint 9 → 10 upgrade
 - **Why:** ESLint 10 is the current latest major; we're on `^9.33.0`. Not
   urgent — 9.x is still supported — but the further we drift, the bigger the
   migration when forced.
