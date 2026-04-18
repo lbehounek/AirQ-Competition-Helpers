@@ -3,8 +3,10 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 
 # File handling and image processing
-Pillow==10.3.0
-python-multipart==0.0.18
+# Pillow 12.2.0 fixes CVE-2026-25990 (OOB write via PSD) + CVE-2026-40192 (FITS gzip decompression bomb)
+Pillow==12.2.0
+# python-multipart 0.0.22 fixes CVE-2026-24486 (arbitrary file write via path traversal)
+python-multipart==0.0.22
 
 # PDF generation
 reportlab==4.0.7
