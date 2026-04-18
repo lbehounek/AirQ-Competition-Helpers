@@ -61,15 +61,13 @@ import type { Discipline } from './utils/parseDiscipline';
 import { buildPdfSets } from './utils/buildPdfSets';
 import type { ApiPhoto } from './types/api';
 
-const useSessionHook = useCompetitionSystem;
-
 function AppApi() {
   // Desktop launcher passes `?discipline=precision|rally` when opening this app
   // (desktop/main.js:205). Default to rally for web / legacy sessions.
   const discipline: Discipline = useMemo(() => parseDiscipline(window.location.search), []);
   const isPrecision = discipline === 'precision';
 
-  const sessionHookResult = useSessionHook() as any;
+  const sessionHookResult = useCompetitionSystem() as any;
   const {
     session,
     loading,
@@ -117,7 +115,6 @@ function AppApi() {
   const updateCompetitionName = updateSessionCompetitionName;
   const supportsReset = Boolean(sessionHookResult.resetSession);
   const resetSession = supportsReset ? sessionHookResult.resetSession : undefined;
-  const checkBackendHealth = sessionHookResult.checkBackendHealth || (() => {});
   const supportsRefresh = Boolean(sessionHookResult.refreshSession);
   const refreshSession = supportsRefresh ? sessionHookResult.refreshSession : undefined;
   const supportsApplyToAll = Boolean(sessionHookResult.applySettingToAll);

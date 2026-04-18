@@ -1,5 +1,7 @@
 ## OPFS migration overview
 
+> **Status: historical.** The migration described here is complete. The FastAPI backend, `usePhotoSessionApi`, `services/api.ts`, and the `photohelper.sh` launcher script have all been removed from the repo. This document is retained as an implementation record of the migration itself; commands and file paths in the "Reproducing from a base state" section are no longer runnable against the current tree. The desktop app now ships as an Electron build driven entirely by OPFS — see `desktop/` and `README.md` for the current developer workflow.
+
 This document captures what we implemented to replace the backend with the browser’s Origin Private File System (OPFS), how to reproduce it from a base state, the key design decisions, browser-compatibility constraints, and the Safari fallback strategy.
 
 ### Goals
@@ -29,12 +31,10 @@ This document captures what we implemented to replace the backend with the brows
 - `frontend/photo-helper/src/AppApi.tsx`
   - Switched usage from `usePhotoSessionApi` (backend) to `usePhotoSessionOPFS` (OPFS).
 
-- `photohelper.sh`
-  - Simplified to start frontend only (backend removed).
-
 ### Removed
 - `frontend/photo-helper/src/services/api.ts`
 - `frontend/photo-helper/src/hooks/usePhotoSessionApi.ts`
+- `photohelper.sh` launcher script
   - The backend REST layer is no longer used.
 
 ---
@@ -116,10 +116,10 @@ Notes
 
 3) Remove backend layer
    - Delete `src/services/api.ts` and `src/hooks/usePhotoSessionApi.ts`.
-   - Update `photohelper.sh` to only run the frontend.
+   - Delete the `photohelper.sh` launcher (no longer needed once the backend is gone).
 
 4) Build & run
-   - Dev: `./photohelper.sh` (starts Vite dev server).
+   - Dev: `cd frontend/photo-helper && npm run dev` (starts Vite dev server).
    - Prod build: `./build.sh` (outputs to `public_html/`).
 
 ---
