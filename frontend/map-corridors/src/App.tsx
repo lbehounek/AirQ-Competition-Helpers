@@ -16,6 +16,7 @@ import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-mate
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
+import { parseDisciplineFromSearch } from './utils/parseDiscipline'
 import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } from '@turf/turf'
 import { calculateDistance } from './corridors/segments'
 import { useI18n } from './contexts/I18nContext'
@@ -42,14 +43,7 @@ function App() {
     }
   }, [])
 
-  const urlDiscipline = useMemo(() => {
-    try {
-      const params = new URLSearchParams(window.location.search)
-      const d = params.get('discipline')
-      if (d === 'precision' || d === 'rally') return d
-    } catch {}
-    return null
-  }, [])
+  const urlDiscipline = useMemo(() => parseDisciplineFromSearch(window.location.search), [])
 
   // Fetch competition name from index for display
   const [competitionName, setCompetitionName] = useState<string | null>(null)
@@ -396,11 +390,18 @@ function App() {
     }
     // Rasterize each used ground-marker shape to a PNG data URI so the exported
     // KML renders the same icons as the app and print output (feedback 2026-04-18).
-    // Missing types fall back to the default yellow-dot style inside kmlMerge.
+    // Missing types fall back to the default yellow-dot style inside kmlMerge;
+    // we surface the list of failures so the user knows the KML is partial.
     const uniqueTypes = Array.from(new Set(groundMarkers.map(gm => gm.type)))
-    const groundMarkerIcons = uniqueTypes.length
-      ? await rasterizeGroundMarkerSet(uniqueTypes, 128)
-      : undefined
+    let groundMarkerIcons: Record<string, string> | undefined
+    if (uniqueTypes.length) {
+      const { icons, failed } = await rasterizeGroundMarkerSet(uniqueTypes, 128)
+      groundMarkerIcons = icons
+      if (failed.length) {
+        console.warn('[kmlExport] Ground-marker rasterization failed for:', failed)
+        alert(t('errors.someGroundMarkersFailed', { types: failed.join(', ') }))
+      }
+    }
     const mergedKml = appendFeaturesToKML(originalKmlText, combinedGeoJSON, 'corridors_export', { groundMarkerIcons })
     downloadKML(mergedKml, 'corridors_export.kml')
   }, [markers, groundMarkers, loadOriginalKmlText, t])

@@ -11,7 +11,11 @@ import type { GroundMarkerType } from '../types/markers'
  * and in printed A4 (feedback 2026-04-18).
  *
  * Returns `null` for unknown types (mirrors `groundMarkerSvgString`),
- * and for environments that can't mint a 2D canvas context.
+ * and for environments that can't mint a 2D canvas context. Any error
+ * thrown by `drawImage` / `toDataURL` (e.g. canvas tainting, OOM on
+ * very large canvases) is also caught and returned as `null` so the
+ * function's contract holds — callers can branch on `null` to surface
+ * a warning instead of producing a broken KML `<href>`.
  *
  * `stroke` is restricted to a safe whitelist because it is embedded into
  * the SVG source unescaped — any caller wanting a new color has to be
@@ -42,22 +46,45 @@ export async function rasterizeGroundMarker(
   canvas.height = sizePx
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
-  ctx.drawImage(img, 0, 0, sizePx, sizePx)
-  return canvas.toDataURL('image/png')
+  try {
+    ctx.drawImage(img, 0, 0, sizePx, sizePx)
+    const uri = canvas.toDataURL('image/png')
+    // `toDataURL` returns `"data:,"` on allocation failure in some engines
+    // instead of throwing; treat it as failure so the caller can surface it.
+    if (!uri || uri === 'data:,' || !uri.startsWith('data:image/png')) return null
+    return uri
+  } catch {
+    return null
+  }
 }
 
-/** Build a `type → dataUri` map for the given marker types, skipping any that fail. */
+export type RasterizeSetResult = {
+  /** `type → PNG data URI` for every type that rasterized successfully. */
+  icons: Record<string, string>
+  /** Types that failed to rasterize (unknown type, canvas unavailable, etc.). */
+  failed: GroundMarkerType[]
+}
+
+/**
+ * Build a `type → dataUri` map for the given marker types.
+ *
+ * Returns both the successful icons AND the list of failed types so the
+ * caller can surface a warning instead of silently downgrading the KML
+ * export to default-style placemarks (feedback 2026-04-18 regression risk).
+ */
 export async function rasterizeGroundMarkerSet(
   types: readonly GroundMarkerType[],
   sizePx = 64,
   stroke: SafeStroke = 'white',
-): Promise<Record<string, string>> {
-  const out: Record<string, string> = {}
+): Promise<RasterizeSetResult> {
+  const icons: Record<string, string> = {}
+  const failed: GroundMarkerType[] = []
   await Promise.all(
     types.map(async (t) => {
       const uri = await rasterizeGroundMarker(t, sizePx, stroke)
-      if (uri) out[t] = uri
+      if (uri) icons[t] = uri
+      else failed.push(t)
     }),
   )
-  return out
+  return { icons, failed }
 }

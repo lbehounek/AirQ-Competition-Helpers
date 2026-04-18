@@ -60,6 +60,30 @@ describe('groundMarkerSvgString', () => {
     expect(svg72).toContain('width="72"')
     expect(svg72).toContain('height="72"')
   })
+
+  // --- `stroke` parameter: used by groundMarkerPng.ts for KML icons on
+  // satellite imagery ('white') vs. printed A4 on white paper ('black', default).
+  // The value is interpolated *unescaped* into the SVG attribute — pin both
+  // the default AND the explicit override so a regression doesn't silently
+  // render all-black icons on dark satellite tiles.
+  it('defaults stroke to black (print-on-white)', () => {
+    const svg = groundMarkerSvgString('LETTER_A', 48)
+    expect(svg).toContain('stroke="black"')
+    expect(svg).not.toContain('stroke="white"')
+  })
+
+  it('applies stroke="white" when explicitly requested (KML icons on satellite)', () => {
+    const svg = groundMarkerSvgString('LETTER_A', 48, 'white')
+    expect(svg).toContain('stroke="white"')
+    expect(svg).not.toContain('stroke="black"')
+  })
+
+  it('propagates stroke across every ground-marker type', () => {
+    for (const type of GROUND_MARKER_TYPES) {
+      const svg = groundMarkerSvgString(type, 48, 'white')
+      expect(svg).toContain('stroke="white"')
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -58,7 +58,10 @@ import { useI18n } from './contexts/I18nContext';
 import { useLayoutMode } from './contexts/LayoutModeContext';
 import { generatePDF } from './utils/pdfGenerator';
 import { generateTurningPointLabels } from './utils/imageProcessing';
-import type { ApiPhoto, ApiPhotoSet } from './types/api';
+import { parseDiscipline } from './utils/parseDiscipline';
+import type { Discipline } from './utils/parseDiscipline';
+import { buildPdfSets } from './utils/buildPdfSets';
+import type { ApiPhoto } from './types/api';
 
 // Configurable delay before showing loading text (in milliseconds)
 const LOADING_TEXT_DELAY = 3000; // 3 seconds
@@ -66,19 +69,10 @@ const LOADING_TEXT_DELAY = 3000; // 3 seconds
 const STORAGE_MODE = (import.meta as any).env?.VITE_STORAGE_MODE ?? 'opfs';
 const useSessionHook = STORAGE_MODE === 'backend' ? usePhotoSessionApi : useCompetitionSystem;
 
-type Discipline = 'precision' | 'rally';
-
 function AppApi() {
   // Desktop launcher passes `?discipline=precision|rally` when opening this app
   // (desktop/main.js:205). Default to rally for web / legacy sessions.
-  const discipline: Discipline = useMemo(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const d = params.get('discipline');
-      if (d === 'precision' || d === 'rally') return d;
-    } catch {}
-    return 'rally';
-  }, []);
+  const discipline: Discipline = useMemo(() => parseDiscipline(window.location.search), []);
   const isPrecision = discipline === 'precision';
 
   const sessionHookResult = useSessionHook() as any;
@@ -358,57 +352,14 @@ function AppApi() {
     }
 
     try {
-      let set1WithLabels, set2WithLabels;
-
-      if (session.mode === 'turningpoint') {
-        // Turning point mode: use SP, TP1, TP2, ..., FP labels
-        const set1Count = session.sets.set1.photos.length;
-        // Precision single-set: treat set2 as empty for both labeling and PDF
-        // pages so a stale set2 (e.g. user switched discipline mid-session)
-        // doesn't leak into the output.
-        const set2Count = isPrecision ? 0 : session.sets.set2.photos.length;
-        const turningPointLabels = generateTurningPointLabels(set1Count, set2Count, session.layoutMode || 'landscape');
-
-        set1WithLabels = {
-          ...session.sets.set1,
-          photos: session.sets.set1.photos.map((photo, index) => ({
-            ...photo,
-            label: turningPointLabels.set1[index] || 'X'
-          } as unknown as ApiPhoto & { label: string }))
-        };
-
-        set2WithLabels = isPrecision
-          ? { ...session.sets.set2, photos: [] as any[] }
-          : {
-              ...session.sets.set2,
-              photos: session.sets.set2.photos.map((photo, index) => ({
-                ...photo,
-                label: turningPointLabels.set2[index] || 'X'
-              } as unknown as ApiPhoto & { label: string }))
-            };
-      } else {
-        // Track mode: use A, B, C, etc. labels
-        set1WithLabels = {
-          ...session.sets.set1,
-          photos: session.sets.set1.photos.map((photo, index) => ({
-            ...photo,
-            label: generateLabel(index) // Use dynamic labeling (letters or numbers) with dot
-          } as unknown as ApiPhoto & { label: string }))
-        };
-
-        const set1Count = session.sets.set1.photos.length;
-        // Precision track mode is a single-set layout — drop set2 from PDF
-        // to keep output consistent with what the user sees on screen.
-        set2WithLabels = isPrecision
-          ? { ...session.sets.set2, photos: [] as any[] }
-          : {
-              ...session.sets.set2,
-              photos: session.sets.set2.photos.map((photo, index) => ({
-                ...photo,
-                label: generateLabel(index, set1Count) // Continue from where Set 1 left off
-              } as unknown as ApiPhoto & { label: string }))
-            };
-      }
+      const { set1WithLabels, set2WithLabels } = buildPdfSets({
+        mode: session.mode,
+        layoutMode: session.layoutMode || 'landscape',
+        isPrecision,
+        set1: session.sets.set1,
+        set2: session.sets.set2,
+        generateLabel,
+      });
 
       await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape', t);
     } catch (error) {
