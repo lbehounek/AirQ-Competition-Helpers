@@ -71,6 +71,12 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
   document.body.appendChild(container)
 
   if (accessToken) {
+    // Writes the Mapbox singleton directly instead of going through
+    // `setProviderToken` so this utility stays dep-free of the mapProviders
+    // module. The caller is expected to pass the same value the rest of the
+    // app uses (`getMapboxAccessToken()`), so this is normally a no-op write.
+    // If a caller ever passes a different value, the module-scoped
+    // `_tokens.mapbox` will briefly lag until the next `setProviderToken`.
     mapboxgl.accessToken = accessToken
   }
 
@@ -341,7 +347,7 @@ export function detectOrientation(bbox: [[number, number], [number, number]]) {
  * existing `text-size` is an expression we can't multiply — better to leave
  * it unchanged than throw and lose the whole print.
  */
-function boostSettlementLabels(map: mapboxgl.Map): void {
+export function boostSettlementLabels(map: mapboxgl.Map): void {
   const style = map.getStyle?.()
   if (!style || !Array.isArray(style.layers)) return
   const targetIdFragments = ['settlement', 'place-label', 'place_label', 'town-label', 'city-label']
@@ -349,16 +355,33 @@ function boostSettlementLabels(map: mapboxgl.Map): void {
     if (layer.type !== 'symbol') continue
     const id = String(layer.id)
     if (!targetIdFragments.some(frag => id.includes(frag))) continue
+
+    // Split the three property writes so a failure on one doesn't skip the
+    // others. Previously a single try/catch could leave a layer with boosted
+    // text but no halo, making small towns unreadable on satellite imagery.
+    let sizeBoosted = false
     try {
       const curr = map.getLayoutProperty(id, 'text-size')
-      // Wrap the current value in a multiply expression so zoom-dependent
-      // ramps keep their shape — just scaled up.
-      const boosted = typeof curr === 'number' ? curr * 1.8 : ['*', 1.8, curr]
-      map.setLayoutProperty(id, 'text-size', boosted as unknown as number)
+      if (curr === undefined) {
+        // Default Mapbox text-size applies; wrapping `undefined` in an
+        // expression ('*', 1.8, undefined) would produce an invalid spec.
+        // Skip rather than silently crashing the layer.
+      } else {
+        // Wrap existing value in a multiply expression so zoom-dependent
+        // ramps keep their shape — just scaled up.
+        const boosted = typeof curr === 'number' ? curr * 1.8 : ['*', 1.8, curr]
+        map.setLayoutProperty(id, 'text-size', boosted as unknown as number)
+        sizeBoosted = true
+      }
+    } catch (err) {
+      console.warn(`[mapCapture] boostSettlementLabels: text-size failed for layer "${id}":`, err)
+    }
+
+    try {
       map.setPaintProperty(id, 'text-halo-width', 2)
       map.setPaintProperty(id, 'text-halo-color', '#ffffff')
-    } catch {
-      // Layer may not support these properties on some custom styles — skip it.
+    } catch (err) {
+      console.warn(`[mapCapture] boostSettlementLabels: halo failed for layer "${id}" (size boosted: ${sizeBoosted}):`, err)
     }
   }
 }

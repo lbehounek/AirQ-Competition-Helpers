@@ -23,6 +23,43 @@ const LEGACY_BASE_STYLE_MAP: Record<LegacyBaseStyle, string> = {
   satellite: 'mapbox-satellite',
 }
 
+function isLegacyBaseStyle(value: unknown): value is LegacyBaseStyle {
+  return value === 'streets' || value === 'satellite'
+}
+
+/**
+ * Resolve the `mapStyleId` for a persisted session record.
+ *
+ * Precedence:
+ *   1. `mapStyleId` if present and a non-empty string (new-schema sessions)
+ *   2. `baseStyle` if a recognised legacy value (old-schema sessions)
+ *   3. `defaultId` (caller supplies, usually `defaultSession(id).mapStyleId`)
+ *
+ * Invalid or unknown values at any step are logged and fall through so the
+ * user is visibly reset to the default rather than silently stuck on a
+ * corrupted id. Exported for unit testing — the migration is the one code
+ * path that can permanently corrupt persisted user state across upgrades.
+ */
+export function resolveMapStyleIdFromPersisted(record: unknown, defaultId: string): string {
+  const asRec = (record && typeof record === 'object') ? record as Record<string, unknown> : {}
+
+  const storedRaw = asRec.mapStyleId
+  if (typeof storedRaw === 'string' && storedRaw.length > 0) {
+    return storedRaw
+  } else if (storedRaw !== undefined) {
+    console.warn('[session] Persisted mapStyleId was not a non-empty string, ignoring:', storedRaw)
+  }
+
+  const legacyRaw = asRec.baseStyle
+  if (isLegacyBaseStyle(legacyRaw)) {
+    return LEGACY_BASE_STYLE_MAP[legacyRaw]
+  } else if (legacyRaw !== undefined) {
+    console.warn('[session] Unknown legacy baseStyle, resetting to default:', legacyRaw)
+  }
+
+  return defaultId
+}
+
 export type CorridorsSession = {
   id: string
   version: number
@@ -137,11 +174,8 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
           }
           // Migrate old `baseStyle: 'streets'|'satellite'` sessions to the
           // new `mapStyleId` field so users don't lose their current pick.
-          const legacyBase = asRec.baseStyle as LegacyBaseStyle | undefined
-          const storedMapStyleId = typeof asRec.mapStyleId === 'string' ? asRec.mapStyleId : undefined
-          const mapStyleId = storedMapStyleId
-            || (legacyBase ? LEGACY_BASE_STYLE_MAP[legacyBase] : undefined)
-            || defaultSession(id).mapStyleId
+          // Logic extracted to `resolveMapStyleIdFromPersisted` for unit tests.
+          const mapStyleId = resolveMapStyleIdFromPersisted(asRec, defaultSession(id).mapStyleId)
           setSession({
             ...defaultSession(id),
             ...existing,

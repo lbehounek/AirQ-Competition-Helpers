@@ -106,13 +106,20 @@ const osmClassicStyle: StyleSpecification = {
   layers: [{ id: 'osm-classic-layer', type: 'raster', source: 'osm-classic' }],
 }
 
+// URL-encode the API key when embedding in a query string so a token that
+// happens to contain `&`, `#`, `?`, or whitespace cannot escape the `apikey`
+// parameter or corrupt the URL. Mapy.cz keys are alphanumeric in practice but
+// defense-in-depth is cheap here.
+const mapyTilesUrl = (kind: 'basic' | 'aerial'): string =>
+  `https://api.mapy.cz/v1/maptiles/${kind}/256/{z}/{x}/{y}?apikey=${encodeURIComponent(_tokens.mapy ?? '')}`
+
 const mapyBasicStyle = (): StyleSpecification => ({
   version: 8,
   glyphs: FREE_GLYPHS_URL,
   sources: {
     'mapy-basic': {
       type: 'raster',
-      tiles: [`https://api.mapy.cz/v1/maptiles/basic/256/{z}/{x}/{y}?apikey=${_tokens.mapy ?? ''}`],
+      tiles: [mapyTilesUrl('basic')],
       tileSize: 256,
       attribution: '\u00A9 Seznam.cz, a.s.',
     },
@@ -126,7 +133,7 @@ const mapyAerialStyle = (): StyleSpecification => ({
   sources: {
     'mapy-aerial': {
       type: 'raster',
-      tiles: [`https://api.mapy.cz/v1/maptiles/aerial/256/{z}/{x}/{y}?apikey=${_tokens.mapy ?? ''}`],
+      tiles: [mapyTilesUrl('aerial')],
       tileSize: 256,
       attribution: '\u00A9 Seznam.cz, a.s.',
     },
@@ -139,13 +146,21 @@ const mapyAerialStyle = (): StyleSpecification => ({
 // ---------------------------------------------------------------------------
 
 export type MapStyleCategory = 'Streets' | 'Aerial'
-export type MapStyleId =
-  | 'mapy-basic'
-  | 'mapbox-streets'
-  | 'osm-classic'
-  | 'mapbox-satellite'
-  | 'mapy-aerial'
-  | 'esri-satellite'
+
+/** Source of truth for the set of valid style ids. Derive the literal union
+ *  from the const array so adding an id in `MAP_STYLES` forces the type to
+ *  widen (or the compiler to complain).
+ */
+export const MAP_STYLE_IDS = [
+  'mapy-basic',
+  'mapbox-streets',
+  'osm-classic',
+  'mapbox-satellite',
+  'mapy-aerial',
+  'esri-satellite',
+] as const
+
+export type MapStyleId = typeof MAP_STYLE_IDS[number]
 
 export type MapStyleDef = {
   id: MapStyleId
@@ -183,15 +198,39 @@ const LEGACY_IDS: Record<string, MapStyleId | undefined> = {
   satellite: 'mapbox-satellite',
 }
 
+/** Runtime type guard: is this an id we recognise? */
+export function isMapStyleId(value: unknown): value is MapStyleId {
+  return typeof value === 'string' && (MAP_STYLE_IDS as readonly string[]).includes(value)
+}
+
+/**
+ * Resolve an arbitrary string (possibly stale, possibly a legacy 'streets'/
+ * 'satellite' key) to a known `MapStyleId` or `undefined`. Does NOT check
+ * token availability — that's a concern of `getAvailableStyles()`.
+ *
+ * Returning `undefined` lets callers heal persisted state by writing back
+ * a valid id the next time the user interacts with the selector.
+ */
+export function normalizeStyleId(value: unknown): MapStyleId | undefined {
+  if (isMapStyleId(value)) return value
+  if (typeof value === 'string') return LEGACY_IDS[value]
+  return undefined
+}
+
 /**
  * Resolve a style id (including legacy 'streets'/'satellite') to a usable
  * style URL or style object. Falls back to the first available style if the
  * requested one doesn't exist or needs a token that isn't configured.
+ *
+ * Distinguishes two fallback reasons and logs only the bug case:
+ *  - Unknown style id → `console.warn` (stale persistence / typo)
+ *  - Known id but required token not yet loaded → silent (tokens arrive async)
  */
 export function getStyleForId(styleId: string): string | StyleSpecification {
-  const resolved: MapStyleId | undefined =
-    (MAP_STYLES.some(s => s.id === styleId) ? (styleId as MapStyleId) : undefined)
-    ?? LEGACY_IDS[styleId]
+  const resolved = normalizeStyleId(styleId)
+  if (resolved === undefined) {
+    console.warn(`[mapProviders] Unknown style id "${styleId}" — falling back to first available style`)
+  }
   const def = resolved ? MAP_STYLES.find(s => s.id === resolved) : undefined
   if (def && (!def.requiredToken || _tokens[def.requiredToken])) {
     return def.getStyle()

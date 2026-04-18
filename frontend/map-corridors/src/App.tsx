@@ -81,22 +81,26 @@ function App() {
     // runtime. Keep this direct.
     const envMapbox = import.meta.env.VITE_MAPBOX_TOKEN || null
     const envMapy = import.meta.env.VITE_MAPYCZ_TOKEN || null
-    try {
+    // Dev-only diagnostic: did Vite actually inline the env vars? (Log-free
+    // in production to avoid leaking even 4-char token prefixes to DevTools.)
+    if (import.meta.env.DEV) {
       const mask = (v: unknown) => typeof v === 'string' && v.length > 4 ? `${v.slice(0, 4)}…(${v.length})` : (v ? 'set' : 'missing')
       const env = import.meta.env as Record<string, unknown>
       const detected = Object.keys(env).filter(k => k.startsWith('VITE_MAP'))
       console.info('[map tokens] VITE_MAPBOX_TOKEN:', mask(envMapbox), 'VITE_MAPYCZ_TOKEN:', mask(envMapy), 'detected keys:', detected)
-    } catch {}
+    }
     const electronAPI = window.electronAPI
     if (electronAPI?.getConfig) {
       electronAPI.getConfig('mapboxToken').then((token: string | undefined) => {
         setProviderToken('mapbox', token || envMapbox)
-      }).catch(() => {
+      }).catch((err: unknown) => {
+        console.warn('[map tokens] getConfig("mapboxToken") failed, falling back to env:', err)
         setProviderToken('mapbox', envMapbox)
       })
       electronAPI.getConfig('mapyToken').then((token: string | undefined) => {
         setProviderToken('mapy', token || envMapy)
-      }).catch(() => {
+      }).catch((err: unknown) => {
+        console.warn('[map tokens] getConfig("mapyToken") failed, falling back to env:', err)
         setProviderToken('mapy', envMapy)
       })
     } else {
@@ -120,7 +124,12 @@ function App() {
   // resolved id is passed through `getStyleForId` to obtain either a
   // `mapbox://` URL or an inline raster style spec for MapProviderView.
   const persistMapStyleId = useCallback((id: MapStyleId) => {
-    void setMapStyleId(id)
+    // OPFS writes can fail (quota, invalidated handle, backend down). Without
+    // a `.catch`, the rejection becomes an unhandledrejection and the user
+    // sees the new style for one render but it silently reverts on reload.
+    setMapStyleId(id).catch((err: unknown) => {
+      console.error('[session] Failed to persist mapStyleId — selection will not survive reload:', err)
+    })
   }, [setMapStyleId])
   const [mapStyleId, selectMapStyleId, availableStyles] = useMapStyle({
     preferredId: session?.mapStyleId,

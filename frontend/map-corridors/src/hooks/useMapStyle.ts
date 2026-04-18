@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   getAvailableStyles,
+  normalizeStyleId,
   subscribeToProvider,
   getProviderSnapshot,
   type MapStyleDef,
@@ -34,27 +35,41 @@ export function useMapStyle({ preferredId, onChange }: UseMapStyleArgs): [MapSty
   const availableStyles = getAvailableStyles()
   const availableIds = new Set(availableStyles.map(s => s.id))
 
+  // Normalize the raw preferred id once (may coerce legacy 'streets'/'satellite'
+  // to a real MapStyleId). `undefined` means "no valid preference known yet".
+  const normalizedPreferred = normalizeStyleId(preferredId)
+
   const pickDefault = useCallback((): MapStyleId => {
-    if (preferredId && availableIds.has(preferredId as MapStyleId)) return preferredId as MapStyleId
+    if (normalizedPreferred && availableIds.has(normalizedPreferred)) return normalizedPreferred
     if (availableStyles.length > 0) return availableStyles[0].id
     return 'osm-classic'
-  }, [availableIds, availableStyles, preferredId])
+  }, [availableIds, availableStyles, normalizedPreferred])
 
   const [mapStyleId, _setMapStyleId] = useState<MapStyleId>(() => pickDefault())
   const preferredRef = useRef<string | null | undefined>(preferredId)
+  const healedRef = useRef<string | null>(null)
 
   // When tokens change (Mapbox/Mapy key arrives async) or the stored
-  // preference updates, re-resolve. Intentionally narrow deps so we re-run
-  // on token bump — not on every render.
+  // preference updates, re-resolve. If the raw persisted id was legacy or
+  // unknown but normalization recovered a valid id, persist the normalized
+  // form back to storage so the session heals on first interaction.
   useEffect(() => {
     preferredRef.current = preferredId
-    if (preferredId && availableIds.has(preferredId as MapStyleId)) {
-      _setMapStyleId(preferredId as MapStyleId)
+    if (normalizedPreferred && availableIds.has(normalizedPreferred)) {
+      _setMapStyleId(normalizedPreferred)
+      // Heal persisted state if the raw form differed from the normalized form
+      // (e.g. legacy 'streets' → 'mapbox-streets'). Guard with `healedRef` so
+      // we don't loop when `preferredId` hasn't actually changed but tokens
+      // bumped the snapshot.
+      if (preferredId && preferredId !== normalizedPreferred && healedRef.current !== preferredId) {
+        healedRef.current = preferredId
+        onChange(normalizedPreferred)
+      }
     } else if (!availableIds.has(mapStyleId)) {
       _setMapStyleId(pickDefault())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenSnapshot, preferredId])
+  }, [tokenSnapshot, preferredId, normalizedPreferred])
 
   const setMapStyleId = useCallback((id: MapStyleId) => {
     preferredRef.current = id

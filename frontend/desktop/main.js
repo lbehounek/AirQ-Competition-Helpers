@@ -1,7 +1,29 @@
 const { app, BrowserWindow, protocol, ipcMain, shell, globalShortcut, Menu, dialog, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { pathToFileURL } = require('url');
+
+// HTML-attribute escape for values interpolated into `value="…"`. The previous
+// `.replace(/"/g, '&quot;')` inline in the token dialogs defended only the
+// attribute terminator; other chars (`<`, `>`, `&`, `'`) could still distort
+// the surrounding markup if the template ever changes. Escaping all five is
+// defense-in-depth — see PR #42 review.
+function escapeHtmlAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Per-dialog CSP nonce. Modal dialogs are loaded via `data:` URLs which inherit
+// none of the `app://` protocol's CSP, so we inline a restrictive policy with
+// a nonce that permits only the single inline script shipped in the template.
+function newCspNonce() {
+  return crypto.randomBytes(16).toString('base64');
+}
 
 // Config file path in user data directory
 function getConfigPath() {
@@ -216,7 +238,14 @@ ipcMain.handle('navigate-to-app', async (event, appName, competitionId) => {
   // navigating window a stale index.html whose <script src> points at a
   // bundle hash we've since replaced in `dist/`.
   if (isDev && mainWindow) {
-    try { await mainWindow.webContents.session.clearCache(); } catch {}
+    try {
+      await mainWindow.webContents.session.clearCache();
+    } catch (err) {
+      // Don't block navigation on cache-flush failures, but do surface them —
+      // a silent failure here reintroduces the stale-bundle bug documented in
+      // `.claude/skills/windows-app/SKILL.md`.
+      console.warn('[navigate-to-app] session.clearCache() failed; bundle may be stale:', err);
+    }
   }
   if (appName === 'photo-helper') {
     mainWindow.loadURL(`app://photo-helper/index.html${qs}`);
@@ -691,6 +720,7 @@ ipcMain.handle('save-map-image', async (event, base64Data) => {
 // Show Mapbox token dialog - single window with input field
 async function showMapboxTokenDialog() {
   const currentToken = getConfigValue('mapboxToken') || '';
+  const nonce = newCspNonce();
 
   const inputWindow = new BrowserWindow({
     width: 520,
@@ -712,12 +742,13 @@ async function showMapboxTokenDialog() {
     <html>
     <head>
       <meta charset="UTF-8">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'none'; img-src 'none';">
       <style>
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; background: #ffffff; margin: 0; }
         h3 { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: #1a1a1a; }
         .hint { font-size: 13px; color: #666; margin-bottom: 16px; }
-        .hint a { color: #1976D2; text-decoration: none; }
+        .hint a { color: #1976D2; text-decoration: none; cursor: pointer; }
         .hint a:hover { text-decoration: underline; }
         input { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid #d0d0d0; border-radius: 6px; outline: none; }
         input:focus { border-color: #1976D2; box-shadow: 0 0 0 2px rgba(25,118,210,0.15); }
@@ -730,28 +761,42 @@ async function showMapboxTokenDialog() {
     </head>
     <body>
       <h3>Mapbox Access Token</h3>
-      <div class="hint">Required for satellite imagery. Get a free token at <a href="#" onclick="openMapbox()">mapbox.com</a></div>
-      <input type="text" id="token" placeholder="pk.eyJ1Ijo..." value="${currentToken.replace(/"/g, '&quot;')}">
+      <div class="hint">Required for satellite imagery. Get a free token at <a id="link-mapbox">mapbox.com</a></div>
+      <input type="text" id="token" placeholder="pk.eyJ1Ijo..." value="${escapeHtmlAttr(currentToken)}">
       <div class="buttons">
-        <button onclick="window.close()">Cancel</button>
-        <button class="primary" onclick="save()">Save</button>
+        <button id="btn-cancel">Cancel</button>
+        <button class="primary" id="btn-save">Save</button>
       </div>
-      <script>
-        function openMapbox() {
-          window.electronAPI?.openExternal?.('https://mapbox.com');
-        }
+      <script nonce="${nonce}">
+        var input = document.getElementById('token');
         function save() {
-          const token = document.getElementById('token').value.trim();
-          window.electronAPI?.setConfig?.('mapboxToken', token)
-            .then(() => window.close())
-            .catch(() => alert('Failed to save token'));
+          var api = window.electronAPI;
+          if (!api || typeof api.setConfig !== 'function') {
+            console.error('[mapbox-dialog] window.electronAPI.setConfig is unavailable');
+            alert('Preload bridge unavailable. Please restart the app.');
+            return;
+          }
+          var token = input.value.trim();
+          api.setConfig('mapboxToken', token)
+            .then(function () { window.close(); })
+            .catch(function (err) {
+              console.error('[mapbox-dialog] setConfig failed:', err);
+              alert('Failed to save token: ' + ((err && err.message) || err));
+            });
         }
-        document.getElementById('token').addEventListener('keydown', (e) => {
+        document.getElementById('btn-save').addEventListener('click', save);
+        document.getElementById('btn-cancel').addEventListener('click', function () { window.close(); });
+        document.getElementById('link-mapbox').addEventListener('click', function () {
+          if (window.electronAPI && typeof window.electronAPI.openExternal === 'function') {
+            window.electronAPI.openExternal('https://mapbox.com');
+          }
+        });
+        input.addEventListener('keydown', function (e) {
           if (e.key === 'Enter') save();
           if (e.key === 'Escape') window.close();
         });
-        document.getElementById('token').focus();
-        document.getElementById('token').select();
+        input.focus();
+        input.select();
       </script>
     </body>
     </html>
@@ -767,6 +812,7 @@ async function showMapboxTokenDialog() {
 // `MapStyleSelector` can offer Mapy.com styles.
 async function showMapyTokenDialog() {
   const currentToken = getConfigValue('mapyToken') || '';
+  const nonce = newCspNonce();
 
   const inputWindow = new BrowserWindow({
     width: 520,
@@ -788,12 +834,13 @@ async function showMapyTokenDialog() {
     <html>
     <head>
       <meta charset="UTF-8">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'none'; img-src 'none';">
       <style>
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; background: #ffffff; margin: 0; }
         h3 { margin: 0 0 8px; font-size: 18px; font-weight: 600; color: #1a1a1a; }
         .hint { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.5; }
-        .hint a { color: #1976D2; text-decoration: none; }
+        .hint a { color: #1976D2; text-decoration: none; cursor: pointer; }
         .hint a:hover { text-decoration: underline; }
         input { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid #d0d0d0; border-radius: 6px; outline: none; }
         input:focus { border-color: #1976D2; box-shadow: 0 0 0 2px rgba(25,118,210,0.15); }
@@ -806,28 +853,42 @@ async function showMapyTokenDialog() {
     </head>
     <body>
       <h3>Mapy.cz API Key</h3>
-      <div class="hint">Enables Czech street/aerial maps (dense village-level labels). Register a free key at <a href="#" onclick="openMapy()">developer.mapy.com</a>.</div>
-      <input type="text" id="token" placeholder="your-mapy-api-key" value="${currentToken.replace(/"/g, '&quot;')}">
+      <div class="hint">Enables Czech street/aerial maps (dense village-level labels). Register a free key at <a id="link-mapy">developer.mapy.com</a>.</div>
+      <input type="text" id="token" placeholder="your-mapy-api-key" value="${escapeHtmlAttr(currentToken)}">
       <div class="buttons">
-        <button onclick="window.close()">Cancel</button>
-        <button class="primary" onclick="save()">Save</button>
+        <button id="btn-cancel">Cancel</button>
+        <button class="primary" id="btn-save">Save</button>
       </div>
-      <script>
-        function openMapy() {
-          window.electronAPI?.openExternal?.('https://developer.mapy.com/en/rest-api-mapy-com/');
-        }
+      <script nonce="${nonce}">
+        var input = document.getElementById('token');
         function save() {
-          const token = document.getElementById('token').value.trim();
-          window.electronAPI?.setConfig?.('mapyToken', token)
-            .then(() => window.close())
-            .catch(() => alert('Failed to save token'));
+          var api = window.electronAPI;
+          if (!api || typeof api.setConfig !== 'function') {
+            console.error('[mapy-dialog] window.electronAPI.setConfig is unavailable');
+            alert('Preload bridge unavailable. Please restart the app.');
+            return;
+          }
+          var token = input.value.trim();
+          api.setConfig('mapyToken', token)
+            .then(function () { window.close(); })
+            .catch(function (err) {
+              console.error('[mapy-dialog] setConfig failed:', err);
+              alert('Failed to save token: ' + ((err && err.message) || err));
+            });
         }
-        document.getElementById('token').addEventListener('keydown', (e) => {
+        document.getElementById('btn-save').addEventListener('click', save);
+        document.getElementById('btn-cancel').addEventListener('click', function () { window.close(); });
+        document.getElementById('link-mapy').addEventListener('click', function () {
+          if (window.electronAPI && typeof window.electronAPI.openExternal === 'function') {
+            window.electronAPI.openExternal('https://developer.mapy.com/en/rest-api-mapy-com/');
+          }
+        });
+        input.addEventListener('keydown', function (e) {
           if (e.key === 'Enter') save();
           if (e.key === 'Escape') window.close();
         });
-        document.getElementById('token').focus();
-        document.getElementById('token').select();
+        input.focus();
+        input.select();
       </script>
     </body>
     </html>
