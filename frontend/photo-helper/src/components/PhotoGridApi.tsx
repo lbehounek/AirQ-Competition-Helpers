@@ -22,6 +22,13 @@ interface PhotoGridApiProps {
   onPhotoMove?: (fromIndex: number, toIndex: number) => void; // For drag-and-drop reordering
   labelOffset?: number; // Offset for label sequence (e.g., set2 continues from where set1 left off)
   customLabels?: string[]; // Custom labels to use instead of generated ones (for turning point mode)
+  /**
+   * Override the photo cap from `layoutConfig.maxPhotosPerSet`. Used by precision
+   * track mode (feedback 2026-04-18): the layout auto-switches between 9 and 10
+   * slots based on actual photo count, but the cap needs to stay at 10 in both
+   * layouts so a 10th upload can still land and flip the layout to portrait.
+   */
+  maxPhotosOverride?: number;
 }
 
 interface GridSlot {
@@ -47,7 +54,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   onFilesDropped,
   onPhotoMove,
   labelOffset = 0,
-  customLabels
+  customLabels,
+  maxPhotosOverride,
 }) => {
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
@@ -69,7 +77,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   
   // Import the layout mode hook
   const { layoutConfig } = useLayoutMode();
-  const maxFilesRemaining = Math.max(0, layoutConfig.maxPhotosPerSet - photoSet.photos.length);
+  const effectiveMaxPhotos = maxPhotosOverride ?? layoutConfig.maxPhotosPerSet;
+  const maxFilesRemaining = Math.max(0, effectiveMaxPhotos - photoSet.photos.length);
   
   // Create grid slots based on layout mode (9 for landscape, 10 for portrait)
   const gridSlots: GridSlot[] = Array.from({ length: layoutConfig.slots }, (_, index) => {

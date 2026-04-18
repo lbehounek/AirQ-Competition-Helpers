@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Container,
   Typography,
@@ -33,7 +33,8 @@ import {
   Shuffle,
   Warning,
   Home,
-  Map
+  Map,
+  Add as AddIcon,
 } from '@mui/icons-material';
 import { usePhotoSessionApi } from './hooks/usePhotoSessionApi';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
@@ -65,7 +66,21 @@ const LOADING_TEXT_DELAY = 3000; // 3 seconds
 const STORAGE_MODE = (import.meta as any).env?.VITE_STORAGE_MODE ?? 'opfs';
 const useSessionHook = STORAGE_MODE === 'backend' ? usePhotoSessionApi : useCompetitionSystem;
 
+type Discipline = 'precision' | 'rally';
+
 function AppApi() {
+  // Desktop launcher passes `?discipline=precision|rally` when opening this app
+  // (desktop/main.js:205). Default to rally for web / legacy sessions.
+  const discipline: Discipline = useMemo(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const d = params.get('discipline');
+      if (d === 'precision' || d === 'rally') return d;
+    } catch {}
+    return 'rally';
+  }, []);
+  const isPrecision = discipline === 'precision';
+
   const sessionHookResult = useSessionHook() as any;
   const {
     session,
@@ -184,16 +199,36 @@ function AppApi() {
     }
   }, [session?.layoutMode, setLayoutMode]);
 
+  // Precision discipline: slot count follows actual photo count (feedback 2026-04-18
+  // — a 10-slot layout with 9 photos printed an empty 10th tile).
+  //   turning   → always 9 slots (landscape 3×3) — spec is SP + TP1..TP7 + FP
+  //   track     → 10 slots (portrait 2×5) *only when* the user reaches 10 photos;
+  //               otherwise 9-slot landscape so the printed page isn't padded with
+  //               an empty tile. Uploading the 10th photo snaps to portrait.
+  useEffect(() => {
+    if (!isPrecision || !session?.mode) return;
+    const photoCount = session.sets.set1.photos.length;
+    const required: 'portrait' | 'landscape' = (session.mode === 'track' && photoCount === 10)
+      ? 'portrait'
+      : 'landscape';
+    if (layoutMode !== required) {
+      setLayoutMode(required);
+      updateLayoutMode(required);
+    }
+  }, [isPrecision, session?.mode, session?.sets.set1.photos.length, layoutMode, setLayoutMode, updateLayoutMode]);
+
   const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
     const setPhotos = session?.sets[setKey].photos || [];
     const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
-    
+
     // Calculate label based on mode
     let label: string;
     if (session?.mode === 'turningpoint') {
       // Turning point mode: SP, TP1, TP2, ..., FP
       const set1Count = session.sets.set1.photos.length;
-      const set2Count = session.sets.set2.photos.length;
+      // Precision mode hides set2 in the UI, so labels also ignore it
+      // (keeps SP/TP/FP sequence anchored to the single visible grid).
+      const set2Count = isPrecision ? 0 : session.sets.set2.photos.length;
       const turningPointLabels = generateTurningPointLabels(set1Count, set2Count, session.layoutMode || 'landscape');
       
       if (setKey === 'set1') {
@@ -328,7 +363,10 @@ function AppApi() {
       if (session.mode === 'turningpoint') {
         // Turning point mode: use SP, TP1, TP2, ..., FP labels
         const set1Count = session.sets.set1.photos.length;
-        const set2Count = session.sets.set2.photos.length;
+        // Precision single-set: treat set2 as empty for both labeling and PDF
+        // pages so a stale set2 (e.g. user switched discipline mid-session)
+        // doesn't leak into the output.
+        const set2Count = isPrecision ? 0 : session.sets.set2.photos.length;
         const turningPointLabels = generateTurningPointLabels(set1Count, set2Count, session.layoutMode || 'landscape');
 
         set1WithLabels = {
@@ -339,13 +377,15 @@ function AppApi() {
           } as unknown as ApiPhoto & { label: string }))
         };
 
-        set2WithLabels = {
-          ...session.sets.set2,
-          photos: session.sets.set2.photos.map((photo, index) => ({
-            ...photo,
-            label: turningPointLabels.set2[index] || 'X'
-          } as unknown as ApiPhoto & { label: string }))
-        };
+        set2WithLabels = isPrecision
+          ? { ...session.sets.set2, photos: [] as any[] }
+          : {
+              ...session.sets.set2,
+              photos: session.sets.set2.photos.map((photo, index) => ({
+                ...photo,
+                label: turningPointLabels.set2[index] || 'X'
+              } as unknown as ApiPhoto & { label: string }))
+            };
       } else {
         // Track mode: use A, B, C, etc. labels
         set1WithLabels = {
@@ -357,13 +397,17 @@ function AppApi() {
         };
 
         const set1Count = session.sets.set1.photos.length;
-        set2WithLabels = {
-          ...session.sets.set2,
-          photos: session.sets.set2.photos.map((photo, index) => ({
-            ...photo,
-            label: generateLabel(index, set1Count) // Continue from where Set 1 left off
-          } as unknown as ApiPhoto & { label: string }))
-        };
+        // Precision track mode is a single-set layout — drop set2 from PDF
+        // to keep output consistent with what the user sees on screen.
+        set2WithLabels = isPrecision
+          ? { ...session.sets.set2, photos: [] as any[] }
+          : {
+              ...session.sets.set2,
+              photos: session.sets.set2.photos.map((photo, index) => ({
+                ...photo,
+                label: generateLabel(index, set1Count) // Continue from where Set 1 left off
+              } as unknown as ApiPhoto & { label: string }))
+            };
       }
 
       await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape', t);
@@ -689,6 +733,7 @@ function AppApi() {
             onPhotoRemove={handlePhotoRemove}
             onPhotoMove={handlePhotoMove}
             totalPhotoCount={stats.set1Photos + stats.set2Photos}
+            isPrecision={isPrecision}
           />
         ) : (
           /* Track Mode - Responsive Layout */
@@ -710,7 +755,10 @@ function AppApi() {
                     <GridSizedDropZone
                       onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
                       setName={t('sets.set1')}
-                      maxPhotos={layoutMode === 'portrait' ? 10 : 9}
+                      // Precision track allows up to 10 regardless of current
+                      // layoutMode — a fresh 10-photo drop will switch the
+                      // layout via the effect above (feedback 2026-04-18).
+                      maxPhotos={isPrecision && session?.mode === 'track' ? 10 : (layoutMode === 'portrait' ? 10 : 9)}
                       loading={loading}
                       error={error}
                     />
@@ -738,6 +786,7 @@ function AppApi() {
                         onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
                         onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
                         onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
+                        maxPhotosOverride={isPrecision && session.mode === 'track' ? 10 : undefined}
                       />
                     </Paper>
                   )
@@ -794,12 +843,59 @@ function AppApi() {
               </Box>
             );
 
+            // Precision track mode: user feedback 2026-04-18 — single upload of
+            // up to 10 photos, no second set. Rally keeps the two-set layout.
+            if (isPrecision) {
+              // When the user has exactly 9 photos in landscape (3×3), the grid
+              // is full and offers no visible drop target for a 10th photo.
+              // Surface an explicit compact add-one affordance below the grid;
+              // dropping here triggers the layout auto-switch to portrait.
+              const showAddTenth = session?.mode === 'track' && stats.set1Photos === 9;
+              return (
+                <Box sx={{ mb: 6 }}>
+                  {Set1Component}
+                  {showAddTenth && (
+                    <Box sx={{ mt: 2 }}>
+                      <Paper
+                        elevation={1}
+                        sx={{
+                          p: 2,
+                          borderRadius: 2,
+                          border: '2px dashed',
+                          borderColor: 'primary.light',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: 1,
+                        }}
+                      >
+                        <AddIcon color="primary" />
+                        <Typography variant="body2" color="text.secondary">
+                          {t('upload.addTenthPhoto')}
+                        </Typography>
+                        <Box sx={{ width: '100%' }}>
+                          <DropZone
+                            onFilesDropped={(files) => addPhotosToSet(files.slice(0, 1), 'set1')}
+                            setName={t('upload.addTenthPhoto')}
+                            currentPhotoCount={9}
+                            maxPhotos={10}
+                            loading={loading}
+                            error={null}
+                          />
+                        </Box>
+                      </Paper>
+                    </Box>
+                  )}
+                </Box>
+              );
+            }
+
             // Render based on layout mode
             if (shouldShowSideBySide) {
               // Side-by-side layout for large screens in portrait mode
               return (
-                <Box sx={{ 
-                  display: 'flex', 
+                <Box sx={{
+                  display: 'flex',
                   gap: 2, // Reduced gap from 3 to 2
                   mb: 6,
                   alignItems: 'flex-start'

@@ -158,8 +158,10 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     const scaleX = mapCanvas.width / dims.width
     const scaleY = mapCanvas.height / dims.height
 
-    // Composite photo markers (3x size for print legibility)
-    const markerRadius = 18 * scaleX
+    // Composite photo markers. Screen uses 8px diameter; print was tuned up to
+    // 36px diameter originally — testing feedback (2026-04-18) said that was too
+    // large on paper, so we drop to 20px diameter (10px radius) here.
+    const markerRadius = 10 * scaleX
     const fontSize = Math.round(42 * scaleX)
 
     for (const m of markers) {
@@ -205,7 +207,10 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     // is a correctness bug, not a cosmetic one.
     const gms = options.groundMarkers || []
     if (gms.length) {
-      const iconSize = Math.round(72 * scaleX)
+      // Match the photo-marker label pill height (~46 px) so the two symbol
+      // types read at the same visual weight on A4 (feedback 2026-04-18 —
+      // 72 px made ground markers dominate their photo neighbours).
+      const iconSize = Math.round(40 * scaleX)
       const uniqueTypes = [...new Set(gms.map(gm => gm.type))]
       const gmImages = new Map<GroundMarkerType, HTMLImageElement>()
       const failedTypes = new Set<GroundMarkerType>()
@@ -234,21 +239,52 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
       if (failedTypes.size) {
         console.warn('[mapCapture] Ground marker SVG load failures:', Array.from(failedTypes))
       }
+      // Match the on-screen layout: 8px dot at the true point, icon in a white
+      // pill offset to the upper-right (feedback 2026-04-18 — the icon was
+      // previously centered on the point and obscured the exact position).
+      const iconPad = 4 * scaleX
+      const pillRadius = 4 * scaleX
       for (const gm of gms) {
         const px = map.project([gm.lng, gm.lat])
         const x = px.x * scaleX
         const y = px.y * scaleY
+        // Yellow dot marks the exact position.
+        ctx.beginPath()
+        ctx.arc(x, y, markerRadius, 0, Math.PI * 2)
+        ctx.fillStyle = '#FFFF00'
+        ctx.fill()
+        ctx.strokeStyle = '#333333'
+        ctx.lineWidth = 1.5 * scaleX
+        ctx.stroke()
+
         const img = gmImages.get(gm.type)
         if (img) {
-          ctx.drawImage(img, x - img.width / 2, y - img.height / 2, img.width, img.height)
-        } else {
-          // Fallback: orange diamond (shape unavailable — see `warnings`)
-          const r = 24 * scaleX
+          // Offset the icon pill up and to the right of the dot. The pill's
+          // left edge sits at `markerRadius + iconPad` from the dot; its
+          // vertical midline is raised ~60% of the icon height so the pill
+          // never overlaps the dot itself.
+          const pillW = img.width + iconPad * 2
+          const pillH = img.height + iconPad * 2
+          const pillLeft = x + markerRadius + iconPad
+          const pillTop = y - pillH * 0.6 - markerRadius * 0.5
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'
           ctx.beginPath()
-          ctx.moveTo(x, y - r)
-          ctx.lineTo(x + r, y)
-          ctx.lineTo(x, y + r)
-          ctx.lineTo(x - r, y)
+          ctx.roundRect(pillLeft, pillTop, pillW, pillH, pillRadius)
+          ctx.fill()
+          ctx.strokeStyle = '#e5e7eb'
+          ctx.lineWidth = 1 * scaleX
+          ctx.stroke()
+          ctx.drawImage(img, pillLeft + iconPad, pillTop + iconPad, img.width, img.height)
+        } else {
+          // Fallback: orange diamond offset to the right (shape unavailable — see `warnings`)
+          const r = 24 * scaleX
+          const cx = x + markerRadius + iconPad + r
+          const cy = y - r * 0.4 - markerRadius * 0.5
+          ctx.beginPath()
+          ctx.moveTo(cx, cy - r)
+          ctx.lineTo(cx + r, cy)
+          ctx.lineTo(cx, cy + r)
+          ctx.lineTo(cx - r, cy)
           ctx.closePath()
           ctx.fillStyle = '#FF9800'
           ctx.fill()

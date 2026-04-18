@@ -35,7 +35,7 @@ const SVG_CONTENT: Record<GroundMarkerType, string> = {
   HOOK: '<path d="M 25 25 L 60 25 L 60 80 L 95 80"/>',
 }
 
-const SVG_ATTRS_PRINT = 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" stroke="black" stroke-width="10" fill="none" stroke-linecap="square" stroke-linejoin="miter"'
+const SVG_ATTRS_PRINT_BASE = 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" stroke-width="10" fill="none" stroke-linecap="square" stroke-linejoin="miter"'
 
 function lookupSvgContent(type: GroundMarkerType): string {
   // Guard against prototype keys (`toString`, `constructor`, ...) leaking through.
@@ -73,8 +73,14 @@ export const GROUND_MARKER_ICON: Record<GroundMarkerType, React.FC<{ size?: numb
 // Raw SVG string for canvas print rendering (mapCapture.ts) — double stroke width for print.
 // Returns '' for unknown types so callers can detect the miss and surface a warning
 // (see mapCapture.ts). The guard uses hasOwnProperty to reject prototype keys.
-export function groundMarkerSvgString(type: GroundMarkerType, size: number): string {
+// `stroke` lets callers pick a color per surface — black for print-on-white
+// (mapCapture) and white for KML icons that sit on top of satellite imagery
+// (feedback 2026-04-18).
+export function groundMarkerSvgString(type: GroundMarkerType, size: number, stroke: string = 'black'): string {
   const content = lookupSvgContent(type)
   if (!content) return ''
-  return `<svg ${SVG_ATTRS_PRINT} width="${size}" height="${size}">${content}</svg>`
+  // Attribute value is embedded via string interpolation — keep it to a strict
+  // color-token subset (default 'black', otherwise validated by the caller)
+  // rather than hand-rolling XML escaping for arbitrary input.
+  return `<svg ${SVG_ATTRS_PRINT_BASE} stroke="${stroke}" width="${size}" height="${size}">${content}</svg>`
 }
