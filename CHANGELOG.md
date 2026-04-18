@@ -10,6 +10,32 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.6.2] - 2026-04-18
+
+### Security
+- **Dependencies:** Patched `protocol-buffers-schema` prototype pollution
+  ([GHSA-j452-xhg8-qg39](https://github.com/advisories/GHSA-j452-xhg8-qg39),
+  CVE-2026-5758, CVSS 6.5). Pulled in transitively via `pbf` →
+  `mapbox-gl` / `maplibre-gl` / `@mapbox/vector-tile`, all consumed by
+  Map Corridors. Applied as a pnpm workspace override pinning
+  `protocol-buffers-schema@<3.6.1` to exact `3.6.1` — matching the
+  supply-chain rule of exact-version pinning after the axios 2026-03-31
+  incident. (PR #45)
+
+## [2.6.1] - 2026-04-18
+
+### Changed
+- **Internal:** Removed the legacy Python backend and associated
+  backend-mode frontend code. Electron-only distribution is the sole
+  supported path. Also deleted a stale migration doc. No user-visible
+  behaviour change, but the bundle is leaner. (PR #44)
+
+## [2.6.0] - 2026-04-18
+
+### Note
+Re-tag of the 2.5.0 content plus post-merge CHANGELOG commit. No
+user-visible changes beyond 2.5.0.
+
 ## [2.5.0] - 2026-04-18
 
 ### Added
