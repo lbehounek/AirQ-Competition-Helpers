@@ -66,6 +66,7 @@
     "photoLabel": "Photo label",
     "distance": "Distance",
     "fromTp": "From TP",
+    "signs": "Ground signs",
     "print": "Print"
   },
   "errors": {
@@ -75,6 +76,7 @@
     "setTokenWeb": "Add your token to the VITE_MAPBOX_TOKEN environment variable and restart the app.",
     "getTokenLink": "Get a free token at mapbox.com →",
     "noOriginalKml": "Original KML file not available for export",
+    "exportFailed": "KML export failed",
     "printFailed": "Map print failed",
     "someGroundMarkersFailed": "Some ground-marker shapes could not be exported to KML and will appear as default yellow dots: {{types}}"
   }

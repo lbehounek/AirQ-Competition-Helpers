@@ -26,6 +26,23 @@ export function isDashedConnectorLine(coords: LonLatAlt[]): boolean {
   return length < 500
 }
 
+/**
+ * A 3-coord LineString in this app's KMLs is almost always a TP gate
+ * perpendicular (left → center → right, ~2 km wide). But rally courses
+ * authored elsewhere sometimes express a straight-ish leg with 3 vertices
+ * (start → waypoint → end), and blindly dropping those hides the whole
+ * track for larger courses (user report 2026-04-23: 16-section race).
+ *
+ * Distinguish by total polyline length: gates are short (≤ 3 km). Real
+ * flight legs are always longer — Rally/Precision minimum leg length is
+ * well above this threshold.
+ */
+export function isTpGatePerpendicular(coords: LonLatAlt[]): boolean {
+  if (coords.length !== 3) return false
+  const total = calculateDistance(coords[0], coords[1]) + calculateDistance(coords[1], coords[2])
+  return total < 3000
+}
+
 export function extractAllSegments(input: GeoJSON): Segment[] {
   const segments: Segment[] = []
   let index = 0
@@ -39,13 +56,13 @@ export function extractAllSegments(input: GeoJSON): Segment[] {
       if (geom?.type === 'LineString') {
         const ls = geom as LineString
         const coords = ls.coordinates as LonLatAlt[]
-        if (coords.length === 3) return
+        if (isTpGatePerpendicular(coords)) return
         segments.push({ index: index++, coordinates: coords })
       }
     } else if (g.type === 'LineString') {
       const ls = g as LineString
       const coords = ls.coordinates as LonLatAlt[]
-      if (coords.length === 3) return
+      if (isTpGatePerpendicular(coords)) return
       segments.push({ index: index++, coordinates: coords })
     }
   }

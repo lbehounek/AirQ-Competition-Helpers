@@ -35,6 +35,33 @@ describe('appendFeaturesToKML', () => {
     expect(result).not.toContain('- photo')
   })
 
+  it('photo markers carry a dedicated photoMarker style with the yellow-pushpin icon', () => {
+    // Feedback 2026-04-23: the shared `labelPoint` style rendered as a grey
+    // placeholder in some KML viewers (missing <Icon href>). Regression
+    // would silently bring that bug back — assert both the style definition
+    // and the per-placemark styleUrl.
+    const kml = loadFixtureText('RED.kml')
+    const markers: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        properties: { name: 'A', role: 'track_photos', label: 'A' },
+        geometry: { type: 'Point', coordinates: [14.0, 50.0] },
+      }],
+    }
+    const result = appendFeaturesToKML(kml, markers, 'test_export')
+    // Assert the href we emit, scoped to the photoMarker style block so the
+    // fixture's own (pre-existing, out-of-our-control) http:// references
+    // don't pollute the check.
+    const photoStyle = result.match(/<Style id="photoMarker">[\s\S]*?<\/Style>/)
+    expect(photoStyle).not.toBeNull()
+    expect(photoStyle![0]).toContain('ylw-pushpin.png')
+    expect(photoStyle![0]).toContain('https://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png')
+    expect(photoStyle![0]).not.toContain('<href>http://')
+    // The photo marker references it via styleUrl.
+    expect(result).toMatch(/<styleUrl>#photoMarker<\/styleUrl>/)
+  })
+
   it('does NOT include corridor features when only markers are passed', () => {
     const kml = loadFixtureText('RED.kml')
     const markers: FeatureCollection = {

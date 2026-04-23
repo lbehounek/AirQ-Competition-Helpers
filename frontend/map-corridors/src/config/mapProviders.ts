@@ -155,8 +155,8 @@ export const MAP_STYLE_IDS = [
   'mapy-basic',
   'mapbox-streets',
   'osm-classic',
-  'mapbox-satellite',
   'mapy-aerial',
+  'mapbox-satellite',
   'esri-satellite',
 ] as const
 
@@ -172,9 +172,10 @@ export type MapStyleDef = {
 }
 
 /**
- * Ordered by preference within each category. Mapy.com goes first in Streets
- * because its Czech city/town labels are much denser than Mapbox defaults —
- * which is the whole reason this selector exists (feedback 2026-04-18).
+ * Ordered by preference within each category. Mapy.com goes first in both
+ * categories — its Czech labels are much denser than the alternatives, and
+ * users asked for consistent positioning across the Map/Satellite menus
+ * (feedback 2026-04-23). Mapbox is the universal second choice.
  */
 export const MAP_STYLES: MapStyleDef[] = [
   // Streets
@@ -182,8 +183,8 @@ export const MAP_STYLES: MapStyleDef[] = [
   { id: 'mapbox-streets', label: 'Mapbox Streets', category: 'Streets', requiredToken: 'mapbox', getStyle: () => 'mapbox://styles/mapbox/streets-v12' },
   { id: 'osm-classic', label: 'OpenStreetMap', category: 'Streets', requiredToken: null, getStyle: () => osmClassicStyle },
   // Aerial
-  { id: 'mapbox-satellite', label: 'Mapbox Satellite', category: 'Aerial', requiredToken: 'mapbox', getStyle: () => 'mapbox://styles/mapbox/satellite-v9' },
   { id: 'mapy-aerial', label: 'Mapy.com Aerial', category: 'Aerial', requiredToken: 'mapy', getStyle: () => mapyAerialStyle() },
+  { id: 'mapbox-satellite', label: 'Mapbox Satellite', category: 'Aerial', requiredToken: 'mapbox', getStyle: () => 'mapbox://styles/mapbox/satellite-v9' },
   { id: 'esri-satellite', label: 'ESRI Satellite', category: 'Aerial', requiredToken: null, getStyle: () => esriSatelliteStyle },
 ]
 

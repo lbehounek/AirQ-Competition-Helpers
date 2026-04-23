@@ -15,6 +15,7 @@ import { competitionService } from '../services/competitionService';
 import { migrationService } from '../services/migrationService';
 import { useI18n } from '../contexts/I18nContext';
 import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
+import { distributeRallyDrop } from '../utils/distributeRallyDrop';
 
 export interface UseCompetitionSystemResult {
   // Current state
@@ -839,7 +840,30 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // Methods to align with AppApi expectations
     reorderPhotos,
     shufflePhotos,
-    addPhotosToTurningPoint: (async (_files: File[]) => {}) as any,
+    // Rally turning-point initial drop: distribute files across set1 (first 9)
+    // and set2 (remainder). Without this, a 10+ photo drop overflows the
+    // 9-slot set1 grid and later photos become invisible (feedback 2026-04-23).
+    addPhotosToTurningPoint: (async (files: File[]) => {
+      const session = currentCompetition?.session;
+      if (!session) {
+        // Asymmetric with the overflow branch below, which surfaces via
+        // `setError`. Silently dropping 10–18 files because the session is
+        // transiently null (initial load, switch-competition in flight) is
+        // the exact silent-failure pattern this PR set out to eliminate.
+        setError('No active competition. Create or select one before adding photos.');
+        return;
+      }
+      const layoutMode = (session as any).layoutMode === 'portrait' ? 'portrait' : 'landscape';
+      const set1Count = session.sets?.set1?.photos?.length ?? 0;
+      const set2Count = session.sets?.set2?.photos?.length ?? 0;
+      const result = distributeRallyDrop({ files, layoutMode, set1Count, set2Count });
+      if (!result.ok) {
+        setError(`Cannot add ${files.length} photos. Maximum ${result.maxTotal} photos allowed (${set1Count + set2Count} already added).`);
+        return;
+      }
+      if (result.toSet1.length) await addPhotosToSet(result.toSet1, 'set1');
+      if (result.toSet2.length) await addPhotosToSet(result.toSet2, 'set2');
+    }) as any,
     refreshSession: (async () => {}) as any,
     applySettingToAll,
     
