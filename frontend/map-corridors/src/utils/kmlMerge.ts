@@ -159,7 +159,7 @@ export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName
   ensureStyle(
     xml,
     'photoMarker',
-    '<IconStyle><color>ff00ffff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href></Icon><hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/></IconStyle><LabelStyle><scale>0.9</scale></LabelStyle>',
+    '<IconStyle><color>ff00ffff</color><scale>1.1</scale><Icon><href>https://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href></Icon><hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/></IconStyle><LabelStyle><scale>0.9</scale></LabelStyle>',
   )
 
   // Register one IconStyle per used ground-marker type (feedback 2026-04-18:

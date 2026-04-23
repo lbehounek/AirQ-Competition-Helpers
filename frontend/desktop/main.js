@@ -224,7 +224,7 @@ function createWindow() {
 }
 
 // Handle navigation between apps
-ipcMain.handle('navigate-to-app', async (event, appName, competitionId) => {
+safeHandle('navigate-to-app', async (event, appName, competitionId) => {
   let qs = competitionId ? `?competitionId=${encodeURIComponent(competitionId)}` : '';
   if (competitionId) {
     const index = readCompetitionsIndex();
@@ -257,38 +257,38 @@ ipcMain.handle('navigate-to-app', async (event, appName, competitionId) => {
 });
 
 // Handle going back to home
-ipcMain.handle('go-home', () => {
+safeHandle('go-home', () => {
   mainWindow.loadURL('app://home/index.html');
 });
 
 // Handle config get/set
-ipcMain.handle('get-config', (event, key) => {
+safeHandle('get-config', (event, key) => {
   return getConfigValue(key);
 });
 
-ipcMain.handle('set-config', (event, key, value) => {
+safeHandle('set-config', (event, key, value) => {
   return setConfigValue(key, value);
 });
 
 // Open external URL in default browser
-ipcMain.handle('open-external', (event, url) => {
+safeHandle('open-external', (event, url) => {
   if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
     shell.openExternal(url);
   }
 });
 
 // Open Mapbox token settings dialog
-ipcMain.handle('open-mapbox-settings', () => {
+safeHandle('open-mapbox-settings', () => {
   showMapboxTokenDialog();
 });
 
 // Open Mapy.cz token settings dialog (Czech maps provider)
-ipcMain.handle('open-mapy-settings', () => {
+safeHandle('open-mapy-settings', () => {
   showMapyTokenDialog();
 });
 
 // Update menu language
-ipcMain.handle('set-menu-locale', (event, locale) => {
+safeHandle('set-menu-locale', (event, locale) => {
   // Map 'cz' to 'cs' for internal use
   const menuLocale = locale === 'cz' ? 'cs' : locale;
   if (menuLocale !== currentMenuLocale) {
@@ -316,6 +316,49 @@ function sanitizeFileName(input) {
   return truncated.length > 0 ? truncated : 'file';
 }
 
+// Defense-in-depth: only accept IPC from frames WE created.
+// - `app://` = our main window + sub-apps (photo-helper, map-corridors)
+// - `data:text/html` = our own Mapbox/Mapy settings dialogs (modal
+//   BrowserWindows we open with a controlled CSP'd template)
+//
+// `will-navigate` restricts navigation to `app://`, and
+// `setWindowOpenHandler` blocks http(s) window.open from the renderer,
+// so only frames we control can reach these checks. A compromised
+// renderer cannot conjure a fresh data: or app: frame.
+function isTrustedSender(event) {
+  try {
+    const url = event && event.senderFrame && event.senderFrame.url;
+    if (typeof url !== 'string') return false;
+    return url.startsWith('app://') || url.startsWith('data:text/html');
+  } catch {
+    return false;
+  }
+}
+
+// Wrap every `ipcMain.handle` so untrusted senders are rejected before the
+// handler body runs. Channel name is included in the error so the renderer
+// can distinguish a sender-gate failure from a regular handler error.
+function safeHandle(channel, fn) {
+  ipcMain.handle(channel, async (event, ...args) => {
+    if (!isTrustedSender(event)) {
+      throw new Error(`${channel}: untrusted sender`);
+    }
+    return fn(event, ...args);
+  });
+}
+
+// Reject UNC paths (`\\server\share`, `//server/share`) and Windows device
+// namespaces (`\\?\`, `\\.\`). A renderer-supplied UNC path as the save
+// dialog's `defaultPath` would pre-point the user at an attacker-controlled
+// SMB share — one click later the KML lands remote and, on Windows, an
+// NTLMv2 handshake to the attacker's host leaks the user's hashed creds.
+function isSafeStartDir(abs) {
+  if (typeof abs !== 'string' || !abs) return false;
+  if (/^(\\\\|\/\/)/.test(abs)) return false;
+  if (/^\\\\[?.]\\/.test(abs)) return false;
+  return true;
+}
+
 // Ensure a directory exists
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -336,7 +379,7 @@ function validateStoragePath(inputPath) {
 }
 
 // Initialize storage - create root and sessions directories
-ipcMain.handle('storage-init', async () => {
+safeHandle('storage-init', async () => {
   const rootPath = getPhotoSessionsPath();
   const sessionsPath = path.join(rootPath, 'sessions');
 
@@ -347,7 +390,7 @@ ipcMain.handle('storage-init', async () => {
 });
 
 // Ensure session directories exist
-ipcMain.handle('storage-ensure-session-dirs', async (event, sessionId) => {
+safeHandle('storage-ensure-session-dirs', async (event, sessionId) => {
   const sessionsPath = path.join(getPhotoSessionsPath(), 'sessions');
   const dirPath = path.join(sessionsPath, sanitizeFileName(sessionId));
   const photosPath = path.join(dirPath, 'photos');
@@ -359,7 +402,7 @@ ipcMain.handle('storage-ensure-session-dirs', async (event, sessionId) => {
 });
 
 // Write JSON to a file
-ipcMain.handle('storage-write-json', async (event, dirPath, name, data) => {
+safeHandle('storage-write-json', async (event, dirPath, name, data) => {
   const safeDirPath = validateStoragePath(dirPath);
   const safeName = sanitizeFileName(name);
   const filePath = path.join(safeDirPath, safeName);
@@ -367,7 +410,7 @@ ipcMain.handle('storage-write-json', async (event, dirPath, name, data) => {
 });
 
 // Read JSON from a file
-ipcMain.handle('storage-read-json', async (event, dirPath, name) => {
+safeHandle('storage-read-json', async (event, dirPath, name) => {
   const safeDirPath = validateStoragePath(dirPath);
   const safeName = sanitizeFileName(name);
   const filePath = path.join(safeDirPath, safeName);
@@ -383,7 +426,7 @@ ipcMain.handle('storage-read-json', async (event, dirPath, name) => {
 });
 
 // Save a photo file (receives base64 data)
-ipcMain.handle('storage-save-photo', async (event, photosPath, photoId, base64Data, mimeType) => {
+safeHandle('storage-save-photo', async (event, photosPath, photoId, base64Data, mimeType) => {
   const safePhotosPath = validateStoragePath(photosPath);
   const safeId = sanitizeFileName(photoId);
 
@@ -401,7 +444,7 @@ ipcMain.handle('storage-save-photo', async (event, photosPath, photoId, base64Da
 });
 
 // Get a photo as base64
-ipcMain.handle('storage-get-photo', async (event, photosPath, photoId) => {
+safeHandle('storage-get-photo', async (event, photosPath, photoId) => {
   const safePhotosPath = validateStoragePath(photosPath);
   const safeId = sanitizeFileName(photoId);
 
@@ -428,7 +471,7 @@ ipcMain.handle('storage-get-photo', async (event, photosPath, photoId) => {
 });
 
 // Delete a photo file
-ipcMain.handle('storage-delete-photo', async (event, photosPath, photoId) => {
+safeHandle('storage-delete-photo', async (event, photosPath, photoId) => {
   const safePhotosPath = validateStoragePath(photosPath);
   const safeId = sanitizeFileName(photoId);
 
@@ -445,7 +488,7 @@ ipcMain.handle('storage-delete-photo', async (event, photosPath, photoId) => {
 });
 
 // Clear a directory (remove all contents)
-ipcMain.handle('storage-clear-directory', async (event, dirPath) => {
+safeHandle('storage-clear-directory', async (event, dirPath) => {
   const safeDirPath = validateStoragePath(dirPath);
   if (fs.existsSync(safeDirPath)) {
     const entries = fs.readdirSync(safeDirPath, { withFileTypes: true });
@@ -461,7 +504,7 @@ ipcMain.handle('storage-clear-directory', async (event, dirPath) => {
 });
 
 // Delete a session directory
-ipcMain.handle('storage-delete-session', async (event, sessionId) => {
+safeHandle('storage-delete-session', async (event, sessionId) => {
   const sessionsPath = path.join(getPhotoSessionsPath(), 'sessions');
   const sessionPath = path.join(sessionsPath, sanitizeFileName(sessionId));
 
@@ -471,7 +514,7 @@ ipcMain.handle('storage-delete-session', async (event, sessionId) => {
 });
 
 // Get a directory handle (create if needed)
-ipcMain.handle('storage-get-directory', async (event, parentPath, name, create) => {
+safeHandle('storage-get-directory', async (event, parentPath, name, create) => {
   const safeParentPath = validateStoragePath(parentPath);
   const safeName = sanitizeFileName(name);
   const dirPath = path.join(safeParentPath, safeName);
@@ -486,7 +529,7 @@ ipcMain.handle('storage-get-directory', async (event, parentPath, name, create) 
 });
 
 // List directory contents
-ipcMain.handle('storage-list-directory', async (event, dirPath) => {
+safeHandle('storage-list-directory', async (event, dirPath) => {
   const safeDirPath = validateStoragePath(dirPath);
   if (!fs.existsSync(safeDirPath)) {
     return [];
@@ -500,7 +543,7 @@ ipcMain.handle('storage-list-directory', async (event, dirPath) => {
 });
 
 // Get storage statistics
-ipcMain.handle('storage-get-stats', async () => {
+safeHandle('storage-get-stats', async () => {
   try {
     const rootPath = getPhotoSessionsPath();
 
@@ -574,12 +617,12 @@ function writeCompetitionsIndex(index) {
 }
 
 // List all competitions
-ipcMain.handle('competition-list', async () => {
+safeHandle('competition-list', async () => {
   return readCompetitionsIndex();
 });
 
 // Create a new competition
-ipcMain.handle('competition-create', async (event, name) => {
+safeHandle('competition-create', async (event, name) => {
   const id = `comp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const now = new Date().toISOString();
   const index = readCompetitionsIndex();
@@ -636,7 +679,7 @@ ipcMain.handle('competition-create', async (event, name) => {
 });
 
 // Set active competition
-ipcMain.handle('competition-set-active', async (event, id) => {
+safeHandle('competition-set-active', async (event, id) => {
   const index = readCompetitionsIndex();
   index.competitions.forEach(c => { c.isActive = (c.id === id); });
   const target = index.competitions.find(c => c.id === id);
@@ -650,7 +693,7 @@ ipcMain.handle('competition-set-active', async (event, id) => {
 });
 
 // Set discipline for a competition
-ipcMain.handle('competition-set-discipline', async (event, id, discipline) => {
+safeHandle('competition-set-discipline', async (event, id, discipline) => {
   if (discipline !== 'precision' && discipline !== 'rally') {
     throw new Error(`Invalid discipline: ${discipline}`);
   }
@@ -666,7 +709,7 @@ ipcMain.handle('competition-set-discipline', async (event, id, discipline) => {
 });
 
 // Delete a competition
-ipcMain.handle('competition-delete', async (event, id) => {
+safeHandle('competition-delete', async (event, id) => {
   const index = readCompetitionsIndex();
   const target = index.competitions.find(c => c.id === id);
   if (!target) {
@@ -700,7 +743,7 @@ ipcMain.handle('competition-delete', async (event, id) => {
 });
 
 // Save map print image via native save dialog
-ipcMain.handle('save-map-image', async (event, base64Data) => {
+safeHandle('save-map-image', async (event, base64Data) => {
   if (typeof base64Data !== 'string' || base64Data.length === 0) {
     throw new Error('Invalid image data');
   }
@@ -721,7 +764,7 @@ ipcMain.handle('save-map-image', async (event, base64Data) => {
 // KML was imported from (users care about their own project folders, not
 // our internal competition storage). Falls back to the competition folder
 // and finally to ~/Documents (feedback 2026-04-23).
-ipcMain.handle('save-kml', async (event, kmlText, fileName, defaultDir, competitionId) => {
+safeHandle('save-kml', async (event, kmlText, fileName, defaultDir, competitionId) => {
   if (typeof kmlText !== 'string' || kmlText.length === 0) {
     throw new Error('Invalid KML content');
   }
@@ -733,11 +776,16 @@ ipcMain.handle('save-kml', async (event, kmlText, fileName, defaultDir, competit
     : `corridors_export_${new Date().toISOString().slice(0, 10)}.kml`;
 
   let startDir = null;
-  // 1) User-supplied directory (the folder they imported the KML from)
-  if (typeof defaultDir === 'string' && defaultDir.trim()) {
+  // 1) User-supplied directory (the folder they imported the KML from).
+  //    Length-clamp before `path.resolve`/`statSync` so a pathological input
+  //    can't stall the main process, and reject UNC/device-namespace paths
+  //    that bypass drive sandboxing.
+  if (typeof defaultDir === 'string' && defaultDir.trim() && defaultDir.length <= 4096) {
     try {
       const abs = path.resolve(defaultDir);
-      if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) startDir = abs;
+      if (isSafeStartDir(abs) && fs.existsSync(abs) && fs.statSync(abs).isDirectory()) {
+        startDir = abs;
+      }
     } catch { /* ignore and fall through */ }
   }
   // 2) Competition folder fallback

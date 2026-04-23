@@ -129,6 +129,29 @@ describe('isTpGatePerpendicular', () => {
     expect(isTpGatePerpendicular([[14, 50], [15, 51]])).toBe(false)
     expect(isTpGatePerpendicular([[14, 50], [14.1, 50], [14.2, 50], [14.3, 50]])).toBe(false)
   })
+
+  // Boundary around the 3 km threshold — previously untested, a `<` vs `<=`
+  // regression would silently misclassify a true-3 km gate as a leg and
+  // reopen the 16-section-race bug.
+  it('boundary: 2.89 km perpendicular is classified as a gate (under 3 km)', () => {
+    // half = 0.013° lat ≈ 1.446 km (haversine, R=6371 km). Total ≈ 2.89 km.
+    const perp: LonLatAlt[] = [
+      [14.0, 49.987, 0],
+      [14.0, 50.000, 0],
+      [14.0, 50.013, 0],
+    ]
+    expect(isTpGatePerpendicular(perp)).toBe(true)
+  })
+
+  it('boundary: 3.11 km 3-vertex leg is NOT classified as a gate (over 3 km)', () => {
+    // half = 0.014° lat ≈ 1.557 km. Total ≈ 3.11 km — just above the cut-off.
+    const leg: LonLatAlt[] = [
+      [14.0, 49.986, 0],
+      [14.0, 50.000, 0],
+      [14.0, 50.014, 0],
+    ]
+    expect(isTpGatePerpendicular(leg)).toBe(false)
+  })
 })
 
 describe('extractAllSegments with long 3-vertex legs', () => {

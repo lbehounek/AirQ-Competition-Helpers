@@ -26,8 +26,8 @@ import {
   getMapboxAccessToken,
   type MapStyleId,
 } from './config/mapProviders'
-import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon } from '@turf/turf'
 import { calculateDistance } from './corridors/segments'
+import { matchPointsToCorridors as matchPointsToCorridorsPure } from './corridors/matchPoints'
 import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
@@ -242,38 +242,12 @@ function App() {
     return res
   }, [session?.leftSegments, session?.rightSegments, session?.exactPoints])
 
-  // For each { id, lng, lat } find the containing corridor (if any); fall
-  // back to the corridor whose startCoord is closest. Without the fallback
-  // the answer sheet left distances blank whenever a marker drifted outside
-  // the polygon by even a metre (feedback 2026-04-23).
+  // Delegates to the pure helper in `corridors/matchPoints.ts` (unit-tested
+  // there). Kept as a hook-level `useCallback` so the `useMemo`s below get a
+  // stable reference.
   const matchPointsToCorridors = useCallback(
-    (pts: ReadonlyArray<{ id: string; lng: number; lat: number }>) => {
-      const out: Record<string, { startCoord?: [number, number]; startName: string } | null> = {}
-      for (const m of pts) {
-        let match: typeof corridorPolygons[number] | null = null
-        for (const c of corridorPolygons) {
-          const [minLng, minLat, maxLng, maxLat] = c.bbox
-          if (m.lng < minLng || m.lng > maxLng || m.lat < minLat || m.lat > maxLat) continue
-          try {
-            const pt = turfPoint([m.lng, m.lat])
-            const poly = turfPolygon([c.ring])
-            if (booleanPointInPolygon(pt, poly)) { match = c; break }
-          } catch {}
-        }
-        if (!match && corridorPolygons.length) {
-          let bestD2 = Infinity
-          for (const c of corridorPolygons) {
-            if (!c.startCoord) continue
-            const dx = c.startCoord[0] - m.lng
-            const dy = c.startCoord[1] - m.lat
-            const d2 = dx * dx + dy * dy
-            if (d2 < bestD2) { bestD2 = d2; match = c }
-          }
-        }
-        out[m.id] = match ? { startCoord: match.startCoord, startName: match.startName } : null
-      }
-      return out
-    },
+    (pts: ReadonlyArray<{ id: string; lng: number; lat: number }>) =>
+      matchPointsToCorridorsPure(pts, corridorPolygons),
     [corridorPolygons],
   )
 
@@ -525,11 +499,17 @@ function App() {
     const api = (window as any)?.electronAPI
     if (api && typeof api.saveKml === 'function') {
       try {
+        // `null` means user cancelled the native save dialog; no duplicate
+        // browser download in that case. Any thrown error is a real failure
+        // (disk full, 50 MB cap, bad IPC) — surface it to the user instead
+        // of silently falling through to a browser download, which would
+        // land in the default Downloads folder behind the user's back.
         await api.saveKml(mergedKml, 'corridors_export.kml', importedKmlDir || undefined, competitionId || undefined)
-        return
       } catch (err) {
-        console.error('electronAPI.saveKml failed, falling back to browser download:', err)
+        console.error('electronAPI.saveKml failed:', err)
+        alert(err instanceof Error ? err.message : t('errors.exportFailed'))
       }
+      return
     }
     downloadKML(mergedKml, 'corridors_export.kml')
   }, [markers, groundMarkers, loadOriginalKmlText, t, competitionId, importedKmlDir])
@@ -613,7 +593,11 @@ function App() {
           win.focus()
           win.print()
         } catch (err) {
+          // Match `handlePrintMap` — user should see why print failed, not
+          // just a silent no-op. Common triggers: no printer configured,
+          // iframe contentWindow detached, kiosk-restricted environment.
           console.error('Answer-sheet print failed:', err)
+          alert(err instanceof Error ? err.message : t('errors.printFailed'))
         }
         // Give Electron a moment to present / dismiss the print dialog before
         // the iframe gets torn down.
