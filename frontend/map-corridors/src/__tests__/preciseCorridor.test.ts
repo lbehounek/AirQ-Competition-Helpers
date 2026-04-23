@@ -11,6 +11,7 @@ import {
   DISCIPLINE_CONFIGS,
 } from '../corridors/preciseCorridor'
 import type { LonLatAlt } from '../corridors/segments'
+import { isTpGatePerpendicular, extractAllSegments } from '../corridors/segments'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,6 +58,16 @@ describe('findNamedPoints', () => {
     expect(r.tps).toHaveLength(2)
   })
 
+  it('recognizes "CP n" Control Points as turning points (rally KMLs from some authoring tools)', () => {
+    const gj = makeGeoJSON([
+      makePointFeature('CP 1', 14.1, 50.1),
+      makePointFeature('CP 15', 14.15, 50.15),
+      makePointFeature('CP10', 14.10, 50.10),
+    ])
+    const r = findNamedPoints(gj)
+    expect(r.tps.map(t => t.name).sort()).toEqual(['CP 1', 'CP 15', 'CP10'].sort())
+  })
+
   it('does NOT recognize SC gates as TPs', () => {
     const gj = makeGeoJSON([
       makePointFeature('SC 01', 14, 50),
@@ -86,6 +97,53 @@ describe('findNamedPoints', () => {
     ])
     const r = findNamedPoints(gj)
     expect(r.tps.map(t => t.name)).toEqual(['TP1', 'TP 2', 'TP 3'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 1b. isTpGatePerpendicular — length-based discriminator between TP gate
+// perpendiculars and legitimate 3-vertex track legs. Regression for the
+// 16-section race that hid corridors + TP markers (feedback 2026-04-23).
+// ---------------------------------------------------------------------------
+
+describe('isTpGatePerpendicular', () => {
+  it('flags a short 3-coord perpendicular (~1 km wide) as a gate', () => {
+    const perp: LonLatAlt[] = [
+      [14.9950, 50.0000, 0],
+      [15.0000, 50.0000, 0],
+      [15.0050, 50.0000, 0],
+    ]
+    expect(isTpGatePerpendicular(perp)).toBe(true)
+  })
+
+  it('does NOT flag a long 3-vertex leg (~18 km) as a gate', () => {
+    const leg: LonLatAlt[] = [
+      [14.0, 50.0, 0],
+      [14.1, 50.05, 0],
+      [14.2, 50.1, 0],
+    ]
+    expect(isTpGatePerpendicular(leg)).toBe(false)
+  })
+
+  it('does NOT flag 2-coord or 4+-coord lines', () => {
+    expect(isTpGatePerpendicular([[14, 50], [15, 51]])).toBe(false)
+    expect(isTpGatePerpendicular([[14, 50], [14.1, 50], [14.2, 50], [14.3, 50]])).toBe(false)
+  })
+})
+
+describe('extractAllSegments with long 3-vertex legs', () => {
+  it('keeps 3-vertex track legs as segments instead of dropping them as gates', () => {
+    const course: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[14.0, 50.0], [14.05, 50.02], [14.1, 50.05]] } },
+        { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[14.1, 50.05], [14.15, 50.07], [14.2, 50.1]] } },
+        // plus a real gate perpendicular at TP1 (~1 km total)
+        { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[14.095, 50.045], [14.1, 50.05], [14.105, 50.055]] } },
+      ],
+    }
+    const segs = extractAllSegments(course)
+    expect(segs.length).toBe(2)
   })
 })
 

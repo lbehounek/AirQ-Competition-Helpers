@@ -1,7 +1,7 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Point, Position } from 'geojson'
 import { lineString, length as turfLength, getCoord, bearing as turfBearing, destination, point, nearestPointOnLine, lineIntersect } from '@turf/turf'
 import type { LonLatAlt, Segment } from './segments'
-import { calculateDistance, buildContinuousTrackWithSources } from './segments'
+import { calculateDistance, buildContinuousTrackWithSources, isTpGatePerpendicular } from './segments'
 
 const DEBUG = (import.meta as any)?.env?.VITE_DEBUG_CORRIDORS === 'true' || (import.meta as any)?.env?.VITE_DEBUG_CORRIDORS === '1'
 const log = (...args: any[]) => { if (DEBUG) console.log(...args) }
@@ -108,7 +108,11 @@ export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ 
         const c = p.coordinates as LonLatAlt
         if (name === 'SP') out.sp = c
         else if (name === 'FP') out.fp = c
-        else if (/^TP\s?\d/i.test(name)) out.tps.push({ name, coord: c })
+        // Rally/Precision source KMLs name turning points as `TP n` or
+        // `CP n` (Control Point) depending on the authoring tool.
+        // Accept either prefix, optional space, one or more digits
+        // (e.g. `TP1`, `TP 1`, `TP10`, `CP 15`) — feedback 2026-04-23.
+        else if (/^(TP|CP)\s?\d+\b/i.test(name)) out.tps.push({ name, coord: c })
       }
     }
   }
@@ -401,7 +405,7 @@ function extractGateCenterCandidates(input: GeoJSON): Array<{ center: LonLatAlt,
       if (geom?.type === 'LineString') {
         const ls = geom as LineString
         const coords = ls.coordinates as LonLatAlt[]
-        if (coords.length === 3) {
+        if (isTpGatePerpendicular(coords)) {
           const center = coords[1]
           out.push({ center, line: lineString(coords as Position[]) })
         }
@@ -409,7 +413,7 @@ function extractGateCenterCandidates(input: GeoJSON): Array<{ center: LonLatAlt,
     } else if (g.type === 'LineString') {
       const ls = g as LineString
       const coords = ls.coordinates as LonLatAlt[]
-      if (coords.length === 3) {
+      if (isTpGatePerpendicular(coords)) {
         const center = coords[1]
         out.push({ center, line: lineString(coords as Position[]) })
       }

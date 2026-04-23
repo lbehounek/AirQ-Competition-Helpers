@@ -717,6 +717,46 @@ ipcMain.handle('save-map-image', async (event, base64Data) => {
   return filePath;
 });
 
+// Save KML text via native save dialog. Prefers the directory the source
+// KML was imported from (users care about their own project folders, not
+// our internal competition storage). Falls back to the competition folder
+// and finally to ~/Documents (feedback 2026-04-23).
+ipcMain.handle('save-kml', async (event, kmlText, fileName, defaultDir, competitionId) => {
+  if (typeof kmlText !== 'string' || kmlText.length === 0) {
+    throw new Error('Invalid KML content');
+  }
+  if (kmlText.length > 50 * 1024 * 1024) {
+    throw new Error('KML content too large');
+  }
+  const safeName = (typeof fileName === 'string' && fileName.trim())
+    ? sanitizeFileName(fileName).replace(/\.kml$/i, '') + '.kml'
+    : `corridors_export_${new Date().toISOString().slice(0, 10)}.kml`;
+
+  let startDir = null;
+  // 1) User-supplied directory (the folder they imported the KML from)
+  if (typeof defaultDir === 'string' && defaultDir.trim()) {
+    try {
+      const abs = path.resolve(defaultDir);
+      if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) startDir = abs;
+    } catch { /* ignore and fall through */ }
+  }
+  // 2) Competition folder fallback
+  if (!startDir && typeof competitionId === 'string' && competitionId.trim()) {
+    const compDir = path.join(getPhotoSessionsPath(), 'competitions', sanitizeFileName(competitionId));
+    if (fs.existsSync(compDir)) startDir = compDir;
+  }
+  // 3) Documents fallback
+  if (!startDir) startDir = app.getPath('documents');
+
+  const { filePath } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: path.join(startDir, safeName),
+    filters: [{ name: 'KML files', extensions: ['kml'] }]
+  });
+  if (!filePath) return null;
+  fs.writeFileSync(filePath, kmlText, 'utf8');
+  return filePath;
+});
+
 // Show Mapbox token dialog - single window with input field
 async function showMapboxTokenDialog() {
   const currentToken = getConfigValue('mapboxToken') || '';

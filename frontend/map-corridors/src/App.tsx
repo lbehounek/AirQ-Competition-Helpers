@@ -16,6 +16,7 @@ import { appendFeaturesToKML } from './utils/kmlMerge'
 import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
 import { parseDisciplineFromSearch } from './utils/parseDiscipline'
 import { MapStyleSelector } from './components/MapStyleSelector'
+import { GROUND_MARKER_ICON } from './components/GroundMarkerIcons'
 import { useMapStyle } from './hooks/useMapStyle'
 import {
   getStyleForId,
@@ -241,59 +242,117 @@ function App() {
     return res
   }, [session?.leftSegments, session?.rightSegments, session?.exactPoints])
 
-  // Compute per-marker distance info (NM) if inside a corridor
-  const markerDistanceNmById = useMemo(() => {
-    const out: Record<string, number | null> = {}
-    const NM = 1852
-    for (const m of markers) {
-      let found: number | null = null
-      for (const c of corridorPolygons) {
-        const [minLng, minLat, maxLng, maxLat] = c.bbox
-        if (m.lng < minLng || m.lng > maxLng || m.lat < minLat || m.lat > maxLat) continue
-        try {
-          const pt = turfPoint([m.lng, m.lat])
-          const poly = turfPolygon([c.ring])
-          if (booleanPointInPolygon(pt, poly)) {
-            if (c.startCoord) {
-              const meters = calculateDistance([c.startCoord[0], c.startCoord[1], 0], [m.lng, m.lat, 0])
-              const nm = Math.round((meters / NM) * 100) / 100
-              found = nm
-            } else {
-              found = null
-            }
-            break
+  // For each { id, lng, lat } find the containing corridor (if any); fall
+  // back to the corridor whose startCoord is closest. Without the fallback
+  // the answer sheet left distances blank whenever a marker drifted outside
+  // the polygon by even a metre (feedback 2026-04-23).
+  const matchPointsToCorridors = useCallback(
+    (pts: ReadonlyArray<{ id: string; lng: number; lat: number }>) => {
+      const out: Record<string, { startCoord?: [number, number]; startName: string } | null> = {}
+      for (const m of pts) {
+        let match: typeof corridorPolygons[number] | null = null
+        for (const c of corridorPolygons) {
+          const [minLng, minLat, maxLng, maxLat] = c.bbox
+          if (m.lng < minLng || m.lng > maxLng || m.lat < minLat || m.lat > maxLat) continue
+          try {
+            const pt = turfPoint([m.lng, m.lat])
+            const poly = turfPolygon([c.ring])
+            if (booleanPointInPolygon(pt, poly)) { match = c; break }
+          } catch {}
+        }
+        if (!match && corridorPolygons.length) {
+          let bestD2 = Infinity
+          for (const c of corridorPolygons) {
+            if (!c.startCoord) continue
+            const dx = c.startCoord[0] - m.lng
+            const dy = c.startCoord[1] - m.lat
+            const d2 = dx * dx + dy * dy
+            if (d2 < bestD2) { bestD2 = d2; match = c }
           }
-        } catch {}
+        }
+        out[m.id] = match ? { startCoord: match.startCoord, startName: match.startName } : null
       }
-      out[m.id] = found
-    }
-    return out
-  }, [markers, corridorPolygons])
+      return out
+    },
+    [corridorPolygons],
+  )
+
+  const markerCorridorMatchById = useMemo(
+    () => matchPointsToCorridors(markers),
+    [markers, matchPointsToCorridors],
+  )
+  // Ground markers (FAI signs) use the same corridor-matching as photo
+  // markers so the answer sheet can list them with distance + from-TP
+  // (feedback 2026-04-23: user saw only photo letters, no signs).
+  const groundMarkerCorridorMatchById = useMemo(
+    () => matchPointsToCorridors(groundMarkers),
+    [groundMarkers, matchPointsToCorridors],
+  )
+
+  const computeDistancesNm = useCallback(
+    (
+      pts: ReadonlyArray<{ id: string; lng: number; lat: number }>,
+      matches: Record<string, { startCoord?: [number, number]; startName: string } | null>,
+    ) => {
+      const out: Record<string, number | null> = {}
+      const NM = 1852
+      for (const m of pts) {
+        const match = matches[m.id]
+        if (!match || !match.startCoord) { out[m.id] = null; continue }
+        const meters = calculateDistance([match.startCoord[0], match.startCoord[1], 0], [m.lng, m.lat, 0])
+        out[m.id] = Math.round((meters / NM) * 100) / 100
+      }
+      return out
+    },
+    [],
+  )
+  const markerDistanceNmById = useMemo(
+    () => computeDistancesNm(markers, markerCorridorMatchById),
+    [markers, markerCorridorMatchById, computeDistancesNm],
+  )
+  const groundMarkerDistanceNmById = useMemo(
+    () => computeDistancesNm(groundMarkers, groundMarkerCorridorMatchById),
+    [groundMarkers, groundMarkerCorridorMatchById, computeDistancesNm],
+  )
 
   const markerFromTpById = useMemo(() => {
     const out: Record<string, string | null> = {}
     for (const m of markers) {
-      let start: string | null = null
-      for (const c of corridorPolygons) {
-        const [minLng, minLat, maxLng, maxLat] = c.bbox
-        if (m.lng < minLng || m.lng > maxLng || m.lat < minLat || m.lat > maxLat) continue
-        try {
-          const pt = turfPoint([m.lng, m.lat])
-          const poly = turfPolygon([c.ring])
-          if (booleanPointInPolygon(pt, poly)) {
-            start = c.startName || null
-            break
-          }
-        } catch {}
-      }
-      out[m.id] = start
+      const match = markerCorridorMatchById[m.id]
+      out[m.id] = match ? (match.startName || null) : null
     }
     return out
-  }, [markers, corridorPolygons])
+  }, [markers, markerCorridorMatchById])
+  const groundMarkerFromTpById = useMemo(() => {
+    const out: Record<string, string | null> = {}
+    for (const m of groundMarkers) {
+      const match = groundMarkerCorridorMatchById[m.id]
+      out[m.id] = match ? (match.startName || null) : null
+    }
+    return out
+  }, [groundMarkers, groundMarkerCorridorMatchById])
+
+  // Directory the KML was imported from. Passed to Electron's save-kml
+  // handler so the Export dialog opens in the user's own project folder
+  // instead of our internal photo-sessions directory (feedback 2026-04-23).
+  const [importedKmlDir, setImportedKmlDir] = useState<string | null>(null)
 
   const onFiles = useCallback(async (files: File[]) => {
     const file = files[0]
     if (!file) return
+    // Capture the source directory for Electron-side save-kml default. Only
+    // works inside the desktop app; browser uploads have no disk path.
+    try {
+      const api = (window as any)?.electronAPI
+      if (api && typeof api.getPathForFile === 'function') {
+        const fullPath: string = api.getPathForFile(file) || ''
+        if (fullPath) {
+          const sepIdx = Math.max(fullPath.lastIndexOf('\\'), fullPath.lastIndexOf('/'))
+          const dir = sepIdx > 0 ? fullPath.slice(0, sepIdx) : ''
+          if (dir) setImportedKmlDir(dir)
+        }
+      }
+    } catch { /* non-fatal */ }
     // Store original KML text for export
     const fileText = await file.text()
     await saveOriginalKmlText(file.name.toLowerCase().endsWith('.kml') ? fileText : '')
@@ -311,7 +370,10 @@ function App() {
         leftSegments: leftSegments && leftSegments.length ? ({ type: 'FeatureCollection', features: leftSegments } as any) : null,
         rightSegments: rightSegments && rightSegments.length ? ({ type: 'FeatureCollection', features: rightSegments } as any) : null,
       })
-    } catch {
+    } catch (err) {
+      // Never silently drop everything — users previously lost corridors and
+      // TP markers with no visible hint (feedback 2026-04-23: 16-section race).
+      console.error('buildPreciseCorridorsAndGates failed on upload:', err)
       await setComputedData({ geojson: parsed, gates: null, points: null, exactPoints: null, leftSegments: null, rightSegments: null })
     }
   }, [saveOriginalKmlText, effectiveConfig, setComputedData])
@@ -333,7 +395,8 @@ function App() {
         leftSegments: leftSegments && leftSegments.length ? ({ type: 'FeatureCollection', features: leftSegments } as any) : null,
         rightSegments: rightSegments && rightSegments.length ? ({ type: 'FeatureCollection', features: rightSegments } as any) : null,
       })
-    } catch {
+    } catch (err) {
+      console.error('buildPreciseCorridorsAndGates failed on recompute:', err)
       setComputedData({ geojson: input, gates: null, points: null, exactPoints: null, leftSegments: null, rightSegments: null })
     } finally {
       lastComputeSigRef.current = { geojson: input, discipline: effectiveDiscipline, use1NmAfterSp }
@@ -456,8 +519,20 @@ function App() {
       }
     }
     const mergedKml = appendFeaturesToKML(originalKmlText, combinedGeoJSON, 'corridors_export', { groundMarkerIcons })
+    // Prefer the Electron save dialog when running in the desktop app so the
+    // dialog defaults to the folder the source KML was imported from
+    // (feedback 2026-04-23 — users don't care about our internal storage).
+    const api = (window as any)?.electronAPI
+    if (api && typeof api.saveKml === 'function') {
+      try {
+        await api.saveKml(mergedKml, 'corridors_export.kml', importedKmlDir || undefined, competitionId || undefined)
+        return
+      } catch (err) {
+        console.error('electronAPI.saveKml failed, falling back to browser download:', err)
+      }
+    }
     downloadKML(mergedKml, 'corridors_export.kml')
-  }, [markers, groundMarkers, loadOriginalKmlText, t])
+  }, [markers, groundMarkers, loadOriginalKmlText, t, competitionId, importedKmlDir])
 
   const handlePrintMap = useCallback(async () => {
     if (!mapRef.current) return
@@ -516,15 +591,36 @@ function App() {
     const container = answerSheetRef.current
     if (!container) return
     const html = container.innerHTML
-    const w = window.open('', '_blank', 'noopener,noreferrer')
-    if (!w) return
-    try { (w as any).opener = null } catch {}
-    const styles = `@page { size: A4 portrait; margin: 12mm; } body { font-family: Arial, sans-serif; color: #111; } table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #999; padding: 6px 8px; font-size: 12px; } th { background: #f2f2f2; text-align: left; }`
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${t('app.title')} - ${t('sheet.print')}</title><style>${styles}</style></head><body>${html}</body></html>`)
-    w.document.close()
-    try { w.focus() } catch {}
-    try { w.print() } catch {}
-    try { w.close() } catch {}
+    // `window.open()` + `w.print()` was racy in Electron — the new BrowserWindow
+    // was often closed before the print dialog fired (feedback 2026-04-23).
+    // A hidden iframe with `srcdoc` stays attached to the same webContents,
+    // fires `onload` reliably, and prints the iframe's document directly.
+    const styles = `@page { size: A4 portrait; margin: 12mm; } body { font-family: Arial, sans-serif; color: #111; margin: 0; } table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #999; padding: 6px 8px; font-size: 12px; text-align: left; vertical-align: middle; } th { background: #f2f2f2; } svg { display: inline-block; vertical-align: middle; }`
+    const docHtml = `<!doctype html><html><head><meta charset="utf-8"><title>${t('app.title')} - ${t('sheet.print')}</title><style>${styles}</style></head><body>${html}</body></html>`
+    const iframe = document.createElement('iframe')
+    iframe.setAttribute('aria-hidden', 'true')
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+    iframe.srcdoc = docHtml
+    const cleanup = () => {
+      try { iframe.remove() } catch {}
+    }
+    iframe.onload = () => {
+      const win = iframe.contentWindow
+      if (!win) { cleanup(); return }
+      // Print dialog is modal; run it on a microtask so onload resolves first.
+      setTimeout(() => {
+        try {
+          win.focus()
+          win.print()
+        } catch (err) {
+          console.error('Answer-sheet print failed:', err)
+        }
+        // Give Electron a moment to present / dismiss the print dialog before
+        // the iframe gets torn down.
+        setTimeout(cleanup, 800)
+      }, 0)
+    }
+    document.body.appendChild(iframe)
   }, [t])
 
   // Marker callbacks passed to map.
@@ -765,6 +861,36 @@ function App() {
               return (
                 <TableRow key={L} hover>
                   <TableCell>{L}</TableCell>
+                  <TableCell>{dist != null ? dist.toFixed(2) : ''}</TableCell>
+                  <TableCell>{from}</TableCell>
+                </TableRow>
+              )
+            })}
+            {/* Ground markers (FAI signs) in order of placement. User asked
+                for signs in the answer sheet, not only photo letters
+                (feedback 2026-04-23). */}
+            {groundMarkers.length > 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={3}
+                  sx={{ bgcolor: 'grey.100', fontWeight: 600, fontSize: 13, py: 0.5 }}
+                >
+                  {t('sheet.signs')}
+                </TableCell>
+              </TableRow>
+            )}
+            {groundMarkers.map((gm, idx) => {
+              const Icon = GROUND_MARKER_ICON[gm.type]
+              const dist = groundMarkerDistanceNmById[gm.id]
+              const from = groundMarkerFromTpById[gm.id] || ''
+              return (
+                <TableRow key={gm.id} hover>
+                  <TableCell sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography component="span" sx={{ fontSize: 13, color: 'text.secondary', minWidth: 18 }}>
+                      {idx + 1}.
+                    </Typography>
+                    {Icon ? <Icon size={20} /> : <Typography component="span">{gm.type}</Typography>}
+                  </TableCell>
                   <TableCell>{dist != null ? dist.toFixed(2) : ''}</TableCell>
                   <TableCell>{from}</TableCell>
                 </TableRow>

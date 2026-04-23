@@ -185,9 +185,10 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
         {gridSlots.map((slot) => {
           const isDragOver = dragOverIndex === slot.index;
           const isDragging = draggedIndex === slot.index;
-          
-          return <Paper
-              key={slot.id}
+
+          return (
+            <Box key={slot.id} sx={{ display: 'flex', flexDirection: 'column' }}>
+            <Paper
               elevation={slot.photo ? 2 : 0}
               draggable={slot.photo ? true : false}
               onDragStart={slot.photo ? (e) => handleDragStart(e, slot.index) : undefined}
@@ -306,7 +307,35 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                 maxFilesRemaining={maxFilesRemaining}
               />
             )}
-          </Paper>;
+            </Paper>
+            {/* Filename caption — screen only; the PDF generator rasterizes
+                canvases by data-photo-id, so this DOM text is never emitted
+                to print. Keeps the photo itself undisturbed for the
+                competitor's view (feedback 2026-04-23). */}
+            {slot.photo?.filename && (
+              <Typography
+                variant="caption"
+                title={slot.photo.filename}
+                sx={{
+                  mt: 0.5,
+                  px: 0.5,
+                  fontFamily: 'monospace',
+                  fontSize: '0.65rem',
+                  color: 'text.secondary',
+                  textAlign: 'center',
+                  lineHeight: 1.2,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  userSelect: 'text',
+                  '@media print': { display: 'none' },
+                }}
+              >
+                {slot.photo.filename}
+              </Typography>
+            )}
+            </Box>
+          );
         })}
         </Box>
       )}

@@ -151,6 +151,16 @@ export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName
   // Ensure styles for appended content
   ensureStyle(xml, 'greenLine', '<LineStyle><color>ff00ff00</color><width>2</width></LineStyle>')
   ensureStyle(xml, 'labelPoint', '<IconStyle><color>ff00ffff</color><scale>0.8</scale></IconStyle><LabelStyle><scale>1</scale></LabelStyle>')
+  // Dedicated style for photo markers — explicit yellow-pushpin href so every
+  // KML viewer (Google Earth, Maps, mobile) shows the same pin the app and
+  // PNG export render. The default `labelPoint` style drops to a grey
+  // placeholder in some viewers because it lacks an `<Icon>` (feedback
+  // 2026-04-23: yellow pin missing from KML, but present in PNG).
+  ensureStyle(
+    xml,
+    'photoMarker',
+    '<IconStyle><color>ff00ffff</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href></Icon><hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/></IconStyle><LabelStyle><scale>0.9</scale></LabelStyle>',
+  )
 
   // Register one IconStyle per used ground-marker type (feedback 2026-04-18:
   // KML should show the same shapes as screen + print, not just generic pins).
@@ -181,7 +191,11 @@ export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName
       const name = typeof rawName === 'string' ? rawName : ((props as any).role || 'point')
       const role = (props as any).role as string | undefined
       const markerType = (props as any).markerType as string | undefined
-      const customStyleId = role === 'ground_markers' && markerType ? groundMarkerStyleIds.get(markerType) : undefined
+      const customStyleId = role === 'ground_markers' && markerType
+        ? groundMarkerStyleIds.get(markerType)
+        : role === 'track_photos'
+          ? 'photoMarker'
+          : undefined
       addPointPlacemark(xml, name, pt.coordinates as any, role, customStyleId, markerType)
     }
   }

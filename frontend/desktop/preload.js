@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 // Expose protected methods that allow the renderer process to use
 // ipcRenderer without exposing the entire object
@@ -36,6 +36,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Save map print image via native save dialog
   saveMapImage: (base64Data) => ipcRenderer.invoke('save-map-image', base64Data),
+
+  // Save KML text via native save dialog. The renderer passes the directory
+  // the source KML was imported from (see `getPathForFile`) so the export
+  // dialog lands in the user's own project folder (feedback 2026-04-23).
+  saveKml: (kmlText, fileName, defaultDir, competitionId) =>
+    ipcRenderer.invoke('save-kml', kmlText, fileName, defaultDir, competitionId),
+
+  // Resolve the full filesystem path of a File picked / dropped in the
+  // renderer. Electron 32+ removed `File.path`; webUtils replaces it.
+  // Returns '' if the File has no disk backing (e.g. generated Blob).
+  getPathForFile: (file) => {
+    try { return webUtils.getPathForFile(file) || ''; } catch { return ''; }
+  },
 
   // Check if running in Electron
   isElectron: true,

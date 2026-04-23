@@ -594,6 +594,12 @@ function AppApi() {
             loading={loading}
             error={error}
             onFilesDropped={(setKey, files) => addPhotosToSet(files, setKey)}
+            /* Initial Rally drop can span 10-18 photos — distribute across
+               both sets instead of overflowing set1 invisibly. Precision stays
+               capped at 9 so single-set flow still applies. */
+            onInitialFilesDropped={isPrecision
+              ? (files) => addPhotosToSet(files, 'set1')
+              : (files) => addPhotosToTurningPoint(files)}
             onPhotoClick={handlePhotoClick}
             onPhotoUpdate={handlePhotoUpdate}
             onPhotoRemove={handlePhotoRemove}
@@ -944,6 +950,7 @@ function AppApi() {
                     <Box sx={{
                       flex: '1 1 65%', // Take 65% of width
                       display: 'flex',
+                      flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
                       bgcolor: 'grey.50',
@@ -962,6 +969,22 @@ function AppApi() {
                         showOriginal={showOriginal}
                         circleMode={circleMode}
                       />
+                      {/* Filename caption under the photo — screen only. */}
+                      {selectedPhoto.photo.filename && (
+                        <Typography
+                          variant="caption"
+                          title={selectedPhoto.photo.filename}
+                          sx={{
+                            mt: 1.5,
+                            fontFamily: 'monospace',
+                            color: 'text.secondary',
+                            userSelect: 'text',
+                            '@media print': { display: 'none' },
+                          }}
+                        >
+                          {selectedPhoto.photo.filename}
+                        </Typography>
+                      )}
                     </Box>
 
                     {/* Right Controls */}

@@ -839,7 +839,27 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // Methods to align with AppApi expectations
     reorderPhotos,
     shufflePhotos,
-    addPhotosToTurningPoint: (async (_files: File[]) => {}) as any,
+    // Rally turning-point initial drop: distribute files across set1 (first 9)
+    // and set2 (remainder). Without this, a 10+ photo drop overflows the
+    // 9-slot set1 grid and later photos become invisible (feedback 2026-04-23).
+    addPhotosToTurningPoint: (async (files: File[]) => {
+      const session = currentCompetition?.session;
+      if (!session) return;
+      const layoutMode = (session as any).layoutMode === 'portrait' ? 'portrait' : 'landscape';
+      const gridCapacity = layoutMode === 'portrait' ? 10 : 9;
+      const maxTotal = gridCapacity * 2;
+      const set1Count = session.sets?.set1?.photos?.length ?? 0;
+      const set2Count = session.sets?.set2?.photos?.length ?? 0;
+      if (set1Count + set2Count + files.length > maxTotal) {
+        setError(`Cannot add ${files.length} photos. Maximum ${maxTotal} photos allowed (${set1Count + set2Count} already added).`);
+        return;
+      }
+      const set1Remaining = Math.max(0, gridCapacity - set1Count);
+      const toSet1 = files.slice(0, set1Remaining);
+      const toSet2 = files.slice(set1Remaining);
+      if (toSet1.length) await addPhotosToSet(toSet1, 'set1');
+      if (toSet2.length) await addPhotosToSet(toSet2, 'set2');
+    }) as any,
     refreshSession: (async () => {}) as any,
     applySettingToAll,
     

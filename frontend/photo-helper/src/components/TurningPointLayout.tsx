@@ -13,6 +13,12 @@ interface TurningPointLayoutProps {
   loading: boolean;
   error: string | null;
   onFilesDropped: (setKey: 'set1' | 'set2', files: File[]) => void;
+  /**
+   * Called when the user makes the FIRST (empty-state) drop. In Rally this
+   * can be up to 18 photos and needs to span both sets — the caller is
+   * responsible for distributing. Falls back to set1 drop if omitted.
+   */
+  onInitialFilesDropped?: (files: File[]) => void;
   onPhotoClick: (photo: ApiPhoto, setKey: 'set1' | 'set2') => void;
   onPhotoUpdate: (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => void;
   onPhotoRemove: (setKey: 'set1' | 'set2', photoId: string) => void;
@@ -37,6 +43,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   loading,
   error,
   onFilesDropped,
+  onInitialFilesDropped,
   onPhotoClick,
   onPhotoUpdate,
   onPhotoRemove,
@@ -67,7 +74,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
             </Typography>
           </Box>
           <GridSizedDropZone
-            onFilesDropped={(files) => onFilesDropped('set1', files)}
+            onFilesDropped={(files) => (onInitialFilesDropped || ((f) => onFilesDropped('set1', f)))(files)}
             setName={t('turningpoint.photos')}
             maxPhotos={initialDropMax}
             loading={loading}
