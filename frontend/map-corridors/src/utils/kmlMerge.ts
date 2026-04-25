@@ -109,10 +109,15 @@ function ensureGroundMarkerStyle(doc: Document, type: string, iconHref: string) 
   // pin tip) on the marker's lat/lng — feedback 2026-04-25: the symbol now
   // sits in a square at the top with a pin underneath, so the point of
   // contact is the bottom of the canvas, not the centre.
+  // scale=0.6 makes the icon visually match the yellow photo pushpins at
+  // typical map zooms — feedback 2026-04-25: "make it smaller when zoomed
+  // out, to visually match other elements". The source PNG is 128×192,
+  // 1.5× taller than Google's standard pushpin, so a sub-1 scale evens
+  // them out; the symbol stays legible when the user zooms in.
   ensureStyle(
     doc,
     id,
-    `<IconStyle><scale>1.0</scale><Icon><href>${escapeXmlAttr(iconHref)}</href></Icon><hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0</scale></LabelStyle>`,
+    `<IconStyle><scale>0.6</scale><Icon><href>${escapeXmlAttr(iconHref)}</href></Icon><hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0</scale></LabelStyle>`,
   )
   return id
 }

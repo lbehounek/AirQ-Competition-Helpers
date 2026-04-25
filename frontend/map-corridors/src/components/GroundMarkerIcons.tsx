@@ -84,3 +84,14 @@ export function groundMarkerSvgString(type: GroundMarkerType, size: number, stro
   // rather than hand-rolling XML escaping for arbitrary input.
   return `<svg ${SVG_ATTRS_PRINT_BASE} stroke="${stroke}" width="${size}" height="${size}">${content}</svg>`
 }
+
+/**
+ * Raw FAI-symbol path content for a given marker type, in the same
+ * `0 0 100 100` viewBox as `groundMarkerSvgString`. Returns `''` for
+ * unknown / prototype-key types. Callers can embed this inside a larger
+ * SVG (e.g. the KML pin composite in `groundMarkerPng.ts`) so the
+ * symbol renders inline without an intermediate canvas drawImage.
+ */
+export function groundMarkerSvgInner(type: GroundMarkerType): string {
+  return lookupSvgContent(type)
+}

@@ -1,4 +1,4 @@
-import { groundMarkerSvgString } from '../components/GroundMarkerIcons'
+import { groundMarkerSvgInner } from '../components/GroundMarkerIcons'
 import type { GroundMarkerType } from '../types/markers'
 
 /**
@@ -26,11 +26,41 @@ type SafeStroke = 'black' | 'white'
 export async function rasterizeGroundMarker(
   type: GroundMarkerType,
   sizePx: number,
-  stroke: SafeStroke = 'black',
+  // Kept for backwards compatibility with `rasterizeGroundMarkerSet`.
+  // Composite pin design always uses black symbol on white square; the
+  // arg is ignored. Removing it would break the existing test signature.
+  _stroke: SafeStroke = 'black',
 ): Promise<string | null> {
-  const svg = groundMarkerSvgString(type, sizePx, stroke)
-  if (!svg) return null
+  const symbolPaths = groundMarkerSvgInner(type)
+  if (!symbolPaths) return null
+
+  // Build the composite icon as a single inline SVG — feedback 2026-04-25:
+  // "kml export for ground marker is not supposed to be yellow circle, but
+  //  a pin … like square white with black marker shape on it, next to a
+  //  pin that marks the exact position".
+  // Compositing in canvas via two `drawImage` calls was unreliable: the
+  // outer pin shell rendered but the inner FAI symbol came out blank in
+  // Google Earth (user screenshot). One self-contained SVG sidesteps that
+  // entirely — the browser rasterises everything in one pass.
+  //
+  // viewBox 100×150: top 100×100 is a white square with the symbol inside
+  // (already in the 0–100 coordinate space the symbol paths assume), the
+  // bottom 100×50 is a light-blue triangle pointing down, with the pin
+  // tip at (50, 150). `kmlMerge.ts` sets `hotSpot x=0.5 y=0` (fraction)
+  // so that tip lands on the marker's lat/lng.
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150" width="${sizePx}" height="${Math.round(sizePx * 1.5)}">` +
+    // White square with black border
+    `<rect x="2" y="2" width="96" height="96" fill="#ffffff" stroke="#000000" stroke-width="3"/>` +
+    // Light-blue pin (downward triangle) — outline first via fill+stroke
+    `<polygon points="34,98 66,98 50,148" fill="#29B6F6" stroke="#01579B" stroke-width="2.5"/>` +
+    // FAI symbol — paths inherit the stroke/fill on this group
+    `<g stroke="#000000" stroke-width="10" fill="none" stroke-linecap="square" stroke-linejoin="miter">` +
+      symbolPaths +
+    `</g>` +
+    `</svg>`
   const svgUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+
   const img = new Image()
   try {
     await new Promise<void>((resolve, reject) => {
@@ -41,13 +71,7 @@ export async function rasterizeGroundMarker(
   } catch {
     return null
   }
-  // Pin-style composite icon — feedback 2026-04-25:
-  // "kml export for ground marker is not supposed to be yellow circle, but
-  //  a pin … like square white with black marker shape on it, next to a
-  //  pin that marks the exact position".
-  // The image is a tall canvas: a white square with the FAI symbol on top,
-  // a small connector, and a light-blue downward-pointing pin that anchors
-  // to the exact lat/lng (via `hotSpot` x=0.5 y=0 set in `kmlMerge.ts`).
+
   const w = sizePx
   const h = Math.round(sizePx * 1.5)
   const canvas = document.createElement('canvas')
@@ -56,38 +80,7 @@ export async function rasterizeGroundMarker(
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
   try {
-    // Section 1 — white square with the FAI symbol, black border (top 2/3).
-    const boxH = Math.round(h * 2 / 3)
-    const border = Math.max(2, Math.round(sizePx / 32))
-    ctx.fillStyle = '#FFFFFF'
-    ctx.fillRect(0, 0, w, boxH)
-    ctx.strokeStyle = '#000000'
-    ctx.lineWidth = border
-    ctx.strokeRect(border / 2, border / 2, w - border, boxH - border)
-
-    // Symbol drawn inside the square with breathing room.
-    const pad = Math.max(4, Math.round(sizePx * 0.10))
-    ctx.drawImage(img, pad, pad, w - 2 * pad, boxH - 2 * pad)
-
-    // Section 2 — light-blue pin pointing down (bottom 1/3).
-    // Wide enough at the top to clearly attach to the square, taper to a
-    // single point that lands on the marker's lat/lng.
-    const PIN_FILL = '#29B6F6'
-    const PIN_STROKE = '#01579B'
-    const pinTopY = boxH
-    const pinTipY = h - 1
-    const pinHalfTop = Math.max(8, Math.round(w * 0.18))
-    ctx.beginPath()
-    ctx.moveTo(w / 2 - pinHalfTop, pinTopY)
-    ctx.lineTo(w / 2 + pinHalfTop, pinTopY)
-    ctx.lineTo(w / 2, pinTipY)
-    ctx.closePath()
-    ctx.fillStyle = PIN_FILL
-    ctx.fill()
-    ctx.strokeStyle = PIN_STROKE
-    ctx.lineWidth = Math.max(1, sizePx / 48)
-    ctx.stroke()
-
+    ctx.drawImage(img, 0, 0, w, h)
     const uri = canvas.toDataURL('image/png')
     // `toDataURL` returns `"data:,"` on allocation failure in some engines
     // instead of throwing; treat it as failure so the caller can surface it.
