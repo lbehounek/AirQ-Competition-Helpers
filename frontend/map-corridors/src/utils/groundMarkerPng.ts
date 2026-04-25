@@ -1,4 +1,4 @@
-import { groundMarkerSvgString } from '../components/GroundMarkerIcons'
+import { groundMarkerSvgInner } from '../components/GroundMarkerIcons'
 import type { GroundMarkerType } from '../types/markers'
 
 /**
@@ -26,11 +26,41 @@ type SafeStroke = 'black' | 'white'
 export async function rasterizeGroundMarker(
   type: GroundMarkerType,
   sizePx: number,
-  stroke: SafeStroke = 'white',
+  // Kept for backwards compatibility with `rasterizeGroundMarkerSet`.
+  // Composite pin design always uses black symbol on white square; the
+  // arg is ignored. Removing it would break the existing test signature.
+  _stroke: SafeStroke = 'black',
 ): Promise<string | null> {
-  const svg = groundMarkerSvgString(type, sizePx, stroke)
-  if (!svg) return null
+  const symbolPaths = groundMarkerSvgInner(type)
+  if (!symbolPaths) return null
+
+  // Build the composite icon as a single inline SVG — feedback 2026-04-25:
+  // "kml export for ground marker is not supposed to be yellow circle, but
+  //  a pin … like square white with black marker shape on it, next to a
+  //  pin that marks the exact position".
+  // Compositing in canvas via two `drawImage` calls was unreliable: the
+  // outer pin shell rendered but the inner FAI symbol came out blank in
+  // Google Earth (user screenshot). One self-contained SVG sidesteps that
+  // entirely — the browser rasterises everything in one pass.
+  //
+  // viewBox 100×150: top 100×100 is a white square with the symbol inside
+  // (already in the 0–100 coordinate space the symbol paths assume), the
+  // bottom 100×50 is a light-blue triangle pointing down, with the pin
+  // tip at (50, 150). `kmlMerge.ts` sets `hotSpot x=0.5 y=0` (fraction)
+  // so that tip lands on the marker's lat/lng.
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150" width="${sizePx}" height="${Math.round(sizePx * 1.5)}">` +
+    // White square with black border
+    `<rect x="2" y="2" width="96" height="96" fill="#ffffff" stroke="#000000" stroke-width="3"/>` +
+    // Light-blue pin (downward triangle) — outline first via fill+stroke
+    `<polygon points="34,98 66,98 50,148" fill="#29B6F6" stroke="#01579B" stroke-width="2.5"/>` +
+    // FAI symbol — paths inherit the stroke/fill on this group
+    `<g stroke="#000000" stroke-width="10" fill="none" stroke-linecap="square" stroke-linejoin="miter">` +
+      symbolPaths +
+    `</g>` +
+    `</svg>`
   const svgUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+
   const img = new Image()
   try {
     await new Promise<void>((resolve, reject) => {
@@ -41,13 +71,16 @@ export async function rasterizeGroundMarker(
   } catch {
     return null
   }
+
+  const w = sizePx
+  const h = Math.round(sizePx * 1.5)
   const canvas = document.createElement('canvas')
-  canvas.width = sizePx
-  canvas.height = sizePx
+  canvas.width = w
+  canvas.height = h
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
   try {
-    ctx.drawImage(img, 0, 0, sizePx, sizePx)
+    ctx.drawImage(img, 0, 0, w, h)
     const uri = canvas.toDataURL('image/png')
     // `toDataURL` returns `"data:,"` on allocation failure in some engines
     // instead of throwing; treat it as failure so the caller can surface it.

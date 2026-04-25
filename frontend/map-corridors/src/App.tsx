@@ -306,15 +306,29 @@ function App() {
     return out
   }, [groundMarkers, groundMarkerCorridorMatchById])
 
-  // Directory the KML was imported from. Passed to Electron's save-kml
-  // handler so the Export dialog opens in the user's own project folder
-  // instead of our internal photo-sessions directory (feedback 2026-04-23).
+  // Directory the KML was imported from. Passed to Electron's save-* IPC
+  // handlers so every export dialog opens in the user's own project folder
+  // (feedback 2026-04-25 — same folder per *competition*, not per app).
+  // Persisted to the competition index via `competitions.setWorkingDir` so
+  // photo-helper and other apps inherit it on next launch.
   const [importedKmlDir, setImportedKmlDir] = useState<string | null>(null)
+
+  // Hydrate from the competition's persisted working dir on mount so that
+  // re-opening map-corridors later (without a fresh KML import) still
+  // remembers where the user wants files to land.
+  useEffect(() => {
+    if (!competitionId) return
+    const api = (window as any)?.electronAPI
+    if (!api?.competitions?.getWorkingDir) return
+    api.competitions.getWorkingDir(competitionId)
+      .then((dir: string | null) => { if (dir) setImportedKmlDir(dir) })
+      .catch(() => { /* non-fatal */ })
+  }, [competitionId])
 
   const onFiles = useCallback(async (files: File[]) => {
     const file = files[0]
     if (!file) return
-    // Capture the source directory for Electron-side save-kml default. Only
+    // Capture the source directory for Electron-side save-* default. Only
     // works inside the desktop app; browser uploads have no disk path.
     try {
       const api = (window as any)?.electronAPI
@@ -323,7 +337,15 @@ function App() {
         if (fullPath) {
           const sepIdx = Math.max(fullPath.lastIndexOf('\\'), fullPath.lastIndexOf('/'))
           const dir = sepIdx > 0 ? fullPath.slice(0, sepIdx) : ''
-          if (dir) setImportedKmlDir(dir)
+          if (dir) {
+            setImportedKmlDir(dir)
+            // Persist to the competition index so photo-helper picks the
+            // same default dir on its next PDF export.
+            if (competitionId && api.competitions?.setWorkingDir) {
+              api.competitions.setWorkingDir(competitionId, dir)
+                .catch((err: unknown) => console.warn('[workingDir] persist failed:', err))
+            }
+          }
         }
       }
     } catch { /* non-fatal */ }
@@ -350,7 +372,7 @@ function App() {
       console.error('buildPreciseCorridorsAndGates failed on upload:', err)
       await setComputedData({ geojson: parsed, gates: null, points: null, exactPoints: null, leftSegments: null, rightSegments: null })
     }
-  }, [saveOriginalKmlText, effectiveConfig, setComputedData])
+  }, [saveOriginalKmlText, effectiveConfig, setComputedData, competitionId])
 
   // Recompute when discipline or the rally 1NM toggle changes
   useEffect(() => {
@@ -531,7 +553,7 @@ function App() {
           reader.onerror = () => reject(reader.error)
           reader.readAsDataURL(blob)
         })
-        await electronAPI.saveMapImage(base64)
+        await electronAPI.saveMapImage(base64, importedKmlDir || undefined)
       } else {
         // Browser: download via anchor
         const url = URL.createObjectURL(blob)
@@ -553,7 +575,7 @@ function App() {
       console.error('Map print failed:', err)
       alert(err instanceof Error ? err.message : t('errors.printFailed'))
     }
-  }, [t])
+  }, [t, importedKmlDir])
 
   // Drag source for placing photo markers
   const onDragStartMarker = useCallback((e: React.DragEvent) => {
@@ -749,7 +771,13 @@ function App() {
             />
           )}
           <Box sx={{ flex: 1 }} />
-          <Button variant="outlined" size="small" onClick={() => setAnswerSheetOpen(true)}>{t('app.answerSheet')}</Button>
+          {/* Answer sheet is meaningful only for Rally — Precision has no
+              corridor "from-TP" notion (corridors are 100 m one-sided and
+              the polygon is degenerate, so distances would be misleading,
+              feedback 2026-04-23). */}
+          {effectiveDiscipline !== 'precision' && (
+            <Button variant="outlined" size="small" onClick={() => setAnswerSheetOpen(true)}>{t('app.answerSheet')}</Button>
+          )}
         </Box>
       </Box>
       <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>
