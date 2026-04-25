@@ -5,7 +5,7 @@ import { Image as ImageIcon, CloudUpload, Close } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { PhotoEditorApi } from './PhotoEditorApi';
 import { isValidImageFile } from '../utils/imageProcessing';
-import { isElectronPhotoImportAvailable, openPhotosViaElectron } from '../utils/electronPhotoImport';
+import { useElectronPhotoImport } from '../hooks/useElectronPhotoImport';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useLabeling } from '../contexts/LabelingContext';
 import { useI18n } from '../contexts/I18nContext';
@@ -352,7 +352,8 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
 }) => {
   const theme = useTheme();
   const { t } = useI18n();
-  const useElectronDialog = isElectronPhotoImportAvailable();
+  const electronImport = useElectronPhotoImport();
+  const useElectronDialog = electronImport.isAvailable;
   const slotMaxFiles = maxFilesRemaining ?? 9;
   const {
     getRootProps,
@@ -381,13 +382,9 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
   });
 
   const handleElectronClick = async () => {
-    try {
-      const files = await openPhotosViaElectron(slotMaxFiles);
-      const validFiles = files.filter(isValidImageFile);
-      if (validFiles.length > 0 && onFilesDropped) onFilesDropped(validFiles);
-    } catch (err) {
-      console.error('[photo import] Electron dialog failed:', err);
-    }
+    if (electronImport.isImporting) return;
+    if (!onFilesDropped) return;
+    await electronImport.pickPhotos(slotMaxFiles, onFilesDropped);
   };
 
   // Determine border color based on drag state
@@ -426,8 +423,23 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
       }}
     >
       <input {...getInputProps()} />
-      
-      {isDragActive ? (
+
+      {electronImport.importError ? (
+        // Replace the slot's normal contents with an inline error so the
+        // grid layout doesn't reflow — clicking the slot dismisses the
+        // error and returns it to the dropzone state.
+        <Box
+          onClick={(e) => { e.stopPropagation(); electronImport.clearImportError(); }}
+          sx={{ p: 1, textAlign: 'center', color: 'warning.dark' }}
+        >
+          <Typography variant="caption" sx={{ display: 'block', fontWeight: 500 }}>
+            {electronImport.importError}
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block', opacity: 0.7, mt: 0.5 }}>
+            {t('upload.clickOrDrop')}
+          </Typography>
+        </Box>
+      ) : isDragActive ? (
         <>
           <CloudUpload sx={{ fontSize: 32, mb: 1, opacity: 0.7 }} />
           <Typography variant="body2" sx={{ fontWeight: 500, textAlign: 'center', px: 1 }}>
@@ -438,10 +450,10 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
         <>
           <ImageIcon sx={{ fontSize: 28, mb: 1, opacity: 0.5 }} />
           {label && (
-            <Typography 
-              variant="h6" 
-              sx={{ 
-                fontWeight: 700, 
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 700,
                 fontSize: '1.1rem',
                 color: 'text.secondary',
                 mb: 0.5

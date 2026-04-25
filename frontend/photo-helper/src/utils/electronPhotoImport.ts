@@ -10,10 +10,14 @@
  * folder — so the user steers the persistent default by simply navigating
  * in any open or save dialog (feedback 2026-04-25).
  *
- * Returns `[]` and lets the caller fall through to the native
- * `<input>` flow on the web build, when the dialog is cancelled, or
- * when no files come back.
+ * Failure mode contract: callers get back `{ files, failures }`. A
+ * cancelled dialog is `{ files: [], failures: [] }`. Per-file read
+ * errors land in `failures` instead of being silently swallowed — the
+ * `useElectronPhotoImport` hook surfaces them via an Alert so the user
+ * isn't left wondering why 5 of 9 photos vanished.
  */
+
+import { dirnameOf } from '@airq/shared-storage';
 
 declare global {
   interface Window {
@@ -28,7 +32,21 @@ declare global {
   }
 }
 
-function getCompetitionIdFromUrl(): string | null {
+export interface PhotoImportFailure {
+  path: string;
+  error: unknown;
+}
+
+export interface PhotoImportResult {
+  files: File[];
+  failures: PhotoImportFailure[];
+  /** True only when the user explicitly cancelled the dialog. */
+  cancelled: boolean;
+  /** True if `setWorkingDir` rejected — the persistence side of the feature regressed but the import itself worked. */
+  workingDirPersistFailed: boolean;
+}
+
+export function getCompetitionIdFromUrl(): string | null {
   try {
     const params = new URLSearchParams(window.location.search);
     return params.get('competitionId') || null;
@@ -37,14 +55,7 @@ function getCompetitionIdFromUrl(): string | null {
   }
 }
 
-function dirnameOf(fullPath: string): string | null {
-  const sepIdx = Math.max(fullPath.lastIndexOf('\\'), fullPath.lastIndexOf('/'));
-  if (sepIdx <= 0) return null;
-  const dir = fullPath.slice(0, sepIdx);
-  return dir || null;
-}
-
-function base64ToUint8Array(base64: string): Uint8Array {
+export function base64ToUint8Array(base64: string): Uint8Array {
   const binary = atob(base64);
   const len = binary.length;
   const bytes = new Uint8Array(len);
@@ -57,52 +68,89 @@ export function isElectronPhotoImportAvailable(): boolean {
   return !!(api && typeof api.openPhotos === 'function' && typeof api.readPhotoFile === 'function');
 }
 
-export async function openPhotosViaElectron(maxFiles?: number): Promise<File[]> {
+const EMPTY: PhotoImportResult = Object.freeze({
+  files: [],
+  failures: [],
+  cancelled: true,
+  workingDirPersistFailed: false,
+}) as PhotoImportResult;
+
+/**
+ * Open the Electron native photo dialog and return reconstructed File
+ * objects. Failures are reported alongside successes — never silently
+ * swallowed. Web-build callers get `{ files: [], failures: [], cancelled: true }`
+ * (effectively a no-op) so they can fall through to their HTML
+ * `<input type=file>` flow.
+ */
+export async function openPhotosViaElectron(maxFiles?: number): Promise<PhotoImportResult> {
   const api = window.electronAPI;
-  if (!api?.openPhotos || !api?.readPhotoFile) return [];
+  if (!api?.openPhotos || !api?.readPhotoFile) return EMPTY;
 
   // Read the competition's working dir (if any) to seed the dialog's
-  // starting directory. Competition id is on the URL when launched from
-  // the desktop launcher (`?competitionId=…`). Best-effort — failures
-  // are non-fatal; the dialog will fall back to ~/Pictures.
+  // starting directory. Best-effort — failures are non-fatal; the
+  // dialog will fall back to ~/Pictures.
   const competitionId = getCompetitionIdFromUrl();
   let workingDir: string | undefined;
   if (competitionId && api.competitions?.getWorkingDir) {
     try {
       const dir = await api.competitions.getWorkingDir(competitionId);
       if (dir) workingDir = dir;
-    } catch { /* non-fatal */ }
+    } catch (err) {
+      // Keep this debug-level so a real IPC regression is at least
+      // diagnosable in devtools, without polluting the user-visible
+      // error channel for a best-effort lookup.
+      console.debug('[photo import] getWorkingDir failed (using default):', err);
+    }
   }
 
   const paths = await api.openPhotos(workingDir, maxFiles);
-  if (!paths || !paths.length) return [];
+  if (!paths || !paths.length) return EMPTY;
 
-  // Reconstruct File objects from each path. Reading happens in main
-  // (Node fs) and the bytes come over IPC as base64; we decode and wrap
-  // in a Blob/File so the existing onFilesDropped pipeline (which
-  // expects File[]) doesn't need changes.
+  // Parallelize the per-file reads. Each round-trip is fs.readFileSync
+  // + Buffer.toString('base64') (~40 MB string for a 30 MB image) +
+  // IPC + renderer atob, all CPU-bound on different stages — running
+  // them concurrently overlaps the renderer-side decode with main-side
+  // reads and shaves seconds off a 9-photo import. Failures are
+  // captured per-path so a partial batch still surfaces what worked.
+  const settled = await Promise.all(
+    paths.map(async (p): Promise<{ ok: true; file: File } | { ok: false; path: string; error: unknown }> => {
+      try {
+        const data = await api.readPhotoFile!(p);
+        if (!data || !data.base64) {
+          return { ok: false, path: p, error: new Error('Empty response from readPhotoFile') };
+        }
+        const bytes = base64ToUint8Array(data.base64);
+        return { ok: true, file: new File([bytes], data.name, { type: data.mimeType }) };
+      } catch (err) {
+        return { ok: false, path: p, error: err };
+      }
+    }),
+  );
+
   const files: File[] = [];
-  for (const p of paths) {
-    try {
-      const data = await api.readPhotoFile(p);
-      if (!data || !data.base64) continue;
-      const bytes = base64ToUint8Array(data.base64);
-      files.push(new File([bytes], data.name, { type: data.mimeType }));
-    } catch (err) {
-      console.error('[photo import] Failed to read', p, err);
-    }
+  const failures: PhotoImportFailure[] = [];
+  for (const r of settled) {
+    if (r.ok) files.push(r.file);
+    else failures.push({ path: r.path, error: r.error });
   }
 
   // Promote the chosen folder to the working dir so subsequent dialogs
-  // (saves, future imports) default there.
-  if (competitionId && api.competitions?.setWorkingDir && paths[0]) {
-    const dir = dirnameOf(paths[0]);
+  // (saves, future imports) default there. Use the first SUCCESSFULLY
+  // READ path's dirname when possible — falling back to paths[0]
+  // promotes a directory we couldn't actually import from.
+  let workingDirPersistFailed = false;
+  if (competitionId && api.competitions?.setWorkingDir) {
+    const seedPath = (settled.find(r => r.ok) ? paths[settled.findIndex(r => r.ok)] : paths[0]) ?? null;
+    const dir = seedPath ? dirnameOf(seedPath) : null;
     if (dir) {
-      api.competitions.setWorkingDir(competitionId, dir).catch((err: unknown) => {
+      try {
+        await api.competitions.setWorkingDir(competitionId, dir);
+      } catch (err) {
+        workingDirPersistFailed = true;
         console.warn('[workingDir] persist failed:', err);
-      });
+      }
     }
   }
 
-  return files;
+  return { files, failures, cancelled: false, workingDirPersistFailed };
 }

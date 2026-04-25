@@ -359,6 +359,32 @@ function isSafeStartDir(abs) {
   return true;
 }
 
+// Single source of truth for "renderer gave us a directory string — should we
+// trust it as `defaultPath` for a dialog or persist it as workingDir?". Wraps
+// the four checks (type, length cap, UNC/device rejection, on-disk presence)
+// that were copy-pasted across handlers and easy to forget on new ones.
+const MAX_USER_PATH_LEN = 4096;
+function validateUserDir(input) {
+  if (typeof input !== 'string' || !input.trim()) return null;
+  if (input.length > MAX_USER_PATH_LEN) return null;
+  let abs;
+  try { abs = path.resolve(input); } catch { return null; }
+  if (!isSafeStartDir(abs)) return null;
+  try {
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) return null;
+  } catch { return null; }
+  return abs;
+}
+
+// Allowlist for `read-photo-file`: paths the user explicitly chose in a
+// preceding `open-photos` dialog. Without this, a compromised renderer
+// (XSS via untrusted KML, image EXIF, or Mapbox-injected content) could
+// call `readPhotoFile('C:\\Users\\…\\.ssh\\id_rsa')` and exfiltrate any
+// readable file <30 MB. Resetting on `will-navigate` and window destruction
+// ensures the allowlist can't outlive the picker context.
+const photoOpenAllowlist = new Set();
+const PHOTO_OPEN_HARD_CAP = 200;
+
 // Ensure a directory exists
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -699,20 +725,15 @@ safeHandle('competition-set-active', async (event, id) => {
 // "the working folder is the same per competition, not per app".
 safeHandle('competition-set-working-dir', async (event, id, workingDir) => {
   if (typeof id !== 'string' || !id) throw new Error('Invalid competition id');
-  if (typeof workingDir !== 'string' || !workingDir.trim()) {
+  // The renderer derives `workingDir` from `dirname(savedPath)` after
+  // every save dialog. A poisoned path (UNC, device namespace, oversized
+  // input) would round-trip back into every subsequent dialog's
+  // `defaultPath` — turning a single bad save into a persistent NTLMv2
+  // hash leak primitive on Windows. `validateUserDir` enforces the
+  // length cap, UNC rejection, and on-disk existence in one place.
+  const abs = validateUserDir(workingDir);
+  if (!abs) {
     throw new Error('Invalid working directory');
-  }
-  // Resolve to an absolute path and validate it actually exists. Persisting
-  // a stale path that was deleted/renamed produces a worse UX (dialog opens
-  // in an undefined location) than returning an error here.
-  let abs;
-  try {
-    abs = path.resolve(workingDir);
-  } catch (e) {
-    throw new Error('Invalid working directory');
-  }
-  if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
-    throw new Error('Working directory does not exist');
   }
   const index = readCompetitionsIndex();
   const target = index.competitions.find(c => c.id === id);
@@ -731,15 +752,11 @@ safeHandle('competition-get-working-dir', async (event, id) => {
   const index = readCompetitionsIndex();
   const target = index.competitions.find(c => c.id === id);
   if (!target || typeof target.workingDir !== 'string') return null;
-  // The folder may have been deleted/moved since it was set. Surface as
-  // null so callers fall through to their own defaults instead of opening
-  // a dialog at a path that vanishes underneath them.
-  try {
-    if (fs.existsSync(target.workingDir) && fs.statSync(target.workingDir).isDirectory()) {
-      return target.workingDir;
-    }
-  } catch { /* fall through */ }
-  return null;
+  // Re-validate on read-back. An older index file (written before
+  // `competition-set-working-dir` enforced UNC rejection) or a
+  // hand-edited config could otherwise still feed a poisoned path
+  // back into save dialogs.
+  return validateUserDir(target.workingDir);
 });
 
 // Set discipline for a competition
@@ -802,13 +819,10 @@ safeHandle('save-map-image', async (event, base64Data, defaultDir) => {
   if (base64Data.length > 50 * 1024 * 1024) {
     throw new Error('Image data too large');
   }
-  let startDir = null;
-  if (typeof defaultDir === 'string' && defaultDir.trim()) {
-    try {
-      const abs = path.resolve(defaultDir);
-      if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) startDir = abs;
-    } catch { /* fall through */ }
-  }
+  // Apply the same UNC + length + existence checks as `save-kml`. A
+  // renderer-poisoned `defaultDir` could otherwise pre-point the dialog
+  // at an attacker-controlled SMB share (NTLMv2 hash leak on Windows).
+  let startDir = validateUserDir(defaultDir);
   if (!startDir) startDir = app.getPath('documents');
   const fileName = `map-print-${new Date().toISOString().slice(0, 10)}.png`;
   const { filePath } = await dialog.showSaveDialog(mainWindow, {
@@ -826,15 +840,13 @@ safeHandle('save-map-image', async (event, base64Data, defaultDir) => {
 // every export AND import). The renderer only gets file paths back; it
 // then asks `read-photo-file` to load each one as base64 so it can
 // reconstruct File objects for the existing onFilesDropped pipeline.
+//
+// Picked paths are added to `photoOpenAllowlist` and ALSO returned. The
+// allowlist gates the follow-up `read-photo-file` calls so a compromised
+// renderer can't ask for arbitrary files outside what the user just
+// explicitly selected.
 safeHandle('open-photos', async (event, defaultDir, maxFiles) => {
-  let startDir = null;
-  if (typeof defaultDir === 'string' && defaultDir.trim()) {
-    try {
-      const abs = path.resolve(defaultDir);
-      if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) startDir = abs;
-    } catch { /* fall through */ }
-  }
-  if (!startDir) startDir = app.getPath('pictures');
+  const startDir = validateUserDir(defaultDir) || app.getPath('pictures');
   const result = await dialog.showOpenDialog(mainWindow, {
     defaultPath: startDir,
     filters: [
@@ -843,32 +855,64 @@ safeHandle('open-photos', async (event, defaultDir, maxFiles) => {
     properties: ['openFile', 'multiSelections'],
   });
   if (result.canceled || !result.filePaths || !result.filePaths.length) return [];
-  // Cap at the renderer-provided maxFiles (slot capacity). Defensive — the
-  // dialog itself doesn't enforce it.
-  const cap = (typeof maxFiles === 'number' && maxFiles > 0) ? maxFiles : result.filePaths.length;
-  return result.filePaths.slice(0, cap);
+  // Hard server-side ceiling stops a renderer-supplied `maxFiles` of
+  // Number.MAX_SAFE_INTEGER from causing the renderer to OOM trying to
+  // base64-decode hundreds of 30 MB files in a row. Renderer-side cap is
+  // still applied first when valid (slot capacity).
+  const requested = (typeof maxFiles === 'number' && maxFiles > 0)
+    ? Math.min(maxFiles, PHOTO_OPEN_HARD_CAP)
+    : PHOTO_OPEN_HARD_CAP;
+  const picked = result.filePaths.slice(0, requested);
+  // Each `open-photos` call replaces the allowlist with its own picks.
+  // Renderer pattern is `openPhotos() → await Promise.all(readPhotoFile…)`,
+  // so the previous batch's reads are always finished before a new
+  // open-photos is initiated. This keeps the allowlist bounded (no
+  // unbounded growth across a long session) and ensures the renderer
+  // can't replay paths from an older batch after a fresh dialog ran.
+  photoOpenAllowlist.clear();
+  for (const p of picked) {
+    try { photoOpenAllowlist.add(path.resolve(p)); } catch { /* ignore */ }
+  }
+  return picked;
 });
 
 // Read a single photo file from disk and return base64 + metadata so the
-// renderer can construct a File object. Path is constrained to files the
-// user already saw in the open dialog — we still re-validate against
-// existence and size to keep the IPC honest.
+// renderer can construct a File object. Three layers of validation:
+// 1) The path must be in `photoOpenAllowlist` (set by a prior `open-photos`).
+// 2) `lstat` rejects symlinks so a malicious symlink under the user's
+//    Pictures folder can't redirect to ~/.ssh/id_rsa.
+// 3) Extension is whitelisted explicitly — the dialog filter is UI only;
+//    on Windows users can type `*.*` and pick anything.
+const ALLOWED_PHOTO_EXTS = new Set(['.jpg', '.jpeg', '.png']);
 safeHandle('read-photo-file', async (event, filePath) => {
   if (typeof filePath !== 'string' || !filePath) {
     throw new Error('Invalid file path');
   }
-  const abs = path.resolve(filePath);
-  if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
-    throw new Error('File not found');
+  if (filePath.length > MAX_USER_PATH_LEN) {
+    throw new Error('Invalid file path');
   }
-  const stat = fs.statSync(abs);
+  let abs;
+  try { abs = path.resolve(filePath); } catch { throw new Error('Invalid file path'); }
+  if (!photoOpenAllowlist.has(abs)) {
+    throw new Error('File not in allowlist');
+  }
+  // `lstat` does NOT follow symlinks, so a symlink targeting a sensitive
+  // file outside the allowlist is rejected here even if its parent dir
+  // was legitimately picked. `readFileSync` later WOULD follow the link.
+  let lst;
+  try { lst = fs.lstatSync(abs); } catch { throw new Error('File not found'); }
+  if (lst.isSymbolicLink()) throw new Error('Symlinks not allowed');
+  if (!lst.isFile()) throw new Error('File not found');
   // 30 MB cap — same order of magnitude as the 20 MB renderer-side check
   // in `isValidImageFile`, with a little headroom for the base64 round-trip.
-  if (stat.size > 30 * 1024 * 1024) {
+  if (lst.size > 30 * 1024 * 1024) {
     throw new Error('File too large');
   }
-  const buffer = fs.readFileSync(abs);
   const ext = path.extname(abs).toLowerCase();
+  if (!ALLOWED_PHOTO_EXTS.has(ext)) {
+    throw new Error('Unsupported image type');
+  }
+  const buffer = fs.readFileSync(abs);
   const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
   return {
     name: path.basename(abs),
@@ -892,13 +936,8 @@ safeHandle('save-pdf', async (event, base64Data, fileName, defaultDir) => {
   const safeName = (typeof fileName === 'string' && fileName.trim())
     ? sanitizeFileName(fileName).replace(/\.pdf$/i, '') + '.pdf'
     : `photo-sheet-${new Date().toISOString().slice(0, 10)}.pdf`;
-  let startDir = null;
-  if (typeof defaultDir === 'string' && defaultDir.trim()) {
-    try {
-      const abs = path.resolve(defaultDir);
-      if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) startDir = abs;
-    } catch { /* fall through */ }
-  }
+  // Same UNC + length validation as save-kml / save-map-image.
+  let startDir = validateUserDir(defaultDir);
   if (!startDir) startDir = app.getPath('documents');
   const { filePath } = await dialog.showSaveDialog(mainWindow, {
     defaultPath: path.join(startDir, safeName),
@@ -1389,6 +1428,11 @@ app.on('web-contents-created', (event, contents) => {
 
     // Allow navigation within our app protocol
     if (parsedUrl.protocol === 'app:') {
+      // The photo-open allowlist is scoped to the current renderer
+      // context — clear it on navigation so paths picked under one app
+      // (e.g. photo-helper) can't be replayed by `read-photo-file`
+      // after the user navigates to a different app under app://.
+      photoOpenAllowlist.clear();
       return;
     }
 

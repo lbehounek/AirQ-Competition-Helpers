@@ -15,7 +15,7 @@ import {
 import { isValidImageFile } from '../utils/imageProcessing';
 import { useI18n } from '../contexts/I18nContext';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
-import { isElectronPhotoImportAvailable, openPhotosViaElectron } from '../utils/electronPhotoImport';
+import { useElectronPhotoImport } from '../hooks/useElectronPhotoImport';
 
 interface GridSizedDropZoneProps {
   onFilesDropped: (files: File[]) => void;
@@ -35,7 +35,9 @@ export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
   const { t } = useI18n();
   const { currentRatio } = useAspectRatio();
 
-  const useElectronDialog = isElectronPhotoImportAvailable();
+  const electronImport = useElectronPhotoImport();
+  const useElectronDialog = electronImport.isAvailable;
+  const isBusy = loading || electronImport.isImporting;
 
   const {
     getRootProps,
@@ -50,7 +52,7 @@ export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
     },
     maxFiles: maxPhotos,
     maxSize: 20 * 1024 * 1024, // 20MB
-    disabled: loading,
+    disabled: isBusy,
     noClick: useElectronDialog,
     onDrop: (acceptedFiles, rejectedFiles) => {
       // Filter valid files
@@ -70,14 +72,8 @@ export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
   });
 
   const handleElectronClick = async () => {
-    if (loading) return;
-    try {
-      const files = await openPhotosViaElectron(maxPhotos);
-      const validFiles = files.filter(isValidImageFile);
-      if (validFiles.length > 0) onFilesDropped(validFiles);
-    } catch (err) {
-      console.error('[photo import] Electron dialog failed:', err);
-    }
+    if (isBusy) return;
+    await electronImport.pickPhotos(maxPhotos, onFilesDropped);
   };
 
   // Determine styling based on state
@@ -166,6 +162,18 @@ export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
+        </Alert>
+      )}
+
+      {/* Electron-import error: dialog failed, partial read failure, or
+          working-folder persistence failure. */}
+      {electronImport.importError && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2, cursor: 'pointer' }}
+          onClose={electronImport.clearImportError}
+        >
+          {electronImport.importError}
         </Alert>
       )}
 

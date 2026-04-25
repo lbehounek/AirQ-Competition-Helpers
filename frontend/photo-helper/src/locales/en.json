@@ -142,7 +142,11 @@
     "slotsAvailable": "{{count}} {{slotText}} available",
     "slot": "slot",
     "slots": "slots",
-    "addTenthPhoto": "Add 10th photo"
+    "addTenthPhoto": "Add 10th photo",
+    "electronDialogFailed": "Could not open the photo picker. Try again, or drag photos from File Explorer.",
+    "allFilesFailed": "None of the {{count}} selected photos could be read. Check the files exist and are JPEG/PNG under 30 MB.",
+    "partialImport": "Imported {{success}} of {{total}} photos. {{failed}} could not be read (corrupted, too large, or not JPEG/PNG).",
+    "workingDirPersistFailed": "Photos imported, but the working folder could not be saved for next time."
   },
   "photo": {
     "clickToEdit": "Click to Edit",
