@@ -249,11 +249,14 @@
   },
   "errors": {
     "sessionNotFound": "Relace nenalezena",
-    "uploadFailed": "Nahrávání selhalo", 
+    "uploadFailed": "Nahrávání selhalo",
     "pdfGenerationFailed": "Vytvoření PDF selhalo",
     "photoUpdateFailed": "Nepodařilo se aktualizovat fotografii",
     "photoRemovalFailed": "Nepodařilo se odebrat fotografii",
-    "shuffleFailed": "Nepodařilo se zamíchat fotografie"
+    "shuffleFailed": "Nepodařilo se zamíchat fotografie",
+    "noActiveCompetition": "Není zvolena žádná aktivní soutěž, do které by šlo přidat fotografie.",
+    "photoSetFull": "Sada {{set}} je plná. Nejprve odeberte fotografii.",
+    "photoSetCapacityRemaining": "Sada {{set}} přijme už jen {{count}} dalších fotografií."
   },
   "common": {
     "loading": "Načítání...",

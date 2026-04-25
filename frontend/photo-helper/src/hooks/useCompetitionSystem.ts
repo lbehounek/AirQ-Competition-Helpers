@@ -403,7 +403,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   const addPhotosToSet = useCallback(async (files: File[], setKey: 'set1' | 'set2') => {
     if (!currentCompetition?.session) {
       console.error('No current competition or session available');
-      setError('No active competition to add photos to');
+      setError(t('errors.noActiveCompetition'));
       return;
     }
 
@@ -420,9 +420,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       const current = sess.sets?.[setKey]?.photos?.length ?? 0;
       if (current + files.length > ABSOLUTE_MAX) {
         const allowed = Math.max(0, ABSOLUTE_MAX - current);
+        const setLabel = setKey === 'set1' ? '1' : '2';
         setError(allowed === 0
-          ? `Set ${setKey === 'set1' ? '1' : '2'} is full. Remove a photo first.`
-          : `Set ${setKey === 'set1' ? '1' : '2'} can take only ${allowed} more photo(s).`);
+          ? t('errors.photoSetFull', { set: setLabel })
+          : t('errors.photoSetCapacityRemaining', { set: setLabel, count: allowed }));
         return;
       }
     }
@@ -478,7 +479,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         }
       };
     }, { updatePhotos: true });
-  }, [updateCurrentCompetition, currentCompetition]);
+  }, [updateCurrentCompetition, currentCompetition, t]);
 
   const removePhoto = useCallback(async (setKey: 'set1' | 'set2', photoId: string) => {
     await updateCurrentCompetition(session => {
