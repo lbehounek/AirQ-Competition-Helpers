@@ -10,6 +10,101 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.8.0] - 2026-04-25
+
+This release consolidates the silently-tagged `desktop-v2.7.0`–`v2.7.5`
+range (no per-tag CHANGELOG entries were written). Major themes:
+**security hardening of the Electron main process**, **persistent
+per-competition working folders**, and **round-1/round-2 user
+feedback**.
+
+### Security
+- **Photo-import IPC hardening (defence-in-depth):** every renderer-supplied
+  path is now mediated through a per-window `photoOpenAllowlist` populated
+  by `open-photos` and gated in `read-photo-file`. Closes a renderer-XSS-
+  to-arbitrary-file-read primitive (≤30 MB) that the prior comment
+  *claimed* was protected but wasn't.
+  - `lstatSync` + `isSymbolicLink()` rejection prevents symlink redirection
+    from a legitimately-picked file under `~/Pictures` to e.g.
+    `~/.ssh/id_rsa`.
+  - Explicit `.jpg`/`.jpeg`/`.png` extension allowlist closes the
+    Windows `*.*` filter bypass (renderer could otherwise label arbitrary
+    bytes as `image/jpeg`).
+  - Hard server-side cap of 200 photos per `open-photos` call stops a
+    `Number.MAX_SAFE_INTEGER` `maxFiles` from base64-OOM'ing the renderer.
+  - Single `validateUserDir(input)` helper now applied uniformly to
+    `competition-set-working-dir`, `competition-get-working-dir`,
+    `open-photos`, `save-map-image`, `save-pdf`, **and** `save-kml`
+    (4096-char length cap, UNC/device-namespace rejection, on-disk
+    existence). Previously only `save-kml` had the UNC guard, leaving the
+    other handlers exposed to NTLMv2 hash-leak primitives via poisoned
+    `defaultPath`.
+  - Allowlist Set keys normalized via NFC + lowercase-on-Windows so
+    case- and Unicode-form variations of the same FS-equivalent path
+    collide on lookup (eliminates self-DoS false-negatives).
+  - `safeHandle` IPC sender gate tightened: `data:text/html` callers must
+    now be in a `trustedDataWebContentsIds` Set populated by the legitimate
+    Mapbox/Mapy token dialogs and cleared on `closed`. URL-prefix matching
+    alone is no longer sufficient.
+  - `setWindowOpenHandler` flipped to default-deny (only http(s) routes
+    to `shell.openExternal`). (PR #50, plus follow-up review fixes)
+- **Dependencies:** Bumped `@xmldom/xmldom` 0.8.12 → 0.8.13 (closes
+  [GHSA-j759-j44w-7fr8](https://github.com/advisories/GHSA-j759-j44w-7fr8),
+  [GHSA-x6wf-f3px-wcqx](https://github.com/advisories/GHSA-x6wf-f3px-wcqx),
+  [GHSA-f6ww-3ggp-fr8h](https://github.com/advisories/GHSA-f6ww-3ggp-fr8h),
+  [GHSA-2v35-w6hq-6mfw](https://github.com/advisories/GHSA-2v35-w6hq-6mfw))
+  and `postcss` 8.5.8 → 8.5.10 (closes
+  [GHSA-qx2v-qp2m-jg93](https://github.com/advisories/GHSA-qx2v-qp2m-jg93)).
+  Both are dev-only / build-time, but the previous workspace-root
+  override `@xmldom/xmldom: "^0.8.12"` was actively pinning the
+  resolution inside the vulnerable range — bumped to exact `"0.8.13"`
+  per the post-axios 2026-03-31 exact-pin rule. (PR #51)
+
+### Added
+- **Photo Helper:** Persistent per-competition working folder across all
+  open/save dialogs. The folder the user picks in *any* dialog (KML
+  import, PNG save, PDF save, photo open) is promoted to the
+  competition's working dir, and every subsequent dialog defaults
+  there — so a user can steer the persistent default by simply
+  navigating in any dialog. (PR #48)
+- **Photo Helper:** Per-file failure surfacing on photo import. The
+  `openPhotosViaElectron` flow now returns
+  `{ files, failures, cancelled, workingDirPersistFailed }`; the new
+  `useElectronPhotoImport` React hook (shared by `DropZone`,
+  `GridSizedDropZone`, `PhotoGridSlotEmpty`) renders distinct user-
+  visible Alerts for dialog failure, partial-read failure (e.g.
+  4-of-9 photos couldn't be read), and working-folder persistence
+  regression. Previously all three failure modes were silently swallowed
+  into `console.error`. (PR #50)
+- **Photo Helper / Map Corridors:** Round-1 and round-2 user feedback
+  changes — KML signs pin, PDF header improvements, export tweaks,
+  i18n strings, plus dropzone disable when an import is in flight
+  (cross-component shared via `useSyncExternalStore` to prevent
+  concurrent slot-empty instances racing the photo-open allowlist).
+  (PR #46, PR #47)
+
+### Fixed
+- **Photo Helper:** Photo-set overflow error messages were
+  English-only — translated. Czech with proper diacritics. (PR #49)
+- **Photo Helper:** Parallelized per-file `readPhotoFile` calls
+  (`Promise.all`) so a 9-photo import overlaps the renderer-side
+  base64 decode with main-side reads — shaves several seconds off
+  large imports. (PR #50)
+- **Internal:** Three inline copies of dirname extraction (in
+  `App.tsx`, `pdfGenerator.ts`, `electronPhotoImport.ts`) disagreed
+  on edge cases — drive-letter root (`C:\file.txt`), POSIX root
+  (`/file.kml`), UNC, mixed/trailing separators. Consolidated into
+  a single `dirnameOf` in `@airq/shared-storage` with 15 unit tests
+  pinning every previously-divergent edge case. (PR #50)
+
+### Changed
+- **Repo hygiene:** `.gitignore` extended to cover Claude Code
+  scheduled-tasks lock files (`.claude/*.lock`), local PR diff
+  dumps (`/pr*.diff`), and the root-level `/public/` static deploy
+  bundle. None of these had ever been intended for the repo; they
+  were just cluttering `git status` after every review session.
+  (PR #52)
+
 ## [2.6.2] - 2026-04-18
 
 ### Security
