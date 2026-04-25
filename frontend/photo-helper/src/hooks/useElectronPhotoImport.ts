@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 import {
   isElectronPhotoImportAvailable,
   openPhotosViaElectron,
@@ -22,13 +22,43 @@ import { useI18n } from '../contexts/I18nContext';
  * - `setWorkingDir` rejects (disk full, EACCES) → toast-style notice
  *   that the persistence side regressed; the import itself succeeded
  */
+
+// `isImporting` MUST be shared across every component that mounts this
+// hook. PhotoGridSlotEmpty renders one hook instance per empty slot, so
+// per-component state would let slot A's still-pending readPhotoFile
+// reads race slot B's open-photos — main would clear `photoOpenAllowlist`
+// and slot A's reads would silently land in `failures`. A module-level
+// boolean exposed via useSyncExternalStore disables every dropzone the
+// moment any one of them starts importing, restoring the documented
+// "previous batch's reads always finish first" invariant.
+let globalIsImporting = false;
+const importingSubscribers = new Set<() => void>();
+
+function setGlobalIsImporting(v: boolean): void {
+  if (globalIsImporting === v) return;
+  globalIsImporting = v;
+  importingSubscribers.forEach(s => s());
+}
+
+function subscribeImporting(cb: () => void): () => void {
+  importingSubscribers.add(cb);
+  return () => { importingSubscribers.delete(cb); };
+}
+
+function getImportingSnapshot(): boolean {
+  return globalIsImporting;
+}
+
 export function useElectronPhotoImport() {
   const { t } = useI18n();
   const [importError, setImportError] = useState<string | null>(null);
-  // True while the dialog is open and files are being read. Lets
-  // dropzones disable themselves so a second click doesn't fire a
-  // parallel batch (which would race the allowlist replacement in main).
-  const [isImporting, setIsImporting] = useState(false);
+  // Subscribe to the module-level singleton so every dropzone re-renders
+  // (and disables itself) when another instance starts importing.
+  const isImporting = useSyncExternalStore(
+    subscribeImporting,
+    getImportingSnapshot,
+    getImportingSnapshot,
+  );
 
   const isAvailable = isElectronPhotoImportAvailable();
 
@@ -36,9 +66,11 @@ export function useElectronPhotoImport() {
 
   const pickPhotos = useCallback(
     async (maxFiles: number, onFiles: (files: File[]) => void) => {
-      if (!isAvailable || isImporting) return;
+      // Read the live singleton, not the rendered snapshot — between
+      // render and click the value can change without us re-rendering.
+      if (!isAvailable || globalIsImporting) return;
       setImportError(null);
-      setIsImporting(true);
+      setGlobalIsImporting(true);
       try {
         const result = await openPhotosViaElectron(maxFiles);
         if (result.failures.length) {
@@ -55,10 +87,10 @@ export function useElectronPhotoImport() {
         console.error('[photo import] dialog failed:', err);
         setImportError(t('upload.electronDialogFailed'));
       } finally {
-        setIsImporting(false);
+        setGlobalIsImporting(false);
       }
     },
-    [isAvailable, isImporting, t],
+    [isAvailable, t],
   );
 
   return { isAvailable, isImporting, importError, clearImportError, pickPhotos };

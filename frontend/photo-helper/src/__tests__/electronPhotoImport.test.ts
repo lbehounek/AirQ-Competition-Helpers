@@ -199,15 +199,54 @@ describe('openPhotosViaElectron', () => {
   });
 
   it('treats a null/empty readPhotoFile response as a failure', async () => {
+    const setWorkingDir = vi.fn(async () => undefined);
     setElectronAPI({
       openPhotos: vi.fn(async () => ['/x.jpg']),
       readPhotoFile: vi.fn(async () => null),
-      competitions: { setWorkingDir: vi.fn(async () => undefined) },
+      competitions: { setWorkingDir },
     });
     const result = await openPhotosViaElectron(9);
     expect(result.files).toEqual([]);
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0].path).toBe('/x.jpg');
+    // No successful reads → don't persist a workingDir we couldn't import from.
+    expect(setWorkingDir).not.toHaveBeenCalled();
+  });
+
+  it('does NOT persist workingDir when ALL reads fail', async () => {
+    // Persisting a directory we couldn't actually import from would
+    // mislead the next dialog into a folder the user is already
+    // having trouble with.
+    const setWorkingDir = vi.fn(async () => undefined);
+    setElectronAPI({
+      openPhotos: vi.fn(async () => ['/bad/a.jpg', '/bad/b.jpg']),
+      readPhotoFile: vi.fn(async () => { throw new Error('EACCES'); }),
+      competitions: { setWorkingDir },
+    });
+
+    const result = await openPhotosViaElectron(9);
+
+    expect(result.files).toEqual([]);
+    expect(result.failures).toHaveLength(2);
+    expect(setWorkingDir).not.toHaveBeenCalled();
+  });
+
+  it('seeds workingDir from the FIRST successful read, skipping a failed leading file', async () => {
+    // Picks: [bad, good1, good2]. First successful path is good1 — its
+    // dirname is what we persist, NOT the failed leading file's dirname.
+    const setWorkingDir = vi.fn(async () => undefined);
+    setElectronAPI({
+      openPhotos: vi.fn(async () => ['/bad/a.jpg', '/good/b.jpg', '/good/c.jpg']),
+      readPhotoFile: vi.fn(async (p: string) => {
+        if (p === '/bad/a.jpg') throw new Error('EACCES');
+        return { name: p.split('/').pop()!, mimeType: 'image/jpeg', base64: btoa('x') };
+      }),
+      competitions: { setWorkingDir },
+    });
+
+    await openPhotosViaElectron(9);
+
+    expect(setWorkingDir).toHaveBeenCalledWith('test-comp', '/good');
   });
 
   it('flags workingDirPersistFailed when setWorkingDir rejects', async () => {

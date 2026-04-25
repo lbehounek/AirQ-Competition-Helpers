@@ -135,12 +135,14 @@ export async function openPhotosViaElectron(maxFiles?: number): Promise<PhotoImp
   }
 
   // Promote the chosen folder to the working dir so subsequent dialogs
-  // (saves, future imports) default there. Use the first SUCCESSFULLY
-  // READ path's dirname when possible — falling back to paths[0]
-  // promotes a directory we couldn't actually import from.
+  // (saves, future imports) default there. Only seed from a path we
+  // actually managed to read — promoting a directory we couldn't import
+  // from would mislead the next dialog into a folder the user is already
+  // having trouble with.
   let workingDirPersistFailed = false;
   if (competitionId && api.competitions?.setWorkingDir) {
-    const seedPath = (settled.find(r => r.ok) ? paths[settled.findIndex(r => r.ok)] : paths[0]) ?? null;
+    const firstOkIdx = settled.findIndex(r => r.ok);
+    const seedPath = firstOkIdx >= 0 ? paths[firstOkIdx] : null;
     const dir = seedPath ? dirnameOf(seedPath) : null;
     if (dir) {
       try {

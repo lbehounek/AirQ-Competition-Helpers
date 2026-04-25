@@ -208,13 +208,16 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   }
 
-  // Handle external links - open in default browser
+  // Handle external links - open in default browser. Default-deny: only
+  // http(s) is routed to the OS browser; data:/file:/blob: are blocked
+  // outright so a future regression that allows renderer-initiated
+  // window.open can't smuggle a preload-bearing data: window past the
+  // safeHandle URL gate.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       shell.openExternal(url);
-      return { action: 'deny' };
     }
-    return { action: 'allow' };
+    return { action: 'deny' };
   });
 
   // Emitted when the window is closed
@@ -325,11 +328,25 @@ function sanitizeFileName(input) {
 // `setWindowOpenHandler` blocks http(s) window.open from the renderer,
 // so only frames we control can reach these checks. A compromised
 // renderer cannot conjure a fresh data: or app: frame.
+//
+// `data:text/html` is only legitimately used by the Mapbox/Mapy token
+// dialogs created via `new BrowserWindow` in the main process. Those
+// register their `webContents.id` in `trustedDataWebContentsIds` for
+// the lifetime of the window — we gate any data: sender on membership
+// rather than a raw URL prefix so a future regression that opens an
+// unrelated `data:` window can't silently widen this gate.
+const trustedDataWebContentsIds = new Set();
+
 function isTrustedSender(event) {
   try {
-    const url = event && event.senderFrame && event.senderFrame.url;
-    if (typeof url !== 'string') return false;
-    return url.startsWith('app://') || url.startsWith('data:text/html');
+    const senderUrl = event && event.senderFrame && event.senderFrame.url;
+    if (typeof senderUrl !== 'string') return false;
+    if (senderUrl.startsWith('app://')) return true;
+    if (senderUrl.startsWith('data:text/html')) {
+      const senderId = event.sender && event.sender.id;
+      return typeof senderId === 'number' && trustedDataWebContentsIds.has(senderId);
+    }
+    return false;
   } catch {
     return false;
   }
@@ -384,6 +401,18 @@ function validateUserDir(input) {
 // ensures the allowlist can't outlive the picker context.
 const photoOpenAllowlist = new Set();
 const PHOTO_OPEN_HARD_CAP = 200;
+
+// Set keys are byte-equal compared, but NTFS is case-insensitive and
+// filenames with combining marks can round-trip through Electron in
+// either NFC or NFD. Without a normalization step, the picker stores
+// `C:\Photos\Img.JPG` while a later `read-photo-file('c:\\photos\\img.jpg')`
+// would falsely miss — a self-DoS, not an exfil bypass, but still a
+// silently-failing import. Apply NFC + lowercase-on-Windows uniformly
+// to both `add` and `has` so the keys collide for any FS-equivalent form.
+function normalizePathKey(absPath) {
+  const r = absPath.normalize('NFC');
+  return process.platform === 'win32' ? r.toLowerCase() : r;
+}
 
 // Ensure a directory exists
 function ensureDir(dirPath) {
@@ -871,7 +900,7 @@ safeHandle('open-photos', async (event, defaultDir, maxFiles) => {
   // can't replay paths from an older batch after a fresh dialog ran.
   photoOpenAllowlist.clear();
   for (const p of picked) {
-    try { photoOpenAllowlist.add(path.resolve(p)); } catch { /* ignore */ }
+    try { photoOpenAllowlist.add(normalizePathKey(path.resolve(p))); } catch { /* ignore */ }
   }
   return picked;
 });
@@ -893,7 +922,7 @@ safeHandle('read-photo-file', async (event, filePath) => {
   }
   let abs;
   try { abs = path.resolve(filePath); } catch { throw new Error('Invalid file path'); }
-  if (!photoOpenAllowlist.has(abs)) {
+  if (!photoOpenAllowlist.has(normalizePathKey(abs))) {
     throw new Error('File not in allowlist');
   }
   // `lstat` does NOT follow symlinks, so a symlink targeting a sensitive
@@ -964,19 +993,12 @@ safeHandle('save-kml', async (event, kmlText, fileName, defaultDir, competitionI
     ? sanitizeFileName(fileName).replace(/\.kml$/i, '') + '.kml'
     : `corridors_export_${new Date().toISOString().slice(0, 10)}.kml`;
 
-  let startDir = null;
-  // 1) User-supplied directory (the folder they imported the KML from).
-  //    Length-clamp before `path.resolve`/`statSync` so a pathological input
-  //    can't stall the main process, and reject UNC/device-namespace paths
-  //    that bypass drive sandboxing.
-  if (typeof defaultDir === 'string' && defaultDir.trim() && defaultDir.length <= 4096) {
-    try {
-      const abs = path.resolve(defaultDir);
-      if (isSafeStartDir(abs) && fs.existsSync(abs) && fs.statSync(abs).isDirectory()) {
-        startDir = abs;
-      }
-    } catch { /* ignore and fall through */ }
-  }
+  // 1) User-supplied directory (the folder they imported the KML from) —
+  //    `validateUserDir` enforces type, length cap, UNC/device rejection,
+  //    and on-disk existence in one place, shared with every other
+  //    path-accepting handler so a future tweak to the rules can't miss
+  //    a caller.
+  let startDir = validateUserDir(defaultDir);
   // 2) Competition folder fallback
   if (!startDir && typeof competitionId === 'string' && competitionId.trim()) {
     const compDir = path.join(getPhotoSessionsPath(), 'competitions', sanitizeFileName(competitionId));
@@ -1079,6 +1101,12 @@ async function showMapboxTokenDialog() {
     </html>
   `;
 
+  // Track this window's webContents.id so the IPC sender gate accepts
+  // its `setConfig` calls without trusting *any* `data:text/html` URL.
+  const mapboxId = inputWindow.webContents.id;
+  trustedDataWebContentsIds.add(mapboxId);
+  inputWindow.on('closed', () => { trustedDataWebContentsIds.delete(mapboxId); });
+
   inputWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
   inputWindow.setMenu(null);
 }
@@ -1170,6 +1198,10 @@ async function showMapyTokenDialog() {
     </body>
     </html>
   `;
+
+  const mapyId = inputWindow.webContents.id;
+  trustedDataWebContentsIds.add(mapyId);
+  inputWindow.on('closed', () => { trustedDataWebContentsIds.delete(mapyId); });
 
   inputWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
   inputWindow.setMenu(null);
