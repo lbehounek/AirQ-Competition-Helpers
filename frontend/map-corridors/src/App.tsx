@@ -325,6 +325,24 @@ function App() {
       .catch(() => { /* non-fatal */ })
   }, [competitionId])
 
+  // After any save dialog returns a path, promote the chosen folder to the
+  // competition's working dir. Lets the user steer the default by simply
+  // navigating in the dialog — feedback 2026-04-25 ("until navigated to
+  // other folder, from that moment new folder persists").
+  const persistChosenDirAsWorking = useCallback((savedPath: string | null) => {
+    if (!savedPath || !competitionId) return
+    const sepIdx = Math.max(savedPath.lastIndexOf('\\'), savedPath.lastIndexOf('/'))
+    if (sepIdx <= 0) return
+    const dir = savedPath.slice(0, sepIdx)
+    if (!dir) return
+    setImportedKmlDir(dir)
+    const api = (window as any)?.electronAPI
+    if (api?.competitions?.setWorkingDir) {
+      api.competitions.setWorkingDir(competitionId, dir)
+        .catch((err: unknown) => console.warn('[workingDir] persist failed:', err))
+    }
+  }, [competitionId])
+
   const onFiles = useCallback(async (files: File[]) => {
     const file = files[0]
     if (!file) return
@@ -526,7 +544,8 @@ function App() {
         // (disk full, 50 MB cap, bad IPC) — surface it to the user instead
         // of silently falling through to a browser download, which would
         // land in the default Downloads folder behind the user's back.
-        await api.saveKml(mergedKml, 'corridors_export.kml', importedKmlDir || undefined, competitionId || undefined)
+        const savedPath: string | null = await api.saveKml(mergedKml, 'corridors_export.kml', importedKmlDir || undefined, competitionId || undefined)
+        persistChosenDirAsWorking(savedPath)
       } catch (err) {
         console.error('electronAPI.saveKml failed:', err)
         alert(err instanceof Error ? err.message : t('errors.exportFailed'))
@@ -534,7 +553,7 @@ function App() {
       return
     }
     downloadKML(mergedKml, 'corridors_export.kml')
-  }, [markers, groundMarkers, loadOriginalKmlText, t, competitionId, importedKmlDir])
+  }, [markers, groundMarkers, loadOriginalKmlText, t, competitionId, importedKmlDir, persistChosenDirAsWorking])
 
   const handlePrintMap = useCallback(async () => {
     if (!mapRef.current) return
@@ -553,7 +572,8 @@ function App() {
           reader.onerror = () => reject(reader.error)
           reader.readAsDataURL(blob)
         })
-        await electronAPI.saveMapImage(base64, importedKmlDir || undefined)
+        const savedPath: string | null = await electronAPI.saveMapImage(base64, importedKmlDir || undefined)
+        persistChosenDirAsWorking(savedPath)
       } else {
         // Browser: download via anchor
         const url = URL.createObjectURL(blob)
@@ -575,7 +595,7 @@ function App() {
       console.error('Map print failed:', err)
       alert(err instanceof Error ? err.message : t('errors.printFailed'))
     }
-  }, [t, importedKmlDir])
+  }, [t, importedKmlDir, persistChosenDirAsWorking])
 
   // Drag source for placing photo markers
   const onDragStartMarker = useCallback((e: React.DragEvent) => {

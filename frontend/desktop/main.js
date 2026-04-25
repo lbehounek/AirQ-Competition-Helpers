@@ -821,6 +821,62 @@ safeHandle('save-map-image', async (event, base64Data, defaultDir) => {
   return filePath;
 });
 
+// Open one or more photo files via native dialog. Defaults to the
+// competition's working folder (feedback 2026-04-25 — same default for
+// every export AND import). The renderer only gets file paths back; it
+// then asks `read-photo-file` to load each one as base64 so it can
+// reconstruct File objects for the existing onFilesDropped pipeline.
+safeHandle('open-photos', async (event, defaultDir, maxFiles) => {
+  let startDir = null;
+  if (typeof defaultDir === 'string' && defaultDir.trim()) {
+    try {
+      const abs = path.resolve(defaultDir);
+      if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) startDir = abs;
+    } catch { /* fall through */ }
+  }
+  if (!startDir) startDir = app.getPath('pictures');
+  const result = await dialog.showOpenDialog(mainWindow, {
+    defaultPath: startDir,
+    filters: [
+      { name: 'Images', extensions: ['jpg', 'jpeg', 'png'] },
+    ],
+    properties: ['openFile', 'multiSelections'],
+  });
+  if (result.canceled || !result.filePaths || !result.filePaths.length) return [];
+  // Cap at the renderer-provided maxFiles (slot capacity). Defensive — the
+  // dialog itself doesn't enforce it.
+  const cap = (typeof maxFiles === 'number' && maxFiles > 0) ? maxFiles : result.filePaths.length;
+  return result.filePaths.slice(0, cap);
+});
+
+// Read a single photo file from disk and return base64 + metadata so the
+// renderer can construct a File object. Path is constrained to files the
+// user already saw in the open dialog — we still re-validate against
+// existence and size to keep the IPC honest.
+safeHandle('read-photo-file', async (event, filePath) => {
+  if (typeof filePath !== 'string' || !filePath) {
+    throw new Error('Invalid file path');
+  }
+  const abs = path.resolve(filePath);
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+    throw new Error('File not found');
+  }
+  const stat = fs.statSync(abs);
+  // 30 MB cap — same order of magnitude as the 20 MB renderer-side check
+  // in `isValidImageFile`, with a little headroom for the base64 round-trip.
+  if (stat.size > 30 * 1024 * 1024) {
+    throw new Error('File too large');
+  }
+  const buffer = fs.readFileSync(abs);
+  const ext = path.extname(abs).toLowerCase();
+  const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+  return {
+    name: path.basename(abs),
+    mimeType,
+    base64: buffer.toString('base64'),
+  };
+});
+
 // Save a PDF (base64) via native save dialog. Defaults to the
 // competition's working directory so photo-sheet PDFs land beside the
 // rest of the user's project (feedback 2026-04-25).

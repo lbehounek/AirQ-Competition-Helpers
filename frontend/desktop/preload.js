@@ -46,6 +46,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   savePdf: (base64Data, fileName, defaultDir) =>
     ipcRenderer.invoke('save-pdf', base64Data, fileName, defaultDir),
 
+  // Photo import via native open dialog. Returns the list of file paths
+  // the user picked (capped at maxFiles). Renderer then calls
+  // `readPhotoFile` for each path to reconstruct File objects.
+  openPhotos: (defaultDir, maxFiles) =>
+    ipcRenderer.invoke('open-photos', defaultDir, maxFiles),
+  readPhotoFile: (filePath) => ipcRenderer.invoke('read-photo-file', filePath),
+
   // Save KML text via native save dialog. The renderer passes the directory
   // the source KML was imported from (see `getPathForFile`) so the export
   // dialog lands in the user's own project folder (feedback 2026-04-23).

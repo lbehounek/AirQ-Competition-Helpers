@@ -15,6 +15,7 @@ import {
 import { isValidImageFile } from '../utils/imageProcessing';
 import { useI18n } from '../contexts/I18nContext';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
+import { isElectronPhotoImportAvailable, openPhotosViaElectron } from '../utils/electronPhotoImport';
 
 interface GridSizedDropZoneProps {
   onFilesDropped: (files: File[]) => void;
@@ -34,6 +35,8 @@ export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
   const { t } = useI18n();
   const { currentRatio } = useAspectRatio();
 
+  const useElectronDialog = isElectronPhotoImportAvailable();
+
   const {
     getRootProps,
     getInputProps,
@@ -48,10 +51,11 @@ export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
     maxFiles: maxPhotos,
     maxSize: 20 * 1024 * 1024, // 20MB
     disabled: loading,
+    noClick: useElectronDialog,
     onDrop: (acceptedFiles, rejectedFiles) => {
       // Filter valid files
       const validFiles = acceptedFiles.filter(isValidImageFile);
-      
+
       if (validFiles.length > 0) {
         onFilesDropped(validFiles);
       }
@@ -64,6 +68,17 @@ export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
       }
     }
   });
+
+  const handleElectronClick = async () => {
+    if (loading) return;
+    try {
+      const files = await openPhotosViaElectron(maxPhotos);
+      const validFiles = files.filter(isValidImageFile);
+      if (validFiles.length > 0) onFilesDropped(validFiles);
+    } catch (err) {
+      console.error('[photo import] Electron dialog failed:', err);
+    }
+  };
 
   // Determine styling based on state
   const getDropZoneStyles = () => {
@@ -156,7 +171,7 @@ export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
 
       {/* Grid-Sized Drop Zone */}
       <Paper
-        {...getRootProps()}
+        {...getRootProps({ onClick: useElectronDialog ? handleElectronClick : undefined })}
         elevation={isDragActive ? 4 : 1}
         sx={{
           width: '100%',
