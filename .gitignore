@@ -97,7 +97,17 @@ deploy.conf
 public_html
 
 # Claude Code local settings (per-user permissions allowlist)
+# and runtime lock files (e.g. scheduled_tasks.lock)
 .claude/settings.local.json
+.claude/*.lock
+
+# Local PR diff dumps (e.g. pr47.diff, pr50_review.diff) saved during
+# review sessions — never intended for the repo
+/pr*.diff
+
+# Root-level static deploy bundle (built output staged for hosting,
+# distinct from per-app `dist/` already covered above)
+/public/
 
 # Backend photo-helper specific
 backend/photo-helper/venv/
