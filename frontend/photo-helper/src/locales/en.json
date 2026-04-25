@@ -250,11 +250,14 @@
   },
   "errors": {
     "sessionNotFound": "Session not found",
-    "uploadFailed": "Upload failed", 
+    "uploadFailed": "Upload failed",
     "pdfGenerationFailed": "PDF generation failed",
     "photoUpdateFailed": "Failed to update photo",
     "photoRemovalFailed": "Failed to remove photo",
-    "shuffleFailed": "Failed to shuffle photos"
+    "shuffleFailed": "Failed to shuffle photos",
+    "noActiveCompetition": "No active competition to add photos to",
+    "photoSetFull": "Set {{set}} is full. Remove a photo first.",
+    "photoSetCapacityRemaining": "Set {{set}} can take only {{count}} more photo(s)."
   },
   "common": {
     "loading": "Loading...",
