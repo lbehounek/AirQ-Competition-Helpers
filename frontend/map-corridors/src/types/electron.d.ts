@@ -14,7 +14,7 @@ declare module '@airq/shared-storage' {
     goHome?: () => void
     navigateToApp?: (app: string, competitionId: string) => void
     openMapboxSettings?: () => void
-    saveMapImage?: (base64: string) => Promise<void>
+    saveMapImage?: (base64: string, defaultDir?: string) => Promise<void>
     getConfig?: (key: string) => Promise<string | undefined>
     setConfig?: (key: string, value: string) => Promise<void>
     setMenuLocale?: (locale: string) => void

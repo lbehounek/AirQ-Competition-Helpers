@@ -163,8 +163,21 @@ export const generatePDF = async (
   aspectRatio = 4/3,
   competitionName?: string,
   layoutMode: 'landscape' | 'portrait' = 'landscape',
-  t?: (key: string) => string
+  t?: (key: string) => string,
+  mode: 'track' | 'turningpoint' = 'track',
 ): Promise<void> => {
+  // Per-page discriminator drawn in front of `setTitle | competitionName`
+  // so a printed sheet identifies which kind of photos it carries
+  // (feedback 2026-04-23). Translatable; falls back to English.
+  const headerLabelFor = (pageKey: 'set1' | 'set2'): string => {
+    if (mode === 'turningpoint') {
+      return t ? t('pdf.header.turningPoint') : 'TP photos'
+    }
+    if (pageKey === 'set1') {
+      return t ? t('pdf.header.trackSet1') : 'enroute photos first set'
+    }
+    return t ? t('pdf.header.trackSet2') : 'enroute photos second set'
+  }
   
   // Get canvas data URL for a photo
   const getPhotoDataUrl = (photoId: string, setKey: 'set1' | 'set2'): string | null => {
@@ -281,16 +294,20 @@ export const generatePDF = async (
     let localLayout = calculateLayout(15);
     
     // Add header/title
+    const modeLabel = headerLabelFor(pageKey === 'set2' ? 'set2' : 'set1');
     if (layoutMode === 'portrait') {
       // Create rotated text as image - perfect Czech character support!
-      // Merge set title and competition name with " | " separator, then add promotional text
-      const mergedTitleText = setTitle && competitionName 
+      // Prepend mode label, then setTitle | competitionName, then promo.
+      const titleAndCompetition = setTitle && competitionName
         ? `${setTitle} | ${competitionName}`
         : setTitle || competitionName || '';
-      const promotionalText = t 
+      const mergedTitleText = titleAndCompetition
+        ? `${modeLabel} • ${titleAndCompetition}`
+        : modeLabel;
+      const promotionalText = t
         ? `${t('pdf.promotional.line1')} ${t('pdf.promotional.line2')}`
         : 'created using zavody.behounek.it';
-      const headerText = mergedTitleText 
+      const headerText = mergedTitleText
         ? `${mergedTitleText} • ${promotionalText}`
         : promotionalText;
       const headerImage = createTextImage(headerText, true);
@@ -317,11 +334,14 @@ export const generatePDF = async (
         );
       }
     } else {
-      // Horizontal header as images (landscape)
-      // Merge set title and competition name with " | " separator
-      const mergedTitleText = setTitle && competitionName 
+      // Horizontal header as images (landscape) — prepend the mode label so
+      // the reader can tell at a glance what kind of sheet they're holding.
+      const titleAndCompetition = setTitle && competitionName
         ? `${setTitle} | ${competitionName}`
         : setTitle || competitionName || '';
+      const mergedTitleText = titleAndCompetition
+        ? `${modeLabel} • ${titleAndCompetition}`
+        : modeLabel;
       const mergedTitleImage = createTextImage(mergedTitleText, false, 18); // Main font size
       
       // Create two-line promotional text with half the font size
@@ -429,10 +449,14 @@ export const generatePDF = async (
     const blob = await pdf(pdfDocument).toBlob();
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
     const url = URL.createObjectURL(blob);
-    
+
+    // Mode-aware download name so a folder of exports stays sortable —
+    // user feedback 2026-04-23: distinguish enroute (track) PDFs from
+    // turning-point PDFs in the file name itself.
+    const filenamePrefix = mode === 'turningpoint' ? 'tp-photos' : 'enroute-photos';
     const link = document.createElement('a');
     link.href = url;
-    link.download = `navigation-photos-${timestamp}.pdf`;
+    link.download = `${filenamePrefix}-${timestamp}.pdf`;
     link.click();
     // Defer revocation to avoid aborting download (e.g., Safari)
     setTimeout(() => URL.revokeObjectURL(url), 1000);

@@ -338,7 +338,7 @@ function AppApi() {
         generateLabel,
       });
 
-      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape', t);
+      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape', t, session.mode);
     } catch (error) {
       console.error('PDF generation failed:', error);
       // Could add user notification here

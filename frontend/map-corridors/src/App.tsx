@@ -531,7 +531,7 @@ function App() {
           reader.onerror = () => reject(reader.error)
           reader.readAsDataURL(blob)
         })
-        await electronAPI.saveMapImage(base64)
+        await electronAPI.saveMapImage(base64, importedKmlDir || undefined)
       } else {
         // Browser: download via anchor
         const url = URL.createObjectURL(blob)
@@ -553,7 +553,7 @@ function App() {
       console.error('Map print failed:', err)
       alert(err instanceof Error ? err.message : t('errors.printFailed'))
     }
-  }, [t])
+  }, [t, importedKmlDir])
 
   // Drag source for placing photo markers
   const onDragStartMarker = useCallback((e: React.DragEvent) => {
@@ -749,7 +749,13 @@ function App() {
             />
           )}
           <Box sx={{ flex: 1 }} />
-          <Button variant="outlined" size="small" onClick={() => setAnswerSheetOpen(true)}>{t('app.answerSheet')}</Button>
+          {/* Answer sheet is meaningful only for Rally — Precision has no
+              corridor "from-TP" notion (corridors are 100 m one-sided and
+              the polygon is degenerate, so distances would be misleading,
+              feedback 2026-04-23). */}
+          {effectiveDiscipline !== 'precision' && (
+            <Button variant="outlined" size="small" onClick={() => setAnswerSheetOpen(true)}>{t('app.answerSheet')}</Button>
+          )}
         </Box>
       </Box>
       <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>

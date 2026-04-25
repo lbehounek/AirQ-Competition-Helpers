@@ -742,16 +742,27 @@ safeHandle('competition-delete', async (event, id) => {
   return { activeCompetitionId: index.activeCompetitionId };
 });
 
-// Save map print image via native save dialog
-safeHandle('save-map-image', async (event, base64Data) => {
+// Save map print image via native save dialog. Prefers the directory the
+// source KML was imported from (feedback 2026-04-23: every export dialog
+// should land in the user's race folder, not our internal storage).
+safeHandle('save-map-image', async (event, base64Data, defaultDir) => {
   if (typeof base64Data !== 'string' || base64Data.length === 0) {
     throw new Error('Invalid image data');
   }
   if (base64Data.length > 50 * 1024 * 1024) {
     throw new Error('Image data too large');
   }
+  let startDir = null;
+  if (typeof defaultDir === 'string' && defaultDir.trim()) {
+    try {
+      const abs = path.resolve(defaultDir);
+      if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) startDir = abs;
+    } catch { /* fall through */ }
+  }
+  if (!startDir) startDir = app.getPath('documents');
+  const fileName = `map-print-${new Date().toISOString().slice(0, 10)}.png`;
   const { filePath } = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: `map-print-${new Date().toISOString().slice(0, 10)}.png`,
+    defaultPath: path.join(startDir, fileName),
     filters: [{ name: 'PNG Images', extensions: ['png'] }]
   });
   if (!filePath) return null;

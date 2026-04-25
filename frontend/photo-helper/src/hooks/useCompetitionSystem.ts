@@ -407,6 +407,26 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       return;
     }
 
+    // Defensive capacity ceiling — without this, dropping more files than
+    // the grid can render silently appends them past the last slot and the
+    // user sees a "missing photo" (feedback 2026-04-23 retest of Rally TP).
+    // 10 is the absolute max per set across every (layout × discipline)
+    // combination — using it as the floor lets layout-switch logic in
+    // AppApi do its thing for Precision-track 10-photo drops while still
+    // catching genuine overflow.
+    {
+      const sess = currentCompetition.session as any;
+      const ABSOLUTE_MAX = 10;
+      const current = sess.sets?.[setKey]?.photos?.length ?? 0;
+      if (current + files.length > ABSOLUTE_MAX) {
+        const allowed = Math.max(0, ABSOLUTE_MAX - current);
+        setError(allowed === 0
+          ? `Set ${setKey === 'set1' ? '1' : '2'} is full. Remove a photo first.`
+          : `Set ${setKey === 'set1' ? '1' : '2'} can take only ${allowed} more photo(s).`);
+        return;
+      }
+    }
+
     await updateCurrentCompetition(session => {
       // Ensure sets structure is valid with extensive defensive checks
       if (!session || !session.sets) {
@@ -424,7 +444,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         console.error(`setKey '${setKey}' not found in ensuredSets:`, ensuredSets);
         throw new Error(`Invalid setKey: ${setKey}`);
       }
-      
+
       // Convert files to photos (simplified - you'd use proper photo creation logic)
       const newPhotos = files.map((file) => ({
         id: (typeof crypto !== 'undefined' && 'randomUUID' in crypto)

@@ -35,7 +35,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Save map print image via native save dialog
-  saveMapImage: (base64Data) => ipcRenderer.invoke('save-map-image', base64Data),
+  saveMapImage: (base64Data, defaultDir) => ipcRenderer.invoke('save-map-image', base64Data, defaultDir),
 
   // Save KML text via native save dialog. The renderer passes the directory
   // the source KML was imported from (see `getPathForFile`) so the export

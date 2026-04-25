@@ -274,6 +274,11 @@
     "promotional": {
       "line1": "created using",
       "line2": "zavody.behounek.it"
+    },
+    "header": {
+      "trackSet1": "enroute photos first set",
+      "trackSet2": "enroute photos second set",
+      "turningPoint": "TP photos"
     }
   }
 }

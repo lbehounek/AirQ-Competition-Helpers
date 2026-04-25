@@ -273,6 +273,11 @@
     "promotional": {
       "line1": "vytvořeno přes",
       "line2": "zavody.behounek.it"
+    },
+    "header": {
+      "trackSet1": "Traťové foto – 1. sada",
+      "trackSet2": "Traťové foto – 2. sada",
+      "turningPoint": "Foto otočných bodů"
     }
   }
 }
