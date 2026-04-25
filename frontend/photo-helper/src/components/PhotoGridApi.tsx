@@ -5,6 +5,7 @@ import { Image as ImageIcon, CloudUpload, Close } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { PhotoEditorApi } from './PhotoEditorApi';
 import { isValidImageFile } from '../utils/imageProcessing';
+import { isElectronPhotoImportAvailable, openPhotosViaElectron } from '../utils/electronPhotoImport';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useLabeling } from '../contexts/LabelingContext';
 import { useI18n } from '../contexts/I18nContext';
@@ -351,6 +352,8 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
 }) => {
   const theme = useTheme();
   const { t } = useI18n();
+  const useElectronDialog = isElectronPhotoImportAvailable();
+  const slotMaxFiles = maxFilesRemaining ?? 9;
   const {
     getRootProps,
     getInputProps,
@@ -362,10 +365,11 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png']
     },
-    maxFiles: maxFilesRemaining ?? 9, // Respect layout-dependent remaining capacity
+    maxFiles: slotMaxFiles, // Respect layout-dependent remaining capacity
+    noClick: useElectronDialog,
     onDrop: (acceptedFiles, rejectedFiles) => {
       console.log('Drop event - Accepted:', acceptedFiles, 'Rejected:', rejectedFiles);
-      
+
       if (acceptedFiles.length > 0 && onFilesDropped) {
         // Filter out valid files
         const validFiles = acceptedFiles.filter(file => isValidImageFile(file));
@@ -375,6 +379,16 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
       }
     }
   });
+
+  const handleElectronClick = async () => {
+    try {
+      const files = await openPhotosViaElectron(slotMaxFiles);
+      const validFiles = files.filter(isValidImageFile);
+      if (validFiles.length > 0 && onFilesDropped) onFilesDropped(validFiles);
+    } catch (err) {
+      console.error('[photo import] Electron dialog failed:', err);
+    }
+  };
 
   // Determine border color based on drag state
   const borderColor = isDragActive 
@@ -389,7 +403,7 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
 
   return (
     <Box
-      {...getRootProps()}
+      {...getRootProps({ onClick: useElectronDialog ? handleElectronClick : undefined })}
       sx={{
         width: '100%',
         height: '100%',

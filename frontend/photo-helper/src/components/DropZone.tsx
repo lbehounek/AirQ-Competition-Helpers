@@ -14,6 +14,7 @@ import {
 } from '@mui/icons-material';
 import { isValidImageFile } from '../utils/imageProcessing';
 import { useI18n } from '../contexts/I18nContext';
+import { isElectronPhotoImportAvailable, openPhotosViaElectron } from '../utils/electronPhotoImport';
 
 interface DropZoneProps {
   onFilesDropped: (files: File[]) => void;
@@ -35,6 +36,11 @@ export const DropZone: React.FC<DropZoneProps> = ({
   const availableSlots = Math.max(0, maxPhotos - currentPhotoCount);
   const isDisabled = loading || availableSlots === 0;
   const { t } = useI18n();
+  // In the desktop bundle we route the click to Electron's `dialog.
+  // showOpenDialog` so the file picker opens in the competition's
+  // working folder. Drag-and-drop still uses react-dropzone's native
+  // handlers — only the click path differs (feedback 2026-04-25).
+  const useElectronDialog = isElectronPhotoImportAvailable();
 
   const {
     getRootProps,
@@ -50,10 +56,14 @@ export const DropZone: React.FC<DropZoneProps> = ({
     maxFiles: availableSlots,
     maxSize: 20 * 1024 * 1024, // 20MB
     disabled: isDisabled,
+    // `noClick` disables react-dropzone's auto-trigger of the hidden
+    // `<input type=file>` on click — we provide our own click handler
+    // below that calls Electron's native dialog instead.
+    noClick: useElectronDialog,
     onDrop: (acceptedFiles, rejectedFiles) => {
       // Filter valid files
       const validFiles = acceptedFiles.filter(isValidImageFile);
-      
+
       if (validFiles.length > 0) {
         onFilesDropped(validFiles);
       }
@@ -66,6 +76,17 @@ export const DropZone: React.FC<DropZoneProps> = ({
       }
     }
   });
+
+  const handleElectronClick = async () => {
+    if (isDisabled) return;
+    try {
+      const files = await openPhotosViaElectron(availableSlots);
+      const validFiles = files.filter(isValidImageFile);
+      if (validFiles.length > 0) onFilesDropped(validFiles);
+    } catch (err) {
+      console.error('[photo import] Electron dialog failed:', err);
+    }
+  };
 
   // Determine styling based on state
   const getDropZoneStyles = () => {
@@ -159,7 +180,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
 
       {/* Drop Zone */}
       <Paper
-        {...getRootProps()}
+        {...getRootProps({ onClick: useElectronDialog ? handleElectronClick : undefined })}
         elevation={isDragActive ? 4 : 1}
         sx={{
           border: 2,

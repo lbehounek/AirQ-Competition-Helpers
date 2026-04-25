@@ -487,7 +487,22 @@ export const generatePDF = async (
           reader.onerror = () => reject(reader.error);
           reader.readAsDataURL(blob);
         });
-        await api.savePdf(base64, fileName, workingDir || undefined);
+        const savedPath: string | null = await api.savePdf(base64, fileName, workingDir || undefined);
+        // Promote the directory the user actually picked to the
+        // competition's working folder. Lets the user *steer* the default
+        // for the next save dialog by simply navigating in this one
+        // (feedback 2026-04-25).
+        if (savedPath && competitionId && api.competitions?.setWorkingDir) {
+          const sepIdx = Math.max(savedPath.lastIndexOf('\\'), savedPath.lastIndexOf('/'));
+          if (sepIdx > 0) {
+            const dir = savedPath.slice(0, sepIdx);
+            if (dir) {
+              api.competitions.setWorkingDir(competitionId, dir).catch((err: unknown) => {
+                console.warn('[workingDir] persist failed:', err);
+              });
+            }
+          }
+        }
         return;
       } catch (err) {
         console.error('electronAPI.savePdf failed, falling back to browser download:', err);
