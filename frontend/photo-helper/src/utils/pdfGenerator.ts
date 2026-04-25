@@ -1,6 +1,7 @@
 import React from 'react';
 import { Document, Page, Image, pdf, StyleSheet } from '@react-pdf/renderer';
 import type { ApiPhotoSet } from '../types/api';
+import { dirnameOf } from '@airq/shared-storage';
 
 // Polyfill Buffer for @react-pdf/renderer
 import { Buffer } from 'buffer';
@@ -491,16 +492,14 @@ export const generatePDF = async (
         // Promote the directory the user actually picked to the
         // competition's working folder. Lets the user *steer* the default
         // for the next save dialog by simply navigating in this one
-        // (feedback 2026-04-25).
+        // (feedback 2026-04-25). Shared `dirnameOf` handles drive-letter
+        // roots, POSIX root, UNC, and trailing-separator edge cases.
         if (savedPath && competitionId && api.competitions?.setWorkingDir) {
-          const sepIdx = Math.max(savedPath.lastIndexOf('\\'), savedPath.lastIndexOf('/'));
-          if (sepIdx > 0) {
-            const dir = savedPath.slice(0, sepIdx);
-            if (dir) {
-              api.competitions.setWorkingDir(competitionId, dir).catch((err: unknown) => {
-                console.warn('[workingDir] persist failed:', err);
-              });
-            }
+          const dir = dirnameOf(savedPath);
+          if (dir) {
+            api.competitions.setWorkingDir(competitionId, dir).catch((err: unknown) => {
+              console.warn('[workingDir] persist failed:', err);
+            });
           }
         }
         return;

@@ -142,7 +142,11 @@
     "slotsAvailable": "{{count}} {{slotText}} k dispozici",
     "slot": "místo",
     "slots": "míst",
-    "addTenthPhoto": "Přidat 10. fotku"
+    "addTenthPhoto": "Přidat 10. fotku",
+    "electronDialogFailed": "Výběr fotek se nepodařilo otevřít. Zkuste to znovu, nebo přetáhněte soubory z Průzkumníka.",
+    "allFilesFailed": "Žádnou z {{count}} vybraných fotek se nepodařilo načíst. Ověřte, že soubory existují a jsou ve formátu JPEG/PNG do 30 MB.",
+    "partialImport": "Načteno {{success}} z {{total}} fotek. {{failed}} se nepodařilo přečíst (poškozené, příliš velké nebo nejde o JPEG/PNG).",
+    "workingDirPersistFailed": "Fotky byly načteny, ale pracovní složku se nepodařilo uložit pro příští použití."
   },
   "photo": {
     "clickToEdit": "Klikněte pro úpravu",

@@ -25,6 +25,8 @@ export type {
   ElectronStorageAPI,
 } from './types';
 
+export { dirnameOf } from './pathUtils';
+
 import type { StorageInterface, StorageType } from './types';
 import { OPFSStorage, opfsStorage } from './opfsStorage';
 import { ElectronStorage, electronStorage } from './electronStorage';

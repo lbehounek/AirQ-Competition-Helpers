@@ -14,7 +14,7 @@ import {
 } from '@mui/icons-material';
 import { isValidImageFile } from '../utils/imageProcessing';
 import { useI18n } from '../contexts/I18nContext';
-import { isElectronPhotoImportAvailable, openPhotosViaElectron } from '../utils/electronPhotoImport';
+import { useElectronPhotoImport } from '../hooks/useElectronPhotoImport';
 
 interface DropZoneProps {
   onFilesDropped: (files: File[]) => void;
@@ -34,13 +34,14 @@ export const DropZone: React.FC<DropZoneProps> = ({
   error = null
 }) => {
   const availableSlots = Math.max(0, maxPhotos - currentPhotoCount);
-  const isDisabled = loading || availableSlots === 0;
   const { t } = useI18n();
   // In the desktop bundle we route the click to Electron's `dialog.
   // showOpenDialog` so the file picker opens in the competition's
   // working folder. Drag-and-drop still uses react-dropzone's native
   // handlers — only the click path differs (feedback 2026-04-25).
-  const useElectronDialog = isElectronPhotoImportAvailable();
+  const electronImport = useElectronPhotoImport();
+  const useElectronDialog = electronImport.isAvailable;
+  const isDisabled = loading || availableSlots === 0 || electronImport.isImporting;
 
   const {
     getRootProps,
@@ -79,13 +80,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
 
   const handleElectronClick = async () => {
     if (isDisabled) return;
-    try {
-      const files = await openPhotosViaElectron(availableSlots);
-      const validFiles = files.filter(isValidImageFile);
-      if (validFiles.length > 0) onFilesDropped(validFiles);
-    } catch (err) {
-      console.error('[photo import] Electron dialog failed:', err);
-    }
+    await electronImport.pickPhotos(availableSlots, onFilesDropped);
   };
 
   // Determine styling based on state
@@ -175,6 +170,19 @@ export const DropZone: React.FC<DropZoneProps> = ({
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
+        </Alert>
+      )}
+
+      {/* Electron-import error: dialog failed, partial read failure, or
+          working-folder persistence failure. Click to dismiss so the
+          dropzone returns to its normal state without forcing a refresh. */}
+      {electronImport.importError && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 3, cursor: 'pointer' }}
+          onClose={electronImport.clearImportError}
+        >
+          {electronImport.importError}
         </Alert>
       )}
 

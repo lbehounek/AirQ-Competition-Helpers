@@ -13,6 +13,7 @@ import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, D
 import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
+import { dirnameOf } from '@airq/shared-storage'
 import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
 import { parseDisciplineFromSearch } from './utils/parseDiscipline'
 import { MapStyleSelector } from './components/MapStyleSelector'
@@ -328,12 +329,12 @@ function App() {
   // After any save dialog returns a path, promote the chosen folder to the
   // competition's working dir. Lets the user steer the default by simply
   // navigating in the dialog — feedback 2026-04-25 ("until navigated to
-  // other folder, from that moment new folder persists").
+  // other folder, from that moment new folder persists"). Uses the shared
+  // `dirnameOf` so drive-letter roots, POSIX root, UNC, and trailing
+  // separators all extract the same as Node's `path.dirname` would.
   const persistChosenDirAsWorking = useCallback((savedPath: string | null) => {
     if (!savedPath || !competitionId) return
-    const sepIdx = Math.max(savedPath.lastIndexOf('\\'), savedPath.lastIndexOf('/'))
-    if (sepIdx <= 0) return
-    const dir = savedPath.slice(0, sepIdx)
+    const dir = dirnameOf(savedPath)
     if (!dir) return
     setImportedKmlDir(dir)
     const api = (window as any)?.electronAPI
