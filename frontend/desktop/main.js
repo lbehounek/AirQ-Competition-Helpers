@@ -692,6 +692,56 @@ safeHandle('competition-set-active', async (event, id) => {
   return target;
 });
 
+// Set the working folder for a competition. This is the user's project
+// folder (typically wherever they import the source KML from). Every
+// export dialog across all sub-apps defaults to this directory so the
+// user keeps their files in one place per race — feedback 2026-04-25:
+// "the working folder is the same per competition, not per app".
+safeHandle('competition-set-working-dir', async (event, id, workingDir) => {
+  if (typeof id !== 'string' || !id) throw new Error('Invalid competition id');
+  if (typeof workingDir !== 'string' || !workingDir.trim()) {
+    throw new Error('Invalid working directory');
+  }
+  // Resolve to an absolute path and validate it actually exists. Persisting
+  // a stale path that was deleted/renamed produces a worse UX (dialog opens
+  // in an undefined location) than returning an error here.
+  let abs;
+  try {
+    abs = path.resolve(workingDir);
+  } catch (e) {
+    throw new Error('Invalid working directory');
+  }
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
+    throw new Error('Working directory does not exist');
+  }
+  const index = readCompetitionsIndex();
+  const target = index.competitions.find(c => c.id === id);
+  if (!target) {
+    throw new Error(`Competition not found: ${id}`);
+  }
+  target.workingDir = abs;
+  target.lastModified = new Date().toISOString();
+  writeCompetitionsIndex(index);
+  return target;
+});
+
+// Read the working folder for a competition. Returns null when unset.
+safeHandle('competition-get-working-dir', async (event, id) => {
+  if (typeof id !== 'string' || !id) return null;
+  const index = readCompetitionsIndex();
+  const target = index.competitions.find(c => c.id === id);
+  if (!target || typeof target.workingDir !== 'string') return null;
+  // The folder may have been deleted/moved since it was set. Surface as
+  // null so callers fall through to their own defaults instead of opening
+  // a dialog at a path that vanishes underneath them.
+  try {
+    if (fs.existsSync(target.workingDir) && fs.statSync(target.workingDir).isDirectory()) {
+      return target.workingDir;
+    }
+  } catch { /* fall through */ }
+  return null;
+});
+
 // Set discipline for a competition
 safeHandle('competition-set-discipline', async (event, id, discipline) => {
   if (discipline !== 'precision' && discipline !== 'rally') {
@@ -764,6 +814,39 @@ safeHandle('save-map-image', async (event, base64Data, defaultDir) => {
   const { filePath } = await dialog.showSaveDialog(mainWindow, {
     defaultPath: path.join(startDir, fileName),
     filters: [{ name: 'PNG Images', extensions: ['png'] }]
+  });
+  if (!filePath) return null;
+  const buffer = Buffer.from(base64Data, 'base64');
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+});
+
+// Save a PDF (base64) via native save dialog. Defaults to the
+// competition's working directory so photo-sheet PDFs land beside the
+// rest of the user's project (feedback 2026-04-25).
+safeHandle('save-pdf', async (event, base64Data, fileName, defaultDir) => {
+  if (typeof base64Data !== 'string' || base64Data.length === 0) {
+    throw new Error('Invalid PDF data');
+  }
+  // 200 MB ceiling — 18 photos at full quality stay well under this; the
+  // limit is here to stop a malformed call from allocating unbounded memory.
+  if (base64Data.length > 200 * 1024 * 1024) {
+    throw new Error('PDF data too large');
+  }
+  const safeName = (typeof fileName === 'string' && fileName.trim())
+    ? sanitizeFileName(fileName).replace(/\.pdf$/i, '') + '.pdf'
+    : `photo-sheet-${new Date().toISOString().slice(0, 10)}.pdf`;
+  let startDir = null;
+  if (typeof defaultDir === 'string' && defaultDir.trim()) {
+    try {
+      const abs = path.resolve(defaultDir);
+      if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) startDir = abs;
+    } catch { /* fall through */ }
+  }
+  if (!startDir) startDir = app.getPath('documents');
+  const { filePath } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: path.join(startDir, safeName),
+    filters: [{ name: 'PDF documents', extensions: ['pdf'] }]
   });
   if (!filePath) return null;
   const buffer = Buffer.from(base64Data, 'base64');

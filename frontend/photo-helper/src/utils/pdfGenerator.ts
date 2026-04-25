@@ -8,6 +8,12 @@ if (typeof globalThis.Buffer === 'undefined') {
   globalThis.Buffer = Buffer;
 }
 
+// Branding (the small "created using …" line on every PDF page) is gated
+// behind this flag. The promotional site is not yet live and the app isn't
+// fully tested, so the user asked us to suppress it for the upcoming
+// builds (feedback 2026-04-25). Flip back to `true` once the site goes live.
+const BRANDING_ENABLED = false;
+
 // Brilliant workaround: Render text as image to bypass @react-pdf/renderer Unicode issues
 
 interface TextImageResult {
@@ -165,6 +171,7 @@ export const generatePDF = async (
   layoutMode: 'landscape' | 'portrait' = 'landscape',
   t?: (key: string) => string,
   mode: 'track' | 'turningpoint' = 'track',
+  competitionId?: string,
 ): Promise<void> => {
   // Per-page discriminator drawn in front of `setTitle | competitionName`
   // so a printed sheet identifies which kind of photos it carries
@@ -304,11 +311,13 @@ export const generatePDF = async (
       const mergedTitleText = titleAndCompetition
         ? `${modeLabel} • ${titleAndCompetition}`
         : modeLabel;
-      const promotionalText = t
-        ? `${t('pdf.promotional.line1')} ${t('pdf.promotional.line2')}`
-        : 'created using zavody.behounek.it';
+      const promotionalText = BRANDING_ENABLED
+        ? (t
+          ? `${t('pdf.promotional.line1')} ${t('pdf.promotional.line2')}`
+          : 'created using zavody.behounek.it')
+        : '';
       const headerText = mergedTitleText
-        ? `${mergedTitleText} • ${promotionalText}`
+        ? (promotionalText ? `${mergedTitleText} • ${promotionalText}` : mergedTitleText)
         : promotionalText;
       const headerImage = createTextImage(headerText, true);
       if (headerImage) {
@@ -345,10 +354,12 @@ export const generatePDF = async (
       const mergedTitleImage = createTextImage(mergedTitleText, false, 18); // Main font size
       
       // Create two-line promotional text with half the font size
-      const promotionalLines = t 
-        ? [t('pdf.promotional.line1'), t('pdf.promotional.line2')]
-        : ['created using', 'zavody.behounek.it'];
-      const promotionalImage = createMultilineTextImage(promotionalLines, 9); // Half the main font size
+      const promotionalLines = BRANDING_ENABLED
+        ? (t
+          ? [t('pdf.promotional.line1'), t('pdf.promotional.line2')]
+          : ['created using', 'zavody.behounek.it'])
+        : null;
+      const promotionalImage = promotionalLines ? createMultilineTextImage(promotionalLines, 9) : null;
 
       // Measure header height and recompute layout to avoid overlap
       const headerTopPad = 2.83; // ~1mm from the top edge
@@ -448,15 +459,45 @@ export const generatePDF = async (
   try {
     const blob = await pdf(pdfDocument).toBlob();
     const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-    const url = URL.createObjectURL(blob);
 
     // Mode-aware download name so a folder of exports stays sortable —
-    // user feedback 2026-04-23: distinguish enroute (track) PDFs from
+    // feedback 2026-04-23: distinguish enroute (track) PDFs from
     // turning-point PDFs in the file name itself.
     const filenamePrefix = mode === 'turningpoint' ? 'tp-photos' : 'enroute-photos';
+    const fileName = `${filenamePrefix}-${timestamp}.pdf`;
+
+    // Prefer the Electron save dialog when running inside the desktop
+    // bundle so the file lands in the competition's working folder
+    // (feedback 2026-04-25). Fall back to the browser download path —
+    // used in the web build and as a safety net if the IPC throws.
+    const api = (typeof window !== 'undefined') ? (window as any).electronAPI : null;
+    if (api && typeof api.savePdf === 'function') {
+      try {
+        let workingDir: string | null = null;
+        if (competitionId && api.competitions?.getWorkingDir) {
+          workingDir = await api.competitions.getWorkingDir(competitionId);
+        }
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            // strip `data:application/pdf;base64,` prefix
+            resolve(result.split(',')[1] || '');
+          };
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        await api.savePdf(base64, fileName, workingDir || undefined);
+        return;
+      } catch (err) {
+        console.error('electronAPI.savePdf failed, falling back to browser download:', err);
+      }
+    }
+
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${filenamePrefix}-${timestamp}.pdf`;
+    link.download = fileName;
     link.click();
     // Defer revocation to avoid aborting download (e.g., Safari)
     setTimeout(() => URL.revokeObjectURL(url), 1000);

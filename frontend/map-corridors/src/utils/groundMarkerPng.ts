@@ -41,27 +41,53 @@ export async function rasterizeGroundMarker(
   } catch {
     return null
   }
+  // Pin-style composite icon — feedback 2026-04-25:
+  // "kml export for ground marker is not supposed to be yellow circle, but
+  //  a pin … like square white with black marker shape on it, next to a
+  //  pin that marks the exact position".
+  // The image is a tall canvas: a white square with the FAI symbol on top,
+  // a small connector, and a light-blue downward-pointing pin that anchors
+  // to the exact lat/lng (via `hotSpot` x=0.5 y=0 set in `kmlMerge.ts`).
+  const w = sizePx
+  const h = Math.round(sizePx * 1.5)
   const canvas = document.createElement('canvas')
-  canvas.width = sizePx
-  canvas.height = sizePx
+  canvas.width = w
+  canvas.height = h
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
   try {
-    // Yellow disc behind the symbol so ground signs read in Google Earth
-    // the same way photo markers do (yellow pushpin) — feedback 2026-04-23:
-    // "u znaků se nezobrazuje žlutý špendlík jako u fotek". The disc is
-    // drawn first, then black SVG strokes on top — black-on-yellow is the
-    // classic warning-sign pairing and stays high-contrast on satellite
-    // imagery whether the user is viewing flat 2D or tilted 3D in Earth.
-    ctx.fillStyle = '#FFE600'
+    // Section 1 — white square with the FAI symbol, black border (top 2/3).
+    const boxH = Math.round(h * 2 / 3)
+    const border = Math.max(2, Math.round(sizePx / 32))
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(0, 0, w, boxH)
+    ctx.strokeStyle = '#000000'
+    ctx.lineWidth = border
+    ctx.strokeRect(border / 2, border / 2, w - border, boxH - border)
+
+    // Symbol drawn inside the square with breathing room.
+    const pad = Math.max(4, Math.round(sizePx * 0.10))
+    ctx.drawImage(img, pad, pad, w - 2 * pad, boxH - 2 * pad)
+
+    // Section 2 — light-blue pin pointing down (bottom 1/3).
+    // Wide enough at the top to clearly attach to the square, taper to a
+    // single point that lands on the marker's lat/lng.
+    const PIN_FILL = '#29B6F6'
+    const PIN_STROKE = '#01579B'
+    const pinTopY = boxH
+    const pinTipY = h - 1
+    const pinHalfTop = Math.max(8, Math.round(w * 0.18))
     ctx.beginPath()
-    ctx.arc(sizePx / 2, sizePx / 2, Math.max(0, sizePx / 2 - 2), 0, Math.PI * 2)
+    ctx.moveTo(w / 2 - pinHalfTop, pinTopY)
+    ctx.lineTo(w / 2 + pinHalfTop, pinTopY)
+    ctx.lineTo(w / 2, pinTipY)
+    ctx.closePath()
+    ctx.fillStyle = PIN_FILL
     ctx.fill()
-    // Thin dark border so the disc has a defined edge against light tiles.
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)'
-    ctx.lineWidth = Math.max(1, sizePx / 64)
+    ctx.strokeStyle = PIN_STROKE
+    ctx.lineWidth = Math.max(1, sizePx / 48)
     ctx.stroke()
-    ctx.drawImage(img, 0, 0, sizePx, sizePx)
+
     const uri = canvas.toDataURL('image/png')
     // `toDataURL` returns `"data:,"` on allocation failure in some engines
     // instead of throwing; treat it as failure so the caller can surface it.

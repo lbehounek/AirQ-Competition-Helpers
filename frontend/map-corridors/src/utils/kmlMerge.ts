@@ -105,12 +105,14 @@ function ensureGroundMarkerStyle(doc: Document, type: string, iconHref: string) 
   const id = `groundMarker_${type}`
   // LabelStyle scale=0 hides the visible `<name>` text (feedback 2026-04-18:
   // labels cluttered the map; users want the icon only).
-  // hotSpot anchors the icon's centre on the point so the shape lands exactly
-  // where the user placed it.
+  // hotSpot anchors the *bottom-centre* of the composite pin icon (the
+  // pin tip) on the marker's lat/lng — feedback 2026-04-25: the symbol now
+  // sits in a square at the top with a pin underneath, so the point of
+  // contact is the bottom of the canvas, not the centre.
   ensureStyle(
     doc,
     id,
-    `<IconStyle><scale>1.2</scale><Icon><href>${escapeXmlAttr(iconHref)}</href></Icon><hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0</scale></LabelStyle>`,
+    `<IconStyle><scale>1.0</scale><Icon><href>${escapeXmlAttr(iconHref)}</href></Icon><hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0</scale></LabelStyle>`,
   )
   return id
 }

@@ -32,10 +32,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setActive: (id) => ipcRenderer.invoke('competition-set-active', id),
     setDiscipline: (id, discipline) => ipcRenderer.invoke('competition-set-discipline', id, discipline),
     delete: (id) => ipcRenderer.invoke('competition-delete', id),
+    // Per-competition working folder: every export dialog defaults here
+    // (feedback 2026-04-25). Persisted in the competitions index.
+    setWorkingDir: (id, workingDir) => ipcRenderer.invoke('competition-set-working-dir', id, workingDir),
+    getWorkingDir: (id) => ipcRenderer.invoke('competition-get-working-dir', id),
   },
 
   // Save map print image via native save dialog
   saveMapImage: (base64Data, defaultDir) => ipcRenderer.invoke('save-map-image', base64Data, defaultDir),
+
+  // Save a photo-sheet PDF via native save dialog. defaultDir is the
+  // competition's working folder (set when the user imports a KML).
+  savePdf: (base64Data, fileName, defaultDir) =>
+    ipcRenderer.invoke('save-pdf', base64Data, fileName, defaultDir),
 
   // Save KML text via native save dialog. The renderer passes the directory
   // the source KML was imported from (see `getPathForFile`) so the export

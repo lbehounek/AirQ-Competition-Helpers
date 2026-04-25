@@ -8,6 +8,8 @@
 declare module '@airq/shared-storage' {
   interface ElectronCompetitionsAPI {
     list: () => Promise<{ competitions?: Array<{ id: string; name: string }> }>
+    setWorkingDir?: (id: string, workingDir: string) => Promise<unknown>
+    getWorkingDir?: (id: string) => Promise<string | null>
   }
 
   interface ElectronStorageAPI {
@@ -15,6 +17,7 @@ declare module '@airq/shared-storage' {
     navigateToApp?: (app: string, competitionId: string) => void
     openMapboxSettings?: () => void
     saveMapImage?: (base64: string, defaultDir?: string) => Promise<void>
+    savePdf?: (base64: string, fileName: string, defaultDir?: string) => Promise<string | null>
     getConfig?: (key: string) => Promise<string | undefined>
     setConfig?: (key: string, value: string) => Promise<void>
     setMenuLocale?: (locale: string) => void
