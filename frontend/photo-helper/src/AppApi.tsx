@@ -59,6 +59,8 @@ import { generateTurningPointLabels } from './utils/imageProcessing';
 import { parseDiscipline } from './utils/parseDiscipline';
 import type { Discipline } from './utils/parseDiscipline';
 import { buildPdfSets } from './utils/buildPdfSets';
+import { pickEffectiveLayout } from './utils/pickEffectiveLayout';
+import { deriveSet2FromSet1 } from './utils/autoPrefillSetTitle';
 import type { ApiPhoto } from './types/api';
 
 function AppApi() {
@@ -309,14 +311,16 @@ function AppApi() {
     console.log('✨ Photo shuffle completed!');
   };
 
-  // Auto-prefill logic for track mode set titles
+  // Auto-prefill logic for track mode set titles. When the user types a
+  // title matching `SP - TP<N>` (e.g. `SP - TP3`), set2 is derived as
+  // `TP<N> - FP` so the print header stays coherent without a separate
+  // edit. The placeholder `SP - TPX` does NOT trigger derivation — see
+  // `deriveSet2FromSet1` for the contract.
   const handleSet1TitleUpdate = async (title: string) => {
     console.log('Set1 title updated to:', title);
-    const match = title.match(/^SP\s*-\s*TP(\d+)$/i);
-    if (match) {
-      const tpNumber = match[1];
-      const newSet2Title = `TP${tpNumber} - FP`;
-      await updateSetTitles({ set1: title, set2: newSet2Title });
+    const derivedSet2 = deriveSet2FromSet1(title);
+    if (derivedSet2 !== null) {
+      await updateSetTitles({ set1: title, set2: derivedSet2 });
     } else {
       await updateSetTitles({ set1: title });
     }
@@ -329,16 +333,22 @@ function AppApi() {
     }
 
     try {
+      // Resolve via the pure helper so the precedence chain (context >
+      // session > 'landscape') is unit-tested in isolation. See
+      // `pickEffectiveLayout` for the rationale; in short, `session.layoutMode`
+      // can lag the context by one OPFS write window after the user toggles
+      // (feedback 2026-04-26 #5).
+      const effectiveLayout = pickEffectiveLayout(layoutMode, session.layoutMode);
       const { set1WithLabels, set2WithLabels } = buildPdfSets({
         mode: session.mode,
-        layoutMode: session.layoutMode || 'landscape',
+        layoutMode: effectiveLayout,
         isPrecision,
         set1: session.sets.set1,
         set2: session.sets.set2,
         generateLabel,
       });
 
-      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape', t, session.mode, currentCompetition?.id);
+      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, effectiveLayout, t, session.mode, currentCompetition?.id);
     } catch (error) {
       console.error('PDF generation failed:', error);
       // Could add user notification here

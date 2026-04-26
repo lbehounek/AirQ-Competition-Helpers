@@ -4,6 +4,7 @@ import {
   NEAREST_CORRIDOR_MAX_METERS,
   type CorridorPolygon,
 } from '../corridors/matchPoints'
+import { extractStartName } from '../corridors/extractStartName'
 
 // A unit-sized square polygon centered at (lng, lat).
 function squareCorridor(
@@ -38,6 +39,44 @@ describe('matchPointsToCorridors', () => {
     ]
     const out = matchPointsToCorridors([{ id: 'a', lng: 14.01, lat: 50.01 }], corridors)
     expect(out.a?.startName).toBe('SP')
+  })
+
+  // Regression for the "from following point" rally feedback (2026-04-26).
+  // Verifies the FULL chain: extractStartName parses the production-shaped
+  // corridor name into the preceding TP, the matcher contains the marker
+  // in the right polygon, and the echoed startName matches the parser's
+  // output. The original 2026-04-26 test built `startName: 'TP1'` by hand
+  // and only verified the matcher's pass-through — bypassing the actual
+  // parser the bug lived in. This version runs every corridor name
+  // through `extractStartName` so a regression in the parser would surface
+  // here too.
+  it('attributes a marker inside the TP1→TP2 corridor to TP1 (preceding), not TP2 (following)', () => {
+    // Build corridor objects the way `App.tsx` does in production: the
+    // segment name is parsed by `extractStartName` to derive the
+    // preceding-TP startName. NO hand-fabricated startName — the test
+    // exercises the real parser.
+    const buildCorridor = (
+      lng: number,
+      lat: number,
+      halfWidth: number,
+      startCoord: [number, number],
+      name: string,
+    ) => squareCorridor(lng, lat, halfWidth, extractStartName(name), startCoord, name)
+
+    const corridors = [
+      buildCorridor(14.0, 50.0, 0.05, [14.0, 50.0], '5NM-after-SP→TP1'),
+      // Corridor BETWEEN TP1 and TP2: name follows the preciseCorridor.ts
+      // template (`{tpAfterNm}NM-after-{prevTP}→{nextTP}`). startName is
+      // derived by the parser, NOT by the test, so a parser regression
+      // would propagate to a matcher-result regression and fail here.
+      buildCorridor(15.0, 50.0, 0.05, [14.95, 50.0], '1NM-after-TP1→TP2'),
+      buildCorridor(16.0, 50.0, 0.05, [16.0, 50.0], '1NM-after-TP2→FP'),
+    ]
+    // Marker placed roughly mid-leg between TP1 and TP2 — clearly inside
+    // the middle corridor's polygon.
+    const out = matchPointsToCorridors([{ id: 'enroute', lng: 15.0, lat: 50.0 }], corridors)
+    expect(out.enroute?.startName).toBe('TP1')
+    expect(out.enroute?.startCoord).toEqual([14.95, 50.0])
   })
 
   it('returns null for containment AND empty corridor list', () => {

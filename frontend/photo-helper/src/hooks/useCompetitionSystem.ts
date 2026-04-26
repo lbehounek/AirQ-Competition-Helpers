@@ -16,6 +16,16 @@ import { migrationService } from '../services/migrationService';
 import { useI18n } from '../contexts/I18nContext';
 import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
 import { distributeRallyDrop } from '../utils/distributeRallyDrop';
+import { parseDiscipline } from '../utils/parseDiscipline';
+import {
+  defaultTrackSetTitles,
+  DEFAULT_TRACK_SET1_TITLE_RALLY,
+  DEFAULT_TRACK_SET2_TITLE_RALLY,
+  DEFAULT_TRACK_SET1_TITLE_PRECISION,
+} from '../utils/defaultTrackSetTitles';
+import { migrateLegacyPrecisionTitles } from '../utils/migrateLegacyPrecisionTitles';
+import { collectModeSwitchRevokeUrls } from '../utils/modeSwitchRevokeUrls';
+import { deriveSet2FromSet1 } from '../utils/autoPrefillSetTitle';
 
 export interface UseCompetitionSystemResult {
   // Current state
@@ -79,6 +89,39 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     }
   })();
 
+  // Discipline drives the default track-set title (precision uses
+  // "SP - FP" because set2 is hidden; rally splits via "SP - TPX" /
+  // "TPX - FP"). Read once at hook init — the URL doesn't change at
+  // runtime in the desktop launcher.
+  const isPrecisionDiscipline = parseDiscipline(typeof window !== 'undefined' ? window.location.search : '') === 'precision';
+
+  // One-shot migration for precision sessions persisted before feedback
+  // 2026-04-26 #1: their track-set titles still carry the legacy rally
+  // pair (`SP - TPX` / `TPX - FP`). Applies on every OPFS load and
+  // persists back the FIRST time it actually changes anything, so
+  // subsequent loads are a no-op (idempotent guard inside the helper).
+  // See `migrateLegacyPrecisionTitles` for the exact-match rule that
+  // protects user-customised titles from being clobbered.
+  const migrateLoadedCompetition = useCallback(async (competition: Competition | null): Promise<Competition | null> => {
+    if (!competition) return competition;
+    const result = migrateLegacyPrecisionTitles(competition.session, isPrecisionDiscipline);
+    if (!result.migrated) return competition;
+    const migrated: Competition = {
+      ...competition,
+      session: result.session,
+      lastModified: new Date().toISOString(),
+    };
+    try {
+      await competitionService.updateCompetition(migrated, { updatePhotos: false });
+    } catch (err) {
+      // Non-fatal: the in-memory migration still gives the user the
+      // correct titles for this session; persistence will retry on
+      // the next load.
+      console.warn('[useCompetitionSystem] persist of precision title migration failed (non-fatal):', err);
+    }
+    return migrated;
+  }, [isPrecisionDiscipline]);
+
   // Whether we're running in desktop mode with an externally-selected competition
   const isDesktopManaged = Boolean(externalCompetitionId && (window as any).electronAPI);
 
@@ -109,7 +152,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       if (externalCompetitionId) {
         console.log('Using externally-selected competition:', externalCompetitionId);
         await competitionService.setActiveCompetition(externalCompetitionId);
-        const competition = await competitionService.getCompetition(externalCompetitionId);
+        const competition = await migrateLoadedCompetition(
+          await competitionService.getCompetition(externalCompetitionId),
+        );
         if (competition) {
           setCurrentCompetition(competition);
           await refreshCompetitions();
@@ -121,7 +166,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       }
 
       // Load active competition first
-      const activeCompetition = await competitionService.getActiveCompetition();
+      const activeCompetition = await migrateLoadedCompetition(
+        await competitionService.getActiveCompetition(),
+      );
 
       // If no competitions exist (fresh install), create the first one
       if (!activeCompetition) {
@@ -137,13 +184,13 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           mode: 'track',
           competition_name: defaultName,
           sets: {
-            set1: { title: 'SP - TPX', photos: [] },
-            set2: { title: 'TPX - FP', photos: [] }
+            set1: { title: defaultTrackSetTitles(isPrecisionDiscipline).set1, photos: [] },
+            set2: { title: defaultTrackSetTitles(isPrecisionDiscipline).set2, photos: [] }
           },
           // Initialize mode-specific storage
           setsTrack: {
-            set1: { title: 'SP - TPX', photos: [] },
-            set2: { title: 'TPX - FP', photos: [] }
+            set1: { title: defaultTrackSetTitles(isPrecisionDiscipline).set1, photos: [] },
+            set2: { title: defaultTrackSetTitles(isPrecisionDiscipline).set2, photos: [] }
           },
           setsTurning: {
             set1: { title: '', photos: [] },
@@ -218,6 +265,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       } catch {}
 
       // Create new empty session with mode-specific sets
+      const trackTitles = defaultTrackSetTitles(isPrecisionDiscipline);
       const emptySession: ApiPhotoSession = {
         id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         version: 1,
@@ -226,13 +274,13 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         mode: 'track',
         competition_name: competitionName,
         sets: {
-          set1: { title: 'SP - TPX', photos: [] },
-          set2: { title: 'TPX - FP', photos: [] }
+          set1: { title: trackTitles.set1, photos: [] },
+          set2: { title: trackTitles.set2, photos: [] }
         },
         // Initialize mode-specific storage
         setsTrack: {
-          set1: { title: 'SP - TPX', photos: [] },
-          set2: { title: 'TPX - FP', photos: [] }
+          set1: { title: trackTitles.set1, photos: [] },
+          set2: { title: trackTitles.set2, photos: [] }
         },
         setsTurning: {
           set1: { title: '', photos: [] },
@@ -272,10 +320,12 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       } catch {}
 
       await competitionService.setActiveCompetition(id);
-      const competition = await competitionService.getCompetition(id);
+      const competition = await migrateLoadedCompetition(
+        await competitionService.getCompetition(id),
+      );
       setCurrentCompetition(competition);
       await refreshCompetitions();
-      
+
     } catch (err) {
       console.error('Failed to switch competition:', err);
       setError(err instanceof Error ? err.message : 'Failed to switch competition');
@@ -307,7 +357,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       
       // If we deleted the current competition, load the new active one
       if (currentCompetition?.id === id) {
-        const newActive = await competitionService.getActiveCompetition();
+        const newActive = await migrateLoadedCompetition(
+          await competitionService.getActiveCompetition(),
+        );
         setCurrentCompetition(newActive);
       }
       
@@ -623,12 +675,13 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         [setKey]: { ...session.sets[setKey], title }
       };
 
-      // Auto-update Set 2 title when Set 1 matches SP-TP pattern (track mode only)
+      // Auto-update Set 2 title when Set 1 matches the `SP - TP<N>` pattern
+      // (track mode only). See `deriveSet2FromSet1` for the regex and the
+      // `SP - TPX` placeholder exclusion.
       if (session.mode === 'track' && setKey === 'set1') {
-        const match = title.match(/^SP\s*-\s*TP(\d+)$/i);
-        if (match) {
-          const tpNumber = match[1];
-          updatedSets.set2 = { ...updatedSets.set2, title: `TP${tpNumber} - FP` };
+        const derivedSet2 = deriveSet2FromSet1(title);
+        if (derivedSet2 !== null) {
+          updatedSets.set2 = { ...updatedSets.set2, title: derivedSet2 };
         }
       }
 
@@ -674,15 +727,30 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         setsTurning: session.setsTurning || { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } }
       };
       
-      // Revoke existing blob URLs across all buckets before blanking
+      // Revoke the OUTGOING mode's blob URLs — both `session.sets`
+      // (outgoing view) AND the outgoing mode-bucket (`setsTrack` or
+      // `setsTurning`, whichever the user is leaving). The two carry
+      // INDEPENDENT `blob:` URL strings even when they reference the
+      // same File, because `competitionService.loadSessionPhotos` calls
+      // `URL.createObjectURL` once per bucket. Skipping the outgoing
+      // mode-bucket leaks ~9-20 URL registrations per mode switch.
+      //
+      // Critically, we do NOT pre-revoke the INCOMING mode-bucket. Its
+      // URLs are about to become `session.sets` after the OPFS reload
+      // below; pre-revoking causes the "photos flicker and disappear"
+      // symptom (feedback 2026-04-26 #4) because the renderer holds
+      // dead `blob:` references in React state for one frame before the
+      // reload regenerates fresh URLs.
+      //
+      // Selection logic lives in the unit-tested
+      // `collectModeSwitchRevokeUrls` helper so a future "fix the leak"
+      // refactor can't silently re-introduce the flicker by adding the
+      // incoming bucket to the list.
       try {
-        const revokeInSet = (setObj: any) => {
-          try { setObj?.set1?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-          try { setObj?.set2?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-        };
-        revokeInSet(session.sets);
-        revokeInSet((session as any).setsTrack);
-        revokeInSet((session as any).setsTurning);
+        const urlsToRevoke = collectModeSwitchRevokeUrls(session, mode);
+        for (const url of urlsToRevoke) {
+          try { URL.revokeObjectURL(url); } catch {}
+        }
       } catch {}
       const sanitizedCurrentSets = {
         set1: {
@@ -705,11 +773,12 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       // Set appropriate default titles when switching to track mode with empty sets
       let newSets = { ...targetSets };
       if (mode === 'track') {
+        const trackTitles = defaultTrackSetTitles(isPrecisionDiscipline);
         if (!newSets.set1.title || newSets.set1.title.trim() === '') {
-          newSets.set1.title = 'SP - TPX';
+          newSets.set1.title = trackTitles.set1;
         }
         if (!newSets.set2.title || newSets.set2.title.trim() === '') {
-          newSets.set2.title = 'TPX - FP';
+          newSets.set2.title = trackTitles.set2;
         }
       }
       
@@ -734,7 +803,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       await competitionService.updateCompetition(updatedCompetition, { updatePhotos: true });
       
       // Reload competition to get proper blob URLs
-      const reloadedCompetition = await competitionService.getCompetition(currentCompetition.id);
+      const reloadedCompetition = await migrateLoadedCompetition(
+        await competitionService.getCompetition(currentCompetition.id),
+      );
       setCurrentCompetition(reloadedCompetition);
       // Refresh storage stats after mode switch persistence
       try {
@@ -784,9 +855,11 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       await refreshCompetitions();
       
       // If current competition was deleted, load new active
-      const activeCompetition = await competitionService.getActiveCompetition();
+      const activeCompetition = await migrateLoadedCompetition(
+        await competitionService.getActiveCompetition(),
+      );
       setCurrentCompetition(activeCompetition);
-      
+
     } catch (err) {
       console.error('Failed to perform cleanup:', err);
       setError(err instanceof Error ? err.message : 'Failed to perform cleanup');
