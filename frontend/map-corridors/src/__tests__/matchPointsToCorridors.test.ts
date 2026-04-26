@@ -40,6 +40,34 @@ describe('matchPointsToCorridors', () => {
     expect(out.a?.startName).toBe('SP')
   })
 
+  // Regression for the "from following point" rally feedback (2026-04-26).
+  // Documented user expectation: a marker physically inside the
+  // 1NM-after-TPn → TP(n+1) corridor must be attributed to TPn (the
+  // PRECEDING TP), not TP(n+1). Locks the contract in unit-test form so a
+  // future refactor of corridor naming or startName extraction can't
+  // silently flip the attribution direction without a failing test.
+  it('attributes a marker inside the TP1→TP2 corridor to TP1 (preceding), not TP2 (following)', () => {
+    const corridors = [
+      squareCorridor(14.0, 50.0, 0.05, 'SP', [14.0, 50.0], '5NM-after-SP→TP1'),
+      // Corridor BETWEEN TP1 and TP2: name follows the preciseCorridor.ts
+      // template (`{tpAfterNm}NM-after-{prevTP}→{nextTP}`) and `startName`
+      // is the EXACT preceding TP point (not the corridor's polygon
+      // centroid). This mirrors what App.tsx:236-241 hands to the matcher.
+      squareCorridor(
+        15.0, 50.0, 0.05,
+        'TP1',                  // startName = preceding TP
+        [14.95, 50.0],          // startCoord = TP1's exact track-snapped point
+        '1NM-after-TP1→TP2',
+      ),
+      squareCorridor(16.0, 50.0, 0.05, 'TP2', [16.0, 50.0], '1NM-after-TP2→FP'),
+    ]
+    // Marker placed roughly mid-leg between TP1 and TP2 — clearly inside
+    // the middle corridor's polygon.
+    const out = matchPointsToCorridors([{ id: 'enroute', lng: 15.0, lat: 50.0 }], corridors)
+    expect(out.enroute?.startName).toBe('TP1')
+    expect(out.enroute?.startCoord).toEqual([14.95, 50.0])
+  })
+
   it('returns null for containment AND empty corridor list', () => {
     const out = matchPointsToCorridors([{ id: 'a', lng: 14.0, lat: 50.0 }], [])
     expect(out.a).toBeNull()

@@ -16,6 +16,22 @@ import { migrationService } from '../services/migrationService';
 import { useI18n } from '../contexts/I18nContext';
 import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
 import { distributeRallyDrop } from '../utils/distributeRallyDrop';
+import { parseDiscipline } from '../utils/parseDiscipline';
+
+// Precision hides set2 in the UI and packs every photo into set1, so
+// the set1 title represents the WHOLE route from SP to FP. The rally
+// "SP - TPX" / "TPX - FP" pair would mislead the print header into
+// suggesting a midway split that doesn't exist for precision (feedback
+// 2026-04-26).
+const DEFAULT_TRACK_SET1_TITLE_RALLY = 'SP - TPX';
+const DEFAULT_TRACK_SET2_TITLE_RALLY = 'TPX - FP';
+const DEFAULT_TRACK_SET1_TITLE_PRECISION = 'SP - FP';
+
+function defaultTrackSetTitles(isPrecision: boolean): { set1: string; set2: string } {
+  return isPrecision
+    ? { set1: DEFAULT_TRACK_SET1_TITLE_PRECISION, set2: '' }
+    : { set1: DEFAULT_TRACK_SET1_TITLE_RALLY, set2: DEFAULT_TRACK_SET2_TITLE_RALLY };
+}
 
 export interface UseCompetitionSystemResult {
   // Current state
@@ -79,6 +95,12 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     }
   })();
 
+  // Discipline drives the default track-set title (precision uses
+  // "SP - FP" because set2 is hidden; rally splits via "SP - TPX" /
+  // "TPX - FP"). Read once at hook init — the URL doesn't change at
+  // runtime in the desktop launcher.
+  const isPrecisionDiscipline = parseDiscipline(typeof window !== 'undefined' ? window.location.search : '') === 'precision';
+
   // Whether we're running in desktop mode with an externally-selected competition
   const isDesktopManaged = Boolean(externalCompetitionId && (window as any).electronAPI);
 
@@ -137,13 +159,13 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           mode: 'track',
           competition_name: defaultName,
           sets: {
-            set1: { title: 'SP - TPX', photos: [] },
-            set2: { title: 'TPX - FP', photos: [] }
+            set1: { title: defaultTrackSetTitles(isPrecisionDiscipline).set1, photos: [] },
+            set2: { title: defaultTrackSetTitles(isPrecisionDiscipline).set2, photos: [] }
           },
           // Initialize mode-specific storage
           setsTrack: {
-            set1: { title: 'SP - TPX', photos: [] },
-            set2: { title: 'TPX - FP', photos: [] }
+            set1: { title: defaultTrackSetTitles(isPrecisionDiscipline).set1, photos: [] },
+            set2: { title: defaultTrackSetTitles(isPrecisionDiscipline).set2, photos: [] }
           },
           setsTurning: {
             set1: { title: '', photos: [] },
@@ -218,6 +240,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       } catch {}
 
       // Create new empty session with mode-specific sets
+      const trackTitles = defaultTrackSetTitles(isPrecisionDiscipline);
       const emptySession: ApiPhotoSession = {
         id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         version: 1,
@@ -226,13 +249,13 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         mode: 'track',
         competition_name: competitionName,
         sets: {
-          set1: { title: 'SP - TPX', photos: [] },
-          set2: { title: 'TPX - FP', photos: [] }
+          set1: { title: trackTitles.set1, photos: [] },
+          set2: { title: trackTitles.set2, photos: [] }
         },
         // Initialize mode-specific storage
         setsTrack: {
-          set1: { title: 'SP - TPX', photos: [] },
-          set2: { title: 'TPX - FP', photos: [] }
+          set1: { title: trackTitles.set1, photos: [] },
+          set2: { title: trackTitles.set2, photos: [] }
         },
         setsTurning: {
           set1: { title: '', photos: [] },
@@ -674,15 +697,22 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         setsTurning: session.setsTurning || { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } }
       };
       
-      // Revoke existing blob URLs across all buckets before blanking
+      // Revoke ONLY the outgoing mode's blob URLs (the active set we're
+      // about to blank and persist). Pre-revoking the INCOMING mode's
+      // URLs would leave the renderer holding dead `blob:` references for
+      // the photos we're about to switch INTO — they'd flash briefly
+      // (with a still-valid React reference to the old URL string) and
+      // then render as broken images until the OPFS reload below
+      // regenerates fresh URLs (feedback 2026-04-26: "first TP page —
+      // photos flicker on load and then disappear"). `session.sets` is
+      // the outgoing bucket; `setsTrack` and `setsTurning` may include
+      // the incoming bucket, which we leave alone here.
       try {
         const revokeInSet = (setObj: any) => {
           try { setObj?.set1?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
           try { setObj?.set2?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
         };
         revokeInSet(session.sets);
-        revokeInSet((session as any).setsTrack);
-        revokeInSet((session as any).setsTurning);
       } catch {}
       const sanitizedCurrentSets = {
         set1: {
@@ -705,11 +735,12 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       // Set appropriate default titles when switching to track mode with empty sets
       let newSets = { ...targetSets };
       if (mode === 'track') {
+        const trackTitles = defaultTrackSetTitles(isPrecisionDiscipline);
         if (!newSets.set1.title || newSets.set1.title.trim() === '') {
-          newSets.set1.title = 'SP - TPX';
+          newSets.set1.title = trackTitles.set1;
         }
         if (!newSets.set2.title || newSets.set2.title.trim() === '') {
-          newSets.set2.title = 'TPX - FP';
+          newSets.set2.title = trackTitles.set2;
         }
       }
       

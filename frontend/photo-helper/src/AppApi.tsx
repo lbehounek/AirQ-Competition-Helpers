@@ -329,16 +329,24 @@ function AppApi() {
     }
 
     try {
+      // Read the layout from React context, NOT `session.layoutMode`.
+      // `LayoutModeSelector` updates the context synchronously but the
+      // OPFS write (`updateLayoutMode`) is async — clicking "Generate
+      // PDF" within the write window would otherwise produce a PDF with
+      // the previous layout (feedback 2026-04-26: "PDF layout 3x3/5x2
+      // sometimes works, sometimes doesn't"). Context is the truth that
+      // matches what the user just saw in the toggle.
+      const effectiveLayout = layoutMode || session.layoutMode || 'landscape';
       const { set1WithLabels, set2WithLabels } = buildPdfSets({
         mode: session.mode,
-        layoutMode: session.layoutMode || 'landscape',
+        layoutMode: effectiveLayout,
         isPrecision,
         set1: session.sets.set1,
         set2: session.sets.set2,
         generateLabel,
       });
 
-      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, session.layoutMode || 'landscape', t, session.mode, currentCompetition?.id);
+      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, effectiveLayout, t, session.mode, currentCompetition?.id);
     } catch (error) {
       console.error('PDF generation failed:', error);
       // Could add user notification here
