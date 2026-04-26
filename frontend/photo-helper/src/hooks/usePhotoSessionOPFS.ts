@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Photo } from '../types';
 import type { ApiPhoto, ApiPhotoSession } from '../types/api';
 import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
+import { deriveSet1FromSet2, deriveSet2FromSet1 } from '../utils/autoPrefillSetTitle';
 import {
   isStorageAvailable,
   initStorage,
@@ -349,27 +350,18 @@ export function usePhotoSessionOPFS() {
       sets: { ...session.sets, [setKey]: { ...session.sets[setKey], title } },
     };
 
-    // In turning point mode, sync the other set's title when pattern matches
+    // In turning-point mode the title sync is bidirectional — typing
+    // either set re-derives the other. See `autoPrefillSetTitle` for
+    // the matcher contract.
     if (session.mode === 'turningpoint') {
       const otherKey = setKey === 'set1' ? 'set2' : 'set1';
-      const spTpMatch = title.match(/^\s*SP\s*-\s*TP(\d+)\s*$/i); // SP - TPX
-      const tpFpMatch = title.match(/^\s*TP(\d+)\s*-\s*FP\s*$/i); // TPX - FP
-      if (spTpMatch) {
-        const num = spTpMatch[1];
+      const derived = setKey === 'set1' ? deriveSet2FromSet1(title) : deriveSet1FromSet2(title);
+      if (derived !== null) {
         next = {
           ...next,
           sets: {
             ...next.sets,
-            [otherKey]: { ...next.sets[otherKey], title: `TP${num} - FP` }
-          }
-        };
-      } else if (tpFpMatch) {
-        const num = tpFpMatch[1];
-        next = {
-          ...next,
-          sets: {
-            ...next.sets,
-            [otherKey]: { ...next.sets[otherKey], title: `SP - TP${num}` }
+            [otherKey]: { ...next.sets[otherKey], title: derived }
           }
         };
       }

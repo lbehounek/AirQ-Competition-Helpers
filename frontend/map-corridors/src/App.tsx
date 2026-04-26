@@ -29,6 +29,7 @@ import {
 } from './config/mapProviders'
 import { calculateDistance } from './corridors/segments'
 import { matchPointsToCorridors as matchPointsToCorridorsPure } from './corridors/matchPoints'
+import { extractStartName } from './corridors/extractStartName'
 import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
@@ -233,10 +234,7 @@ function App() {
         if (lng > maxLng) maxLng = lng
         if (lat > maxLat) maxLat = lat
       }
-      const beforeArrow = String(name).split('→')[0] || ''
-      let startName = 'SP'
-      if (beforeArrow.includes('SP')) startName = 'SP'
-      else if (beforeArrow.includes('after-')) startName = beforeArrow.split('after-').pop() || 'SP'
+      const startName = extractStartName(name)
       const startCoord = exactLookup[startName]
       res.push({ name, ring, bbox: [minLng, minLat, maxLng, maxLat], startName, startCoord })
     }

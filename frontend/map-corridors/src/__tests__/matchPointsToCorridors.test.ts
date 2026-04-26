@@ -4,6 +4,7 @@ import {
   NEAREST_CORRIDOR_MAX_METERS,
   type CorridorPolygon,
 } from '../corridors/matchPoints'
+import { extractStartName } from '../corridors/extractStartName'
 
 // A unit-sized square polygon centered at (lng, lat).
 function squareCorridor(
@@ -41,25 +42,35 @@ describe('matchPointsToCorridors', () => {
   })
 
   // Regression for the "from following point" rally feedback (2026-04-26).
-  // Documented user expectation: a marker physically inside the
-  // 1NM-after-TPn → TP(n+1) corridor must be attributed to TPn (the
-  // PRECEDING TP), not TP(n+1). Locks the contract in unit-test form so a
-  // future refactor of corridor naming or startName extraction can't
-  // silently flip the attribution direction without a failing test.
+  // Verifies the FULL chain: extractStartName parses the production-shaped
+  // corridor name into the preceding TP, the matcher contains the marker
+  // in the right polygon, and the echoed startName matches the parser's
+  // output. The original 2026-04-26 test built `startName: 'TP1'` by hand
+  // and only verified the matcher's pass-through — bypassing the actual
+  // parser the bug lived in. This version runs every corridor name
+  // through `extractStartName` so a regression in the parser would surface
+  // here too.
   it('attributes a marker inside the TP1→TP2 corridor to TP1 (preceding), not TP2 (following)', () => {
+    // Build corridor objects the way `App.tsx` does in production: the
+    // segment name is parsed by `extractStartName` to derive the
+    // preceding-TP startName. NO hand-fabricated startName — the test
+    // exercises the real parser.
+    const buildCorridor = (
+      lng: number,
+      lat: number,
+      halfWidth: number,
+      startCoord: [number, number],
+      name: string,
+    ) => squareCorridor(lng, lat, halfWidth, extractStartName(name), startCoord, name)
+
     const corridors = [
-      squareCorridor(14.0, 50.0, 0.05, 'SP', [14.0, 50.0], '5NM-after-SP→TP1'),
+      buildCorridor(14.0, 50.0, 0.05, [14.0, 50.0], '5NM-after-SP→TP1'),
       // Corridor BETWEEN TP1 and TP2: name follows the preciseCorridor.ts
-      // template (`{tpAfterNm}NM-after-{prevTP}→{nextTP}`) and `startName`
-      // is the EXACT preceding TP point (not the corridor's polygon
-      // centroid). This mirrors what App.tsx:236-241 hands to the matcher.
-      squareCorridor(
-        15.0, 50.0, 0.05,
-        'TP1',                  // startName = preceding TP
-        [14.95, 50.0],          // startCoord = TP1's exact track-snapped point
-        '1NM-after-TP1→TP2',
-      ),
-      squareCorridor(16.0, 50.0, 0.05, 'TP2', [16.0, 50.0], '1NM-after-TP2→FP'),
+      // template (`{tpAfterNm}NM-after-{prevTP}→{nextTP}`). startName is
+      // derived by the parser, NOT by the test, so a parser regression
+      // would propagate to a matcher-result regression and fail here.
+      buildCorridor(15.0, 50.0, 0.05, [14.95, 50.0], '1NM-after-TP1→TP2'),
+      buildCorridor(16.0, 50.0, 0.05, [16.0, 50.0], '1NM-after-TP2→FP'),
     ]
     // Marker placed roughly mid-leg between TP1 and TP2 — clearly inside
     // the middle corridor's polygon.
