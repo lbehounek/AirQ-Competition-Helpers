@@ -47,11 +47,19 @@
         <button id="competition-new" class="btn btn-new" data-i18n="competition.new" title="Nova soutez">+ Nova soutez</button>
         <button id="competition-delete" class="btn btn-delete" data-i18n="competition.deleteBtn" title="Smazat" disabled>X</button>
       </div>
-      <div class="competition-bar hidden" id="competition-bar-create">
-        <label class="competition-label" data-i18n="competition.promptName" for="competition-name-input">Nazev nove souteze:</label>
-        <input id="competition-name-input" class="competition-input" type="text" maxlength="60" autocomplete="off" />
-        <button id="competition-create-confirm" class="btn btn-new">OK</button>
-        <button id="competition-create-cancel" class="btn">X</button>
+      <div class="competition-create-card hidden" id="competition-bar-create">
+        <h2 class="competition-create-title" data-i18n="competition.createTitle">Nová soutěž</h2>
+        <label class="competition-create-label" data-i18n="competition.promptName" for="competition-name-input">Název nové soutěže:</label>
+        <input id="competition-name-input" class="competition-create-input" type="text" maxlength="60" autocomplete="off" />
+        <div class="competition-create-folder-row">
+          <span class="competition-create-folder-label" data-i18n="competition.folderLabel">Složka:</span>
+          <span id="competition-folder-text" class="competition-folder-text" data-i18n="competition.folderHint">(vybere se po stisku Enter)</span>
+          <button id="competition-pick-folder" class="btn btn-small-link" data-i18n="competition.changeFolder" title="Vyberte složku trati">Změnit</button>
+        </div>
+        <div class="competition-create-actions">
+          <button id="competition-create-cancel" class="btn" data-i18n="competition.cancelDelete">Zrušit</button>
+          <button id="competition-create-confirm" class="btn btn-new btn-create-ok" data-i18n="competition.createConfirm">Vytvořit a vybrat složku</button>
+        </div>
       </div>
       <div class="competition-bar hidden" id="competition-bar-delete">
         <span class="competition-label delete-warning" id="delete-confirm-text"></span>

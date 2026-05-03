@@ -30,6 +30,14 @@ interface PhotoGridApiProps {
    * layouts so a 10th upload can still land and flip the layout to portrait.
    */
   maxPhotosOverride?: number;
+  /**
+   * Override the rendered grid slot count and column count. Used by rally
+   * turning-point mode (feedback 2026-05-03): per-set capacity is 10 in both
+   * orientations, so a landscape grid with 10 photos must render as 5×2
+   * instead of the default 3×3 (which silently hid the 10th photo).
+   */
+  slotsOverride?: number;
+  columnsOverride?: number;
 }
 
 interface GridSlot {
@@ -57,6 +65,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   labelOffset = 0,
   customLabels,
   maxPhotosOverride,
+  slotsOverride,
+  columnsOverride,
 }) => {
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
@@ -80,9 +90,14 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   const { layoutConfig } = useLayoutMode();
   const effectiveMaxPhotos = maxPhotosOverride ?? layoutConfig.maxPhotosPerSet;
   const maxFilesRemaining = Math.max(0, effectiveMaxPhotos - photoSet.photos.length);
-  
+  // Effective grid: defaults to the layout config; rally turning-point in
+  // landscape passes overrides so a 10-photo set renders as 5×2 instead of
+  // the default 3×3 (feedback 2026-05-03).
+  const effectiveSlots = slotsOverride ?? layoutConfig.slots;
+  const effectiveColumns = columnsOverride ?? layoutConfig.columns;
+
   // Create grid slots based on layout mode (9 for landscape, 10 for portrait)
-  const gridSlots: GridSlot[] = Array.from({ length: layoutConfig.slots }, (_, index) => {
+  const gridSlots: GridSlot[] = Array.from({ length: effectiveSlots }, (_, index) => {
     const photo = photoSet.photos[index] || null;
     
     // Only show labels when there's a photo, or in track mode for empty slots
@@ -171,7 +186,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
         /* Dynamic Photo Grid (3x3 or 2x5 based on layout) */
         <Box sx={{
           display: 'grid',
-          gridTemplateColumns: `repeat(${layoutConfig.columns}, 1fr)`,
+          gridTemplateColumns: `repeat(${effectiveColumns}, 1fr)`,
           gap: 2,
           p: 2,
           bgcolor: 'background.paper',

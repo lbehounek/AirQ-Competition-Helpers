@@ -32,3 +32,29 @@ export function extractStartName(corridorName: string): string {
   if (beforeArrow.includes('after-')) return beforeArrow.split('after-').pop() || 'SP';
   return 'SP';
 }
+
+/**
+ * Extract the "following TP" endName from a corridor segment name.
+ *
+ * Mirror of `extractStartName` for the post-arrow side. Used by the
+ * leg-projection fallback (feedback 2026-05-03 follow-up): photos
+ * outside any polygon must project onto the NEAREST scenic leg —
+ * meaning a leg whose corridor was dropped because it's a chain of
+ * dashed connectors. To skip legs that already have a corridor we need
+ * the (start → end) waypoint pair from each corridor name.
+ *
+ * Examples (real shapes from preciseCorridor.ts):
+ *   "5NM-after-SP→TP1"   → "TP1"
+ *   "1NM-after-TP1→TP2"  → "TP2"
+ *   "1NM-after-TP4→FP"   → "FP"
+ *
+ * Returns '' when the name has no arrow (alternate authoring tools, no
+ * recognised shape). The leg-projection fallback treats an empty
+ * endName as "no covered pair" — the corresponding leg won't be
+ * skipped, which is the safe direction to fail.
+ */
+export function extractEndName(corridorName: string): string {
+  const parts = String(corridorName).split('→');
+  if (parts.length < 2) return '';
+  return (parts[1] || '').trim();
+}

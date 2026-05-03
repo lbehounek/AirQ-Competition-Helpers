@@ -13,22 +13,29 @@ export type DistributeRallyDropResult =
 
 /**
  * Distribute a Rally turning-point initial drop across set1 (first
- * `gridCapacity` files) and set2 (the remainder). Without this the 9-slot
- * set1 grid silently swallowed files 10+ on a 10–18-photo drop (feedback
- * 2026-04-23).
+ * `RALLY_TURNING_PER_SET` files) and set2 (the remainder). Without this
+ * the set1 grid silently swallowed files 10+ on a 10+ photo drop
+ * (feedback 2026-04-23).
  *
- * Grid capacity is 9 in landscape and 10 in portrait — `maxTotal` is
- * therefore 18 or 20. Exceeding the total returns `ok: false` so the
- * caller can surface a user-facing error instead of dropping files.
+ * Rally rules allow up to 18 turning points (= SP + 18 TP + FP = 20
+ * photos) per feedback 2026-05-03. Per-set capacity is therefore 10 in
+ * BOTH orientations — the landscape grid auto-expands from 3×3 to 5×2
+ * once a set reaches 10 photos. `layoutMode` is retained on the input
+ * type for backward compatibility but no longer affects capacity.
+ *
+ * Exceeding the total returns `ok: false` so the caller can surface a
+ * user-facing error instead of dropping files.
  */
+export const RALLY_TURNING_PER_SET = 10;
+export const RALLY_TURNING_MAX_TOTAL = RALLY_TURNING_PER_SET * 2;
+
 export function distributeRallyDrop({
   files,
-  layoutMode,
   set1Count,
   set2Count,
 }: DistributeRallyDropInput): DistributeRallyDropResult {
-  const gridCapacity = layoutMode === 'portrait' ? 10 : 9;
-  const maxTotal = gridCapacity * 2;
+  const gridCapacity = RALLY_TURNING_PER_SET;
+  const maxTotal = RALLY_TURNING_MAX_TOTAL;
   const totalIfAdded = set1Count + set2Count + files.length;
   if (totalIfAdded > maxTotal) {
     return { ok: false, reason: 'overflow', maxTotal, totalIfAdded };

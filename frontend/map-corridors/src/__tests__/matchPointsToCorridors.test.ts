@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   matchPointsToCorridors,
+  legKey,
   NEAREST_CORRIDOR_MAX_METERS,
   type CorridorPolygon,
 } from '../corridors/matchPoints'
@@ -92,6 +93,167 @@ describe('matchPointsToCorridors', () => {
     // Far outside every polygon but closer to TP1
     const out = matchPointsToCorridors([{ id: 'far', lng: 14.95, lat: 50.0 }], corridors)
     expect(out.far?.startName).toBe('TP1')
+  })
+
+  // Regression for the dashed/scenic-leg gap (feedback 2026-05-03).
+  // When the corridor between TPn and TPn+1 is dropped because the leg
+  // is a chain of dashed connectors, markers in the gap have no polygon
+  // match. The legacy nearest-startCoord fallback locks onto whichever
+  // endpoint is geographically closer — usually the FOLLOWING TP — and
+  // the answer sheet shows the wrong "Od TP". The leg-projection
+  // fallback fixes this by attributing markers to the leg they actually
+  // lie on, regardless of which endpoint they're closer to.
+  it('attributes a marker on a missing-corridor leg to the PRECEDING waypoint', () => {
+    // Only TP7→TP8 and TP9→TP10 corridors exist; TP8→TP9 is the scenic
+    // leg, dropped by the dashed-connector logic. The marker sits
+    // between TP8 and TP9 but is geographically closer to TP9.
+    const corridors = [
+      squareCorridor(14.0, 50.0, 0.001, 'TP7', [14.0, 50.0], '1NM-after-TP7→TP8'),
+      squareCorridor(16.0, 50.0, 0.001, 'TP9', [16.0, 50.0], '1NM-after-TP9→TP10'),
+    ]
+    const waypoints = [
+      { name: 'TP7', coord: [14.0, 50.0] as [number, number] },
+      { name: 'TP8', coord: [14.5, 50.0] as [number, number] },
+      { name: 'TP9', coord: [16.0, 50.0] as [number, number] },
+      { name: 'TP10', coord: [17.0, 50.0] as [number, number] },
+    ]
+    // Covered legs: TP7→TP8 and TP9→TP10. The TP8→TP9 leg is the
+    // scenic leg with no corridor — leg-projection can pick it.
+    const covered = new Set<string>([legKey('TP7', 'TP8'), legKey('TP9', 'TP10')])
+    // Marker at lng=15.4, slightly off the leg axis. It's closer to TP9
+    // (15.4 → 16.0 is 0.6° lng) than to TP8 (15.4 → 14.5 is 0.9° lng),
+    // so the legacy nearest-startCoord fallback would pick TP9. Leg
+    // projection attributes it to TP8 (preceding waypoint of the
+    // TP8→TP9 leg the marker is actually on).
+    const out = matchPointsToCorridors(
+      [{ id: 'scenic', lng: 15.4, lat: 50.001 }],
+      corridors,
+      waypoints,
+      covered,
+    )
+    expect(out.scenic?.startName).toBe('TP8')
+  })
+
+  // Strict variant of the rule (2026-05-03 follow-up): "photo outside
+  // corridor must be assigned to nearest leg WITHOUT a corridor". A
+  // marker that overshoots its own leg's corridor must NOT snap back
+  // onto that leg via projection — the leg has a corridor, so the
+  // matcher must keep looking.
+  it('with coveredLegs supplied, leg-projection skips legs that have a corridor', () => {
+    const waypoints = [
+      { name: 'TP7', coord: [14.0, 50.0] as [number, number] },
+      { name: 'TP8', coord: [15.0, 50.0] as [number, number] },
+      { name: 'TP9', coord: [17.0, 50.0] as [number, number] },
+    ]
+    // TP7→TP8 is covered (has corridor); TP8→TP9 is the scenic leg.
+    // Polygon is intentionally tiny so the marker is NOT inside it,
+    // forcing the fallback chain.
+    const corridors = [
+      squareCorridor(14.5, 50.0, 0.001, 'TP7', [14.0, 50.0], '1NM-after-TP7→TP8'),
+    ]
+    const covered = new Set<string>([legKey('TP7', 'TP8')])
+    // Marker at lng=14.7: closer to the TP7→TP8 leg axis (perpendicular
+    // distance ~0) than to the TP8→TP9 leg axis. Without the
+    // `coveredLegs` filter the projector would pick TP7. With the
+    // filter, the TP7→TP8 leg is skipped and the only remaining leg is
+    // TP8→TP9, so the marker is attributed to TP8.
+    const out = matchPointsToCorridors(
+      [{ id: 'overshoot', lng: 14.7, lat: 50.05 }],
+      corridors,
+      waypoints,
+      covered,
+    )
+    expect(out.overshoot?.startName).toBe('TP8')
+  })
+
+  it('without waypoints, retains the legacy nearest-startCoord fallback', () => {
+    // Same corridor setup, no waypoints arg — verifies callers that
+    // don't supply ordered waypoints still get the old behaviour. The
+    // old fallback picks TP9 because its startCoord is closer.
+    const corridors = [
+      squareCorridor(14.0, 50.0, 0.001, 'TP7'),
+      squareCorridor(16.0, 50.0, 0.001, 'TP9'),
+    ]
+    const out = matchPointsToCorridors(
+      [{ id: 'scenic', lng: 15.4, lat: 50.001 }],
+      corridors,
+    )
+    expect(out.scenic?.startName).toBe('TP9')
+  })
+
+  it('without coveredLegs, leg-projection treats every leg as eligible', () => {
+    // Backward-compat: tests that don't care about coverage filtering
+    // can omit `coveredLegs` and the projector keeps its pre-filter
+    // behaviour (every leg considered).
+    const waypoints = [
+      { name: 'TP1', coord: [14.0, 50.0] as [number, number] },
+      { name: 'TP2', coord: [15.0, 50.0] as [number, number] },
+      { name: 'TP3', coord: [16.0, 50.0] as [number, number] },
+    ]
+    const out = matchPointsToCorridors(
+      [{ id: 'p', lng: 14.5, lat: 50.0 }],
+      [],
+      waypoints,
+    )
+    // Marker mid-leg between TP1 and TP2 — projects onto TP1→TP2,
+    // attributed to TP1.
+    expect(out.p?.startName).toBe('TP1')
+  })
+
+  // Round-5 follow-up: the leg-projection fallback's 50 km cap was
+  // untested. Without this guard, a marker far from every scenic leg
+  // would silently snap to whichever leg happened to be closest,
+  // producing a wildly wrong "Od TP" answer-sheet entry. The cap
+  // shares NEAREST_CORRIDOR_MAX_METERS with the legacy nearest-startCoord
+  // fallback so both branches honour the same "no attribution" rule.
+  it('returns null when the marker is farther than NEAREST_CORRIDOR_MAX_METERS from every leg', () => {
+    // Single uncovered leg from (14, 50) to (15, 50), ~71 km long at 50°N.
+    // Place the marker > 50 km north of the leg (50.5°N → 0.5° lat = ~55 km
+    // perpendicular distance, beyond the cap).
+    const waypoints = [
+      { name: 'TP1', coord: [14.0, 50.0] as [number, number] },
+      { name: 'TP2', coord: [15.0, 50.0] as [number, number] },
+    ]
+    const out = matchPointsToCorridors(
+      [{ id: 'far', lng: 14.5, lat: 50.5 }],
+      [],
+      waypoints,
+    )
+    // Sanity-pin the cap against the exported constant so a future change
+    // to NEAREST_CORRIDOR_MAX_METERS makes this test surface intentionally.
+    expect(NEAREST_CORRIDOR_MAX_METERS).toBe(50_000)
+    expect(out.far).toBeNull()
+  })
+
+  // Round-5 follow-up: when EVERY leg is covered by a corridor, the
+  // leg-projection branch returns null (no eligible scenic leg) and the
+  // matcher falls through to the legacy nearest-startCoord branch. This
+  // graceful-degradation is documented in the matcher's comments but
+  // wasn't pinned by a test — a future refactor that short-circuits to
+  // null on bestIdx<0 would break the fall-through silently.
+  it('falls through to legacy nearest-startCoord when every leg is covered', () => {
+    const waypoints = [
+      { name: 'TP1', coord: [14.0, 50.0] as [number, number] },
+      { name: 'TP2', coord: [15.0, 50.0] as [number, number] },
+    ]
+    // The TP1→TP2 leg has a corridor (registered in coveredLegs).
+    // Polygon is intentionally tiny (0.001°) so the marker at lng=14.95
+    // is OUTSIDE every polygon, forcing the fallback chain. Leg-
+    // projection skips TP1→TP2 (covered), bestIdx stays -1, returns
+    // null — and the matcher then runs the legacy nearest-startCoord
+    // branch which picks TP2 (closest startCoord).
+    const corridors = [
+      squareCorridor(14.5, 50.0, 0.001, 'TP1', [14.0, 50.0], '1NM-after-TP1→TP2'),
+      squareCorridor(15.0, 50.0, 0.001, 'TP2', [15.0, 50.0], 'TP2'),
+    ]
+    const covered = new Set<string>([legKey('TP1', 'TP2')])
+    const out = matchPointsToCorridors(
+      [{ id: 'fallthrough', lng: 14.95, lat: 50.0 }],
+      corridors,
+      waypoints,
+      covered,
+    )
+    expect(out.fallthrough?.startName).toBe('TP2')
   })
 
   it('lat-aware distance: at 50° N a point 0.05° east-of-TP is closer than 0.05° north-of-SP', () => {

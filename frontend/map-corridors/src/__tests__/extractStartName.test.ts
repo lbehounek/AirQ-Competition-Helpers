@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractStartName } from '../corridors/extractStartName'
+import { extractStartName, extractEndName } from '../corridors/extractStartName'
 
 /**
  * Pins the parser at App.tsx:236-239 (now extracted). The 2026-04-26 user
@@ -94,5 +94,35 @@ describe('extractStartName', () => {
       // the LAST after- segment is used as the startName.
       expect(extractStartName('1NM-after-something-after-TP3→TP4')).toBe('TP3')
     })
+  })
+})
+
+// `extractEndName` was added 2026-05-03 follow-up to support filtering
+// legs-with-corridors out of the leg-projection fallback. It mirrors
+// `extractStartName` but reads the post-arrow side of the corridor name.
+describe('extractEndName', () => {
+  it('returns the post-arrow target for {N}NM-after-X→Y corridors', () => {
+    expect(extractEndName('5NM-after-SP→TP1')).toBe('TP1')
+    expect(extractEndName('1NM-after-TP1→TP2')).toBe('TP2')
+    expect(extractEndName('1NM-after-TP9→TP10')).toBe('TP10')
+    expect(extractEndName('1NM-after-TP4→FP')).toBe('FP')
+  })
+
+  it('returns empty string when the name has no arrow', () => {
+    // Empty endName signals "no covered pair" to the leg-projection
+    // filter — the corresponding leg is left eligible. Safer to leave
+    // a leg eligible than to spuriously skip it.
+    expect(extractEndName('SP')).toBe('')
+    expect(extractEndName('TP1')).toBe('')
+    expect(extractEndName('')).toBe('')
+  })
+
+  it('trims whitespace around the post-arrow segment', () => {
+    expect(extractEndName('1NM-after-TP1→ TP2 ')).toBe('TP2')
+  })
+
+  it('handles non-string-ish inputs without throwing', () => {
+    expect(extractEndName(null as unknown as string)).toBe('')
+    expect(extractEndName(undefined as unknown as string)).toBe('')
   })
 })

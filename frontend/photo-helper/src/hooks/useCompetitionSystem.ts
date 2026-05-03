@@ -16,6 +16,7 @@ import { migrationService } from '../services/migrationService';
 import { useI18n } from '../contexts/I18nContext';
 import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
 import { distributeRallyDrop } from '../utils/distributeRallyDrop';
+import { getGridCapacity } from '../utils/getGridCapacity';
 import { parseDiscipline } from '../utils/parseDiscipline';
 import {
   defaultTrackSetTitles,
@@ -893,8 +894,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     const session = currentCompetition.session;
     const set1Count = session.sets.set1.photos.length;
     const set2Count = session.sets.set2.photos.length;
-    const layoutMode = (session as any).layoutMode || 'landscape';
-    const gridCapacity = layoutMode === 'portrait' ? 10 : 9;
+    // Same source-of-truth helper as usePhotoSessionOPFS so the four sites
+    // can't drift (round-5 follow-up to feedback 2026-05-03).
+    const gridCapacity = getGridCapacity(session as any);
     
     return {
       set1Photos: set1Count,
@@ -934,9 +936,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // Methods to align with AppApi expectations
     reorderPhotos,
     shufflePhotos,
-    // Rally turning-point initial drop: distribute files across set1 (first 9)
-    // and set2 (remainder). Without this, a 10+ photo drop overflows the
-    // 9-slot set1 grid and later photos become invisible (feedback 2026-04-23).
+    // Rally turning-point initial drop: distribute files across set1 (first
+    // 10) and set2 (remainder). Per-set capacity is 10 in BOTH orientations
+    // (feedback 2026-05-03 — landscape auto-expands from 3×3 to 5×2 at 10).
+    // Without this, a 10+ photo drop overflowed set1 invisibly.
     addPhotosToTurningPoint: (async (files: File[]) => {
       const session = currentCompetition?.session;
       if (!session) {
