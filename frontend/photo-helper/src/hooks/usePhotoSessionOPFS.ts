@@ -206,7 +206,14 @@ export function usePhotoSessionOPFS() {
     setLoading(true);
     setError(null);
     try {
-      const gridCapacity = (session as any).layoutMode === 'portrait' ? 10 : 9;
+      // Turning-point mode (rally) allows up to 10 photos per set in
+      // both orientations — the landscape grid auto-expands from 3×3 to
+      // 5×2 once a set hits 10 (feedback 2026-05-03). Track mode keeps
+      // the layout-driven 9/10 cap because its grid is hard-pinned to
+      // 3×3 (landscape) / 2×5 (portrait).
+      const gridCapacity = session.mode === 'turningpoint'
+        ? 10
+        : ((session as any).layoutMode === 'portrait' ? 10 : 9);
       const current = session.sets[setKey].photos.length;
       if (current + files.length > gridCapacity) throw new Error(`Can only add ${gridCapacity - current} more photos to this set`);
 
@@ -393,7 +400,9 @@ export function usePhotoSessionOPFS() {
 
   const reorderPhotos = useCallback(async (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
     if (!session) return;
-    const gridCapacity = ((session as any).layoutMode === 'portrait') ? 10 : 9;
+    const gridCapacity = session.mode === 'turningpoint'
+      ? 10
+      : (((session as any).layoutMode === 'portrait') ? 10 : 9);
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= gridCapacity || toIndex >= gridCapacity) return;
     const current = [...session.sets[setKey].photos];
     const slots: (ApiPhoto | null)[] = Array(gridCapacity).fill(null);
@@ -480,7 +489,9 @@ export function usePhotoSessionOPFS() {
 
   const getSessionStats = useCallback(() => {
     if (!session) return { set1Photos: 0, set2Photos: 0, totalPhotos: 0, set1Available: 9, set2Available: 9, isComplete: false };
-    const gridCapacity = ((session as any).layoutMode === 'portrait') ? 10 : 9;
+    const gridCapacity = session.mode === 'turningpoint'
+      ? 10
+      : (((session as any).layoutMode === 'portrait') ? 10 : 9);
     const set1Count = session.sets.set1.photos.length;
     const set2Count = session.sets.set2.photos.length;
     return {
@@ -502,7 +513,9 @@ export function usePhotoSessionOPFS() {
     addPhotosToSet,
     addPhotosToTurningPoint: async (files: File[]) => {
       if (!session) return;
-      const gridCapacity = ((session as any).layoutMode === 'portrait') ? 10 : 9;
+      // Rally turning-point: 10 per set, 20 total, regardless of orientation
+      // (feedback 2026-05-03 — landscape grid auto-expands to 5×2 at 10).
+      const gridCapacity = 10;
       const maxTotal = gridCapacity * 2;
       const set1Count = session.sets.set1.photos.length;
       const set2Count = session.sets.set2.photos.length;

@@ -13,7 +13,6 @@ import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, D
 import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
-import { dirnameOf } from '@airq/shared-storage'
 import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
 import { parseDisciplineFromSearch } from './utils/parseDiscipline'
 import { MapStyleSelector } from './components/MapStyleSelector'
@@ -28,8 +27,8 @@ import {
   type MapStyleId,
 } from './config/mapProviders'
 import { calculateDistance } from './corridors/segments'
-import { matchPointsToCorridors as matchPointsToCorridorsPure } from './corridors/matchPoints'
-import { extractStartName } from './corridors/extractStartName'
+import { matchPointsToCorridors as matchPointsToCorridorsPure, legKey } from './corridors/matchPoints'
+import { extractStartName, extractEndName } from './corridors/extractStartName'
 import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
@@ -241,13 +240,69 @@ function App() {
     return res
   }, [session?.leftSegments, session?.rightSegments, session?.exactPoints])
 
+  // Ordered route waypoints (SP, TP1, TP2, …, TPn, FP). Used by the
+  // matcher's leg-projection fallback (feedback 2026-05-03): when the
+  // corridor between TPn and TPn+1 was dropped because the leg is a
+  // dashed/scenic chain, photos in the gap need to be attributed to TPn
+  // (the preceding TP of the leg they're actually on), not to the
+  // geographically-closer TPn+1 startCoord of the NEXT corridor.
+  const routeWaypoints = useMemo(() => {
+    const out: Array<{ name: string; coord: [number, number] }> = []
+    const features = (session?.exactPoints as any)?.features
+    if (!Array.isArray(features)) return out
+    for (const f of features) {
+      const role = f?.properties?.role
+      const name = f?.properties?.name
+      const coords = f?.geometry?.coordinates
+      if (role !== 'exact' || typeof name !== 'string' || !Array.isArray(coords) || coords.length < 2) continue
+      out.push({ name, coord: [Number(coords[0]), Number(coords[1])] })
+    }
+    // Order: SP first, FP last, TPs sorted numerically in between. Other
+    // names (rare authoring quirk) fall after — leg projection skips
+    // unknown adjacency anyway because perpendicular distances will be
+    // larger than to the real legs.
+    const tpNum = (s: string) => {
+      const m = s.match(/(\d+)/)
+      return m ? parseInt(m[1], 10) : NaN
+    }
+    out.sort((a, b) => {
+      if (a.name === 'SP') return -1
+      if (b.name === 'SP') return 1
+      if (a.name === 'FP') return 1
+      if (b.name === 'FP') return -1
+      const an = tpNum(a.name)
+      const bn = tpNum(b.name)
+      if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn
+      return a.name.localeCompare(b.name)
+    })
+    return out
+  }, [session?.exactPoints])
+
+  // Set of legs already covered by a corridor, keyed `${from}→${to}`.
+  // The leg-projection fallback skips these so a marker outside any
+  // polygon only attaches to a SCENIC leg (one whose corridor was
+  // dropped because the leg is a chain of dashed connectors) — feedback
+  // 2026-05-03 follow-up: "outside corridor → assigned to nearest leg
+  // WITHOUT a corridor". Built from the corridor names directly so a
+  // future change to the naming template only needs to update the
+  // `extractStartName`/`extractEndName` parsers.
+  const coveredLegs = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of corridorPolygons) {
+      const from = extractStartName(c.name)
+      const to = extractEndName(c.name)
+      if (from && to) set.add(legKey(from, to))
+    }
+    return set
+  }, [corridorPolygons])
+
   // Delegates to the pure helper in `corridors/matchPoints.ts` (unit-tested
   // there). Kept as a hook-level `useCallback` so the `useMemo`s below get a
   // stable reference.
   const matchPointsToCorridors = useCallback(
     (pts: ReadonlyArray<{ id: string; lng: number; lat: number }>) =>
-      matchPointsToCorridorsPure(pts, corridorPolygons),
-    [corridorPolygons],
+      matchPointsToCorridorsPure(pts, corridorPolygons, routeWaypoints, coveredLegs),
+    [corridorPolygons, routeWaypoints, coveredLegs],
   )
 
   const markerCorridorMatchById = useMemo(
@@ -324,23 +379,20 @@ function App() {
       .catch(() => { /* non-fatal */ })
   }, [competitionId])
 
-  // After any save dialog returns a path, promote the chosen folder to the
-  // competition's working dir. Lets the user steer the default by simply
-  // navigating in the dialog — feedback 2026-04-25 ("until navigated to
-  // other folder, from that moment new folder persists"). Uses the shared
-  // `dirnameOf` so drive-letter roots, POSIX root, UNC, and trailing
-  // separators all extract the same as Node's `path.dirname` would.
-  const persistChosenDirAsWorking = useCallback((savedPath: string | null) => {
-    if (!savedPath || !competitionId) return
-    const dir = dirnameOf(savedPath)
-    if (!dir) return
-    setImportedKmlDir(dir)
-    const api = (window as any)?.electronAPI
-    if (api?.competitions?.setWorkingDir) {
-      api.competitions.setWorkingDir(competitionId, dir)
-        .catch((err: unknown) => console.warn('[workingDir] persist failed:', err))
-    }
-  }, [competitionId])
+  // No-op kept for call-site compatibility. Feedback 2026-05-03 reverses
+  // the prior behaviour: the working dir is now anchored to (a) the
+  // folder picked on the launcher's New-competition flow and (b) the
+  // folder the source KML was imported from — NOT to whichever folder
+  // the user last navigated to in a save dialog. Overwriting on every
+  // save was confusing users who picked a one-off export location and
+  // then found later exports defaulting somewhere else. The function is
+  // retained as a no-op so existing call-sites can stay structurally
+  // unchanged; if the workingDir gets out of sync, re-importing the KML
+  // (or editing the launcher's folder pick) is the explicit way to
+  // update it.
+  const persistChosenDirAsWorking = useCallback((_savedPath: string | null) => {
+    /* intentionally a no-op — see comment above */
+  }, [])
 
   const onFiles = useCallback(async (files: File[]) => {
     const file = files[0]

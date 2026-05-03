@@ -211,7 +211,11 @@ export const generatePDF = async (
   // portraitGutterWidth: measured width of rotated header gutter (portrait mode)
   // landscapeHeaderHeight: measured header height (landscape mode)
   // headerTopPad: top padding for header text (default ~1mm)
-  const calculateLayout = (portraitGutterWidth: number = 15, landscapeHeaderHeight: number = 25, headerTopPad: number = 2.83) => {
+  // pageCount: number of photos on this specific page — used to pick a
+  // landscape grid (3×3 vs 5×2) for rally turning-point pages with 10
+  // photos (feedback 2026-05-03). Defaults to a value that selects the
+  // legacy 3×3 to keep all existing call-sites unchanged.
+  const calculateLayout = (portraitGutterWidth: number = 15, landscapeHeaderHeight: number = 25, headerTopPad: number = 2.83, pageCount: number = 0) => {
     if (layoutMode === 'portrait') {
       // A4 Portrait: 595 x 842 points
       const pageWidth = 595;
@@ -251,38 +255,45 @@ export const generatePDF = async (
         textY: pageHeight / 2 // Center vertically
       };
     } else {
-      // A4 Landscape: 842 x 595 points  
+      // A4 Landscape: 842 x 595 points
       const pageWidth = 842;
       const pageHeight = 595;
       const margin = 0; // edge-less layout
       const headerHeight = Math.max(0, landscapeHeaderHeight || 0);
       const gap = 2.83; // 1mm in points
-      
+
+      // Rally turning-point with 10 photos uses 5×2 instead of 3×3
+      // (feedback 2026-05-03). Trigger purely on `pageCount` so the
+      // selection is per-page — set1 with 10 photos can render 5×2 even
+      // when set2 has 7 (renders 3×3 with 2 empty trailing tiles).
+      const cols = pageCount >= 10 ? 5 : 3;
+      const rows = pageCount >= 10 ? 2 : 3;
+
       // Available space for photos
       const availableWidth = pageWidth - (2 * margin);
       const availableHeight = pageHeight - headerTopPad - headerHeight; // start directly under header
-      
-      // Calculate photo size for 3x3 grid
-      const photoWidth = Math.floor((availableWidth - (2 * gap)) / 3);
-      const photoHeight = Math.floor((availableHeight - (2 * gap)) / 3);
-      
+
+      // Calculate photo size for the chosen grid
+      const photoWidth = Math.floor((availableWidth - ((cols - 1) * gap)) / cols);
+      const photoHeight = Math.floor((availableHeight - ((rows - 1) * gap)) / rows);
+
       // Ensure aspect ratio
       const correctedHeight = Math.min(photoHeight, photoWidth / aspectRatio);
       const correctedWidth = correctedHeight * aspectRatio;
-      
+
       // Center the grid
-      const totalWidth = (correctedWidth * 3) + (gap * 2);
+      const totalWidth = (correctedWidth * cols) + (gap * (cols - 1));
       const startX = margin + (availableWidth - totalWidth) / 2;
       const startY = headerTopPad + headerHeight;
-      
+
       return {
         photoWidth: correctedWidth,
         photoHeight: correctedHeight,
         startX,
         startY,
         gap,
-        cols: 3,
-        rows: 3,
+        cols,
+        rows,
         headerY: headerTopPad // place text ~1mm from the top edge
       };
     }
@@ -299,7 +310,10 @@ export const generatePDF = async (
   // Create a single page (compute a local layout per page)
   const createPage = (photoSet: ApiPhotoSet, setTitle: string, pageKey: string) => {
     const elements: any[] = [];
-    let localLayout = calculateLayout(15);
+    // Per-page count drives the landscape rally turning-point grid
+    // selection (3×3 vs 5×2). Other modes ignore it.
+    const pageCount = photoSet.photos.length;
+    let localLayout = calculateLayout(15, 25, 2.83, pageCount);
     
     // Add header/title
     const modeLabel = headerLabelFor(pageKey === 'set2' ? 'set2' : 'set1');
@@ -324,7 +338,7 @@ export const generatePDF = async (
       if (headerImage) {
         // Recalculate layout with actual measured gutter width
         const measuredGutter = Math.max(15, Math.ceil(headerImage.width));
-        localLayout = calculateLayout(measuredGutter);
+        localLayout = calculateLayout(measuredGutter, 25, 2.83, pageCount);
         // Calculate positioning to center along left edge
         const pageHeight = 842; // A4 portrait height
         const topPosition = (pageHeight - headerImage.height) / 2; // Center vertically
@@ -368,7 +382,7 @@ export const generatePDF = async (
         mergedTitleImage?.height || 0,
         promotionalImage?.height || 0
       );
-      localLayout = calculateLayout(15, measuredHeaderHeight, headerTopPad);
+      localLayout = calculateLayout(15, measuredHeaderHeight, headerTopPad, pageCount);
 
       if (mergedTitleImage) {
         // Place merged title at top-left

@@ -22,7 +22,17 @@ const translations = {
     'competition.cleanupMsg': '{count} soutěží je starších než 30 dní. Chcete je smazat?',
     'competition.cleanupExcess': 'Máte {count} soutěží (max 10). Zvažte smazání starších.',
     'discipline.precision': 'Precision',
-    'discipline.rally': 'Rally'
+    'discipline.rally': 'Rally',
+    'competition.createTitle': 'Nová soutěž',
+    'competition.folderLabel': 'Složka:',
+    'competition.folderHint': '(vybere se po stisku Enter)',
+    'competition.changeFolder': 'Změnit',
+    'competition.createConfirm': 'Vytvořit a vybrat složku',
+    'competition.createConfirmReady': 'Vytvořit',
+    'competition.createConfirmNoFolder': 'Vytvořit bez složky',
+    'competition.pickFolder': 'Vybrat složku',
+    'competition.noFolder': '(žádná složka)',
+    'competition.folderSet': '{path}'
   },
   en: {
     title: 'Navigation Flying Tools',
@@ -46,7 +56,17 @@ const translations = {
     'competition.cleanupMsg': '{count} competitions are older than 30 days. Delete them?',
     'competition.cleanupExcess': 'You have {count} competitions (max 10). Consider deleting older ones.',
     'discipline.precision': 'Precision',
-    'discipline.rally': 'Rally'
+    'discipline.rally': 'Rally',
+    'competition.createTitle': 'New competition',
+    'competition.folderLabel': 'Folder:',
+    'competition.folderHint': '(chosen after pressing Enter)',
+    'competition.changeFolder': 'Change',
+    'competition.createConfirm': 'Create & pick folder',
+    'competition.createConfirmReady': 'Create',
+    'competition.createConfirmNoFolder': 'Create without folder',
+    'competition.pickFolder': 'Pick folder',
+    'competition.noFolder': '(no folder)',
+    'competition.folderSet': '{path}'
   }
 };
 
@@ -247,6 +267,49 @@ const barCreate = document.getElementById('competition-bar-create');
 const nameInput = document.getElementById('competition-name-input');
 const confirmBtn = document.getElementById('competition-create-confirm');
 const cancelBtn = document.getElementById('competition-create-cancel');
+const pickFolderBtn = document.getElementById('competition-pick-folder');
+const folderText = document.getElementById('competition-folder-text');
+
+// Folder picked for the next-created competition. Persists only across
+// the create form's lifetime — reset on every showCreateForm() so a
+// stale pick from a previous "+ New" doesn't silently apply later.
+let pendingWorkingDir = null;
+// Tracks whether the auto-open picker has already been attempted for
+// this create session. After a cancel, the OK button flips to
+// "Vytvořit bez složky" so the user has a single deliberate path to
+// commit without a folder — without it, repeatedly hitting Enter just
+// re-opens the cancelled dialog (feedback 2026-05-03 follow-up: user
+// shouldn't have to click an explicit "pick folder" button).
+let attemptedAutoPick = false;
+// Guard against re-entering the OK handler while the native folder
+// dialog is open (Enter held down, double-click on OK).
+let confirmInFlight = false;
+
+function updateFolderDisplay() {
+  if (pendingWorkingDir) {
+    folderText.textContent = t('competition.folderSet').replace('{path}', pendingWorkingDir);
+    folderText.title = pendingWorkingDir;
+    folderText.classList.add('has-folder');
+  } else {
+    folderText.textContent = t('competition.folderHint');
+    folderText.removeAttribute('title');
+    folderText.classList.remove('has-folder');
+  }
+  // Mirror the OK button label so the user always knows what their next
+  // click does:
+  //   • folder picked          → "Vytvořit"               (creates with folder)
+  //   • no folder, no attempt  → "Vytvořit a vybrat složku" (auto-opens picker)
+  //   • no folder, picker cancelled → "Vytvořit bez složky" (commits w/o folder)
+  if (confirmBtn) {
+    if (pendingWorkingDir) {
+      confirmBtn.textContent = t('competition.createConfirmReady');
+    } else if (attemptedAutoPick) {
+      confirmBtn.textContent = t('competition.createConfirmNoFolder');
+    } else {
+      confirmBtn.textContent = t('competition.createConfirm');
+    }
+  }
+}
 
 function showCreateForm() {
   barSelect.classList.add('hidden');
@@ -254,20 +317,68 @@ function showCreateForm() {
   nameInput.value = t('competition.defaultName');
   nameInput.focus();
   nameInput.select();
+  pendingWorkingDir = null;
+  attemptedAutoPick = false;
+  updateFolderDisplay();
 }
 
 function hideCreateForm() {
   barCreate.classList.add('hidden');
   barSelect.classList.remove('hidden');
+  pendingWorkingDir = null;
+  attemptedAutoPick = false;
+}
+
+async function pickFolder(opts = {}) {
+  if (!window.electronAPI?.pickDirectory) return null;
+  try {
+    const dialogTitle = opts.title || (currentLocale === 'cs'
+      ? `Vyberte složku pro soutěž "${nameInput.value.trim() || ''}"`.trim()
+      : `Pick folder for competition "${nameInput.value.trim() || ''}"`.trim());
+    const picked = await window.electronAPI.pickDirectory(pendingWorkingDir, dialogTitle);
+    if (picked) {
+      pendingWorkingDir = picked;
+      updateFolderDisplay();
+      return picked;
+    }
+    return null;
+  } catch (err) {
+    console.error('Folder pick failed:', err);
+    return null;
+  }
 }
 
 async function confirmCreate() {
+  if (confirmInFlight) return;
   const name = nameInput.value.trim();
   if (!name) return;
   if (!window.electronAPI?.competitions) return;
 
+  confirmInFlight = true;
   try {
-    const metadata = await window.electronAPI.competitions.create(name);
+    // Auto-open the folder dialog the FIRST time OK / Enter fires. If
+    // the user cancels, `attemptedAutoPick` flips and the next OK
+    // commits without a folder (the button label flips too — see
+    // updateFolderDisplay). The dedicated "Změnit" button remains
+    // available for users who change their mind during the create
+    // session. Feedback 2026-05-03: "the folder dialog should open
+    // automatically, with appropriate title".
+    if (!pendingWorkingDir && !attemptedAutoPick) {
+      attemptedAutoPick = true;
+      const picked = await pickFolder();
+      if (!picked) {
+        // User cancelled — leave the form open so they can re-pick
+        // ("Změnit") or click OK again to commit without a folder.
+        // The button label (re-rendered by pickFolder → updateFolderDisplay)
+        // now reads "Vytvořit bez složky", so the next click is
+        // intentional, not a continuation of the same action.
+        updateFolderDisplay();
+        return;
+      }
+    }
+    // Pass workingDir if user picked one — main.js validates it again
+    // (UNC, length, on-disk) before persisting.
+    const metadata = await window.electronAPI.competitions.create(name, pendingWorkingDir || undefined);
     hideCreateForm();
     await loadCompetitions();
     selectEl.value = metadata.id;
@@ -275,12 +386,15 @@ async function confirmCreate() {
     updateCardsState();
   } catch (err) {
     console.error('Failed to create competition:', err);
+  } finally {
+    confirmInFlight = false;
   }
 }
 
 newBtn.addEventListener('click', showCreateForm);
 cancelBtn.addEventListener('click', hideCreateForm);
 confirmBtn.addEventListener('click', confirmCreate);
+if (pickFolderBtn) pickFolderBtn.addEventListener('click', () => pickFolder());
 nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') confirmCreate();
   if (e.key === 'Escape') hideCreateForm();

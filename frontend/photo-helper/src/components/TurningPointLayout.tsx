@@ -35,7 +35,10 @@ interface TurningPointLayoutProps {
 // Precision turning-point mode caps at 9 photos per feedback 2026-04-18:
 // SP + up to 7 turning points + FP.
 const PRECISION_TURNING_MAX_PHOTOS = 9;
-const RALLY_TURNING_MAX_PHOTOS = 18;
+// Rally turning-point caps at 20 (= SP + 18 TP + FP) per feedback
+// 2026-05-03. Per-set capacity is 10 in BOTH orientations — landscape
+// grid auto-expands from 3×3 to 5×2 once a set reaches 10.
+const RALLY_TURNING_MAX_PHOTOS = 20;
 
 export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   set1,
@@ -62,6 +65,25 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   const effectiveSet2Count = isPrecision ? 0 : set2.photos.length;
   const turningPointLabels = generateTurningPointLabels(set1.photos.length, effectiveSet2Count, layoutMode);
   const initialDropMax = isPrecision ? PRECISION_TURNING_MAX_PHOTOS : RALLY_TURNING_MAX_PHOTOS;
+
+  // Rally turning-point: per-set cap is 10 in both orientations, so the
+  // landscape grid must render as 5×2 (10 cells) instead of the default
+  // 3×3 (9 cells) once a set reaches 10 photos. Below 10, keep 3×3 in
+  // landscape so partial drops (e.g. 6 photos) don't render with 4 empty
+  // tiles trailing — feedback 2026-05-03 ("default 5x2 if 10 photos,
+  // otherwise 3x3"). Portrait stays at 2×5 = 10 unconditionally.
+  const rallyGridFor = (count: number): { slots: number; columns: number } | undefined => {
+    if (isPrecision) return undefined;
+    if (layoutMode === 'portrait') {
+      return { slots: 10, columns: 2 };
+    }
+    return count >= 10
+      ? { slots: 10, columns: 5 }
+      : { slots: 9, columns: 3 };
+  };
+  const set1Grid = rallyGridFor(set1.photos.length);
+  const set2Grid = rallyGridFor(set2.photos.length);
+  const rallyMaxPerSet = isPrecision ? undefined : 10;
 
   return (
     <Box>
@@ -100,6 +122,9 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
                 onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set1', fromIndex, toIndex)}
                 onFilesDropped={(files) => onFilesDropped('set1', files)}
                 customLabels={turningPointLabels.set1}
+                maxPhotosOverride={rallyMaxPerSet}
+                slotsOverride={set1Grid?.slots}
+                columnsOverride={set1Grid?.columns}
               />
             </Paper>
           );
@@ -120,6 +145,9 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
                 onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set2', fromIndex, toIndex)}
                 onFilesDropped={(files) => onFilesDropped('set2', files)}
                 customLabels={turningPointLabels.set2}
+                maxPhotosOverride={rallyMaxPerSet}
+                slotsOverride={set2Grid?.slots}
+                columnsOverride={set2Grid?.columns}
               />
             </Paper>
           );

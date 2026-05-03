@@ -894,7 +894,12 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     const set1Count = session.sets.set1.photos.length;
     const set2Count = session.sets.set2.photos.length;
     const layoutMode = (session as any).layoutMode || 'landscape';
-    const gridCapacity = layoutMode === 'portrait' ? 10 : 9;
+    // Turning-point mode: 10 per set in both orientations (feedback
+    // 2026-05-03 — landscape grid auto-expands to 5×2 at 10). Track
+    // mode keeps the layout-driven 9/10 cap.
+    const gridCapacity = session.mode === 'turningpoint'
+      ? 10
+      : (layoutMode === 'portrait' ? 10 : 9);
     
     return {
       set1Photos: set1Count,
@@ -934,9 +939,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // Methods to align with AppApi expectations
     reorderPhotos,
     shufflePhotos,
-    // Rally turning-point initial drop: distribute files across set1 (first 9)
-    // and set2 (remainder). Without this, a 10+ photo drop overflows the
-    // 9-slot set1 grid and later photos become invisible (feedback 2026-04-23).
+    // Rally turning-point initial drop: distribute files across set1 (first
+    // 10) and set2 (remainder). Per-set capacity is 10 in BOTH orientations
+    // (feedback 2026-05-03 — landscape auto-expands from 3×3 to 5×2 at 10).
+    // Without this, a 10+ photo drop overflowed set1 invisibly.
     addPhotosToTurningPoint: (async (files: File[]) => {
       const session = currentCompetition?.session;
       if (!session) {

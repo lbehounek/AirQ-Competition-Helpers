@@ -28,7 +28,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Competition management
   competitions: {
     list: () => ipcRenderer.invoke('competition-list'),
-    create: (name) => ipcRenderer.invoke('competition-create', name),
+    // `workingDir` (optional, feedback 2026-05-03): folder picked on the
+    // launcher's New-competition flow. Persists immediately so subsequent
+    // export dialogs default there before the user even imports a KML.
+    create: (name, workingDir) => ipcRenderer.invoke('competition-create', name, workingDir),
     setActive: (id) => ipcRenderer.invoke('competition-set-active', id),
     setDiscipline: (id, discipline) => ipcRenderer.invoke('competition-set-discipline', id, discipline),
     delete: (id) => ipcRenderer.invoke('competition-delete', id),
@@ -37,6 +40,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setWorkingDir: (id, workingDir) => ipcRenderer.invoke('competition-set-working-dir', id, workingDir),
     getWorkingDir: (id) => ipcRenderer.invoke('competition-get-working-dir', id),
   },
+
+  // Native folder-picker dialog. Used by the launcher's "New competition"
+  // flow (feedback 2026-05-03) so the user picks the project folder up
+  // front. Returns the absolute path or null if cancelled.
+  pickDirectory: (defaultDir, title) => ipcRenderer.invoke('pick-directory', defaultDir, title),
 
   // Save map print image via native save dialog
   saveMapImage: (base64Data, defaultDir) => ipcRenderer.invoke('save-map-image', base64Data, defaultDir),

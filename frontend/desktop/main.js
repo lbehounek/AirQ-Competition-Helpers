@@ -677,7 +677,7 @@ safeHandle('competition-list', async () => {
 });
 
 // Create a new competition
-safeHandle('competition-create', async (event, name) => {
+safeHandle('competition-create', async (event, name, workingDir) => {
   const id = `comp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const now = new Date().toISOString();
   const index = readCompetitionsIndex();
@@ -686,7 +686,24 @@ safeHandle('competition-create', async (event, name) => {
   const competitionsDir = path.join(getPhotoSessionsPath(), 'competitions');
   ensureDir(competitionsDir);
   const compDir = validateStoragePath(path.join(competitionsDir, sanitizeFileName(id)));
+  // Defensive scrub (feedback 2026-05-03): the user expects a brand-new
+  // competition to start with zero photos / corridors / markers — no
+  // bleed-through from any prior session. The id is freshly generated
+  // (`Date.now()` + 8 chars random), so collision is astronomically
+  // unlikely, but a previous crashed run could still have left files
+  // behind under a colliding id, and we'd rather wipe them than serve a
+  // surprising "old photos appeared in my new competition" experience.
+  // `rmSync` with `force: true` is a no-op on non-existent paths.
+  if (fs.existsSync(compDir)) {
+    fs.rmSync(compDir, { recursive: true, force: true });
+  }
   ensureDir(compDir);
+  // Empty `photos/` so photo-helper's first save lands in a clean slot
+  // grid. The `corridors/` subdir is intentionally NOT pre-created — it
+  // gets initialised on demand by `useCorridorSessionOPFS` the first
+  // time the user opens map-corridors for this competition. If we
+  // pre-created it with a stale `session.json`, the corridors session
+  // would carry forward markers/discipline from whatever was there.
   ensureDir(path.join(compDir, 'photos'));
 
   // Write empty session.json for photo-helper
@@ -723,6 +740,14 @@ safeHandle('competition-create', async (event, name) => {
     photoCount: 0,
     isActive: true
   };
+  // Optional working folder picked on the launcher (feedback 2026-05-03 —
+  // "select TRACK FOLDER when creating a new track"). Same UNC + length
+  // validation as `competition-set-working-dir` so a poisoned path can't
+  // ride in via the create call instead of the dedicated setter.
+  if (typeof workingDir === 'string' && workingDir.trim()) {
+    const abs = validateUserDir(workingDir);
+    if (abs) metadata.workingDir = abs;
+  }
   index.competitions.push(metadata);
   index.activeCompetitionId = id;
   writeCompetitionsIndex(index);
@@ -731,6 +756,25 @@ safeHandle('competition-create', async (event, name) => {
   setConfigValue('activeCompetitionId', id);
 
   return metadata;
+});
+
+// Native folder-picker dialog. Used by the launcher's "New competition"
+// flow so the user can lock in their project folder up front (feedback
+// 2026-05-03). Returns null if the user cancels. The path is NOT
+// persisted here — caller is responsible for passing it to
+// `competition-create` or `competition-set-working-dir`.
+safeHandle('pick-directory', async (event, defaultDir, title) => {
+  const startDir = validateUserDir(defaultDir) || app.getPath('documents');
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: typeof title === 'string' && title.trim() ? title : undefined,
+    defaultPath: startDir,
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths || !result.filePaths.length) return null;
+  // Re-validate the picked path so a UNC / device-namespace pick can't
+  // round-trip back into the index. Same rule as setWorkingDir.
+  const abs = validateUserDir(result.filePaths[0]);
+  return abs || null;
 });
 
 // Set active competition
