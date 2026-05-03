@@ -32,7 +32,11 @@ const translations = {
     'competition.createConfirmNoFolder': 'Vytvořit bez složky',
     'competition.pickFolder': 'Vybrat složku',
     'competition.noFolder': '(žádná složka)',
-    'competition.folderSet': '{path}'
+    'competition.folderSet': '{path}',
+    'competition.folderRejected': 'Složku se nepodařilo nastavit. Síťové cesty (\\\\server\\sdílené) ani systémové cesty (\\\\?\\…) nejsou podporovány — vyberte prosím lokální složku.',
+    'competition.folderPickFailed': 'Otevření dialogu se nezdařilo: {error}',
+    'competition.createFailed': 'Vytvoření soutěže selhalo: {error}',
+    'competition.workingDirDropped': 'Soutěž byla vytvořena, ale vybranou složku se nepodařilo uložit (neplatná cesta). Použijte nabídku „Pracovní složka" pro nový pokus.'
   },
   en: {
     title: 'Navigation Flying Tools',
@@ -66,7 +70,11 @@ const translations = {
     'competition.createConfirmNoFolder': 'Create without folder',
     'competition.pickFolder': 'Pick folder',
     'competition.noFolder': '(no folder)',
-    'competition.folderSet': '{path}'
+    'competition.folderSet': '{path}',
+    'competition.folderRejected': 'That folder could not be used. Network paths (\\\\server\\share) and device paths (\\\\?\\…) are not supported — please pick a local folder.',
+    'competition.folderPickFailed': 'Folder picker failed: {error}',
+    'competition.createFailed': 'Failed to create competition: {error}',
+    'competition.workingDirDropped': 'Competition was created, but the chosen folder could not be saved (invalid path). Use the "Working folder" menu to try again.'
   }
 };
 
@@ -329,23 +337,66 @@ function hideCreateForm() {
   attemptedAutoPick = false;
 }
 
+// Discriminated result so callers can tell cancel apart from real failure
+// and from validation rejection (UNC / device path):
+//   • { ok: true, path: '<abs>' }   — user picked and main.js validated
+//   • { ok: true, path: null }      — user clicked Cancel (genuine cancel)
+//   • { ok: false, reason, message? } — real error or validation rejection;
+//     `reason` is one of 'unavailable' | 'invalid-path' | 'error'.
+//
+// Round-5 fix: the previous shape returned `null` for cancel AND validation
+// rejection AND real failures, and the caller treated all three as "user
+// cancelled". A UNC pick (a normal corporate-network choice) silently
+// flipped the OK button to "Vytvořit bez složky" with no explanation.
 async function pickFolder(opts = {}) {
-  if (!window.electronAPI?.pickDirectory) return null;
+  if (!window.electronAPI?.pickDirectory) return { ok: false, reason: 'unavailable' };
+  const dialogTitle = opts.title || (currentLocale === 'cs'
+    ? `Vyberte složku pro soutěž "${nameInput.value.trim() || ''}"`.trim()
+    : `Pick folder for competition "${nameInput.value.trim() || ''}"`.trim());
+  let picked;
   try {
-    const dialogTitle = opts.title || (currentLocale === 'cs'
-      ? `Vyberte složku pro soutěž "${nameInput.value.trim() || ''}"`.trim()
-      : `Pick folder for competition "${nameInput.value.trim() || ''}"`.trim());
-    const picked = await window.electronAPI.pickDirectory(pendingWorkingDir, dialogTitle);
-    if (picked) {
-      pendingWorkingDir = picked;
-      updateFolderDisplay();
-      return picked;
-    }
-    return null;
+    picked = await window.electronAPI.pickDirectory(pendingWorkingDir, dialogTitle);
   } catch (err) {
     console.error('Folder pick failed:', err);
-    return null;
+    return { ok: false, reason: 'error', message: err instanceof Error ? err.message : String(err) };
   }
+  // Backward-compat: old main.js returned a bare string|null. New main.js
+  // returns the discriminated object. Accept either so a stale Electron
+  // build paired with new renderer doesn't hard-crash.
+  if (typeof picked === 'string' && picked) {
+    pendingWorkingDir = picked;
+    updateFolderDisplay();
+    return { ok: true, path: picked };
+  }
+  if (picked === null || picked === undefined) {
+    return { ok: true, path: null };
+  }
+  if (picked.canceled === true) {
+    return { ok: true, path: null };
+  }
+  if (picked.canceled === false && picked.error === 'invalid-path') {
+    return { ok: false, reason: 'invalid-path', raw: picked.raw };
+  }
+  if (picked.canceled === false && typeof picked.path === 'string' && picked.path) {
+    pendingWorkingDir = picked.path;
+    updateFolderDisplay();
+    return { ok: true, path: picked.path };
+  }
+  // Unknown shape — treat as failure rather than silent no-op so a future
+  // protocol drift surfaces instead of producing a stuck launcher.
+  return { ok: false, reason: 'error', message: 'unexpected pick-directory response' };
+}
+
+// Show a localized error to the user when an IPC operation fails. We use
+// a plain alert() rather than a toast widget because the launcher renderer
+// is intentionally framework-free (vanilla JS) and adding a notification
+// system here just for two error paths would be disproportionate. The
+// messages live in the translation tables so the user sees them in the
+// language they picked, not console-only English.
+function showError(key, vars = {}) {
+  let msg = t(key);
+  for (const [k, v] of Object.entries(vars)) msg = msg.replace(`{${k}}`, String(v));
+  alert(msg);
 }
 
 async function confirmCreate() {
@@ -366,12 +417,27 @@ async function confirmCreate() {
     if (!pendingWorkingDir && !attemptedAutoPick) {
       attemptedAutoPick = true;
       const picked = await pickFolder();
-      if (!picked) {
-        // User cancelled — leave the form open so they can re-pick
+      if (!picked.ok) {
+        // Real failure (IPC threw, validation rejected). Surface a
+        // localized message so the user knows their pick wasn't lost
+        // to a silent cancel — round-5 follow-up to feedback 2026-05-03.
+        if (picked.reason === 'invalid-path') {
+          showError('competition.folderRejected');
+        } else if (picked.reason !== 'unavailable') {
+          showError('competition.folderPickFailed', { error: picked.message || picked.reason });
+        }
+        // Reset so the next OK click re-opens the picker rather than
+        // committing without a folder; the user has signalled they want
+        // a folder by triggering this branch.
+        attemptedAutoPick = false;
+        updateFolderDisplay();
+        return;
+      }
+      if (picked.path === null) {
+        // Genuine cancel — leave the form open so the user can re-pick
         // ("Změnit") or click OK again to commit without a folder.
-        // The button label (re-rendered by pickFolder → updateFolderDisplay)
-        // now reads "Vytvořit bez složky", so the next click is
-        // intentional, not a continuation of the same action.
+        // The button label now reads "Vytvořit bez složky", so the next
+        // click is intentional, not a continuation of the same action.
         updateFolderDisplay();
         return;
       }
@@ -384,8 +450,15 @@ async function confirmCreate() {
     selectEl.value = metadata.id;
     activeCompetitionId = metadata.id;
     updateCardsState();
+    // Surface workingDirRejected (main.js sets this when validateUserDir
+    // refuses the pick at create time — e.g. the folder vanished between
+    // pick and create). Without this, the user's pick disappears silently.
+    if (metadata && metadata.workingDirRejected) {
+      showError('competition.workingDirDropped');
+    }
   } catch (err) {
     console.error('Failed to create competition:', err);
+    showError('competition.createFailed', { error: err instanceof Error ? err.message : String(err) });
   } finally {
     confirmInFlight = false;
   }
@@ -394,7 +467,13 @@ async function confirmCreate() {
 newBtn.addEventListener('click', showCreateForm);
 cancelBtn.addEventListener('click', hideCreateForm);
 confirmBtn.addEventListener('click', confirmCreate);
-if (pickFolderBtn) pickFolderBtn.addEventListener('click', () => pickFolder());
+if (pickFolderBtn) pickFolderBtn.addEventListener('click', async () => {
+  const r = await pickFolder();
+  if (!r.ok) {
+    if (r.reason === 'invalid-path') showError('competition.folderRejected');
+    else if (r.reason !== 'unavailable') showError('competition.folderPickFailed', { error: r.message || r.reason });
+  }
+});
 nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') confirmCreate();
   if (e.key === 'Escape') hideCreateForm();

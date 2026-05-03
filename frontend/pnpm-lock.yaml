@@ -32,6 +32,9 @@ importers:
       electron-builder:
         specifier: ^26.0.12
         version: 26.8.1(electron-builder-squirrel-windows@26.8.1)
+      vitest:
+        specifier: 4.1.4
+        version: 4.1.4(@types/node@25.3.3)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.31.1))
 
   map-corridors:
     dependencies:

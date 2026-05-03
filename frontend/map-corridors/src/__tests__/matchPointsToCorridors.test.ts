@@ -200,6 +200,62 @@ describe('matchPointsToCorridors', () => {
     expect(out.p?.startName).toBe('TP1')
   })
 
+  // Round-5 follow-up: the leg-projection fallback's 50 km cap was
+  // untested. Without this guard, a marker far from every scenic leg
+  // would silently snap to whichever leg happened to be closest,
+  // producing a wildly wrong "Od TP" answer-sheet entry. The cap
+  // shares NEAREST_CORRIDOR_MAX_METERS with the legacy nearest-startCoord
+  // fallback so both branches honour the same "no attribution" rule.
+  it('returns null when the marker is farther than NEAREST_CORRIDOR_MAX_METERS from every leg', () => {
+    // Single uncovered leg from (14, 50) to (15, 50), ~71 km long at 50°N.
+    // Place the marker > 50 km north of the leg (50.5°N → 0.5° lat = ~55 km
+    // perpendicular distance, beyond the cap).
+    const waypoints = [
+      { name: 'TP1', coord: [14.0, 50.0] as [number, number] },
+      { name: 'TP2', coord: [15.0, 50.0] as [number, number] },
+    ]
+    const out = matchPointsToCorridors(
+      [{ id: 'far', lng: 14.5, lat: 50.5 }],
+      [],
+      waypoints,
+    )
+    // Sanity-pin the cap against the exported constant so a future change
+    // to NEAREST_CORRIDOR_MAX_METERS makes this test surface intentionally.
+    expect(NEAREST_CORRIDOR_MAX_METERS).toBe(50_000)
+    expect(out.far).toBeNull()
+  })
+
+  // Round-5 follow-up: when EVERY leg is covered by a corridor, the
+  // leg-projection branch returns null (no eligible scenic leg) and the
+  // matcher falls through to the legacy nearest-startCoord branch. This
+  // graceful-degradation is documented in the matcher's comments but
+  // wasn't pinned by a test — a future refactor that short-circuits to
+  // null on bestIdx<0 would break the fall-through silently.
+  it('falls through to legacy nearest-startCoord when every leg is covered', () => {
+    const waypoints = [
+      { name: 'TP1', coord: [14.0, 50.0] as [number, number] },
+      { name: 'TP2', coord: [15.0, 50.0] as [number, number] },
+    ]
+    // The TP1→TP2 leg has a corridor (registered in coveredLegs).
+    // Polygon is intentionally tiny (0.001°) so the marker at lng=14.95
+    // is OUTSIDE every polygon, forcing the fallback chain. Leg-
+    // projection skips TP1→TP2 (covered), bestIdx stays -1, returns
+    // null — and the matcher then runs the legacy nearest-startCoord
+    // branch which picks TP2 (closest startCoord).
+    const corridors = [
+      squareCorridor(14.5, 50.0, 0.001, 'TP1', [14.0, 50.0], '1NM-after-TP1→TP2'),
+      squareCorridor(15.0, 50.0, 0.001, 'TP2', [15.0, 50.0], 'TP2'),
+    ]
+    const covered = new Set<string>([legKey('TP1', 'TP2')])
+    const out = matchPointsToCorridors(
+      [{ id: 'fallthrough', lng: 14.95, lat: 50.0 }],
+      corridors,
+      waypoints,
+      covered,
+    )
+    expect(out.fallthrough?.startName).toBe('TP2')
+  })
+
   it('lat-aware distance: at 50° N a point 0.05° east-of-TP is closer than 0.05° north-of-SP', () => {
     // Naive Δlng²+Δlat² (degrees) would tie. With cos(50°) ≈ 0.643 scaling on
     // Δlng, the east-of-TP candidate wins because 0.05° lng at 50° N is only

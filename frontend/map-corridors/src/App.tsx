@@ -29,6 +29,7 @@ import {
 import { calculateDistance } from './corridors/segments'
 import { matchPointsToCorridors as matchPointsToCorridorsPure, legKey } from './corridors/matchPoints'
 import { extractStartName, extractEndName } from './corridors/extractStartName'
+import { buildRouteWaypoints } from './corridors/buildRouteWaypoints'
 import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
@@ -246,37 +247,9 @@ function App() {
   // dashed/scenic chain, photos in the gap need to be attributed to TPn
   // (the preceding TP of the leg they're actually on), not to the
   // geographically-closer TPn+1 startCoord of the NEXT corridor.
-  const routeWaypoints = useMemo(() => {
-    const out: Array<{ name: string; coord: [number, number] }> = []
-    const features = (session?.exactPoints as any)?.features
-    if (!Array.isArray(features)) return out
-    for (const f of features) {
-      const role = f?.properties?.role
-      const name = f?.properties?.name
-      const coords = f?.geometry?.coordinates
-      if (role !== 'exact' || typeof name !== 'string' || !Array.isArray(coords) || coords.length < 2) continue
-      out.push({ name, coord: [Number(coords[0]), Number(coords[1])] })
-    }
-    // Order: SP first, FP last, TPs sorted numerically in between. Other
-    // names (rare authoring quirk) fall after — leg projection skips
-    // unknown adjacency anyway because perpendicular distances will be
-    // larger than to the real legs.
-    const tpNum = (s: string) => {
-      const m = s.match(/(\d+)/)
-      return m ? parseInt(m[1], 10) : NaN
-    }
-    out.sort((a, b) => {
-      if (a.name === 'SP') return -1
-      if (b.name === 'SP') return 1
-      if (a.name === 'FP') return 1
-      if (b.name === 'FP') return -1
-      const an = tpNum(a.name)
-      const bn = tpNum(b.name)
-      if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn
-      return a.name.localeCompare(b.name)
-    })
-    return out
-  }, [session?.exactPoints])
+  // Helper extracted to `corridors/buildRouteWaypoints.ts` so the ordering
+  // rule and the NaN-coord filter are unit-testable.
+  const routeWaypoints = useMemo(() => buildRouteWaypoints(session?.exactPoints), [session?.exactPoints])
 
   // Set of legs already covered by a corridor, keyed `${from}→${to}`.
   // The leg-projection fallback skips these so a marker outside any
@@ -379,20 +352,15 @@ function App() {
       .catch(() => { /* non-fatal */ })
   }, [competitionId])
 
-  // No-op kept for call-site compatibility. Feedback 2026-05-03 reverses
-  // the prior behaviour: the working dir is now anchored to (a) the
-  // folder picked on the launcher's New-competition flow and (b) the
-  // folder the source KML was imported from — NOT to whichever folder
-  // the user last navigated to in a save dialog. Overwriting on every
-  // save was confusing users who picked a one-off export location and
-  // then found later exports defaulting somewhere else. The function is
-  // retained as a no-op so existing call-sites can stay structurally
-  // unchanged; if the workingDir gets out of sync, re-importing the KML
-  // (or editing the launcher's folder pick) is the explicit way to
-  // update it.
-  const persistChosenDirAsWorking = useCallback((_savedPath: string | null) => {
-    /* intentionally a no-op — see comment above */
-  }, [])
+  // Round-5 follow-up to feedback 2026-05-03: previously this was a
+  // useCallback that promoted whatever folder the user navigated to in a
+  // save dialog into the competition's workingDir. Then it was reduced to
+  // a no-op for call-site compatibility, which silently discarded its
+  // argument and made the underlying drift mode invisible. We removed it
+  // entirely — the only canonical sources of truth for workingDir are now
+  // (a) the folder picked on the launcher's New-competition flow and
+  // (b) the folder a KML was imported from. If those drift, re-import or
+  // re-pick is the explicit fix path.
 
   const onFiles = useCallback(async (files: File[]) => {
     const file = files[0]
@@ -595,8 +563,11 @@ function App() {
         // (disk full, 50 MB cap, bad IPC) — surface it to the user instead
         // of silently falling through to a browser download, which would
         // land in the default Downloads folder behind the user's back.
-        const savedPath: string | null = await api.saveKml(mergedKml, 'corridors_export.kml', importedKmlDir || undefined, competitionId || undefined)
-        persistChosenDirAsWorking(savedPath)
+        // Round-5: we no longer promote the chosen save folder to the
+        // competition's working dir (see comment near top of this file).
+        // The return value is intentionally unused here; null vs path
+        // only matters for diagnostics.
+        await api.saveKml(mergedKml, 'corridors_export.kml', importedKmlDir || undefined, competitionId || undefined)
       } catch (err) {
         console.error('electronAPI.saveKml failed:', err)
         alert(err instanceof Error ? err.message : t('errors.exportFailed'))
@@ -604,7 +575,7 @@ function App() {
       return
     }
     downloadKML(mergedKml, 'corridors_export.kml')
-  }, [markers, groundMarkers, loadOriginalKmlText, t, competitionId, importedKmlDir, persistChosenDirAsWorking])
+  }, [markers, groundMarkers, loadOriginalKmlText, t, competitionId, importedKmlDir])
 
   const handlePrintMap = useCallback(async () => {
     if (!mapRef.current) return
@@ -623,8 +594,8 @@ function App() {
           reader.onerror = () => reject(reader.error)
           reader.readAsDataURL(blob)
         })
-        const savedPath: string | null = await electronAPI.saveMapImage(base64, importedKmlDir || undefined)
-        persistChosenDirAsWorking(savedPath)
+        // Round-5: chosen folder is no longer auto-promoted to workingDir.
+        await electronAPI.saveMapImage(base64, importedKmlDir || undefined)
       } else {
         // Browser: download via anchor
         const url = URL.createObjectURL(blob)
@@ -646,7 +617,7 @@ function App() {
       console.error('Map print failed:', err)
       alert(err instanceof Error ? err.message : t('errors.printFailed'))
     }
-  }, [t, importedKmlDir, persistChosenDirAsWorking])
+  }, [t, importedKmlDir])
 
   // Drag source for placing photo markers
   const onDragStartMarker = useCallback((e: React.DragEvent) => {

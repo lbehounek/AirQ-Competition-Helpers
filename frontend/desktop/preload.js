@@ -43,7 +43,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Native folder-picker dialog. Used by the launcher's "New competition"
   // flow (feedback 2026-05-03) so the user picks the project folder up
-  // front. Returns the absolute path or null if cancelled.
+  // front. Returns a discriminated object so the renderer can distinguish
+  // between cancel and validation rejection:
+  //   • { canceled: true }                                  — user clicked Cancel
+  //   • { canceled: false, error: 'invalid-path', raw }     — picked but rejected (UNC, device-ns, vanished)
+  //   • { canceled: false, path: '<abs>' }                  — picked and validated
   pickDirectory: (defaultDir, title) => ipcRenderer.invoke('pick-directory', defaultDir, title),
 
   // Save map print image via native save dialog

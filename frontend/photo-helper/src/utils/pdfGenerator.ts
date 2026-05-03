@@ -2,6 +2,7 @@ import React from 'react';
 import { Document, Page, Image, pdf, StyleSheet } from '@react-pdf/renderer';
 import type { ApiPhotoSet } from '../types/api';
 import { dirnameOf } from '@airq/shared-storage';
+import { calculateLandscapeGrid } from './pdfLandscapeGrid';
 
 // Polyfill Buffer for @react-pdf/renderer
 import { Buffer } from 'buffer';
@@ -255,47 +256,11 @@ export const generatePDF = async (
         textY: pageHeight / 2 // Center vertically
       };
     } else {
-      // A4 Landscape: 842 x 595 points
-      const pageWidth = 842;
-      const pageHeight = 595;
-      const margin = 0; // edge-less layout
-      const headerHeight = Math.max(0, landscapeHeaderHeight || 0);
-      const gap = 2.83; // 1mm in points
-
-      // Rally turning-point with 10 photos uses 5×2 instead of 3×3
-      // (feedback 2026-05-03). Trigger purely on `pageCount` so the
-      // selection is per-page — set1 with 10 photos can render 5×2 even
-      // when set2 has 7 (renders 3×3 with 2 empty trailing tiles).
-      const cols = pageCount >= 10 ? 5 : 3;
-      const rows = pageCount >= 10 ? 2 : 3;
-
-      // Available space for photos
-      const availableWidth = pageWidth - (2 * margin);
-      const availableHeight = pageHeight - headerTopPad - headerHeight; // start directly under header
-
-      // Calculate photo size for the chosen grid
-      const photoWidth = Math.floor((availableWidth - ((cols - 1) * gap)) / cols);
-      const photoHeight = Math.floor((availableHeight - ((rows - 1) * gap)) / rows);
-
-      // Ensure aspect ratio
-      const correctedHeight = Math.min(photoHeight, photoWidth / aspectRatio);
-      const correctedWidth = correctedHeight * aspectRatio;
-
-      // Center the grid
-      const totalWidth = (correctedWidth * cols) + (gap * (cols - 1));
-      const startX = margin + (availableWidth - totalWidth) / 2;
-      const startY = headerTopPad + headerHeight;
-
-      return {
-        photoWidth: correctedWidth,
-        photoHeight: correctedHeight,
-        startX,
-        startY,
-        gap,
-        cols,
-        rows,
-        headerY: headerTopPad // place text ~1mm from the top edge
-      };
+      // Landscape grid math (3×3 vs 5×2 selection) lives in
+      // `pdfLandscapeGrid.ts` so the boundary at pageCount >= 10 and the
+      // centering arithmetic are unit-testable. Returns the same shape
+      // the previous inline block produced.
+      return calculateLandscapeGrid(aspectRatio, landscapeHeaderHeight, headerTopPad, pageCount);
     }
   };
 

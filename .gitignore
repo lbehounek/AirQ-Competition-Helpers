@@ -20,6 +20,10 @@ downloads/
 eggs/
 .eggs/
 lib/
+# But our Electron desktop package has a `lib/` directory of pure
+# CommonJS helpers (path validators, etc.) that DOES need to be tracked.
+!frontend/desktop/lib/
+!frontend/desktop/lib/**
 lib64/
 parts/
 sdist/

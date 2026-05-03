@@ -308,16 +308,29 @@ function getPhotoSessionsPath() {
   return path.join(app.getPath('userData'), 'photo-sessions');
 }
 
-// Sanitize filename to prevent path traversal
-function sanitizeFileName(input) {
-  const removedUnsafe = input
-    .replace(/[\\/]/g, '-')
-    .replace(/[\u0000-\u001F\u007F]/g, '')
-    .trim();
-  const normalized = removedUnsafe.replace(/[^A-Za-z0-9._-]/g, '-');
-  const truncated = normalized.slice(0, 128);
-  return truncated.length > 0 ? truncated : 'file';
+// Path validators (sanitizeFileName, validateUserDir, validateStoragePath,
+// isSafeStartDir, MAX_USER_PATH_LEN) live in `lib/pathValidation.js` so they
+// can be unit-tested directly. The implementations are unchanged — only the
+// home is different.
+const {
+  MAX_USER_PATH_LEN,
+  sanitizeFileName: sanitizeFileNamePure,
+  isSafeStartDir,
+  validateUserDir,
+  validateStoragePath: validateStoragePathPure,
+} = require('./lib/pathValidation');
+
+// Convenience wrapper that pins the storage root to the photo-sessions
+// directory — every existing call site uses this root.
+function validateStoragePath(inputPath) {
+  return validateStoragePathPure(inputPath, getPhotoSessionsPath());
 }
+
+// Sanitize filename to prevent path traversal — delegates to the lib helper.
+function sanitizeFileName(input) {
+  return sanitizeFileNamePure(input);
+}
+
 
 // Defense-in-depth: only accept IPC from frames WE created.
 // - `app://` = our main window + sub-apps (photo-helper, map-corridors)
@@ -364,35 +377,6 @@ function safeHandle(channel, fn) {
   });
 }
 
-// Reject UNC paths (`\\server\share`, `//server/share`) and Windows device
-// namespaces (`\\?\`, `\\.\`). A renderer-supplied UNC path as the save
-// dialog's `defaultPath` would pre-point the user at an attacker-controlled
-// SMB share — one click later the KML lands remote and, on Windows, an
-// NTLMv2 handshake to the attacker's host leaks the user's hashed creds.
-function isSafeStartDir(abs) {
-  if (typeof abs !== 'string' || !abs) return false;
-  if (/^(\\\\|\/\/)/.test(abs)) return false;
-  if (/^\\\\[?.]\\/.test(abs)) return false;
-  return true;
-}
-
-// Single source of truth for "renderer gave us a directory string — should we
-// trust it as `defaultPath` for a dialog or persist it as workingDir?". Wraps
-// the four checks (type, length cap, UNC/device rejection, on-disk presence)
-// that were copy-pasted across handlers and easy to forget on new ones.
-const MAX_USER_PATH_LEN = 4096;
-function validateUserDir(input) {
-  if (typeof input !== 'string' || !input.trim()) return null;
-  if (input.length > MAX_USER_PATH_LEN) return null;
-  let abs;
-  try { abs = path.resolve(input); } catch { return null; }
-  if (!isSafeStartDir(abs)) return null;
-  try {
-    if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) return null;
-  } catch { return null; }
-  return abs;
-}
-
 // Allowlist for `read-photo-file`: paths the user explicitly chose in a
 // preceding `open-photos` dialog. Without this, a compromised renderer
 // (XSS via untrusted KML, image EXIF, or Mapbox-injected content) could
@@ -420,17 +404,6 @@ function ensureDir(dirPath) {
     fs.mkdirSync(dirPath, { recursive: true });
   }
   return dirPath;
-}
-
-// Validate that a path is within the allowed storage directory (prevent path traversal)
-function validateStoragePath(inputPath) {
-  const rootPath = path.resolve(getPhotoSessionsPath());
-  const resolved = path.resolve(inputPath);
-
-  if (!resolved.startsWith(rootPath + path.sep) && resolved !== rootPath) {
-    throw new Error(`Access denied: path outside storage directory`);
-  }
-  return resolved;
 }
 
 // Initialize storage - create root and sessions directories
@@ -744,9 +717,21 @@ safeHandle('competition-create', async (event, name, workingDir) => {
   // "select TRACK FOLDER when creating a new track"). Same UNC + length
   // validation as `competition-set-working-dir` so a poisoned path can't
   // ride in via the create call instead of the dedicated setter.
+  //
+  // If the user-supplied path is rejected (UNC, device-namespace, length cap,
+  // doesn't exist, raced-deleted between pick and create), the create still
+  // succeeds — but we attach `workingDirRejected: true` to the returned
+  // metadata so the renderer can surface a non-blocking warning. Without
+  // this flag the renderer interpreted "no workingDir on metadata" as
+  // "user didn't pick one" and the user's real pick disappeared silently
+  // (round-5 follow-up to feedback 2026-05-03).
   if (typeof workingDir === 'string' && workingDir.trim()) {
     const abs = validateUserDir(workingDir);
-    if (abs) metadata.workingDir = abs;
+    if (abs) {
+      metadata.workingDir = abs;
+    } else {
+      metadata.workingDirRejected = true;
+    }
   }
   index.competitions.push(metadata);
   index.activeCompetitionId = id;
@@ -760,9 +745,17 @@ safeHandle('competition-create', async (event, name, workingDir) => {
 
 // Native folder-picker dialog. Used by the launcher's "New competition"
 // flow so the user can lock in their project folder up front (feedback
-// 2026-05-03). Returns null if the user cancels. The path is NOT
-// persisted here — caller is responsible for passing it to
-// `competition-create` or `competition-set-working-dir`.
+// 2026-05-03). The path is NOT persisted here — caller is responsible for
+// passing it to `competition-create` or `competition-set-working-dir`.
+//
+// Returns a discriminated result so the renderer can distinguish between
+// (a) the user clicking Cancel, (b) the user picking a folder we had to
+// reject (UNC, device namespace, length cap, vanished from disk), and
+// (c) a successful pick. Round-5 follow-up: the previous shape returned
+// `null` for both cancel AND validation rejection, so a UNC pick (a normal
+// thing on a corporate network drive) was indistinguishable from cancel
+// and the renderer flipped the OK button to "Vytvořit bez složky" without
+// telling the user why.
 safeHandle('pick-directory', async (event, defaultDir, title) => {
   const startDir = validateUserDir(defaultDir) || app.getPath('documents');
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -770,11 +763,20 @@ safeHandle('pick-directory', async (event, defaultDir, title) => {
     defaultPath: startDir,
     properties: ['openDirectory', 'createDirectory'],
   });
-  if (result.canceled || !result.filePaths || !result.filePaths.length) return null;
+  if (result.canceled || !result.filePaths || !result.filePaths.length) {
+    return { canceled: true };
+  }
   // Re-validate the picked path so a UNC / device-namespace pick can't
-  // round-trip back into the index. Same rule as setWorkingDir.
-  const abs = validateUserDir(result.filePaths[0]);
-  return abs || null;
+  // round-trip back into the index. Same rule as setWorkingDir. If
+  // validation rejects, surface `error: 'invalid-path'` so the renderer
+  // can show a real "this kind of folder isn't supported" message
+  // instead of treating it as cancel.
+  const raw = result.filePaths[0];
+  const abs = validateUserDir(raw);
+  if (!abs) {
+    return { canceled: false, error: 'invalid-path', raw };
+  }
+  return { canceled: false, path: abs };
 });
 
 // Set active competition

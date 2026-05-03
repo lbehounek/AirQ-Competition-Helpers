@@ -3,6 +3,7 @@ import type { Photo } from '../types';
 import type { ApiPhoto, ApiPhotoSession } from '../types/api';
 import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
 import { deriveSet1FromSet2, deriveSet2FromSet1 } from '../utils/autoPrefillSetTitle';
+import { getGridCapacity, TURNING_POINT_PER_SET } from '../utils/getGridCapacity';
 import {
   isStorageAvailable,
   initStorage,
@@ -206,15 +207,22 @@ export function usePhotoSessionOPFS() {
     setLoading(true);
     setError(null);
     try {
-      // Turning-point mode (rally) allows up to 10 photos per set in
-      // both orientations — the landscape grid auto-expands from 3×3 to
-      // 5×2 once a set hits 10 (feedback 2026-05-03). Track mode keeps
-      // the layout-driven 9/10 cap because its grid is hard-pinned to
-      // 3×3 (landscape) / 2×5 (portrait).
-      const gridCapacity = session.mode === 'turningpoint'
-        ? 10
-        : ((session as any).layoutMode === 'portrait' ? 10 : 9);
+      // Single-source-of-truth helper (feedback 2026-05-03 follow-up):
+      // turning-point mode caps at 10 in both orientations, track mode
+      // follows the layout. Centralised in `getGridCapacity` so the four
+      // sites in this file plus `useCompetitionSystem.getSessionStats`
+      // can't drift.
+      const gridCapacity = getGridCapacity(session as any);
       const current = session.sets[setKey].photos.length;
+      // State-corruption guard (round-5 follow-up): a layout switch with
+      // photos already loaded (or a session imported from an older build
+      // with a higher cap) can leave `current > gridCapacity`. Without
+      // this branch the user saw "Can only add -3 more photos", which
+      // hid the underlying corruption. Surface it explicitly so support
+      // can identify the case and so the user has a clear next step.
+      if (current > gridCapacity) {
+        throw new Error(`This set already has ${current} photos but the cap is now ${gridCapacity}. Please reload the competition or remove photos before adding more.`);
+      }
       if (current + files.length > gridCapacity) throw new Error(`Can only add ${gridCapacity - current} more photos to this set`);
 
       const photosDir = handlesRef.current.photosDir;
@@ -400,9 +408,7 @@ export function usePhotoSessionOPFS() {
 
   const reorderPhotos = useCallback(async (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
     if (!session) return;
-    const gridCapacity = session.mode === 'turningpoint'
-      ? 10
-      : (((session as any).layoutMode === 'portrait') ? 10 : 9);
+    const gridCapacity = getGridCapacity(session as any);
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= gridCapacity || toIndex >= gridCapacity) return;
     const current = [...session.sets[setKey].photos];
     const slots: (ApiPhoto | null)[] = Array(gridCapacity).fill(null);
@@ -489,9 +495,7 @@ export function usePhotoSessionOPFS() {
 
   const getSessionStats = useCallback(() => {
     if (!session) return { set1Photos: 0, set2Photos: 0, totalPhotos: 0, set1Available: 9, set2Available: 9, isComplete: false };
-    const gridCapacity = session.mode === 'turningpoint'
-      ? 10
-      : (((session as any).layoutMode === 'portrait') ? 10 : 9);
+    const gridCapacity = getGridCapacity(session as any);
     const set1Count = session.sets.set1.photos.length;
     const set2Count = session.sets.set2.photos.length;
     return {
@@ -515,7 +519,8 @@ export function usePhotoSessionOPFS() {
       if (!session) return;
       // Rally turning-point: 10 per set, 20 total, regardless of orientation
       // (feedback 2026-05-03 — landscape grid auto-expands to 5×2 at 10).
-      const gridCapacity = 10;
+      // Sourced from the central helper so a future cap bump propagates.
+      const gridCapacity = TURNING_POINT_PER_SET;
       const maxTotal = gridCapacity * 2;
       const set1Count = session.sets.set1.photos.length;
       const set2Count = session.sets.set2.photos.length;

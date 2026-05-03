@@ -6,6 +6,7 @@ import { useI18n } from '../contexts/I18nContext';
 import { generateTurningPointLabels } from '../utils/imageProcessing';
 import type { ApiPhoto, ApiPhotoSet } from '../types/api';
 import { useLayoutMode } from '../contexts/LayoutModeContext';
+import { rallyGridFor } from '../utils/rallyGridFor';
 
 interface TurningPointLayoutProps {
   set1: ApiPhotoSet;
@@ -66,23 +67,11 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   const turningPointLabels = generateTurningPointLabels(set1.photos.length, effectiveSet2Count, layoutMode);
   const initialDropMax = isPrecision ? PRECISION_TURNING_MAX_PHOTOS : RALLY_TURNING_MAX_PHOTOS;
 
-  // Rally turning-point: per-set cap is 10 in both orientations, so the
-  // landscape grid must render as 5×2 (10 cells) instead of the default
-  // 3×3 (9 cells) once a set reaches 10 photos. Below 10, keep 3×3 in
-  // landscape so partial drops (e.g. 6 photos) don't render with 4 empty
-  // tiles trailing — feedback 2026-05-03 ("default 5x2 if 10 photos,
-  // otherwise 3x3"). Portrait stays at 2×5 = 10 unconditionally.
-  const rallyGridFor = (count: number): { slots: number; columns: number } | undefined => {
-    if (isPrecision) return undefined;
-    if (layoutMode === 'portrait') {
-      return { slots: 10, columns: 2 };
-    }
-    return count >= 10
-      ? { slots: 10, columns: 5 }
-      : { slots: 9, columns: 3 };
-  };
-  const set1Grid = rallyGridFor(set1.photos.length);
-  const set2Grid = rallyGridFor(set2.photos.length);
+  // Rally turning-point: per-set cap is 10 in both orientations. Logic
+  // is in `utils/rallyGridFor.ts` so the boundary at count === 10 is
+  // unit-testable (round-5 follow-up to feedback 2026-05-03).
+  const set1Grid = rallyGridFor(set1.photos.length, layoutMode, isPrecision);
+  const set2Grid = rallyGridFor(set2.photos.length, layoutMode, isPrecision);
   const rallyMaxPerSet = isPrecision ? undefined : 10;
 
   return (
