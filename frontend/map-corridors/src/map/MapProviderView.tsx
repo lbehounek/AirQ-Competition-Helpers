@@ -40,6 +40,13 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   markers?: readonly { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
   activeMarkerId?: string | null
   usedLabels?: string[]
+  /**
+   * Discipline-specific label set for the marker label picker. Defaults to
+   * the legacy A..T letters when omitted (preserves rally / web behaviour).
+   * Precision sessions pass the numeric set (1..20) so the popup buttons
+   * match what photo-helper prints on the photos.
+   */
+  availableLabels?: readonly PhotoLabel[]
   markerDistanceNmById?: Record<string, number | null>
   onMarkerAdd?: (lng: number, lat: number) => void
   onMarkerDragEnd?: (id: string, lng: number, lat: number) => void
@@ -413,7 +420,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 </div>
                 <div style={{ fontSize: 12, color: '#374151', marginTop: 6 }}>Label</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 6 }}>
-                  {ALL_PHOTO_LABELS.map((L) => {
+                  {(props.availableLabels ?? ALL_PHOTO_LABELS).map((L) => {
                     const used = (props.usedLabels || []).includes(L)
                     const isCurrent = m.label === L
                     const disabled = used && !isCurrent
