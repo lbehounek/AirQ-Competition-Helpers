@@ -66,6 +66,37 @@ surface in code review / release notes.
 - **Effort:** ~1 hour (usually painless, occasionally rule renames bite).
 - **Tags:** `deps`, `hygiene`
 
+### 6. Provider-level tests for `LabelingContext` lock behavior
+- **Why:** PR #56 added defense-in-depth to `LabelingProvider` — `setLabeling`
+  silently no-ops when `isPrecision && labeling.id !== 'numbers'` and the
+  context exposes `isLocked: true` for precision. The new test file only
+  covers the pure helper (`resolveDefaultLabeling`); the guard and `isLocked`
+  are untested. A future refactor that re-enables letter switching for
+  precision would pass CI even though the rules-compliance contract regresses.
+- **Action:** Add a small RTL test that mounts `LabelingProvider` with
+  `window.location.search = '?discipline=precision'` (jsdom), asserts
+  `isLocked === true`, calls `setLabeling(LETTERS_OPTION)`, and asserts
+  `currentLabeling.id === 'numbers'` (i.e. the call was ignored). Pairs well
+  with item #4 if the dev-deps are added there first.
+- **Effort:** ~30 min once `@testing-library/react` is in (see #4).
+- **Tags:** `tests`, `regression`, `precision`
+
+### 7. ID-based lookup in `LABELING_OPTIONS` constants
+- **Why:** PR #56 introduced
+  `const LETTERS_OPTION = LABELING_OPTIONS[0]` and
+  `NUMBERS_OPTION = LABELING_OPTIONS[1]` in
+  `frontend/photo-helper/src/contexts/LabelingContext.tsx`. If anyone reorders
+  `LABELING_OPTIONS` (e.g. for UI grouping or to default-show numbers first),
+  the named constants silently flip and `resolveDefaultLabeling` returns the
+  wrong option for both disciplines. Coupled with the missing Provider tests
+  (#6), this would not be caught by CI.
+- **Action:** Replace the index lookups with id-based lookups —
+  `LABELING_OPTIONS.find(o => o.id === 'letters')!` and `… 'numbers'` — or
+  add a module-scope `console.assert(LABELING_OPTIONS[0].id === 'letters')`
+  guard. The find approach is preferred (reorder-safe by construction).
+- **Effort:** ~5 min.
+- **Tags:** `correctness`, `hygiene`
+
 ---
 
 ## Deferred (documented but not scheduled)
