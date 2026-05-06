@@ -33,7 +33,7 @@ import { buildRouteWaypoints } from './corridors/buildRouteWaypoints'
 import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
-import { ALL_PHOTO_LABELS, DEFAULT_GROUND_MARKER_TYPE } from './types/markers'
+import { DEFAULT_GROUND_MARKER_TYPE, getLabelsForDiscipline } from './types/markers'
 
 function App() {
   const { t } = useI18n()
@@ -174,6 +174,9 @@ function App() {
   // 2026-04-18 and is persisted per-competition via `session.use1NmAfterSp`.
   const use1NmAfterSp = !!session?.use1NmAfterSp
   const effectiveDiscipline: Discipline = (urlDiscipline || session?.discipline || 'rally')
+  // Precision discipline labels photos numerically (1..20) per FAI rules;
+  // rally / web / legacy stays on letters (A..T). Mirrors photo-helper.
+  const availableLabels = useMemo(() => getLabelsForDiscipline(effectiveDiscipline), [effectiveDiscipline])
   const effectiveConfig = useMemo(() => {
     const base = DISCIPLINE_CONFIGS[effectiveDiscipline]
     if (effectiveDiscipline === 'rally' && use1NmAfterSp) {
@@ -869,6 +872,7 @@ function App() {
             markers={markers}
             activeMarkerId={activeMarkerId}
             usedLabels={usedLabels}
+            availableLabels={availableLabels}
             markerDistanceNmById={markerDistanceNmById}
             onMarkerAdd={handleMarkerAdd}
             onMarkerDragEnd={handleMarkerDragEnd}
@@ -908,7 +912,7 @@ function App() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {ALL_PHOTO_LABELS.map((L) => {
+            {availableLabels.map((L) => {
               const m = labelToMarker.get(L)
               const dist = m ? markerDistanceNmById[m.id] : null
               const from = m ? (markerFromTpById[m.id] || '') : ''

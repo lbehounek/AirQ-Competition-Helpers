@@ -77,6 +77,16 @@ describe('isPhotoMarker', () => {
     expect(isPhotoMarker({ ...valid, label: 'Z' })).toBe(false)
   })
 
+  it('accepts numeric labels (precision discipline) — boundary 1 and 20', () => {
+    expect(isPhotoMarker({ ...valid, label: '1' })).toBe(true)
+    expect(isPhotoMarker({ ...valid, label: '20' })).toBe(true)
+  })
+
+  it('rejects out-of-range numeric labels', () => {
+    expect(isPhotoMarker({ ...valid, label: '0' })).toBe(false)
+    expect(isPhotoMarker({ ...valid, label: '21' })).toBe(false)
+  })
+
   it('rejects non-string name', () => {
     expect(isPhotoMarker({ ...valid, name: 123 })).toBe(false)
   })
