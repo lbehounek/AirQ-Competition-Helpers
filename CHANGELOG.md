@@ -10,6 +10,18 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.8.3] - 2026-05-06
+
+### Fixed
+- **Desktop launcher:** include `lib/**/*` in the electron-builder `files`
+  allowlist so `lib/pathValidation.js` (extracted from `main.js` in the
+  silently-tagged `desktop-v2.8.1` / `desktop-v2.8.2`) ships inside the
+  asar. Without it, the .exe crashes on launch with
+  `Error: Cannot find module './lib/pathValidation'`. The 2.8.1 / 2.8.2
+  desktop tags were never released to GitHub, so end users were
+  unaffected — 2.8.3 is the first release that would have actually
+  shipped the latent bug.
+
 ## [2.8.0] - 2026-04-25
 
 This release consolidates the silently-tagged `desktop-v2.7.0`–`v2.7.5`
