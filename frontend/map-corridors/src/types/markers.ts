@@ -1,38 +1,18 @@
 // Shared marker type definitions — used by App.tsx, MapProviderView, useCorridorSessionOPFS, mapCapture
 
-import type { Discipline } from '../corridors/preciseCorridor'
+// Photo label sets + the discipline → label-set rule live in
+// `@airq/shared-discipline` so map-corridors and photo-helper cannot drift.
+// Re-exported here under the legacy names so existing imports
+// (`from '../types/markers'`) continue to resolve.
+import { ALL_PHOTO_LABELS, type PhotoLabel } from '@airq/shared-discipline'
 
-// Rally / web / legacy: photos are labelled A..T (matches photo-helper's
-// `letters` mode). Precision rules require numeric labels 1..20 (matches
-// photo-helper's `numbers` mode for precision discipline). Both sets are
-// length 20 — the maximum number of photos in a precision track set.
-export const PHOTO_LABELS_LETTERS = [
-  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T',
-] as const
-export const PHOTO_LABELS_NUMBERS = [
-  '1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20',
-] as const
-
-// Union of every label the sanitizer will accept on persisted state. Keep
-// both letters AND numbers valid: a session that flips discipline mid-flight
-// (or imports a KML produced under the other discipline) must not lose its
-// existing labels. The active labelling scheme is filtered at the UI layer
-// via `getLabelsForDiscipline`, not by narrowing the type.
-export const ALL_PHOTO_LABELS = [
-  ...PHOTO_LABELS_LETTERS,
-  ...PHOTO_LABELS_NUMBERS,
-] as const
-export type PhotoLabel = (typeof ALL_PHOTO_LABELS)[number]
-
-/**
- * Pick the label set for the active discipline. Mirrors photo-helper's
- * `resolveDefaultLabeling` so a precision-discipline session shows numeric
- * labels (1, 2, 3…) in the marker label picker AND the answer sheet, while
- * rally / unknown defaults to letters (A, B, C…).
- */
-export function getLabelsForDiscipline(discipline: Discipline): readonly PhotoLabel[] {
-  return discipline === 'precision' ? PHOTO_LABELS_NUMBERS : PHOTO_LABELS_LETTERS
-}
+export {
+  PHOTO_LABELS_LETTERS,
+  PHOTO_LABELS_NUMBERS,
+  ALL_PHOTO_LABELS,
+  getLabelsForDiscipline,
+} from '@airq/shared-discipline'
+export type { PhotoLabel } from '@airq/shared-discipline'
 
 export type PhotoMarker = Readonly<{
   id: string

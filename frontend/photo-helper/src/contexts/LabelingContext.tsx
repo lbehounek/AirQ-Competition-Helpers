@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useState } from 'react';
-import { parseDiscipline } from '../utils/parseDiscipline';
+import {
+  parseDisciplineFromSearch,
+  getLabelingMode,
+  type Discipline,
+} from '@airq/shared-discipline';
 
 export interface LabelingOption {
   id: 'letters' | 'numbers';
@@ -24,13 +28,15 @@ const LETTERS_OPTION = LABELING_OPTIONS[0];
 const NUMBERS_OPTION = LABELING_OPTIONS[1];
 
 /**
- * Precision flying competition rules require photos to be labeled with
- * NUMBERS (1, 2, 3...) — letters are not permitted. Rally has no such
- * constraint and keeps the historical letter default. Pure function so
- * the URL → default mapping is unit-tested without React.
+ * Maps the URL-derived discipline to the photo-helper-specific
+ * `LabelingOption` (which carries UI metadata like name/description).
+ * The discipline → mode rule itself lives in `@airq/shared-discipline`
+ * (`getLabelingMode`) so a future change there propagates to every app
+ * that picks labels by discipline.
  */
 export const resolveDefaultLabeling = (search: string): LabelingOption => {
-  return parseDiscipline(search) === 'precision' ? NUMBERS_OPTION : LETTERS_OPTION;
+  const discipline: Discipline = parseDisciplineFromSearch(search) ?? 'rally';
+  return getLabelingMode(discipline) === 'numbers' ? NUMBERS_OPTION : LETTERS_OPTION;
 };
 
 interface LabelingContextType {
@@ -50,7 +56,7 @@ const LabelingContext = createContext<LabelingContextType | null>(null);
 
 export const LabelingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const search = typeof window !== 'undefined' ? window.location.search : '';
-  const isPrecision = parseDiscipline(search) === 'precision';
+  const isPrecision = parseDisciplineFromSearch(search) === 'precision';
   const [currentLabeling, setCurrentLabeling] = useState<LabelingOption>(() => resolveDefaultLabeling(search));
 
   const setLabeling = (labeling: LabelingOption) => {

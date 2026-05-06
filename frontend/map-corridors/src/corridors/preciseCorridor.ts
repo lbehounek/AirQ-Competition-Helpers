@@ -18,7 +18,11 @@ export type DisciplineConfig = {
   rightDistanceM: number
 }
 
-export type Discipline = 'precision' | 'rally'
+// Discipline is the shared cross-app type — re-exported here so the
+// many existing `import type { Discipline } from './corridors/preciseCorridor'`
+// callsites keep resolving without a sweep.
+export type { Discipline } from '@airq/shared-discipline'
+import type { Discipline } from '@airq/shared-discipline'
 
 export const DISCIPLINE_CONFIGS: Record<Discipline, DisciplineConfig> = {
   precision: { spAfterNm: 0.5, tpAfterNm: 0.5, leftDistanceM: 100, rightDistanceM: 0 },

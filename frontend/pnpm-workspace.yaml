@@ -1,5 +1,6 @@
 packages:
   - shared-storage
+  - shared-discipline
   - photo-helper
   - map-corridors
   - desktop
