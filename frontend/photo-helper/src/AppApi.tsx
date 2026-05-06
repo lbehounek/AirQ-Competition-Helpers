@@ -486,13 +486,16 @@ function AppApi() {
                   <AspectRatioSelector compact />
                 </Box>
 
-                {/* Photo Labels */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
-                    {t('photoLabels.title')}
-                  </Typography>
-                  <LabelingSelector compact />
-                </Box>
+                {/* Photo Labels — hidden for precision: rules mandate
+                    numbers, so there is no valid alternative to expose. */}
+                {!isPrecision && (
+                  <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
+                      {t('photoLabels.title')}
+                    </Typography>
+                    <LabelingSelector compact />
+                  </Box>
+                )}
 
                 {/* Shuffle Photos - Only show in track mode */}
                 {session?.mode === 'track' && (
