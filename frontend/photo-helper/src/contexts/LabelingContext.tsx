@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState } from 'react';
 import {
   parseDisciplineFromSearch,
   getLabelingMode,
+  generateLabelForMode,
   type Discipline,
 } from '@airq/shared-discipline';
 
@@ -67,14 +68,15 @@ export const LabelingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCurrentLabeling(labeling);
   };
 
-  const generateLabel = (index: number, offset = 0) => {
-    const position = index + offset;
-    
-    if (currentLabeling.id === 'numbers') {
-      return `${position + 1}`; // Numbers start from 1, no dot
-    } else {
-      return `${String.fromCharCode(65 + position)}`; // Letters A, B, C... no dot
-    }
+  // Delegates to the shared label generator so the precision/rally
+  // labeling rule cannot drift between photo-helper and map-corridors.
+  // The keying axis is `LabelingMode` (not `Discipline`) because the user
+  // can flip the labeling option independently of the URL-derived
+  // discipline — e.g., a rally session can opt into numbers via the
+  // selector. `LabelingOption.id` is structurally identical to
+  // `LabelingMode` (`'letters' | 'numbers'`).
+  const generateLabel = (index: number, offset = 0): string => {
+    return generateLabelForMode(currentLabeling.id, index + offset);
   };
 
   return (

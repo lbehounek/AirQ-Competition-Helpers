@@ -18,12 +18,14 @@ import {
   type PhotoLabelNumber,
 } from '@airq/shared-discipline';
 
-// Contract tests for the shared discipline + labeling rules. These pin
-// the behaviour both photo-helper AND map-corridors rely on. A change
-// here that breaks one app will break the other identically — that's the
-// whole point of centralising. Mirrored on the map-corridors side
-// (`map-corridors/src/__tests__/sharedDiscipline.test.ts`) so each app's
-// CI independently asserts the contract it depends on.
+// Mirror of `photo-helper/src/__tests__/sharedDiscipline.test.ts`. Both
+// apps independently assert the shared contract so a regression in
+// `@airq/shared-discipline` fails CI in *both* suites — preventing the
+// scenario where one app's test suite is silently broken (e.g. a node-canvas
+// dependency issue in photo-helper) and the other still ships the regression.
+//
+// Keep the two files in sync: any new contract test added here must also
+// be added on the photo-helper side, and vice versa.
 
 describe('DISCIPLINES + Discipline type', () => {
   it('exports the canonical allowlist', () => {
@@ -31,8 +33,6 @@ describe('DISCIPLINES + Discipline type', () => {
   });
 
   it('Discipline type is derived from DISCIPLINES (no drift possible)', () => {
-    // Compile-time equivalence: if someone widens `Discipline` without
-    // extending `DISCIPLINES`, this fails to type-check.
     expectTypeOf<Discipline>().toEqualTypeOf<(typeof DISCIPLINES)[number]>();
   });
 });
@@ -111,19 +111,12 @@ describe('parseDisciplineFromSearch', () => {
       .toBe('rally');
   });
 
-  // Edge cases of `URLSearchParams` semantics — pinned because callers
-  // rely on these properties, not the parser itself.
-
   it('parses without a leading "?" (URLSearchParams is permissive)', () => {
     expect(parseDisciplineFromSearch('discipline=precision')).toBe('precision');
     expect(parseDisciplineFromSearch('discipline=rally')).toBe('rally');
   });
 
   it('does NOT strip a URL fragment — caller must pass location.search, not the full URL', () => {
-    // URLSearchParams treats `precision#foo` as the literal value;
-    // it is then rejected by the strict allowlist. Callers must NOT
-    // rely on the parser to trim fragments — passing window.location.search
-    // already excludes the hash.
     expect(parseDisciplineFromSearch('?discipline=precision#foo')).toBeNull();
     expect(errorSpy).toHaveBeenCalledOnce();
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('precision#foo'));
@@ -148,10 +141,6 @@ describe('getLabelingMode', () => {
   });
 
   it('1:1 mapping covers every Discipline (compile + runtime exhaustiveness)', () => {
-    // Runtime mirror of the `never` exhaustiveness check inside
-    // `getLabelingMode`. If a new Discipline is added, this test
-    // surfaces it as a runtime failure (the function will throw)
-    // even if the type-checker pass were skipped.
     for (const d of DISCIPLINES) {
       expect(() => getLabelingMode(d)).not.toThrow();
     }
@@ -182,9 +171,6 @@ describe('generateLabel', () => {
   });
 
   it('matches getLabelsForDiscipline(d)[index] for every i in [0,19]', () => {
-    // Parity test — pins generateLabel to the canonical arrays so an
-    // arithmetic regression (e.g. someone reverts to fromCharCode) is
-    // caught by direct array comparison, not just by spot-checks.
     for (const d of DISCIPLINES) {
       const labels = getLabelsForDiscipline(d);
       for (let i = 0; i <= MAX_LABEL_INDEX; i++) {
@@ -230,9 +216,6 @@ describe('generateLabelForMode', () => {
   });
 
   it('result equals generateLabel for the corresponding discipline', () => {
-    // generateLabel is a thin wrapper over generateLabelForMode (via
-    // getLabelingMode). Pin the equivalence so a future divergence in
-    // either function fails this test.
     for (let i = 0; i <= MAX_LABEL_INDEX; i++) {
       expect(generateLabelForMode('numbers', i)).toBe(generateLabel('precision', i));
       expect(generateLabelForMode('letters', i)).toBe(generateLabel('rally', i));
