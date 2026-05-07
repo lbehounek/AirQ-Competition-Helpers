@@ -1,25 +1,24 @@
-export type Discipline = 'precision' | 'rally';
-
 /**
- * Parse the `?discipline=` URL parameter emitted by the desktop launcher
- * (see `desktop/main.js`). Accepts only the two exact values; anything
- * else (absent, empty, typo, wrong case) falls back to `rally` — that
- * is the safe default for web / legacy sessions that never saw the
- * launcher.
+ * Photo-helper variant of the discipline parser. Delegates to
+ * `@airq/shared-discipline` for the strict allowlist + console.error rule
+ * (the canonical implementation), then applies a rally fallback at the
+ * boundary because every consumer in this app needs a non-null Discipline:
  *
- * Invalid non-empty values are logged via `console.error` so a launcher
- * drift (e.g. `?Discipline=Precision`) surfaces during QA instead of
- * silently downgrading precision mode to rally.
+ *  - `AppApi.tsx` – `isPrecision` flips PDF set2 drop, 9-photo cap, etc.
+ *  - `LabelingContext.tsx` – locks labeling to numbers
+ *  - `useCompetitionSystem.ts` – gates competition mode
  *
- * Exposed as a pure function so the browser consumer and tests share
- * the same allowlist.
+ * The map-corridors app uses the shared parser directly because it has a
+ * meaningful third state (null = "use the persisted session discipline").
+ *
+ * This wrapper exists so existing `import { parseDiscipline } from
+ * '../utils/parseDiscipline'` callsites keep working without a sweep.
  */
+import { parseDisciplineFromSearch } from '@airq/shared-discipline';
+import type { Discipline } from '@airq/shared-discipline';
+
+export type { Discipline } from '@airq/shared-discipline';
+
 export function parseDiscipline(search: string): Discipline {
-  const params = new URLSearchParams(search);
-  const d = params.get('discipline');
-  if (d === 'precision' || d === 'rally') return d;
-  if (d !== null && d !== '') {
-    console.error(`[parseDiscipline] Invalid ?discipline="${d}"; defaulting to rally.`);
-  }
-  return 'rally';
+  return parseDisciplineFromSearch(search) ?? 'rally';
 }
