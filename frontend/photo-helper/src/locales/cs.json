@@ -277,6 +277,26 @@
     "selectNone": "Zrušit výběr",
     "createdOn": "Vytvořeno: {{date}}"
   },
+  "candidates": {
+    "title": "Kandidáti ({{count}})",
+    "addMore": "Přidat další",
+    "hideRejects": "Skrýt vyřazené",
+    "emptyHint": "Sem přetáhněte další fotografie, nebo klikněte pro výběr",
+    "allFiltered": "Všichni kandidáti jsou skryti filtrem.",
+    "flag": {
+      "pick": "Označit jako vybrané",
+      "neutral": "Zrušit označení",
+      "reject": "Označit jako vyřazené"
+    },
+    "sendToSet1": "Přesunout do sady 1",
+    "sendToSet2": "Přesunout do sady 2",
+    "cleanup": {
+      "title": "Smazat nepoužité kandidáty?",
+      "message": "Máte {{count}} kandidátských fotografií, které nejsou v žádné sadě. Smazat je a uvolnit přibližně {{size}} MB úložiště?",
+      "keep": "Ponechat kandidáty",
+      "delete": "Smazat {{count}} kandidátů"
+    }
+  },
   "pdf": {
     "promotional": {
       "line1": "vytvořeno přes",

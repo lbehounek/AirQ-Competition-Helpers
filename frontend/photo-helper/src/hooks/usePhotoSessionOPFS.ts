@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Photo } from '../types';
-import type { ApiPhoto, ApiPhotoSession } from '../types/api';
+import type { ApiPhoto, ApiPhotoSession, CandidateFlag } from '../types/api';
 import { applyLabelPositionToAllInSession, applySettingToAllInSession, type CanvasSetting, type LabelPosition } from '../utils/canvasStatePatch';
 import { deriveSet1FromSet2, deriveSet2FromSet1 } from '../utils/autoPrefillSetTitle';
 import { getGridCapacity, TURNING_POINT_PER_SET } from '../utils/getGridCapacity';
+import { routeDrop } from '../utils/smartDropRoute';
+import {
+  promoteCandidateToSlot as promoteCandidateToSlotPure,
+  demoteSlotToCandidate as demoteSlotToCandidatePure,
+  setCandidateFlag as setCandidateFlagPure,
+  removeCandidate as removeCandidatePure,
+  clearAllCandidates as clearAllCandidatesPure,
+  updateCandidateCanvasState as updateCandidateCanvasStatePure,
+} from '../utils/candidateTransitions';
 import {
   isStorageAvailable,
   initStorage,
@@ -202,6 +211,66 @@ export function usePhotoSessionOPFS() {
     }
   }, []);
 
+  // Build ApiPhoto from a File, including OPFS save when available. Shared
+  // between slot-add and candidate-add so the persistence semantics stay
+  // identical for both pools.
+  const buildPhotoFromFile = useCallback(async (file: File, flag?: CandidateFlag): Promise<ApiPhoto> => {
+    if (file.size > 20 * 1024 * 1024) throw new Error('Image file too large (max 20MB)');
+    const id = `photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const photosDir = handlesRef.current.photosDir;
+    let url: string;
+    if (photosDir) {
+      const storage = getStorage();
+      await storage.savePhotoFile(photosDir, id, file);
+      url = await getPhotoURL(id);
+    } else {
+      url = URL.createObjectURL(file);
+      objectURLsRef.current.set(id, url);
+    }
+    return {
+      id,
+      sessionId: session?.id ?? '',
+      url,
+      filename: file.name,
+      canvasState: {
+        position: { x: 0, y: 0 },
+        scale: 1,
+        brightness: 0,
+        contrast: 1,
+        sharpness: 0,
+        whiteBalance: { temperature: 0, tint: 0, auto: false },
+        labelPosition: 'bottom-left',
+      },
+      label: '',
+      ...(flag !== undefined ? { flag } : {}),
+    };
+  }, [session, getPhotoURL]);
+
+  const addPhotosToCandidates = useCallback(async (files: File[]) => {
+    if (!session || files.length === 0) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const newPhotos: ApiPhoto[] = [];
+      for (const file of files) {
+        newPhotos.push(await buildPhotoFromFile(file, 'neutral'));
+      }
+      const existing = session.candidates?.photos ?? [];
+      const next: ApiPhotoSession = {
+        ...session,
+        version: session.version + 1,
+        updatedAt: new Date().toISOString(),
+        candidates: { photos: [...existing, ...newPhotos] },
+      };
+      await persistSession(next);
+      await updateStorageEstimate();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to add candidate photos');
+    } finally {
+      setLoading(false);
+    }
+  }, [session, persistSession, buildPhotoFromFile]);
+
   const addPhotosToSet = useCallback(async (files: File[], setKey: 'set1' | 'set2') => {
     if (!session) return;
     setLoading(true);
@@ -223,7 +292,14 @@ export function usePhotoSessionOPFS() {
       if (current > gridCapacity) {
         throw new Error(`This set already has ${current} photos but the cap is now ${gridCapacity}. Please reload the competition or remove photos before adding more.`);
       }
-      if (current + files.length > gridCapacity) throw new Error(`Can only add ${gridCapacity - current} more photos to this set`);
+      // Smart-drop: instead of erroring on overflow, route the WHOLE batch
+      // into the candidate pool. See docs/CANDIDATE_PHOTOS.md.
+      const route = routeDrop({ files, currentSlotCount: current, slotCapacity: gridCapacity });
+      if (route.kind === 'tray') {
+        setLoading(false);
+        await addPhotosToCandidates(files);
+        return;
+      }
 
       const photosDir = handlesRef.current.photosDir;
       const nowISO = new Date().toISOString();
@@ -292,7 +368,75 @@ export function usePhotoSessionOPFS() {
     } finally {
       setLoading(false);
     }
-  }, [session, persistSession, getPhotoURL]);
+  }, [session, persistSession, getPhotoURL, addPhotosToCandidates]);
+
+  // ── Candidate operations (legacy OPFS hook) ─────────────────────────────
+  // Delegates to the shared pure helpers so the contract stays identical to
+  // `useCompetitionSystem`. This hook isn't consumed today (kept around as a
+  // backup path), but mirroring keeps the interface symmetric — if it gets
+  // wired back in, candidate ops work out of the box.
+
+  const removeCandidate = useCallback(async (photoId: string) => {
+    if (!session) return;
+    try {
+      const target = session.candidates?.photos?.find(p => p.id === photoId);
+      if (target?.url?.startsWith?.('blob:')) URL.revokeObjectURL(target.url);
+      if (handlesRef.current.photosDir) {
+        const storage = getStorage();
+        try { await storage.deletePhotoFile(handlesRef.current.photosDir, photoId); } catch {}
+      }
+      objectURLsRef.current.delete(photoId);
+    } catch {}
+    await persistSession(removeCandidatePure(session, photoId));
+    await updateStorageEstimate();
+  }, [session, persistSession]);
+
+  const promoteCandidateToSlot = useCallback(async (
+    candidateId: string,
+    setKey: 'set1' | 'set2',
+    slotIndex: number,
+  ) => {
+    if (!session) return;
+    const next = promoteCandidateToSlotPure(session, candidateId, setKey, slotIndex);
+    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    await persistSession(next);
+  }, [session, persistSession]);
+
+  const demoteSlotToCandidate = useCallback(async (
+    setKey: 'set1' | 'set2',
+    photoId: string,
+  ) => {
+    if (!session) return;
+    const next = demoteSlotToCandidatePure(session, setKey, photoId, 'pick');
+    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    await persistSession(next);
+  }, [session, persistSession]);
+
+  const setCandidateFlagOp = useCallback(async (photoId: string, flag: CandidateFlag) => {
+    if (!session) return;
+    await persistSession(setCandidateFlagPure(session, photoId, flag));
+  }, [session, persistSession]);
+
+  const updateCandidatePhotoState = useCallback(async (photoId: string, canvasState: any) => {
+    if (!session) return;
+    await persistSession(updateCandidateCanvasStatePure(session, photoId, canvasState));
+  }, [session, persistSession]);
+
+  const clearAllCandidates = useCallback(async () => {
+    if (!session) return;
+    try {
+      for (const p of session.candidates?.photos ?? []) {
+        if (p.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url);
+        objectURLsRef.current.delete(p.id);
+        if (handlesRef.current.photosDir) {
+          const storage = getStorage();
+          try { await storage.deletePhotoFile(handlesRef.current.photosDir, p.id); } catch {}
+        }
+      }
+    } catch {}
+    await persistSession(clearAllCandidatesPure(session));
+    await updateStorageEstimate();
+  }, [session, persistSession]);
 
   const removePhoto = useCallback(async (setKey: 'set1' | 'set2', photoId: string) => {
     if (!session) return;
@@ -539,7 +683,9 @@ export function usePhotoSessionOPFS() {
       const set2Count = session.sets.set2.photos.length;
       const total = set1Count + set2Count;
       if (total + files.length > maxTotal) {
-        setError(`Cannot add ${files.length} photos. Maximum ${maxTotal} photos allowed (${total} already added).`);
+        // Smart-drop: instead of erroring, route the WHOLE batch into the
+        // candidate pool. Mirrors useCompetitionSystem's behaviour.
+        await addPhotosToCandidates(files);
         return;
       }
       const filesToSet1: File[] = [];
@@ -552,6 +698,14 @@ export function usePhotoSessionOPFS() {
     updatePhotoState,
     applySettingToAll,
     applyLabelPositionToAll,
+    // Candidate pool operations
+    addPhotosToCandidates,
+    removeCandidate,
+    promoteCandidateToSlot,
+    demoteSlotToCandidate,
+    setCandidateFlag: setCandidateFlagOp,
+    updateCandidatePhotoState,
+    clearAllCandidates,
     updateSetTitle,
     updateSetTitles,
     reorderPhotos,

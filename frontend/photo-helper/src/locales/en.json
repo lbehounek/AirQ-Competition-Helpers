@@ -278,6 +278,26 @@
     "selectNone": "Select None",
     "createdOn": "Created: {{date}}"
   },
+  "candidates": {
+    "title": "Candidates ({{count}})",
+    "addMore": "Add more",
+    "hideRejects": "Hide rejected",
+    "emptyHint": "Drop more photos here or click to browse",
+    "allFiltered": "All candidates are hidden by the filter.",
+    "flag": {
+      "pick": "Mark as pick",
+      "neutral": "Clear flag",
+      "reject": "Mark as rejected"
+    },
+    "sendToSet1": "Send to Set 1",
+    "sendToSet2": "Send to Set 2",
+    "cleanup": {
+      "title": "Delete unused candidates?",
+      "message": "You have {{count}} candidate photos that aren't in the final set. Delete them to free ~{{size}} MB of storage?",
+      "keep": "Keep candidates",
+      "delete": "Delete {{count}} candidates"
+    }
+  },
   "pdf": {
     "promotional": {
       "line1": "created using",

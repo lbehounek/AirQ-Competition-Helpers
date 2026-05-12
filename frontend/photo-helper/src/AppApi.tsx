@@ -50,6 +50,7 @@ import { LayoutModeSelector } from './components/LayoutModeSelector';
 import { CompetitionSelector } from './components/CompetitionSelector';
 import { CreateCompetitionButton } from './components/CreateCompetitionButton';
 import { CleanupModal } from './components/CleanupModal';
+import { CandidateTray } from './components/CandidateTray';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
@@ -94,8 +95,20 @@ function AppApi() {
     performCleanup,
     dismissCleanup,
     updateStorageStats,
-    isDesktopManaged
+    isDesktopManaged,
+    // Candidate pool operations (see docs/CANDIDATE_PHOTOS.md)
+    addPhotosToCandidates,
+    removeCandidate,
+    promoteCandidateToSlot,
+    demoteSlotToCandidate,
+    setCandidateFlag,
+    updateCandidatePhotoState,
+    clearAllCandidates,
   } = sessionHookResult;
+
+  // Candidate photos — derived from session for stable rendering. The pool
+  // is optional on older sessions, so default to empty.
+  const candidatePhotos: ApiPhoto[] = session?.candidates?.photos ?? [];
 
   // Session identifiers and storage stats come from the OPFS-backed
   // useCompetitionSystem hook — no network round-trip, so availability is
@@ -144,9 +157,17 @@ function AppApi() {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameText, setRenameText] = useState('');
 
+  // Post-export cleanup dialog (offers to delete unused candidates after a
+  // successful PDF generation). State holds the count snapshot at export
+  // time so the user sees the same figure on the dialog as in the toast.
+  const [cleanupCandidatesDialog, setCleanupCandidatesDialog] = useState<{ count: number; sizeMB: number } | null>(null);
+
+  // selectedPhoto.setKey === 'candidates' for tray-source photos. Label is
+  // empty in that case (tray photos have no slot index). The modal reuses
+  // the same editor and persistence dispatches to the right hook method.
   const [selectedPhoto, setSelectedPhoto] = useState<{
     photo: ApiPhoto;
-    setKey: 'set1' | 'set2';
+    setKey: 'set1' | 'set2' | 'candidates';
     label: string;
   } | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -226,16 +247,47 @@ function AppApi() {
       }
     }
 
-    setSelectedPhoto({ 
-      photo, 
-      setKey, 
+    setSelectedPhoto({
+      photo,
+      setKey,
       label
     });
   };
 
-  const handlePhotoUpdate = (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
-    // Update the backend first
-    updatePhotoState(setKey, photoId, canvasState);
+  // Click handler for tray thumbs — opens the same editor modal, label is
+  // empty because tray photos have no slot index yet.
+  const handleCandidateClick = (photo: ApiPhoto) => {
+    setSelectedPhoto({ photo, setKey: 'candidates', label: '' });
+  };
+
+  // Tray → slot promotion. The hook handles swap-on-occupied semantics; we
+  // just route the candidate id and target slot.
+  const handleCandidateDropped = (setKey: 'set1' | 'set2') => (candidateId: string, slotIndex: number) => {
+    if (promoteCandidateToSlot) promoteCandidateToSlot(candidateId, setKey, slotIndex);
+  };
+
+  // Slot → tray demotion when a slot photo is dragged onto the tray drop zone.
+  const handleSlotDroppedToTray = (payload: { setKey: 'set1' | 'set2'; photoId: string }) => {
+    if (demoteSlotToCandidate) demoteSlotToCandidate(payload.setKey, payload.photoId);
+  };
+
+  // "Send to Set X" from the tray context menu — appends to the next slot.
+  // If the target set is full, the hook's promote logic swaps with the last
+  // slot photo (demoted as pick).
+  const handleSendCandidateToSet = (photoId: string, setKey: 'set1' | 'set2') => {
+    if (!session || !promoteCandidateToSlot) return;
+    const slotIndex = session.sets[setKey].photos.length;
+    promoteCandidateToSlot(photoId, setKey, slotIndex);
+  };
+
+  const handlePhotoUpdate = (setKey: 'set1' | 'set2' | 'candidates', photoId: string, canvasState: any) => {
+    // Dispatch to the right backend method — slot photos go through
+    // updatePhotoState, candidates through updateCandidatePhotoState.
+    if (setKey === 'candidates') {
+      if (updateCandidatePhotoState) updateCandidatePhotoState(photoId, canvasState);
+    } else {
+      updatePhotoState(setKey, photoId, canvasState);
+    }
 
     // Optimistically update selected photo immediately for instant UI feedback
     if (selectedPhoto?.photo.id === photoId) {
@@ -249,8 +301,12 @@ function AppApi() {
     }
   };
 
-  const handlePhotoRemove = (setKey: 'set1' | 'set2', photoId: string) => {
-    removePhoto(setKey, photoId);
+  const handlePhotoRemove = (setKey: 'set1' | 'set2' | 'candidates', photoId: string) => {
+    if (setKey === 'candidates') {
+      if (removeCandidate) removeCandidate(photoId);
+    } else {
+      removePhoto(setKey, photoId);
+    }
 
     // Close detailed editor if this photo was selected
     if (selectedPhoto?.photo.id === photoId) {
@@ -356,6 +412,16 @@ function AppApi() {
       });
 
       await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, effectiveLayout, t, session.mode, currentCompetition?.id);
+
+      // Post-export prompt: offer to clean up unused candidate photos so the
+      // user doesn't accumulate them across competitions. ~3 MB per photo
+      // matches the heuristic in `competitionService.estimateCompetitionSize`.
+      if (candidatePhotos.length > 0) {
+        setCleanupCandidatesDialog({
+          count: candidatePhotos.length,
+          sizeMB: Math.round(candidatePhotos.length * 3),
+        });
+      }
     } catch (error) {
       // Surface to the user — previously this was a TODO ("Could add user
       // notification here") and a generatePDF render failure produced a
@@ -368,6 +434,12 @@ function AppApi() {
       alert(message);
     }
   };
+
+  const handleCleanupCandidatesConfirm = async () => {
+    if (clearAllCandidates) await clearAllCandidates();
+    setCleanupCandidatesDialog(null);
+  };
+  const handleCleanupCandidatesDecline = () => setCleanupCandidatesDialog(null);
 
   // Helper: safely apply a setting to all photos with sane defaults
   // applySettingToAll now provided by hook for atomic updates across photos
@@ -613,6 +685,22 @@ function AppApi() {
           </Alert>
         )}
 
+        {/* Candidate tray — slotless pool above the print layout. Hidden
+            when no candidates exist so existing UX is untouched until the
+            user opts in by dropping >capacity photos. */}
+        {candidatePhotos.length > 0 && (
+          <CandidateTray
+            photos={candidatePhotos}
+            onAddFiles={(files) => { if (addPhotosToCandidates) addPhotosToCandidates(files); }}
+            onPhotoClick={handleCandidateClick}
+            onSetFlag={(photoId, flag) => { if (setCandidateFlag) setCandidateFlag(photoId, flag); }}
+            onDelete={(photoId) => { if (removeCandidate) removeCandidate(photoId); }}
+            onSendToSet={handleSendCandidateToSet}
+            onSlotDroppedIn={handleSlotDroppedToTray}
+            hideSet2={isPrecision && session?.mode === 'track'}
+          />
+        )}
+
         {/* Conditional Layout based on mode */}
         {session?.mode === 'turningpoint' ? (
           <TurningPointLayout
@@ -631,6 +719,9 @@ function AppApi() {
             onPhotoUpdate={handlePhotoUpdate}
             onPhotoRemove={handlePhotoRemove}
             onPhotoMove={handlePhotoMove}
+            onCandidateDropped={(setKey, candidateId, slotIndex) =>
+              handleCandidateDropped(setKey)(candidateId, slotIndex)
+            }
             totalPhotoCount={stats.set1Photos + stats.set2Photos}
             isPrecision={isPrecision}
           />
@@ -685,6 +776,7 @@ function AppApi() {
                         onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
                         onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
                         onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
+                        onCandidateDropped={handleCandidateDropped('set1')}
                         maxPhotosOverride={isPrecision && session.mode === 'track' ? 10 : undefined}
                       />
                     </Paper>
@@ -735,6 +827,7 @@ function AppApi() {
                         onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
                         onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
                         onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
+                        onCandidateDropped={handleCandidateDropped('set2')}
                       />
                     </Paper>
                   )
@@ -1159,12 +1252,45 @@ function AppApi() {
           <Button onClick={handleRenameCancel}>
             {t('competition.rename.cancel')}
           </Button>
-          <Button 
+          <Button
             onClick={handleRenameConfirm}
             variant="contained"
             disabled={!renameText.trim() || loading}
           >
             {loading ? t('common.loading') : t('competition.rename.confirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Post-export candidate cleanup dialog */}
+      <Dialog
+        open={Boolean(cleanupCandidatesDialog)}
+        onClose={handleCleanupCandidatesDecline}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>{t('candidates.cleanup.title')}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {cleanupCandidatesDialog && t('candidates.cleanup.message', {
+              count: cleanupCandidatesDialog.count,
+              size: cleanupCandidatesDialog.sizeMB,
+            })}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCleanupCandidatesDecline}>
+            {t('candidates.cleanup.keep')}
+          </Button>
+          <Button
+            onClick={handleCleanupCandidatesConfirm}
+            color="error"
+            variant="contained"
+            disabled={loading}
+          >
+            {cleanupCandidatesDialog
+              ? t('candidates.cleanup.delete', { count: cleanupCandidatesDialog.count })
+              : t('candidates.cleanup.delete', { count: 0 })}
           </Button>
         </DialogActions>
       </Dialog>

@@ -21,6 +21,13 @@ interface PhotoGridApiProps {
   onPhotoClick?: (photo: ApiPhoto) => void;
   onFilesDropped?: (files: File[]) => void; // For uploading files to empty slots
   onPhotoMove?: (fromIndex: number, toIndex: number) => void; // For drag-and-drop reordering
+  /**
+   * Candidate-tray → slot promotion handler. Receives the candidate's photo
+   * id and the target slot index. The hook layer handles swap-on-occupied
+   * semantics; the grid just decides where to drop. See
+   * docs/CANDIDATE_PHOTOS.md "Drag/drop interactions".
+   */
+  onCandidateDropped?: (candidateId: string, slotIndex: number) => void;
   labelOffset?: number; // Offset for label sequence (e.g., set2 continues from where set1 left off)
   customLabels?: string[]; // Custom labels to use instead of generated ones (for turning point mode)
   /**
@@ -62,6 +69,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   onPhotoClick,
   onFilesDropped,
   onPhotoMove,
+  onCandidateDropped,
   labelOffset = 0,
   customLabels,
   maxPhotosOverride,
@@ -123,11 +131,24 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
   
   // Drag and drop handlers
-  const handleDragStart = (e: React.DragEvent, index: number) => {
+  //
+  // Two payload channels:
+  //   text/plain                 — legacy in-grid reorder: just the slot index
+  //   application/x-airq-photo   — structured payload for tray↔slot transfers.
+  //                                 Shape: { kind: 'slot' | 'tray', ... }.
+  // Slot drags emit both so the tray can recognise the source. The grid only
+  // needs the structured payload on drops that *could* be from the tray.
+  const handleDragStart = (e: React.DragEvent, index: number, photoId: string | undefined) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', index.toString());
-    
+    if (photoId) {
+      e.dataTransfer.setData(
+        'application/x-airq-photo',
+        JSON.stringify({ kind: 'slot', setKey, index, photoId }),
+      );
+    }
+
     // Create custom drag image (optional - use default for now)
     (e.currentTarget as HTMLElement).style.opacity = '0.5';
   };
@@ -150,12 +171,35 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
   const handleDrop = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
+
+    // Check structured payload first — a tray photo dropping in promotes;
+    // a slot photo dropping in is the existing reorder flow.
+    const raw = e.dataTransfer.getData('application/x-airq-photo');
+    if (raw) {
+      try {
+        const payload = JSON.parse(raw) as { kind: string; photoId?: string; setKey?: 'set1' | 'set2' };
+        if (payload.kind === 'tray' && payload.photoId && onCandidateDropped) {
+          onCandidateDropped(payload.photoId, dropIndex);
+          setDraggedIndex(null);
+          setDragOverIndex(null);
+          return;
+        }
+        if (payload.kind === 'slot' && payload.setKey && payload.setKey !== setKey) {
+          // Cross-set drops aren't supported in v1 (two-step via tray works).
+          // Silently ignore so the user doesn't see a half-applied move.
+          setDraggedIndex(null);
+          setDragOverIndex(null);
+          return;
+        }
+      } catch {}
+    }
+
+    // Legacy in-grid reorder.
     const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
-    
-    if (dragIndex !== dropIndex && onPhotoMove) {
+    if (Number.isFinite(dragIndex) && dragIndex !== dropIndex && onPhotoMove) {
       onPhotoMove(dragIndex, dropIndex);
     }
-    
+
     setDraggedIndex(null);
     setDragOverIndex(null);
   };
@@ -207,7 +251,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
             <Paper
               elevation={slot.photo ? 2 : 0}
               draggable={slot.photo ? true : false}
-              onDragStart={slot.photo ? (e) => handleDragStart(e, slot.index) : undefined}
+              onDragStart={slot.photo ? (e) => handleDragStart(e, slot.index, slot.photo?.id) : undefined}
               onDragEnd={slot.photo ? handleDragEnd : undefined}
               onDragOver={(e) => handleDragOver(e, slot.index)}
               onDragLeave={handleDragLeave}

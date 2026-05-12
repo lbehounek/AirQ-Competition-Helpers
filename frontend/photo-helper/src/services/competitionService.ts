@@ -507,11 +507,18 @@ export class CompetitionService {
       };
     };
 
+    // Candidate pool uses the same URL-stripping pass. The pool is a flat
+    // `{ photos: [] }` shape so it's not symmetric with `{ set1, set2 }` and
+    // can't share the helper above.
+    const clearCandidateUrls = (pool?: { photos: any[] }) =>
+      pool ? { photos: (pool.photos || []).map((p: any) => ({ ...p, url: '' })) } : undefined;
+
     return {
       ...session,
       sets: clearUrls(session.sets) as any,
       ...(session as any).setsTrack ? { setsTrack: clearUrls((session as any).setsTrack) as any } : {},
-      ...(session as any).setsTurning ? { setsTurning: clearUrls((session as any).setsTurning) as any } : {}
+      ...(session as any).setsTurning ? { setsTurning: clearUrls((session as any).setsTurning) as any } : {},
+      ...(session as any).candidates ? { candidates: clearCandidateUrls((session as any).candidates) as any } : {}
     };
   }
 
@@ -529,6 +536,7 @@ export class CompetitionService {
     const activePhotos = collect(session.sets as any);
     const trackPhotos = collect((session as any).setsTrack);
     const turningPhotos = collect((session as any).setsTurning);
+    const candidatePhotos = ((session as any).candidates?.photos as any[]) || [];
 
     // Deduplicate by id while preserving first occurrence with a blob url if available
     const idToPhoto = new Map<string, any>();
@@ -544,7 +552,7 @@ export class CompetitionService {
       }
     };
 
-    [...activePhotos, ...trackPhotos, ...turningPhotos].forEach(pushPhoto);
+    [...activePhotos, ...trackPhotos, ...turningPhotos, ...candidatePhotos].forEach(pushPhoto);
 
     for (const photo of idToPhoto.values()) {
       if (photo.url && photo.url.startsWith('blob:')) {
@@ -593,6 +601,14 @@ export class CompetitionService {
       };
     };
 
+    // Candidates pool — flat array, not the {set1, set2} shape. Reuses the
+    // same blob-load helper as slot photos. Missing pool stays missing
+    // (older sessions on disk have no candidates field).
+    const loadCandidates = async (pool: { photos: any[] } | undefined) => {
+      if (!pool) return undefined;
+      return { photos: await loadPhotoUrls((pool.photos || []) as any) };
+    };
+
     return {
       ...session,
       sets: {
@@ -606,7 +622,8 @@ export class CompetitionService {
         }
       },
       setsTrack: await loadModeSpecificSets(session.setsTrack),
-      setsTurning: await loadModeSpecificSets(session.setsTurning)
+      setsTurning: await loadModeSpecificSets(session.setsTurning),
+      candidates: await loadCandidates((session as any).candidates)
     };
   }
 }

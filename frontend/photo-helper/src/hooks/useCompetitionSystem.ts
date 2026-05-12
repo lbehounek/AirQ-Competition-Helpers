@@ -10,7 +10,7 @@ import type {
   CleanupSuggestion,
   StorageStats 
 } from '../types/competition';
-import type { ApiPhotoSession } from '../types/api';
+import type { ApiPhotoSession, ApiPhoto, CandidateFlag } from '../types/api';
 import { competitionService } from '../services/competitionService';
 import { migrationService } from '../services/migrationService';
 import { useI18n } from '../contexts/I18nContext';
@@ -18,6 +18,15 @@ import { applyLabelPositionToAllInSession, applySettingToAllInSession, type Canv
 import { distributeRallyDrop } from '../utils/distributeRallyDrop';
 import { getGridCapacity } from '../utils/getGridCapacity';
 import { parseDiscipline } from '../utils/parseDiscipline';
+import { routeDrop } from '../utils/smartDropRoute';
+import {
+  promoteCandidateToSlot as promoteCandidateToSlotPure,
+  demoteSlotToCandidate as demoteSlotToCandidatePure,
+  setCandidateFlag as setCandidateFlagPure,
+  removeCandidate as removeCandidatePure,
+  clearAllCandidates as clearAllCandidatesPure,
+  updateCandidateCanvasState as updateCandidateCanvasStatePure,
+} from '../utils/candidateTransitions';
 import {
   defaultTrackSetTitles,
   DEFAULT_TRACK_SET1_TITLE_RALLY,
@@ -54,6 +63,15 @@ export interface UseCompetitionSystemResult {
   updateSessionMode: (mode: 'track' | 'turningpoint') => Promise<void>;
   updateLayoutMode: (layoutMode: 'landscape' | 'portrait') => Promise<void>;
   updateSessionCompetitionName: (competitionName: string) => Promise<void>;
+
+  // Candidate pool operations (see docs/CANDIDATE_PHOTOS.md)
+  addPhotosToCandidates: (files: File[]) => Promise<void>;
+  removeCandidate: (photoId: string) => Promise<void>;
+  promoteCandidateToSlot: (candidateId: string, setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
+  demoteSlotToCandidate: (setKey: 'set1' | 'set2', photoId: string) => Promise<void>;
+  setCandidateFlag: (photoId: string, flag: CandidateFlag) => Promise<void>;
+  updateCandidatePhotoState: (photoId: string, canvasState: any) => Promise<void>;
+  clearAllCandidates: () => Promise<void>;
   
   // Cleanup & storage
   cleanupCandidates: CleanupCandidate[];
@@ -262,6 +280,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           revokeInSet(s.sets);
           revokeInSet(s.setsTrack);
           revokeInSet(s.setsTurning);
+          // Candidate pool URLs are independent of mode buckets — revoke
+          // them on competition transitions too, otherwise we leak one URL
+          // per candidate per switch.
+          try { s.candidates?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
         }
       } catch {}
 
@@ -317,6 +339,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           revokeInSet(s.sets);
           revokeInSet(s.setsTrack);
           revokeInSet(s.setsTurning);
+          // Candidate pool URLs are independent of mode buckets — revoke
+          // them on competition transitions too, otherwise we leak one URL
+          // per candidate per switch.
+          try { s.candidates?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
         }
       } catch {}
 
@@ -351,6 +377,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           revokeInSet(s.sets);
           revokeInSet(s.setsTrack);
           revokeInSet(s.setsTurning);
+          // Candidate pool URLs are independent of mode buckets — revoke
+          // them on competition transitions too, otherwise we leak one URL
+          // per candidate per switch.
+          try { s.candidates?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
         }
       } catch {}
 
@@ -414,12 +444,19 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         ? updatedSession.competition_name.trim()
         : currentCompetition.name;
       
-      // Detect if photos have actually changed (not just metadata)
-      const photosChanged = options?.updatePhotos || 
+      // Detect if photos have actually changed (not just metadata). Includes
+      // the candidate pool so promoting/demoting/adding to the tray triggers
+      // a write — `competitionService.saveSessionPhotos` walks candidates
+      // alongside slots, so the persistence path is symmetric.
+      const origCandIds = (originalSession.candidates?.photos ?? []).map(p => p.id);
+      const nextCandIds = (updatedSession.candidates?.photos ?? []).map(p => p.id);
+      const photosChanged = options?.updatePhotos ||
         originalSession.sets.set1.photos.length !== updatedSession.sets.set1.photos.length ||
         originalSession.sets.set2.photos.length !== updatedSession.sets.set2.photos.length ||
         JSON.stringify(originalSession.sets.set1.photos.map(p => p.id)) !== JSON.stringify(updatedSession.sets.set1.photos.map(p => p.id)) ||
-        JSON.stringify(originalSession.sets.set2.photos.map(p => p.id)) !== JSON.stringify(updatedSession.sets.set2.photos.map(p => p.id));
+        JSON.stringify(originalSession.sets.set2.photos.map(p => p.id)) !== JSON.stringify(updatedSession.sets.set2.photos.map(p => p.id)) ||
+        origCandIds.length !== nextCandIds.length ||
+        JSON.stringify(origCandIds) !== JSON.stringify(nextCandIds);
       
       const updatedCompetition: Competition = {
         ...currentCompetition,
@@ -453,6 +490,57 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     }
   }, [currentCompetition, refreshCompetitions]);
 
+  /**
+   * Build a fresh ApiPhoto from a File. Shared by slot-add and candidate-add
+   * paths so the canvasState/blob-URL/id construction stays in one place.
+   * `flag` is only set on the candidate path.
+   */
+  const filesToPhotos = useCallback((files: File[], sessionIdLocal: string, flag?: CandidateFlag): ApiPhoto[] => {
+    return files.map((file) => ({
+      id: (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+        ? (crypto as any).randomUUID()
+        : `photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      sessionId: sessionIdLocal,
+      url: URL.createObjectURL(file),
+      filename: file.name,
+      canvasState: {
+        position: { x: 0, y: 0 },
+        scale: 1,
+        brightness: 0,
+        contrast: 1,
+        sharpness: 0,
+        whiteBalance: { temperature: 0, tint: 0, auto: false },
+        labelPosition: 'bottom-left' as const,
+      },
+      label: '',
+      ...(flag !== undefined ? { flag } : {}),
+    }));
+  }, []);
+
+  /**
+   * Append files into the candidate pool. Used directly by the tray dropzone
+   * and indirectly by `addPhotosToSet` via the smart-drop heuristic when a
+   * slot batch exceeds remaining capacity. New candidates start as `neutral`.
+   */
+  const addPhotosToCandidates = useCallback(async (files: File[]) => {
+    if (!currentCompetition?.session) {
+      setError(t('errors.noActiveCompetition'));
+      return;
+    }
+    if (files.length === 0) return;
+    await updateCurrentCompetition(session => {
+      const sessionId = session.id;
+      const newPhotos = filesToPhotos(files, sessionId, 'neutral');
+      const existing = session.candidates?.photos ?? [];
+      return {
+        ...session,
+        version: session.version + 1,
+        updatedAt: new Date().toISOString(),
+        candidates: { photos: [...existing, ...newPhotos] },
+      };
+    }, { updatePhotos: true });
+  }, [updateCurrentCompetition, currentCompetition, filesToPhotos, t]);
+
   const addPhotosToSet = useCallback(async (files: File[], setKey: 'set1' | 'set2') => {
     if (!currentCompetition?.session) {
       console.error('No current competition or session available');
@@ -460,25 +548,24 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       return;
     }
 
-    // Defensive capacity ceiling — without this, dropping more files than
-    // the grid can render silently appends them past the last slot and the
-    // user sees a "missing photo" (feedback 2026-04-23 retest of Rally TP).
-    // 10 is the absolute max per set across every (layout × discipline)
-    // combination — using it as the floor lets layout-switch logic in
-    // AppApi do its thing for Precision-track 10-photo drops while still
-    // catching genuine overflow.
-    {
-      const sess = currentCompetition.session as any;
-      const ABSOLUTE_MAX = 10;
-      const current = sess.sets?.[setKey]?.photos?.length ?? 0;
-      if (current + files.length > ABSOLUTE_MAX) {
-        const allowed = Math.max(0, ABSOLUTE_MAX - current);
-        const setLabel = setKey === 'set1' ? '1' : '2';
-        setError(allowed === 0
-          ? t('errors.photoSetFull', { set: setLabel })
-          : t('errors.photoSetCapacityRemaining', { set: setLabel, count: allowed }));
-        return;
-      }
+    // Smart-drop routing: if the batch fits the remaining slot capacity, fill
+    // slots (today's behaviour). Otherwise route the WHOLE batch into the
+    // candidate pool — never silently split between slots and pool. See
+    // `routeDrop` + docs/CANDIDATE_PHOTOS.md "Smart drop heuristic".
+    //
+    // Precision-track has a special-case capacity of 10 in BOTH layouts
+    // because dropping the 10th photo in landscape flips the layout to
+    // portrait (effect in AppApi). `getGridCapacity` returns 9 for
+    // track+landscape since it doesn't know about discipline; we bump it
+    // here so a 10th drop fills the slot instead of routing to candidates.
+    const sess = currentCompetition.session as any;
+    const isPrecisionTrack = isPrecisionDiscipline && sess.mode === 'track';
+    const slotCapacity = isPrecisionTrack ? 10 : getGridCapacity(sess);
+    const currentSlotCount = sess.sets?.[setKey]?.photos?.length ?? 0;
+    const route = routeDrop({ files, currentSlotCount, slotCapacity });
+    if (route.kind === 'tray') {
+      await addPhotosToCandidates(route.files);
+      return;
     }
 
     await updateCurrentCompetition(session => {
@@ -499,26 +586,8 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         throw new Error(`Invalid setKey: ${setKey}`);
       }
 
-      // Convert files to photos (simplified - you'd use proper photo creation logic)
-      const newPhotos = files.map((file) => ({
-        id: (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
-          ? (crypto as any).randomUUID()
-          : `photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        sessionId: session.id,
-        url: URL.createObjectURL(file),
-        filename: file.name,
-        canvasState: {
-          position: { x: 0, y: 0 },
-          scale: 1,
-          brightness: 0,
-          contrast: 1,
-          sharpness: 0,
-          whiteBalance: { temperature: 0, tint: 0, auto: false },
-          labelPosition: 'bottom-left' as const
-        },
-        label: ''
-      }));
-      
+      const newPhotos = filesToPhotos(route.files, session.id);
+
       return {
         ...session,
         version: session.version + 1,
@@ -532,7 +601,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         }
       };
     }, { updatePhotos: true });
-  }, [updateCurrentCompetition, currentCompetition, t]);
+  }, [updateCurrentCompetition, currentCompetition, t, filesToPhotos, addPhotosToCandidates]);
 
   const removePhoto = useCallback(async (setKey: 'set1' | 'set2', photoId: string) => {
     await updateCurrentCompetition(session => {
@@ -548,7 +617,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           URL.revokeObjectURL(photoToRemove.url);
         }
       } catch {}
-      
+
       return {
         ...session,
         version: session.version + 1,
@@ -561,6 +630,60 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           }
         }
       };
+    }, { updatePhotos: true });
+  }, [updateCurrentCompetition]);
+
+  // ── Candidate pool operations ─────────────────────────────────────────────
+  // All transitions delegate to the pure helpers in `candidateTransitions.ts`
+  // so the branching logic is unit-testable and identical across the two
+  // hook implementations. See docs/CANDIDATE_PHOTOS.md.
+
+  const removeCandidate = useCallback(async (photoId: string) => {
+    await updateCurrentCompetition(session => {
+      try {
+        const target = session.candidates?.photos?.find(p => p.id === photoId);
+        if (target?.url?.startsWith?.('blob:')) URL.revokeObjectURL(target.url);
+      } catch {}
+      return removeCandidatePure(session, photoId);
+    }, { updatePhotos: true });
+  }, [updateCurrentCompetition]);
+
+  const promoteCandidateToSlot = useCallback(async (
+    candidateId: string,
+    setKey: 'set1' | 'set2',
+    slotIndex: number,
+  ) => {
+    await updateCurrentCompetition(session => {
+      return promoteCandidateToSlotPure(session, candidateId, setKey, slotIndex);
+    }, { updatePhotos: true });
+  }, [updateCurrentCompetition]);
+
+  const demoteSlotToCandidate = useCallback(async (
+    setKey: 'set1' | 'set2',
+    photoId: string,
+  ) => {
+    await updateCurrentCompetition(session => {
+      return demoteSlotToCandidatePure(session, setKey, photoId, 'pick');
+    }, { updatePhotos: true });
+  }, [updateCurrentCompetition]);
+
+  const setCandidateFlag = useCallback(async (photoId: string, flag: CandidateFlag) => {
+    await updateCurrentCompetition(session => setCandidateFlagPure(session, photoId, flag));
+  }, [updateCurrentCompetition]);
+
+  const updateCandidatePhotoState = useCallback(async (photoId: string, canvasState: any) => {
+    await updateCurrentCompetition(session => updateCandidateCanvasStatePure(session, photoId, canvasState));
+  }, [updateCurrentCompetition]);
+
+  const clearAllCandidates = useCallback(async () => {
+    await updateCurrentCompetition(session => {
+      // Revoke blob URLs of every removed candidate so we don't leak.
+      try {
+        for (const p of session.candidates?.photos ?? []) {
+          if (p.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url);
+        }
+      } catch {}
+      return clearAllCandidatesPure(session);
     }, { updatePhotos: true });
   }, [updateCurrentCompetition]);
 
@@ -986,7 +1109,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       const set2Count = session.sets?.set2?.photos?.length ?? 0;
       const result = distributeRallyDrop({ files, layoutMode, set1Count, set2Count });
       if (!result.ok) {
-        setError(`Cannot add ${files.length} photos. Maximum ${result.maxTotal} photos allowed (${set1Count + set2Count} already added).`);
+        // Smart-drop at total-capacity level: rather than erroring on a
+        // 25-photo drop into a 20-cap rally turning-point session, route
+        // the whole batch to candidates so the user can cull from there.
+        await addPhotosToCandidates(files);
         return;
       }
       if (result.toSet1.length) await addPhotosToSet(result.toSet1, 'set1');
@@ -995,6 +1121,15 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     refreshSession: (async () => {}) as any,
     applySettingToAll,
     applyLabelPositionToAll,
+
+    // Candidate pool surface
+    addPhotosToCandidates,
+    removeCandidate,
+    promoteCandidateToSlot,
+    demoteSlotToCandidate,
+    setCandidateFlag,
+    updateCandidatePhotoState,
+    clearAllCandidates,
     
     // Cleanup & storage
     cleanupCandidates,
