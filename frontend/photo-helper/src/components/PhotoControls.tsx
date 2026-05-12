@@ -74,6 +74,10 @@ interface PhotoControlsProps {
   circleMode?: boolean;
   onCircleModeToggle?: () => void;
   onApplyToAll?: (setting: CanvasSetting, value: number) => void; // Apply setting to all photos
+  // "Sync to all" for the label corner — separate from `onApplyToAll` because
+  // label position is a string union, not a number, and forcing it through
+  // the numeric path would break `CanvasSetting`'s type-safety contract.
+  onSyncLabelPositionToAll?: (position: LabelPosition) => void;
 }
 
 type LabelPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -366,7 +370,8 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   onToggleOriginal,
   circleMode: externalCircleMode,
   onCircleModeToggle,
-  onApplyToAll
+  onApplyToAll,
+  onSyncLabelPositionToAll
 }) => {
   const { t } = useI18n();
   // Local state for immediate UI feedback
@@ -1222,8 +1227,20 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             ↘ {label}
           </Button>
         </Box>
+        {/* Sync corner to all photos in both sets (feedback 2026-05-10). */}
+        {onSyncLabelPositionToAll && (
+          <Button
+            variant="outlined"
+            size="small"
+            fullWidth
+            onClick={() => onSyncLabelPositionToAll(localLabelPosition)}
+            sx={{ mt: 0.75, fontSize: '0.7rem', py: 0.5 }}
+          >
+            {t('controls.syncLabelToAll')}
+          </Button>
+        )}
       </Box>
-      
+
       {/* Zoom - Compact */}
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
@@ -1332,8 +1349,20 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             ↘ {label}
           </Button>
         </Box>
+        {/* Sync corner to all photos in both sets (feedback 2026-05-10). */}
+        {onSyncLabelPositionToAll && (
+          <Button
+            variant="outlined"
+            size="small"
+            fullWidth
+            onClick={() => onSyncLabelPositionToAll(localLabelPosition)}
+            sx={{ mt: 0.75, fontSize: '0.7rem', py: 0.5 }}
+          >
+            {t('controls.syncLabelToAll')}
+          </Button>
+        )}
       </Box>
-      
+
       {/* Circle Overlay */}
       <Box sx={{ mt: 3, mb: 2 }}>
         <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.8rem' }}>

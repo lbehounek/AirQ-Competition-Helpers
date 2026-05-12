@@ -1,8 +1,19 @@
 import React from 'react';
 import { Document, Page, Image, pdf, StyleSheet } from '@react-pdf/renderer';
-import type { ApiPhotoSet } from '../types/api';
-import { dirnameOf } from '@airq/shared-storage';
+import type { ApiPhoto, ApiPhotoSet } from '../types/api';
+import { dirnameOf, slugifyForFilename } from '@airq/shared-storage';
 import { calculateLandscapeGrid } from './pdfLandscapeGrid';
+import { getImageCache } from './imageCache';
+import { BASE_WIDTH, drawCircle, renderPhotoOnCanvas } from '../components/PhotoEditorApi';
+
+// Hi-res target width for photos embedded in the PDF.
+// At 1600 px wide, a 280 pt landscape A4 cell prints at >400 DPI —
+// well above print quality. The on-screen canvas (300 px) was the
+// pixelation cause: it was being upscaled ~4× by the PDF/printer.
+const PDF_PHOTO_TARGET_WIDTH = 1600;
+// JPEG quality for embedded photos. 0.95 is the practical sweet spot —
+// near-lossless visually, file size manageable for 9–10 photos per page.
+const PDF_PHOTO_JPEG_QUALITY = 0.95;
 
 // Polyfill Buffer for @react-pdf/renderer
 import { Buffer } from 'buffer';
@@ -37,7 +48,14 @@ const createTextImage = (text: string, isRotated: boolean = true, fontSize: numb
     const FONT_SIZE = fontSize; // Configurable font size
     const FONT_FAMILY = 'Arial, sans-serif'; // Excellent Unicode support
     const HORIZONTAL_PADDING = 40;
-    const VERTICAL_PADDING = 12;
+    // Vertical padding around the rasterised text, in logical pt. Originally
+    // 12 pt; reduced to 4 pt (feedback 2026-05-10 — header band ate too much
+    // vertical real estate, leaving photos visibly smaller than the page
+    // could accommodate). For non-rotated headers VP becomes the entire
+    // empty space above + below the text inside the image; for rotated
+    // (portrait) headers VP becomes the gutter width, so a smaller value
+    // also gives portrait pages more room for photos.
+    const VERTICAL_PADDING = 4;
     const MIN_ROTATED_HEIGHT = 400; // Minimum height for rotated text
     
     // Configure font for text measurement
@@ -188,25 +206,101 @@ export const generatePDF = async (
     return t ? t('pdf.header.trackSet2') : 'enroute photos second set'
   }
   
-  // Get canvas data URL for a photo
-  const getPhotoDataUrl = (photoId: string, setKey: 'set1' | 'set2'): string | null => {
+  // Per-photo render result. `degraded` flags the case where the hi-res
+  // render threw but the on-screen DOM fallback succeeded — the PDF will
+  // still include the cell, but at the lower resolution of the live grid
+  // canvas, which is a visible quality regression vs the hi-res path.
+  // `failed` flags the case where BOTH paths failed and the cell would
+  // otherwise be silently omitted from the printed answer-sheet.
+  type PhotoRenderResult =
+    | { kind: 'ok'; dataUrl: string }
+    | { kind: 'degraded'; dataUrl: string; photoId: string }
+    | { kind: 'failed'; photoId: string; error: unknown };
+
+  // Render the photo to a hi-res offscreen canvas and return a JPEG data URL.
+  // The on-screen grid canvas is only 300 px wide, which the PDF/printer was
+  // upscaling ~4× for an A4 cell at 300 DPI — that was the pixelation cause.
+  // Re-rendering at PDF_PHOTO_TARGET_WIDTH bakes in zoom/pan/effects/label/circle
+  // at print resolution, then the PDF embeds a sharp JPEG.
+  //
+  // Returns a tagged result rather than `null` on failure so the page-level
+  // caller can collect failures and surface them to the user. The previous
+  // shape (`Promise<string | null>`) let a render failure silently omit a
+  // photo cell from the printed sheet — for a competition answer-sheet
+  // workflow that's a correctness bug, not cosmetic (feedback 2026-05-12).
+  const getPhotoDataUrl = async (photo: ApiPhoto): Promise<PhotoRenderResult> => {
     try {
-      const canvasElement = document.querySelector(`canvas[data-photo-id="${photoId}"][data-set-key="${setKey}"]`) as HTMLCanvasElement;
-      if (canvasElement) {
-        return canvasElement.toDataURL('image/jpeg', 0.9);
+      // Loaded images are normally already cached by the editor grid; this
+      // reuses them and falls back to a load if missing (e.g., off-screen).
+      const cache = getImageCache();
+      const image = await cache.getImageByUrl(photo.url);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = PDF_PHOTO_TARGET_WIDTH;
+      canvas.height = Math.round(PDF_PHOTO_TARGET_WIDTH / aspectRatio);
+
+      // Pass undefined webglManager → forces CPU path. PDF generation is a
+      // one-shot operation and we want a deterministic, high-quality result
+      // without competing for the editor's WebGL context.
+      await renderPhotoOnCanvas(
+        canvas,
+        image,
+        photo.canvasState,
+        photo.label,
+        undefined,
+        undefined,
+        false,
+        null,
+        undefined,
+        aspectRatio,
+        BASE_WIDTH / aspectRatio,
+        false,
+        true,
+      );
+
+      // Circle overlay (drawn after the photo, same as the live editor).
+      const circle = photo.canvasState.circle;
+      if (circle && circle.visible) {
+        drawCircle(canvas, circle, canvas.width / BASE_WIDTH);
       }
-      
-      const fallbackCanvas = document.querySelector(`canvas[data-photo-id="${photoId}"]`) as HTMLCanvasElement;
-      if (fallbackCanvas) {
-        return fallbackCanvas.toDataURL('image/jpeg', 0.9);
-      }
-      
-      return null;
+
+      return { kind: 'ok', dataUrl: canvas.toDataURL('image/jpeg', PDF_PHOTO_JPEG_QUALITY) };
     } catch (error) {
-      console.warn(`Failed to get canvas data for photo ${photoId}:`, error);
-      return null;
+      console.warn(`Failed to render hi-res photo for PDF (${photo.id}):`, error);
+      // Last-resort fallback: scrape whatever the on-screen canvas has so
+      // the PDF still produces output rather than failing the whole export.
+      // Flagged as `degraded` so the caller can warn the user that some
+      // photos printed at the lower live-grid resolution.
+      try {
+        const canvasElement = document.querySelector(`canvas[data-photo-id="${photo.id}"]`) as HTMLCanvasElement | null;
+        if (canvasElement) {
+          return {
+            kind: 'degraded',
+            dataUrl: canvasElement.toDataURL('image/jpeg', PDF_PHOTO_JPEG_QUALITY),
+            photoId: photo.id,
+          };
+        }
+      } catch {/* ignore */}
+      return { kind: 'failed', photoId: photo.id, error };
     }
   };
+
+  // Collected across the whole `generatePDF` run so the caller (UI button
+  // handler) can surface a single combined alert at the end instead of one
+  // per page. `failed` is the show-stopper case: cell would be blank.
+  // `degraded` is the soft-warning case: cell is present but lower quality.
+  const renderFailures: { photoId: string; error: unknown }[] = [];
+  const renderDegraded: string[] = [];
+
+  // Landscape pages render the rotated header on the left for 4:3 photos —
+  // the FAI official answer-sheet ratio. A 3×3 grid of 4:3 photos is
+  // height-constrained on A4 landscape (grid aspect 1.333 < page aspect
+  // 1.415), so the grid already fills the page vertically with horizontal
+  // slack on the sides. Moving the header into that side slack reclaims
+  // the ~22pt top band, growing cells from ≈254×191pt to ≈261×196pt
+  // (feedback 2026-05-12). Other aspect ratios keep the top band because
+  // they don't have horizontal slack to host the rotated header.
+  const useSideHeader = layoutMode === 'landscape' && Math.abs(aspectRatio - 4/3) < 1e-6;
 
   // Clean layout calculations
   // portraitGutterWidth: measured width of rotated header gutter (portrait mode)
@@ -216,7 +310,13 @@ export const generatePDF = async (
   // landscape grid (3×3 vs 5×2) for rally turning-point pages with 10
   // photos (feedback 2026-05-03). Defaults to a value that selects the
   // legacy 3×3 to keep all existing call-sites unchanged.
-  const calculateLayout = (portraitGutterWidth: number = 15, landscapeHeaderHeight: number = 25, headerTopPad: number = 2.83, pageCount: number = 0) => {
+  const calculateLayout = (
+    portraitGutterWidth: number = 15,
+    landscapeHeaderExtent: number = 25,
+    headerTopPad: number = 2.83,
+    pageCount: number = 0,
+    landscapeHeaderPlacement: 'top' | 'left' = 'top',
+  ) => {
     if (layoutMode === 'portrait') {
       // A4 Portrait: 595 x 842 points
       const pageWidth = 595;
@@ -260,7 +360,7 @@ export const generatePDF = async (
       // `pdfLandscapeGrid.ts` so the boundary at pageCount >= 10 and the
       // centering arithmetic are unit-testable. Returns the same shape
       // the previous inline block produced.
-      return calculateLandscapeGrid(aspectRatio, landscapeHeaderHeight, headerTopPad, pageCount);
+      return calculateLandscapeGrid(aspectRatio, landscapeHeaderExtent, headerTopPad, pageCount, landscapeHeaderPlacement);
     }
   };
 
@@ -273,7 +373,7 @@ export const generatePDF = async (
   });
 
   // Create a single page (compute a local layout per page)
-  const createPage = (photoSet: ApiPhotoSet, setTitle: string, pageKey: string) => {
+  const createPage = async (photoSet: ApiPhotoSet, setTitle: string, pageKey: string) => {
     const elements: any[] = [];
     // Per-page count drives the landscape rally turning-point grid
     // selection (3×3 vs 5×2). Other modes ignore it.
@@ -322,17 +422,71 @@ export const generatePDF = async (
           })
         );
       }
-    } else {
-      // Horizontal header as images (landscape) — prepend the mode label so
-      // the reader can tell at a glance what kind of sheet they're holding.
+    } else if (useSideHeader) {
+      // Landscape + 4:3 → rotated header in a left gutter (same idea as
+      // portrait). Concatenates the same mode label + setTitle |
+      // competition string so the printed sheet reads identically; the
+      // promo line is omitted in side-mode because there is no horizontal
+      // band left to host it without overlapping the photo grid.
       const titleAndCompetition = setTitle && competitionName
         ? `${setTitle} | ${competitionName}`
         : setTitle || competitionName || '';
       const mergedTitleText = titleAndCompetition
         ? `${modeLabel} • ${titleAndCompetition}`
         : modeLabel;
-      const mergedTitleImage = createTextImage(mergedTitleText, false, 18); // Main font size
-      
+      const promotionalText = BRANDING_ENABLED
+        ? (t
+          ? `${t('pdf.promotional.line1')} ${t('pdf.promotional.line2')}`
+          : 'created using zavody.behounek.it')
+        : '';
+      const headerText = mergedTitleText
+        ? (promotionalText ? `${mergedTitleText} • ${promotionalText}` : mergedTitleText)
+        : promotionalText;
+      // 14pt font for the rotated landscape header — the gutter is short
+      // (~595pt of vertical room) so we can afford a slightly larger size
+      // than portrait (which defaults to 18pt but has 842pt to play with).
+      const headerImage = createTextImage(headerText, true, 14);
+      if (headerImage) {
+        const headerTopPad = 2.83; // ~1mm from the left edge
+        const measuredGutter = Math.max(15, Math.ceil(headerImage.width));
+        localLayout = calculateLayout(15, measuredGutter, headerTopPad, pageCount, 'left');
+        // Center the rasterised header image vertically within the page —
+        // the image is taller than its text (MIN_ROTATED_HEIGHT=400) but
+        // the text is drawn at the image's centre, so centering the
+        // image centers the text.
+        const pageHeight = 595; // A4 landscape height
+        const topPosition = (pageHeight - headerImage.height) / 2;
+        elements.push(
+          React.createElement(Image, {
+            key: `header-${pageKey}`,
+            src: headerImage.dataUrl,
+            style: {
+              position: 'absolute',
+              left: localLayout.headerX,
+              top: topPosition,
+              width: headerImage.width,
+              height: headerImage.height,
+            }
+          })
+        );
+      }
+    } else {
+      // Horizontal header as images (landscape, non-4:3) — prepend the mode
+      // label so the reader can tell at a glance what kind of sheet they're
+      // holding. 4:3 photos use the side-header branch above to reclaim the
+      // ~22pt the top band would otherwise eat (feedback 2026-05-12).
+      const titleAndCompetition = setTitle && competitionName
+        ? `${setTitle} | ${competitionName}`
+        : setTitle || competitionName || '';
+      const mergedTitleText = titleAndCompetition
+        ? `${modeLabel} • ${titleAndCompetition}`
+        : modeLabel;
+      // 11pt header font keeps the top band tight (~23pt) for non-4:3
+      // ratios that still use it. Originally reduced from 18pt (feedback
+      // 2026-05-10) when 3:2 used this branch — kept at 11pt because the
+      // smaller band is the right default for 16:9 and any future ratio.
+      const mergedTitleImage = createTextImage(mergedTitleText, false, 11);
+
       // Create two-line promotional text with half the font size
       const promotionalLines = BRANDING_ENABLED
         ? (t
@@ -384,22 +538,41 @@ export const generatePDF = async (
       }
     }
     
-    // Add photos
+    // Render hi-res photo data URLs in parallel — each photo is independent
+    // and `renderPhotoOnCanvas` is async due to the optional `intelligentResize`.
+    const photoCount = localLayout.rows * localLayout.cols;
+    const photosToRender = photoSet.photos.slice(0, photoCount);
+    const renderResults: (PhotoRenderResult | null)[] = await Promise.all(
+      photosToRender.map((p) => (p ? getPhotoDataUrl(p) : Promise.resolve(null)))
+    );
+
+    // Add photos. Use the tagged result so render failures don't silently
+    // omit cells from the printed sheet — failures get tracked at the
+    // generatePDF level and surfaced to the user as a single combined alert
+    // after both pages have rendered.
     for (let row = 0; row < localLayout.rows; row++) {
       for (let col = 0; col < localLayout.cols; col++) {
         const index = row * localLayout.cols + col;
         const photo = photoSet.photos[index];
-        
+
         if (photo) {
-          const dataUrl = getPhotoDataUrl(photo.id, pageKey === 'set1' ? 'set1' : 'set2');
-          if (dataUrl) {
+          const result = renderResults[index];
+          if (!result) continue; // index past photos[].length; not a failure
+          if (result.kind === 'failed') {
+            renderFailures.push({ photoId: result.photoId, error: result.error });
+            continue;
+          }
+          if (result.kind === 'degraded') {
+            renderDegraded.push(result.photoId);
+          }
+          {
             const x = localLayout.startX + col * (localLayout.photoWidth + localLayout.gap);
             const y = localLayout.startY + row * (localLayout.photoHeight + localLayout.gap);
             
             elements.push(
               React.createElement(Image, {
                 key: `photo-${pageKey}-${index}`,
-                src: dataUrl,
+                src: result.dataUrl,
                 style: {
                   position: 'absolute',
                   left: x,
@@ -424,16 +597,42 @@ export const generatePDF = async (
 
   // Create document
   const pages = [];
-  
+
   if (set1.photos.length > 0) {
-    pages.push(createPage(set1, set1.title, 'set1'));
+    pages.push(await createPage(set1, set1.title, 'set1'));
   }
-  
+
   if (set2.photos.length > 0) {
-    pages.push(createPage(set2, set2.title, 'set2'));
+    pages.push(await createPage(set2, set2.title, 'set2'));
   }
-  
+
   const pdfDocument = React.createElement(Document, {}, pages);
+
+  // Surface per-photo render failures BEFORE we ship a partial PDF to the
+  // user. Previously a thrown render would log a console.warn and produce a
+  // PDF with silently blank cells — for an FAI answer-sheet, that's a
+  // correctness bug (feedback 2026-05-12). Caller (UI button handler) is
+  // expected to wrap `generatePDF` in try/catch and alert on this error.
+  if (renderFailures.length > 0) {
+    const ids = renderFailures.map(f => f.photoId).join(', ');
+    const err = new Error(
+      `PDF export aborted: ${renderFailures.length} photo(s) failed to render (${ids}). ` +
+      `Re-open the affected photos and try again.`,
+    );
+    // Attach the underlying error array for callers that want to log or
+    // present the original cause chain.
+    (err as Error & { renderFailures?: unknown[] }).renderFailures = renderFailures;
+    throw err;
+  }
+  // Degraded path: hi-res render failed but the on-screen fallback succeeded,
+  // so the PDF still has every cell — just at the lower live-grid resolution
+  // for the affected ids. Log so this shows up in DevTools without blocking
+  // the export; UI can decide whether to surface a soft warning.
+  if (renderDegraded.length > 0) {
+    console.warn(
+      `[generatePDF] ${renderDegraded.length} photo(s) used the DOM-canvas fallback (lower resolution): ${renderDegraded.join(', ')}`,
+    );
+  }
 
   // Generate and download
   try {
@@ -443,8 +642,15 @@ export const generatePDF = async (
     // Mode-aware download name so a folder of exports stays sortable —
     // feedback 2026-04-23: distinguish enroute (track) PDFs from
     // turning-point PDFs in the file name itself.
+    // Feedback 2026-05-10: also embed the slugified competition name when
+    // we have one, so a folder containing exports from several events stays
+    // self-identifying. The timestamp stays in the suffix because users
+    // re-export multiple times during prep and want to disambiguate runs.
     const filenamePrefix = mode === 'turningpoint' ? 'tp-photos' : 'enroute-photos';
-    const fileName = `${filenamePrefix}-${timestamp}.pdf`;
+    const competitionSlug = competitionName ? slugifyForFilename(competitionName) : '';
+    const fileName = competitionSlug
+      ? `${filenamePrefix}-${competitionSlug}-${timestamp}.pdf`
+      : `${filenamePrefix}-${timestamp}.pdf`;
 
     // Prefer the Electron save dialog when running inside the desktop
     // bundle so the file lands in the competition's working folder

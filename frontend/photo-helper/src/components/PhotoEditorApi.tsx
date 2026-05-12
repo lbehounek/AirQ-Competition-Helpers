@@ -26,9 +26,9 @@ interface PhotoEditorApiProps {
 }
 
 // UNIFIED RENDERING SYSTEM - Same logic for grid and modal
-const BASE_WIDTH = 300;
+export const BASE_WIDTH = 300;
 
-const cropImageToAspectRatio = (
+export const cropImageToAspectRatio = (
   image: HTMLImageElement,
   targetAspect: number,
   canvasSize: { width: number; height: number },
@@ -93,7 +93,7 @@ const cropImageToAspectRatio = (
   return canvas;
 };
 
-const renderPhotoOnCanvas = async (
+export const renderPhotoOnCanvas = async (
   canvas: HTMLCanvasElement,
   image: HTMLImageElement,
   canvasState: Photo['canvasState'],
@@ -412,7 +412,7 @@ const renderPhotoOnCanvas = async (
 };
 
 // Draw circle overlay on canvas
-const drawCircle = (canvas: HTMLCanvasElement, circle: { x: number; y: number; radius: number; color: string }, scaleRatio: number) => {
+export const drawCircle = (canvas: HTMLCanvasElement, circle: { x: number; y: number; radius: number; color: string }, scaleRatio: number) => {
   const ctx = getCanvasContext(canvas);
   if (!ctx || !circle) return;
   
@@ -529,10 +529,18 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const gridCanvasSize = getCanvasSize(240);
   const largeCanvasSize = getCanvasSize(600); // Match the canvas size used below
   
-  // Dynamic canvas dimensions based on aspect ratio
+  // Dynamic canvas dimensions based on aspect ratio.
+  // Grid was previously 300 px wide — but the grid <canvas> is CSS-sized to
+  // 100% of its parent cell (typically 400–700 CSS px on a 1080p/1440p
+  // screen, often >1000 device px after devicePixelRatio scaling), so the
+  // browser was upscaling 2–4× and the preview looked pixelated even though
+  // the printed PDF was crisp (feedback 2026-05-10). Matching the modal's
+  // 600 px buffer means the grid canvas is now displayed at ≤1× scale on
+  // typical Windows displays. Drag stays fluid because `dragScaleFactor`
+  // already shrinks the temp canvas while the user is interacting.
   const canvasSize = size === 'large'
     ? getCanvasSize(600) // 2x scale for modal
-    : getCanvasSize(300); // Base size for grid
+    : getCanvasSize(600); // Bumped from 300 — see comment above.
 
   // Image is now loaded via useCachedImage hook above
   useEffect(() => {

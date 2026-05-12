@@ -3,9 +3,11 @@ import {
   applySettingPatch,
   applySettingToAllPhotos,
   applySettingToAllInSession,
+  applyLabelPositionToAllPhotos,
+  applyLabelPositionToAllInSession,
   DEFAULT_CANVAS_STATE,
 } from '../utils/canvasStatePatch';
-import type { CanvasState, PhotoSessionShape } from '../utils/canvasStatePatch';
+import type { CanvasState, LabelPosition, PhotoSessionShape } from '../utils/canvasStatePatch';
 
 function makePhoto(id: string, overrides: Partial<CanvasState> = {}) {
   return {
@@ -290,5 +292,180 @@ describe('applySettingToAllInSession', () => {
     const result = applySettingToAllInSession(session, 'brightness', Number.NaN);
     expect(result.version).toBe(session.version + 1);
     expect(result.sets.set1.photos[0].canvasState.brightness).toBe(25);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyLabelPositionToAllPhotos — array of photos
+//
+// Label position is a string union, so it gets its own helper rather than
+// reusing the numeric `applySettingToAllPhotos`. These tests mirror the
+// applySettingToAllPhotos suite so a future refactor that drifts the two
+// code paths apart fails loudly.
+// ---------------------------------------------------------------------------
+describe('applyLabelPositionToAllPhotos', () => {
+  it('applies label position to all photos', () => {
+    const photos = [makePhoto('a'), makePhoto('b'), makePhoto('c')];
+    const result = applyLabelPositionToAllPhotos(photos, 'top-right');
+    for (const p of result) {
+      expect(p.canvasState.labelPosition).toBe('top-right');
+    }
+  });
+
+  it('skips the excluded photo', () => {
+    const photos = [
+      makePhoto('a', { labelPosition: 'top-left' }),
+      makePhoto('b', { labelPosition: 'bottom-left' }),
+    ];
+    const result = applyLabelPositionToAllPhotos(photos, 'bottom-right', 'a');
+    expect(result[0].canvasState.labelPosition).toBe('top-left');
+    expect(result[1].canvasState.labelPosition).toBe('bottom-right');
+  });
+
+  it('handles empty array', () => {
+    const result = applyLabelPositionToAllPhotos([], 'top-right');
+    expect(result).toEqual([]);
+  });
+
+  it('handles undefined photos', () => {
+    const result = applyLabelPositionToAllPhotos(undefined, 'top-right');
+    expect(result).toEqual([]);
+  });
+
+  it('handles null photos', () => {
+    const result = applyLabelPositionToAllPhotos(null, 'top-right');
+    expect(result).toEqual([]);
+  });
+
+  it('does not mutate original photos or their canvasStates', () => {
+    const photos = [makePhoto('a', { labelPosition: 'top-left' })];
+    const result = applyLabelPositionToAllPhotos(photos, 'bottom-right');
+    expect(photos[0].canvasState.labelPosition).toBe('top-left');
+    expect(result[0]).not.toBe(photos[0]);
+    expect(result[0].canvasState).not.toBe(photos[0].canvasState);
+  });
+
+  it('preserves extra photo fields and other canvasState fields', () => {
+    const photos = [
+      {
+        id: 'x',
+        canvasState: { ...DEFAULT_CANVAS_STATE, brightness: 42, scale: 2.5 },
+        label: 'test',
+        url: '/img.jpg',
+      },
+    ];
+    const result = applyLabelPositionToAllPhotos(photos, 'top-right');
+    expect(result[0].label).toBe('test');
+    expect(result[0].url).toBe('/img.jpg');
+    expect(result[0].canvasState.labelPosition).toBe('top-right');
+    expect(result[0].canvasState.brightness).toBe(42);
+    expect(result[0].canvasState.scale).toBe(2.5);
+  });
+
+  it('accepts every legal LabelPosition value', () => {
+    const positions: LabelPosition[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+    for (const pos of positions) {
+      const photos = [makePhoto('a')];
+      const result = applyLabelPositionToAllPhotos(photos, pos);
+      expect(result[0].canvasState.labelPosition).toBe(pos);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyLabelPositionToAllInSession — session-level transformer
+//
+// Mirrors the applySettingToAllInSession suite so any divergence between the
+// two helpers (version bump, updatedAt refresh, both-set traversal,
+// immutability) is caught in CI rather than at "sync corner" click-time.
+// ---------------------------------------------------------------------------
+describe('applyLabelPositionToAllInSession', () => {
+  type TestPhoto = { id: string; canvasState: CanvasState; label?: string };
+  type TestSession = PhotoSessionShape<TestPhoto> & { id: string; mode: 'track' };
+
+  const makeSession = (): TestSession => ({
+    id: 'session-1',
+    mode: 'track',
+    version: 7,
+    updatedAt: '2020-01-01T00:00:00.000Z',
+    sets: {
+      set1: {
+        title: 'SP - TP1',
+        photos: [makePhoto('a'), makePhoto('b', { labelPosition: 'top-left' })],
+      },
+      set2: {
+        title: 'TP1 - FP',
+        photos: [makePhoto('c', { labelPosition: 'bottom-right' })],
+      },
+    },
+  });
+
+  it('bumps version', () => {
+    const session = makeSession();
+    const result = applyLabelPositionToAllInSession(session, 'top-right');
+    expect(result.version).toBe(session.version + 1);
+  });
+
+  it('refreshes updatedAt to a new ISO string', () => {
+    const session = makeSession();
+    const result = applyLabelPositionToAllInSession(session, 'top-right');
+    expect(result.updatedAt).not.toBe(session.updatedAt);
+    expect(new Date(result.updatedAt).toString()).not.toBe('Invalid Date');
+  });
+
+  it('patches photos in both sets', () => {
+    const session = makeSession();
+    const result = applyLabelPositionToAllInSession(session, 'top-right');
+    expect(result.sets.set1.photos.every(p => p.canvasState.labelPosition === 'top-right')).toBe(true);
+    expect(result.sets.set2.photos.every(p => p.canvasState.labelPosition === 'top-right')).toBe(true);
+  });
+
+  it('preserves set titles and extra photo fields', () => {
+    const session = makeSession();
+    session.sets.set1.photos[0].label = 'A';
+    const result = applyLabelPositionToAllInSession(session, 'bottom-left');
+    expect(result.sets.set1.title).toBe('SP - TP1');
+    expect(result.sets.set2.title).toBe('TP1 - FP');
+    expect(result.sets.set1.photos[0].label).toBe('A');
+  });
+
+  it('respects excludePhotoId across both sets', () => {
+    const session = makeSession();
+    // Pre-set distinct corners so we can prove only the excluded id is left alone.
+    session.sets.set1.photos[0].canvasState.labelPosition = 'top-left';
+    session.sets.set1.photos[1].canvasState.labelPosition = 'top-right';
+    session.sets.set2.photos[0].canvasState.labelPosition = 'bottom-left';
+    const result = applyLabelPositionToAllInSession(session, 'bottom-right', 'b');
+    expect(result.sets.set1.photos[0].canvasState.labelPosition).toBe('bottom-right');
+    expect(result.sets.set1.photos[1].canvasState.labelPosition).toBe('top-right');
+    expect(result.sets.set2.photos[0].canvasState.labelPosition).toBe('bottom-right');
+  });
+
+  it('preserves non-sets session fields', () => {
+    const session = makeSession();
+    const result = applyLabelPositionToAllInSession(session, 'top-right');
+    expect(result.id).toBe('session-1');
+    expect(result.mode).toBe('track');
+  });
+
+  it('does not mutate the input session', () => {
+    const session = makeSession();
+    const originalVersion = session.version;
+    const originalUpdatedAt = session.updatedAt;
+    const originalLabelPos = session.sets.set1.photos[0].canvasState.labelPosition;
+    applyLabelPositionToAllInSession(session, 'bottom-right');
+    expect(session.version).toBe(originalVersion);
+    expect(session.updatedAt).toBe(originalUpdatedAt);
+    expect(session.sets.set1.photos[0].canvasState.labelPosition).toBe(originalLabelPos);
+  });
+
+  it('does not alias the input canvasState objects in the result', () => {
+    const session = makeSession();
+    const inputCanvasState = session.sets.set1.photos[0].canvasState;
+    const result = applyLabelPositionToAllInSession(session, 'top-right');
+    expect(result.sets.set1.photos[0].canvasState).not.toBe(inputCanvasState);
+    // Mutating the result must not leak into the input.
+    result.sets.set1.photos[0].canvasState.labelPosition = 'top-left';
+    expect(session.sets.set1.photos[0].canvasState.labelPosition).toBe(inputCanvasState.labelPosition);
   });
 });

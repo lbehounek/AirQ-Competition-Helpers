@@ -121,6 +121,13 @@ function AppApi() {
   const refreshSession = supportsRefresh ? sessionHookResult.refreshSession : undefined;
   const supportsApplyToAll = Boolean(sessionHookResult.applySettingToAll);
   const applySettingToAll = supportsApplyToAll ? sessionHookResult.applySettingToAll : undefined;
+  // Mirrors the supportsApplyToAll pattern above. Without this Boolean gate
+  // the prop would be always-truthy (the hook unconditionally exposes the
+  // function) and the "Sync corner to all" button would render even on a
+  // hook variant that doesn't implement label sync — a click then becomes a
+  // silent no-op. Consistent gating across all session-bulk operations.
+  const supportsApplyLabelPositionToAll = Boolean(sessionHookResult.applyLabelPositionToAll);
+  const applyLabelPositionToAll = supportsApplyLabelPositionToAll ? sessionHookResult.applyLabelPositionToAll : undefined;
   
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
@@ -350,8 +357,15 @@ function AppApi() {
 
       await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, effectiveLayout, t, session.mode, currentCompetition?.id);
     } catch (error) {
+      // Surface to the user — previously this was a TODO ("Could add user
+      // notification here") and a generatePDF render failure produced a
+      // silent partial export. The hi-res render path can throw on memory
+      // pressure / blob URL issues / mid-export photo state changes; the
+      // user needs to know the export was aborted (or partial), not be left
+      // wondering why the dialog never opened.
       console.error('PDF generation failed:', error);
-      // Could add user notification here
+      const message = error instanceof Error ? error.message : String(error);
+      alert(message);
     }
   };
 
@@ -1028,6 +1042,7 @@ function AppApi() {
                         circleMode={circleMode}
                         onCircleModeToggle={() => setCircleMode(!circleMode)}
                         onApplyToAll={supportsApplyToAll && applySettingToAll ? (setting, value) => applySettingToAll(setting, value) : undefined}
+                        onSyncLabelPositionToAll={supportsApplyLabelPositionToAll && applyLabelPositionToAll ? (position) => applyLabelPositionToAll(position) : undefined}
                       />
                     </Box>
                   </Box>

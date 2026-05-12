@@ -1,0 +1,511 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<Style id="myStyleLine">
+		<LineStyle>
+			<color>ff00ffff</color>
+			<width>2.0</width>
+		</LineStyle>
+	</Style>
+	
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>18.161469,48.940207,0 18.027792,48.956468,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>18.027792,48.956468,0 17.952273,48.866893,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.952273,48.866893,0 17.802765,48.870596,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.802765,48.870596,0 17.830081,48.772229,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.830081,48.772229,0 17.705347,48.819613,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.705347,48.819613,0 17.730187,48.715908,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.730187,48.715908,0 17.726734,48.715444,0 17.723231,48.715066,0 17.71971,48.714773,0 17.716175,48.714567,0 17.712631,48.714447,0 17.709083,48.714414,0 17.705537,48.714467,0 17.701995,48.714608,0 17.698465,48.714834,0 17.69495,48.715147,0 17.691455,48.715545,0 17.687986,48.716028,0 17.684546,48.716596,0 17.681141,48.717248,0 17.677776,48.717982,0 17.674454,48.718798,0 17.671181,48.719694,0 17.667961,48.720669,0 17.664799,48.721723,0 17.661699,48.722853,0 17.658664,48.724058,0 17.6557,48.725336,0 17.65281,48.726686,0 17.649999,48.728105,0 17.64727,48.729592,0 17.644627,48.731144,0 17.642073,48.73276,0 17.639613,48.734437,0 17.637249,48.736174,0 17.634984,48.737966,0 17.632823,48.739813,0 17.630767,48.741711,0 17.62882,48.743658,0 17.626984,48.745651,0 17.625261,48.747687,0 17.623655,48.749764,0 17.622168,48.751879,0 17.6208,48.754029,0 17.619555,48.756211,0 17.618468,48.758421,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.618468,48.758421,0 17.520015,48.812303,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.520015,48.812303,0 17.51829,48.81629,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.516564,48.820277,0 17.514839,48.824264,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.513113,48.828251,0 17.511386,48.832238,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.50966,48.836225,0 17.507933,48.840212,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.506206,48.844199,0 17.504478,48.848186,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.502751,48.852173,0 17.501023,48.85616,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.499295,48.860147,0 17.497566,48.864133,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.495837,48.86812,0 17.494108,48.872107,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.492379,48.876094,0 17.490649,48.88008,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.488919,48.884067,0 17.487189,48.888053,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.485458,48.89204,0 17.483727,48.896027,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.481996,48.900013,0 17.480264,48.904,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.478533,48.907986,0 17.4768,48.911972,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.4768,48.911973,0 17.540693,48.984606,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.540693,48.984606,0 17.661668,48.913646,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.661668,48.913646,0 17.753205,48.974442,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.753205,48.974442,0 17.738244,49.059132,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.738244,49.059132,0 17.740612,49.057305,0 17.743146,49.055551,0 17.745797,49.053873,0 17.748561,49.052275,0 17.751432,49.050759,0 17.754404,49.049329,0 17.75747,49.047988,0 17.760625,49.046738,0 17.763863,49.045582,0 17.767177,49.044522,0 17.77056,49.043561,0 17.774005,49.042699,0 17.777506,49.04194,0 17.781056,49.041284,0 17.784647,49.040732,0 17.788272,49.040287,0 17.791924,49.039948,0 17.795595,49.039717,0 17.799278,49.039594,0 17.802967,49.039579,0 17.806652,49.039672,0 17.810328,49.039872,0 17.813985,49.040181,0 17.817619,49.040596,0 17.821219,49.041118,0 17.824781,49.041745,0 17.828296,49.042475,0 17.831757,49.043308,0 17.835158,49.044241,0 17.838491,49.045274,0 17.84175,49.046403,0 17.844929,49.047626,0 17.84802,49.048942,0 17.851019,49.050347,0 17.853918,49.051838,0 17.856711,49.053413,0 17.859394,49.055068,0 17.861961,49.056801,0 17.864407,49.058607,0 17.866683,49.060483,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.866683,49.060483,0 18.007177,49.075108,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>18.007177,49.075108,0 18.10492,48.994263,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>18.163767385542,48.9483964515501,0 18.161469,48.940207,0 18.1591713660785,48.9320175031029,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>18.0300911349009,48.964657451537,0 18.027792,48.956468,0 18.025493617397,48.9482785030898,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.9411959685082,48.8709248493558,0 17.952273,48.866893,0 17.9633482451877,48.8628600883327,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.8032290090452,48.8789178242052,0 17.802765,48.870596,0 17.8023011427501,48.8622741739947,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.8176515959095,48.7707320758534,0 17.830081,48.772229,0 17.8425111453912,48.7737245859189,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.7116570559679,48.8268300978697,0 17.705347,48.819613,0 17.6990387587263,48.8123955586768,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.717720149455,48.7146100688122,0 17.730187,48.715908,0 17.742654493911,48.7172045845509,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.6064287865356,48.7559006948086,0 17.618468,48.758421,0 17.6305084220791,48.7609400494843,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.5280896669408,48.8187119656419,0 17.520015,48.812303,0 17.5119423952968,48.8058934716165,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.4779045090247,48.9202687246017,0 17.4768,48.911973,0 17.4756958551832,48.9036772650001,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.5516768260231,48.9804367714446,0 17.540693,48.984606,0 17.5297073374393,48.9887741871688,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.6532207283528,48.9074393266267,0 17.661668,48.913646,0 17.6701173726228,48.919852055209,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.7622192627955,48.9685826646481,0 17.753205,48.974442,0 17.7441886198639,48.9803006340831,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.750867845613,49.0600905110697,0 17.738244,49.059132,0 17.7256206413327,49.058172113883,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>17.8767306241137,49.055384501348,0 17.866683,49.060483,0 17.8566333159414,49.0655806276283,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>18.0091598266027,49.0668825210643,0 18.007177,49.075108,0 18.0051935191419,49.0833334452212,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>18.0949698191793,48.9890940442356,0 18.10492,48.994263,0 18.1148722472982,48.9994310986739,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>18.1876214316412,48.9923453629661,0 18.1849365136101,48.9943886216355,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>18.2004056265784,48.9995783629641,0 18.1977203186509,49.0016216216335,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<StyleMap id="msn_ylw-pushpin">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#sn_ylw-pushpin</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#sh_ylw-pushpin</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="sn_ylw-pushpin">
+		<IconStyle>
+			<color>00ffffff</color>
+			<scale>1.1</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+	</Style>
+	<Style id="sh_ylw-pushpin">
+		<IconStyle>
+			<color>00ffffff</color>
+			<scale>1.3</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+	</Style>
+	<Placemark>
+		<name>SP</name>
+		<LookAt>
+			<longitude>18.161469</longitude>
+			<latitude>48.940207</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>18.162469,48.940207,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 1</name>
+		<LookAt>
+			<longitude>18.027792</longitude>
+			<latitude>48.956468</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>18.028792,48.956468,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 2</name>
+		<LookAt>
+			<longitude>17.952273</longitude>
+			<latitude>48.866893</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.953273,48.866893,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 3</name>
+		<LookAt>
+			<longitude>17.802765</longitude>
+			<latitude>48.870596</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.803765,48.870596,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 4</name>
+		<LookAt>
+			<longitude>17.830081</longitude>
+			<latitude>48.772229</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.831081,48.772229,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 5</name>
+		<LookAt>
+			<longitude>17.705347</longitude>
+			<latitude>48.819613</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.706347,48.819613,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 6</name>
+		<LookAt>
+			<longitude>17.730187</longitude>
+			<latitude>48.715908</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.731187,48.715908,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 7</name>
+		<LookAt>
+			<longitude>17.618468</longitude>
+			<latitude>48.758421</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.619468,48.758421,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 8</name>
+		<LookAt>
+			<longitude>17.520015</longitude>
+			<latitude>48.812303</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.521015,48.812303,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 9</name>
+		<LookAt>
+			<longitude>17.4768</longitude>
+			<latitude>48.911973</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.4778,48.911973,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 10</name>
+		<LookAt>
+			<longitude>17.540693</longitude>
+			<latitude>48.984606</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.541693,48.984606,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 11</name>
+		<LookAt>
+			<longitude>17.661668</longitude>
+			<latitude>48.913646</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.662668,48.913646,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 12</name>
+		<LookAt>
+			<longitude>17.753205</longitude>
+			<latitude>48.974442</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.754205,48.974442,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 13</name>
+		<LookAt>
+			<longitude>17.738244</longitude>
+			<latitude>49.059132</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.739244,49.059132,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 14</name>
+		<LookAt>
+			<longitude>17.866683</longitude>
+			<latitude>49.060483</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>17.867683,49.060483,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>CP 15</name>
+		<LookAt>
+			<longitude>18.007177</longitude>
+			<latitude>49.075108</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>18.008177,49.075108,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>FP</name>
+		<LookAt>
+			<longitude>18.10492</longitude>
+			<latitude>48.994263</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>18.10592,48.994263,0</coordinates>
+		</Point>
+	</Placemark>
+</Document>
+</kml>
