@@ -173,9 +173,11 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     const scaleX = mapCanvas.width / dims.width
     const scaleY = mapCanvas.height / dims.height
 
-    // Composite photo markers. Screen uses 8px diameter; print was tuned up to
-    // 36px diameter originally — testing feedback (2026-04-18) said that was too
-    // large on paper, so we drop to 20px diameter (10px radius) here.
+    // Composite photo markers. Screen now uses 12px diameter (was 8); print
+    // was originally tuned to 20px (10px radius) after the 2026-04-18 round
+    // when 36px looked too dominant on A4, then bumped +50% to 30px (15px
+    // radius) at the 2026-05-10 round to match the ground-marker bump. Both
+    // values now live in `markerSizes.ts` as the single source of truth.
     const markerRadius = PRINT_MARKER_DOT_RADIUS * scaleX
     const fontSize = Math.round(42 * scaleX)
 

@@ -206,12 +206,29 @@ export const generatePDF = async (
     return t ? t('pdf.header.trackSet2') : 'enroute photos second set'
   }
   
+  // Per-photo render result. `degraded` flags the case where the hi-res
+  // render threw but the on-screen DOM fallback succeeded — the PDF will
+  // still include the cell, but at the lower resolution of the live grid
+  // canvas, which is a visible quality regression vs the hi-res path.
+  // `failed` flags the case where BOTH paths failed and the cell would
+  // otherwise be silently omitted from the printed answer-sheet.
+  type PhotoRenderResult =
+    | { kind: 'ok'; dataUrl: string }
+    | { kind: 'degraded'; dataUrl: string; photoId: string }
+    | { kind: 'failed'; photoId: string; error: unknown };
+
   // Render the photo to a hi-res offscreen canvas and return a JPEG data URL.
   // The on-screen grid canvas is only 300 px wide, which the PDF/printer was
   // upscaling ~4× for an A4 cell at 300 DPI — that was the pixelation cause.
   // Re-rendering at PDF_PHOTO_TARGET_WIDTH bakes in zoom/pan/effects/label/circle
   // at print resolution, then the PDF embeds a sharp JPEG.
-  const getPhotoDataUrl = async (photo: ApiPhoto): Promise<string | null> => {
+  //
+  // Returns a tagged result rather than `null` on failure so the page-level
+  // caller can collect failures and surface them to the user. The previous
+  // shape (`Promise<string | null>`) let a render failure silently omit a
+  // photo cell from the printed sheet — for a competition answer-sheet
+  // workflow that's a correctness bug, not cosmetic (feedback 2026-05-12).
+  const getPhotoDataUrl = async (photo: ApiPhoto): Promise<PhotoRenderResult> => {
     try {
       // Loaded images are normally already cached by the editor grid; this
       // reuses them and falls back to a load if missing (e.g., off-screen).
@@ -247,20 +264,33 @@ export const generatePDF = async (
         drawCircle(canvas, circle, canvas.width / BASE_WIDTH);
       }
 
-      return canvas.toDataURL('image/jpeg', PDF_PHOTO_JPEG_QUALITY);
+      return { kind: 'ok', dataUrl: canvas.toDataURL('image/jpeg', PDF_PHOTO_JPEG_QUALITY) };
     } catch (error) {
       console.warn(`Failed to render hi-res photo for PDF (${photo.id}):`, error);
       // Last-resort fallback: scrape whatever the on-screen canvas has so
       // the PDF still produces output rather than failing the whole export.
+      // Flagged as `degraded` so the caller can warn the user that some
+      // photos printed at the lower live-grid resolution.
       try {
         const canvasElement = document.querySelector(`canvas[data-photo-id="${photo.id}"]`) as HTMLCanvasElement | null;
         if (canvasElement) {
-          return canvasElement.toDataURL('image/jpeg', PDF_PHOTO_JPEG_QUALITY);
+          return {
+            kind: 'degraded',
+            dataUrl: canvasElement.toDataURL('image/jpeg', PDF_PHOTO_JPEG_QUALITY),
+            photoId: photo.id,
+          };
         }
       } catch {/* ignore */}
-      return null;
+      return { kind: 'failed', photoId: photo.id, error };
     }
   };
+
+  // Collected across the whole `generatePDF` run so the caller (UI button
+  // handler) can surface a single combined alert at the end instead of one
+  // per page. `failed` is the show-stopper case: cell would be blank.
+  // `degraded` is the soft-warning case: cell is present but lower quality.
+  const renderFailures: { photoId: string; error: unknown }[] = [];
+  const renderDegraded: string[] = [];
 
   // Landscape pages render the rotated header on the left for 4:3 photos —
   // the FAI official answer-sheet ratio. A 3×3 grid of 4:3 photos is
@@ -512,26 +542,37 @@ export const generatePDF = async (
     // and `renderPhotoOnCanvas` is async due to the optional `intelligentResize`.
     const photoCount = localLayout.rows * localLayout.cols;
     const photosToRender = photoSet.photos.slice(0, photoCount);
-    const dataUrls = await Promise.all(
+    const renderResults: (PhotoRenderResult | null)[] = await Promise.all(
       photosToRender.map((p) => (p ? getPhotoDataUrl(p) : Promise.resolve(null)))
     );
 
-    // Add photos
+    // Add photos. Use the tagged result so render failures don't silently
+    // omit cells from the printed sheet — failures get tracked at the
+    // generatePDF level and surfaced to the user as a single combined alert
+    // after both pages have rendered.
     for (let row = 0; row < localLayout.rows; row++) {
       for (let col = 0; col < localLayout.cols; col++) {
         const index = row * localLayout.cols + col;
         const photo = photoSet.photos[index];
 
         if (photo) {
-          const dataUrl = dataUrls[index];
-          if (dataUrl) {
+          const result = renderResults[index];
+          if (!result) continue; // index past photos[].length; not a failure
+          if (result.kind === 'failed') {
+            renderFailures.push({ photoId: result.photoId, error: result.error });
+            continue;
+          }
+          if (result.kind === 'degraded') {
+            renderDegraded.push(result.photoId);
+          }
+          {
             const x = localLayout.startX + col * (localLayout.photoWidth + localLayout.gap);
             const y = localLayout.startY + row * (localLayout.photoHeight + localLayout.gap);
             
             elements.push(
               React.createElement(Image, {
                 key: `photo-${pageKey}-${index}`,
-                src: dataUrl,
+                src: result.dataUrl,
                 style: {
                   position: 'absolute',
                   left: x,
@@ -566,6 +607,32 @@ export const generatePDF = async (
   }
 
   const pdfDocument = React.createElement(Document, {}, pages);
+
+  // Surface per-photo render failures BEFORE we ship a partial PDF to the
+  // user. Previously a thrown render would log a console.warn and produce a
+  // PDF with silently blank cells — for an FAI answer-sheet, that's a
+  // correctness bug (feedback 2026-05-12). Caller (UI button handler) is
+  // expected to wrap `generatePDF` in try/catch and alert on this error.
+  if (renderFailures.length > 0) {
+    const ids = renderFailures.map(f => f.photoId).join(', ');
+    const err = new Error(
+      `PDF export aborted: ${renderFailures.length} photo(s) failed to render (${ids}). ` +
+      `Re-open the affected photos and try again.`,
+    );
+    // Attach the underlying error array for callers that want to log or
+    // present the original cause chain.
+    (err as Error & { renderFailures?: unknown[] }).renderFailures = renderFailures;
+    throw err;
+  }
+  // Degraded path: hi-res render failed but the on-screen fallback succeeded,
+  // so the PDF still has every cell — just at the lower live-grid resolution
+  // for the affected ids. Log so this shows up in DevTools without blocking
+  // the export; UI can decide whether to surface a soft warning.
+  if (renderDegraded.length > 0) {
+    console.warn(
+      `[generatePDF] ${renderDegraded.length} photo(s) used the DOM-canvas fallback (lower resolution): ${renderDegraded.join(', ')}`,
+    );
+  }
 
   // Generate and download
   try {

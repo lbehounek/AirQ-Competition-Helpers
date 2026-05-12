@@ -647,7 +647,22 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   // Sync label corner across every photo in both sets — see usePhotoSessionOPFS
   // for the canonical comment. This wrapper keeps the competition-system
   // surface symmetric with applySettingToAll.
+  //
+  // The explicit !currentCompetition guard surfaces the "no active competition"
+  // race (user clicks Sync while a competition switch is in flight) as a
+  // user-visible error banner instead of letting `updateCurrentCompetition`'s
+  // silent early-return at line ~405 swallow the click. The button is also
+  // gated in AppApi via `supportsApplyLabelPositionToAll`, but a defensive
+  // guard here means future call sites can't reintroduce the silent failure.
   const applyLabelPositionToAll = useCallback(async (position: LabelPosition, excludePhotoId?: string) => {
+    if (!currentCompetition) {
+      // Match the in-file convention (lines 298, 332, 396) — hardcoded
+      // English error strings. The error banner is informational; the
+      // primary defence against this race is the supportsApplyLabelPosition
+      // gate in AppApi.tsx.
+      setError('No active competition to sync label corner');
+      return;
+    }
     await updateCurrentCompetition(session => {
       const normalized = {
         ...session,
@@ -658,7 +673,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       };
       return applyLabelPositionToAllInSession(normalized, position, excludePhotoId);
     });
-  }, [updateCurrentCompetition]);
+  }, [currentCompetition, updateCurrentCompetition]);
 
   const updatePhotoState = useCallback(async (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
     await updateCurrentCompetition(session => {

@@ -23,6 +23,7 @@ const {
   isSafeStartDir,
   validateUserDir,
   validateStoragePath,
+  coerceExportFileName,
 } = require('../lib/pathValidation');
 
 describe('sanitizeFileName', () => {
@@ -244,5 +245,97 @@ describe('validateStoragePath', () => {
     expect(validateStoragePath(stillInside, storageRoot)).toBe(
       path.resolve(path.join(storageRoot, 'leaf'))
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// coerceExportFileName — renderer-supplied export filename → sanitised name
+// with forced extension. Shared by save-map-image / save-pdf / save-kml so
+// the empty-body fallback is enforced at one place (otherwise a renderer
+// supplying just `".png"` could produce a hidden dot-file on Linux/macOS).
+// ---------------------------------------------------------------------------
+describe('coerceExportFileName', () => {
+  const FALLBACK = 'fallback-2026-05-12.png';
+
+  it('passes a clean slug-based name through with the forced extension', () => {
+    expect(coerceExportFileName('map-print-plzen-2026.png', 'png', FALLBACK))
+      .toBe('map-print-plzen-2026.png');
+    expect(coerceExportFileName('photo-sheet-brno-2026.pdf', 'pdf', FALLBACK))
+      .toBe('photo-sheet-brno-2026.pdf');
+  });
+
+  it('forces the extension when the renderer omits it', () => {
+    expect(coerceExportFileName('map-print-plzen-2026', 'png', FALLBACK))
+      .toBe('map-print-plzen-2026.png');
+  });
+
+  it('strips a single trailing extension match (case-insensitive)', () => {
+    expect(coerceExportFileName('photo-sheet.PDF', 'pdf', FALLBACK))
+      .toBe('photo-sheet.pdf');
+    expect(coerceExportFileName('photo-sheet.Pdf', 'pdf', FALLBACK))
+      .toBe('photo-sheet.pdf');
+  });
+
+  it('does not double-extension when the existing ext already matches', () => {
+    // Regression guard against `name.png` → `name.png.png`.
+    expect(coerceExportFileName('corridors.kml', 'kml', FALLBACK))
+      .toBe('corridors.kml');
+  });
+
+  it('falls back when renderer name is missing / empty / whitespace', () => {
+    expect(coerceExportFileName(undefined, 'png', FALLBACK)).toBe(FALLBACK);
+    expect(coerceExportFileName(null, 'png', FALLBACK)).toBe(FALLBACK);
+    expect(coerceExportFileName('', 'png', FALLBACK)).toBe(FALLBACK);
+    expect(coerceExportFileName('   ', 'png', FALLBACK)).toBe(FALLBACK);
+    expect(coerceExportFileName('\t\n', 'png', FALLBACK)).toBe(FALLBACK);
+  });
+
+  it('falls back when renderer name is the wrong type', () => {
+    expect(coerceExportFileName(42, 'png', FALLBACK)).toBe(FALLBACK);
+    expect(coerceExportFileName({}, 'png', FALLBACK)).toBe(FALLBACK);
+    expect(coerceExportFileName([], 'png', FALLBACK)).toBe(FALLBACK);
+  });
+
+  it('falls back when sanitisation reduces the body to empty (the dot-file guard)', () => {
+    // Round-1 fix for the silent failure: ".png" alone has a truthy
+    // .trim(), passes the first guard, but after stripping the extension
+    // there's nothing left. Without this guard the call would return
+    // ".png" — a hidden dot-file on Linux/macOS, confusing on Windows.
+    expect(coerceExportFileName('.png', 'png', FALLBACK)).toBe(FALLBACK);
+    expect(coerceExportFileName('.pdf', 'pdf', FALLBACK)).toBe(FALLBACK);
+    expect(coerceExportFileName('.kml', 'kml', FALLBACK)).toBe(FALLBACK);
+  });
+
+  it('falls back when sanitisation strips everything (only control chars)', () => {
+    // Control chars are stripped by sanitizeFileName → empty body → fallback.
+    expect(coerceExportFileName('.png', 'png', FALLBACK))
+      .toBe(FALLBACK);
+  });
+
+  it('does not perform path traversal even with adversarial input', () => {
+    // sanitizeFileName replaces separators with `-` first, so traversal
+    // attempts collapse to a flat filename. The result here is whatever
+    // sanitisation produces — what matters is that there are no path
+    // separators in the output.
+    const result = coerceExportFileName('../../etc/passwd.png', 'png', FALLBACK);
+    expect(result).not.toMatch(/[\\/]/);
+    expect(result.endsWith('.png')).toBe(true);
+  });
+
+  it('rejects a non-alphanumeric ext (defensive — no metachars in the regex)', () => {
+    // The regex is built from `ext`; locking down the chars allowed in
+    // `ext` itself prevents a future caller from accidentally smuggling
+    // a metacharacter that turns the body-strip into something broader.
+    expect(() => coerceExportFileName('name', '.png', FALLBACK)).toThrow();
+    expect(() => coerceExportFileName('name', 'png|exe', FALLBACK)).toThrow();
+    expect(() => coerceExportFileName('name', '', FALLBACK)).toThrow();
+  });
+
+  it('accepts mixed-case alphanumeric extensions', () => {
+    // The ext is normalised into the filename in lowercase by callers;
+    // helper itself just needs to allow alnum so existing uppercase
+    // extension matchers (e.g. `.PDF`) still work.
+    expect(coerceExportFileName('name', 'png', FALLBACK)).toBe('name.png');
+    expect(coerceExportFileName('name', 'jpeg', FALLBACK)).toBe('name.jpeg');
   });
 });

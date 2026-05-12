@@ -70,10 +70,34 @@ function validateStoragePath(inputPath, rootPath) {
   return resolved;
 }
 
+// Sanitise a renderer-supplied export filename and force a known extension,
+// falling back to `fallback` when the renderer didn't supply a usable name
+// OR when sanitisation reduced the body to empty.
+//
+// The empty-body guard is the part that's easy to miss when copy-pasting
+// this pattern across IPC handlers: without it, a renderer that sends just
+// `".png"` would slip through trim() (truthy + non-whitespace), strip the
+// extension, and produce a hidden `.png` dot-file in ~/Documents on
+// Linux/macOS. Shared between save-map-image / save-pdf / save-kml so any
+// future extension-suffixed export handler gets the guard for free.
+function coerceExportFileName(rendererName, ext, fallback) {
+  if (typeof rendererName !== 'string' || !rendererName.trim()) return fallback;
+  // Build the strip-regex from the extension argument (lowercase a-z0-9 only,
+  // hardcoded here so a future caller can't slip a metacharacter into the
+  // pattern). Each call site uses a 3-letter ext.
+  if (!/^[a-z0-9]+$/i.test(ext)) {
+    throw new Error('coerceExportFileName: ext must be alphanumeric');
+  }
+  const extRe = new RegExp('\\.' + ext + '$', 'i');
+  const body = sanitizeFileName(rendererName).replace(extRe, '');
+  return body.length > 0 ? body + '.' + ext : fallback;
+}
+
 module.exports = {
   MAX_USER_PATH_LEN,
   sanitizeFileName,
   isSafeStartDir,
   validateUserDir,
   validateStoragePath,
+  coerceExportFileName,
 };

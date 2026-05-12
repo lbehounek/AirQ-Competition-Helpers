@@ -318,6 +318,7 @@ const {
   isSafeStartDir,
   validateUserDir,
   validateStoragePath: validateStoragePathPure,
+  coerceExportFileName,
 } = require('./lib/pathValidation');
 
 // Convenience wrapper that pins the storage root to the photo-sessions
@@ -901,11 +902,14 @@ safeHandle('save-map-image', async (event, base64Data, defaultDir, fileNameArg) 
   if (!startDir) startDir = app.getPath('documents');
   // Renderer-supplied filename carries the slugified competition name when
   // available (feedback 2026-05-10 — every export should be self-identifying).
-  // Sanitise + force the .png extension; fall back to the legacy date-only
-  // default when the renderer didn't (or couldn't) supply a name.
-  const fileName = (typeof fileNameArg === 'string' && fileNameArg.trim())
-    ? sanitizeFileName(fileNameArg).replace(/\.png$/i, '') + '.png'
-    : `map-print-${new Date().toISOString().slice(0, 10)}.png`;
+  // `coerceExportFileName` sanitises + forces the .png extension AND falls
+  // back when the post-sanitisation body is empty, so a renderer-supplied
+  // `".png"` can't slip through as a hidden dot-file.
+  const fileName = coerceExportFileName(
+    fileNameArg,
+    'png',
+    `map-print-${new Date().toISOString().slice(0, 10)}.png`,
+  );
   const { filePath } = await dialog.showSaveDialog(mainWindow, {
     defaultPath: path.join(startDir, fileName),
     filters: [{ name: 'PNG Images', extensions: ['png'] }]
@@ -1014,9 +1018,11 @@ safeHandle('save-pdf', async (event, base64Data, fileName, defaultDir) => {
   if (base64Data.length > 200 * 1024 * 1024) {
     throw new Error('PDF data too large');
   }
-  const safeName = (typeof fileName === 'string' && fileName.trim())
-    ? sanitizeFileName(fileName).replace(/\.pdf$/i, '') + '.pdf'
-    : `photo-sheet-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const safeName = coerceExportFileName(
+    fileName,
+    'pdf',
+    `photo-sheet-${new Date().toISOString().slice(0, 10)}.pdf`,
+  );
   // Same UNC + length validation as save-kml / save-map-image.
   let startDir = validateUserDir(defaultDir);
   if (!startDir) startDir = app.getPath('documents');
@@ -1041,9 +1047,11 @@ safeHandle('save-kml', async (event, kmlText, fileName, defaultDir, competitionI
   if (kmlText.length > 50 * 1024 * 1024) {
     throw new Error('KML content too large');
   }
-  const safeName = (typeof fileName === 'string' && fileName.trim())
-    ? sanitizeFileName(fileName).replace(/\.kml$/i, '') + '.kml'
-    : `corridors_export_${new Date().toISOString().slice(0, 10)}.kml`;
+  const safeName = coerceExportFileName(
+    fileName,
+    'kml',
+    `corridors_export_${new Date().toISOString().slice(0, 10)}.kml`,
+  );
 
   // 1) User-supplied directory (the folder they imported the KML from) —
   //    `validateUserDir` enforces type, length cap, UNC/device rejection,

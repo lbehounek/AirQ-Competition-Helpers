@@ -33,4 +33,17 @@ describe('slugifyForFilename', () => {
     expect(slugifyForFilename('!!!')).toBe('')
     expect(slugifyForFilename('')).toBe('')
   })
+
+  // Pins the documented "non-Latin scripts are dropped, not transliterated"
+  // contract from slugify.ts — caller is responsible for falling back to a
+  // default filename when this returns empty. Without this test the JSDoc
+  // claim is unverified and a future "be helpful, transliterate" change
+  // could silently break the fallback path callers rely on.
+  it('drops non-Latin scripts rather than transliterating them', () => {
+    expect(slugifyForFilename('Москва')).toBe('')           // all-Cyrillic
+    expect(slugifyForFilename('Москва 2026')).toBe('2026')  // Cyrillic + ASCII digits → only digits survive
+    expect(slugifyForFilename('北京')).toBe('')              // CJK
+    expect(slugifyForFilename('Αθήνα')).toBe('')            // Greek (NFD-decomposes accents, no Latin base survives)
+    expect(slugifyForFilename('القاهرة')).toBe('')          // Arabic
+  })
 })
