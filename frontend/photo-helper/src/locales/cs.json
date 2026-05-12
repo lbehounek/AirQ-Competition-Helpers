@@ -279,9 +279,12 @@
   },
   "candidates": {
     "title": "Kandidáti ({{count}})",
+    "poolLabel": "Zásobník kandidátů",
     "addMore": "Přidat další",
     "hideRejects": "Skrýt vyřazené",
-    "emptyHint": "Sem přetáhněte další fotografie, nebo klikněte pro výběr",
+    "emptyHint": "Sem přetáhněte další fotografie — kteroukoli pak přetáhněte do políčka, aby se dostala do tisku",
+    "dragHint": "Přetáhněte miniaturu na prázdné políčko, nebo použijte tlačítka pod každou fotografií.",
+    "smartDropToast": "Přidáno {{count}} fotografií do Kandidátů — přetáhněte kteroukoli do políčka, aby se dostala do tisku.",
     "allFiltered": "Všichni kandidáti jsou skryti filtrem.",
     "flag": {
       "pick": "Označit jako vybrané",

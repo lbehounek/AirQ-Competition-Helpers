@@ -55,7 +55,7 @@ export interface UseCompetitionSystemResult {
   // Session operations (proxied to current competition)
   session: ApiPhotoSession | null;
   sessionId: string | null;
-  addPhotosToSet: (files: File[], setKey: 'set1' | 'set2') => Promise<void>;
+  addPhotosToSet: (files: File[], setKey: 'set1' | 'set2') => Promise<{ routedTo: 'slot' | 'tray'; count: number } | void>;
   removePhoto: (setKey: 'set1' | 'set2', photoId: string) => Promise<void>;
   updatePhotoState: (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => Promise<void>;
   updateSetTitle: (setKey: 'set1' | 'set2', title: string) => Promise<void>;
@@ -549,23 +549,21 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     }
 
     // Smart-drop routing: if the batch fits the remaining slot capacity, fill
-    // slots (today's behaviour). Otherwise route the WHOLE batch into the
-    // candidate pool — never silently split between slots and pool. See
-    // `routeDrop` + docs/CANDIDATE_PHOTOS.md "Smart drop heuristic".
+    // slots. Otherwise route the WHOLE batch into the candidate pool — never
+    // silently split. See `routeDrop` + docs/CANDIDATE_PHOTOS.md.
     //
-    // Precision-track has a special-case capacity of 10 in BOTH layouts
-    // because dropping the 10th photo in landscape flips the layout to
-    // portrait (effect in AppApi). `getGridCapacity` returns 9 for
-    // track+landscape since it doesn't know about discipline; we bump it
-    // here so a 10th drop fills the slot instead of routing to candidates.
+    // Capacity strictly follows `getGridCapacity` (= layoutMode). First
+    // dev-test feedback 2026-05-12 removed the precision-track 9→10
+    // auto-layout-flip; without that, bumping capacity to 10 in landscape
+    // would route a 10th drop into a hidden 10th slot. Layout choice is
+    // now fully manual.
     const sess = currentCompetition.session as any;
-    const isPrecisionTrack = isPrecisionDiscipline && sess.mode === 'track';
-    const slotCapacity = isPrecisionTrack ? 10 : getGridCapacity(sess);
+    const slotCapacity = getGridCapacity(sess);
     const currentSlotCount = sess.sets?.[setKey]?.photos?.length ?? 0;
     const route = routeDrop({ files, currentSlotCount, slotCapacity });
     if (route.kind === 'tray') {
       await addPhotosToCandidates(route.files);
-      return;
+      return { routedTo: 'tray' as const, count: route.files.length };
     }
 
     await updateCurrentCompetition(session => {
@@ -601,6 +599,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         }
       };
     }, { updatePhotos: true });
+    return { routedTo: 'slot' as const, count: route.files.length };
   }, [updateCurrentCompetition, currentCompetition, t, filesToPhotos, addPhotosToCandidates]);
 
   const removePhoto = useCallback(async (setKey: 'set1' | 'set2', photoId: string) => {

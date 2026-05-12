@@ -280,9 +280,12 @@
   },
   "candidates": {
     "title": "Candidates ({{count}})",
+    "poolLabel": "Candidate pool",
     "addMore": "Add more",
     "hideRejects": "Hide rejected",
-    "emptyHint": "Drop more photos here or click to browse",
+    "emptyHint": "Drop extra photos here — drag any onto a slot to use it in the print set",
+    "dragHint": "Drag a thumbnail onto an empty slot to add it to the print set, or use the toolbar buttons below each photo.",
+    "smartDropToast": "Added {{count}} photos to Candidates — drag any onto a slot to use them.",
     "allFiltered": "All candidates are hidden by the filter.",
     "flag": {
       "pick": "Mark as pick",

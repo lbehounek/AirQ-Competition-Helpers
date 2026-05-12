@@ -3,8 +3,8 @@
  * triaging. See docs/CANDIDATE_PHOTOS.md.
  *
  * Drag/drop wire format (shared with PhotoGridApi):
- *   text/plain = JSON.stringify({ kind: 'tray',  photoId })   ← drag source
- *              | JSON.stringify({ kind: 'slot', setKey, index, photoId }) ← drop target
+ *   application/x-airq-photo = JSON.stringify({ kind: 'tray', photoId })   ← drag source
+ *                            | JSON.stringify({ kind: 'slot', setKey, index, photoId }) ← drop target
  */
 import React, { useMemo, useState } from 'react';
 import {
@@ -12,9 +12,6 @@ import {
   Paper,
   Typography,
   IconButton,
-  Menu,
-  MenuItem,
-  Divider,
   Switch,
   FormControlLabel,
   Tooltip,
@@ -29,6 +26,8 @@ import {
   Close,
   PhotoLibrary,
   Add as AddIcon,
+  KeyboardDoubleArrowRight,
+  DeleteOutline,
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { useTheme, alpha } from '@mui/material/styles';
@@ -53,8 +52,8 @@ export interface CandidateTrayProps {
   hideSet2?: boolean;
 }
 
-const THUMB_HEIGHT = 96;
-const THUMB_WIDTH = 128;
+const THUMB_WIDTH = 144;
+const THUMB_IMAGE_HEIGHT = 100;
 
 export const CandidateTray: React.FC<CandidateTrayProps> = ({
   photos,
@@ -71,7 +70,6 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
 
   const [collapsed, setCollapsed] = useState(false);
   const [hideRejects, setHideRejects] = useState(false);
-  const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; photo: ApiPhoto } | null>(null);
   const [dropActive, setDropActive] = useState(false);
 
   // Filter rejects out when "Hide rejects" is on. Rejects with the toggle off
@@ -92,16 +90,9 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
     return { pick, neutral, reject, total: photos.length };
   }, [photos]);
 
-  const handleContextMenu = (e: React.MouseEvent<HTMLElement>, photo: ApiPhoto) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setMenuAnchor({ el: e.currentTarget, photo });
-  };
-  const closeMenu = () => setMenuAnchor(null);
-
   // Outer drop zone — accepts native file drops AND slot-photo drags. We
-  // disable react-dropzone's noClick for the empty-state CTA; in normal mode
-  // (when photos exist) we use a separate "+" button.
+  // disable react-dropzone's noClick when photos exist; the "Add more" button
+  // becomes the explicit click target in that case.
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {
       'image/jpeg': ['.jpg', '.jpeg'],
@@ -117,8 +108,6 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
   // Native HTML5 drag events for slot→tray transfers. react-dropzone owns the
   // file-drop path; we layer our intra-app slot/tray transfer protocol on top.
   const handleDragOver = (e: React.DragEvent) => {
-    // Only accept if the drag has our JSON payload — otherwise the user is
-    // dragging a native file and react-dropzone handles it.
     const hasInternalPayload = e.dataTransfer.types.includes('application/x-airq-photo');
     if (hasInternalPayload) {
       e.preventDefault();
@@ -146,12 +135,14 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  // Empty-state hero — when there are no candidates AND no slot photos either,
-  // AppApi hides this component entirely. So whenever we render, we always
-  // have either candidates OR the user is intentionally adding via the "+"
-  // button. The empty branch is only reached after the user deletes all
-  // candidates from a previously-non-empty tray.
+  // Empty-state — shows a wide drop hint. Only reached when slots have photos
+  // (AppApi gates the whole tray on `candidates>0 OR slots>0`), so this acts
+  // as the "add more to the candidates pool" entry point when slots are full.
+  // Styled distinctly from slot dropzones (warning-tinted border, prominent
+  // label) so the user can tell pool vs print at a glance — first dev-test
+  // feedback 2026-05-12.
   if (photos.length === 0) {
+    const active = isDragActive || dropActive;
     return (
       <Paper
         {...(getRootProps() as any)}
@@ -161,20 +152,24 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
         onDrop={handleDrop}
         sx={{
           mb: 2,
-          p: 2,
+          p: 2.5,
           border: '2px dashed',
-          borderColor: isDragActive || dropActive ? 'primary.main' : 'grey.300',
+          borderColor: active ? 'warning.dark' : 'warning.main',
           borderRadius: 2,
-          bgcolor: isDragActive || dropActive
-            ? alpha(theme.palette.primary.main, 0.06)
-            : 'background.paper',
+          bgcolor: active
+            ? alpha(theme.palette.warning.main, 0.10)
+            : alpha(theme.palette.warning.main, 0.04),
           textAlign: 'center',
           cursor: 'pointer',
+          transition: 'all 0.15s ease-in-out',
         }}
       >
         <input {...getInputProps()} />
-        <PhotoLibrary sx={{ fontSize: 28, color: 'text.secondary', mb: 0.5 }} />
-        <Typography variant="body2" color="text.secondary">
+        <PhotoLibrary sx={{ fontSize: 32, color: 'warning.dark', mb: 0.5 }} />
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'warning.dark' }}>
+          {t('candidates.poolLabel')}
+        </Typography>
+        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.5 }}>
           {t('candidates.emptyHint')}
         </Typography>
       </Paper>
@@ -248,25 +243,51 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
         </IconButton>
       </Box>
 
-      {/* Thumb strip */}
+      {/* Drag-to-slot hint banner — explains the primary action that isn't
+          discoverable from the thumb toolbar alone (first dev-test feedback
+          2026-05-12). Always visible while populated — small enough to stay
+          out of the way. */}
+      {!collapsed && (
+        <Box
+          sx={{
+            px: 2,
+            py: 0.75,
+            bgcolor: alpha(theme.palette.primary.main, 0.06),
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+          }}
+        >
+          <KeyboardDoubleArrowRight sx={{ fontSize: 16, color: 'primary.main' }} />
+          <Typography variant="caption" color="text.secondary">
+            {t('candidates.dragHint')}
+          </Typography>
+        </Box>
+      )}
+
+      {/* Thumb grid — wraps onto multiple rows instead of scrolling
+          horizontally (first dev-test feedback 2026-05-12). */}
       {!collapsed && (
         <Box
           sx={{
             display: 'flex',
-            gap: 1,
+            flexWrap: 'wrap',
+            gap: 1.25,
             p: 1.5,
-            overflowX: 'auto',
-            // Subtle hint that more content scrolls
-            scrollbarGutter: 'stable',
           }}
         >
           {visiblePhotos.map((photo) => (
             <CandidateThumb
               key={photo.id}
               photo={photo}
+              hideSet2={hideSet2}
               onClick={() => onPhotoClick(photo)}
-              onContextMenu={(e) => handleContextMenu(e, photo)}
               onDragStart={(e) => handleThumbDragStart(e, photo)}
+              onSetFlag={(flag) => onSetFlag(photo.id, flag)}
+              onDelete={() => onDelete(photo.id)}
+              onSendToSet={(setKey) => onSendToSet(photo.id, setKey)}
             />
           ))}
           {visiblePhotos.length === 0 && (
@@ -276,36 +297,6 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
           )}
         </Box>
       )}
-
-      {/* Context menu */}
-      <Menu
-        open={Boolean(menuAnchor)}
-        anchorEl={menuAnchor?.el ?? null}
-        onClose={closeMenu}
-      >
-        <MenuItem onClick={() => { if (menuAnchor) onSetFlag(menuAnchor.photo.id, 'pick'); closeMenu(); }}>
-          <Star sx={{ fontSize: 18, mr: 1, color: 'warning.main' }} /> {t('candidates.flag.pick')}
-        </MenuItem>
-        <MenuItem onClick={() => { if (menuAnchor) onSetFlag(menuAnchor.photo.id, 'neutral'); closeMenu(); }}>
-          <StarBorder sx={{ fontSize: 18, mr: 1 }} /> {t('candidates.flag.neutral')}
-        </MenuItem>
-        <MenuItem onClick={() => { if (menuAnchor) onSetFlag(menuAnchor.photo.id, 'reject'); closeMenu(); }}>
-          <Block sx={{ fontSize: 18, mr: 1, color: 'error.main' }} /> {t('candidates.flag.reject')}
-        </MenuItem>
-        <Divider />
-        <MenuItem onClick={() => { if (menuAnchor) onSendToSet(menuAnchor.photo.id, 'set1'); closeMenu(); }}>
-          {t('candidates.sendToSet1')}
-        </MenuItem>
-        {!hideSet2 && (
-          <MenuItem onClick={() => { if (menuAnchor) onSendToSet(menuAnchor.photo.id, 'set2'); closeMenu(); }}>
-            {t('candidates.sendToSet2')}
-          </MenuItem>
-        )}
-        <Divider />
-        <MenuItem onClick={() => { if (menuAnchor) onDelete(menuAnchor.photo.id); closeMenu(); }} sx={{ color: 'error.main' }}>
-          <Close sx={{ fontSize: 18, mr: 1 }} /> {t('common.delete')}
-        </MenuItem>
-      </Menu>
     </Paper>
   );
 };
@@ -339,77 +330,178 @@ const CountChip: React.FC<CountChipProps> = ({ count, icon, color }) => {
 
 interface CandidateThumbProps {
   photo: ApiPhoto;
+  hideSet2?: boolean;
   onClick: () => void;
-  onContextMenu: (e: React.MouseEvent<HTMLElement>) => void;
   onDragStart: (e: React.DragEvent) => void;
+  onSetFlag: (flag: CandidateFlag) => void;
+  onDelete: () => void;
+  onSendToSet: (setKey: 'set1' | 'set2') => void;
 }
-const CandidateThumb: React.FC<CandidateThumbProps> = ({ photo, onClick, onContextMenu, onDragStart }) => {
+const CandidateThumb: React.FC<CandidateThumbProps> = ({
+  photo,
+  hideSet2,
+  onClick,
+  onDragStart,
+  onSetFlag,
+  onDelete,
+  onSendToSet,
+}) => {
+  const theme = useTheme();
+  const { t } = useI18n();
   const flag: CandidateFlag = (photo.flag as CandidateFlag | undefined) ?? 'neutral';
+  const isPick = flag === 'pick';
   const isReject = flag === 'reject';
+
+  // Status border colour communicates flag at a glance.
+  const borderColor =
+    isPick ? theme.palette.warning.main
+    : isReject ? theme.palette.error.main
+    : theme.palette.divider;
+
+  // Toolbar button — small, single-purpose. Stops click propagation so
+  // clicking the toolbar doesn't open the editor modal.
+  const tbBtn = (
+    title: string,
+    active: boolean,
+    color: 'warning' | 'error' | 'primary' | 'default',
+    icon: React.ReactNode,
+    onClickFn: () => void,
+  ) => {
+    const palette =
+      color === 'warning' ? theme.palette.warning
+      : color === 'error' ? theme.palette.error
+      : color === 'primary' ? theme.palette.primary
+      : { main: theme.palette.text.secondary, dark: theme.palette.text.primary, light: theme.palette.action.hover, contrastText: theme.palette.text.primary };
+    return (
+      <Tooltip title={title} disableInteractive>
+        <IconButton
+          size="small"
+          onClick={(e) => { e.stopPropagation(); onClickFn(); }}
+          sx={{
+            p: 0.25,
+            borderRadius: 0.75,
+            bgcolor: active ? alpha(palette.main, 0.15) : 'transparent',
+            color: active ? palette.dark : 'text.secondary',
+            '&:hover': {
+              bgcolor: alpha(palette.main, 0.2),
+              color: palette.dark,
+            },
+          }}
+        >
+          {icon}
+        </IconButton>
+      </Tooltip>
+    );
+  };
+
   return (
     <Box
       draggable
       onDragStart={onDragStart}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
       sx={{
-        position: 'relative',
         flex: '0 0 auto',
         width: THUMB_WIDTH,
-        height: THUMB_HEIGHT,
         borderRadius: 1,
         overflow: 'hidden',
+        bgcolor: 'background.paper',
+        border: `2px solid ${borderColor}`,
+        opacity: isReject ? 0.55 : 1,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        transition: 'transform 0.12s, box-shadow 0.12s, border-color 0.15s',
         cursor: 'grab',
-        opacity: isReject ? 0.45 : 1,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-        transition: 'transform 0.12s, box-shadow 0.12s',
         '&:hover': {
-          transform: 'scale(1.03)',
-          boxShadow: '0 2px 8px rgba(33,150,243,0.4)',
+          transform: 'translateY(-1px)',
+          boxShadow: '0 2px 8px rgba(33,150,243,0.35)',
         },
         '&:active': { cursor: 'grabbing' },
       }}
     >
-      {/* Re-use PhotoEditorApi in grid size so edits applied to candidate
-          photos render with the same pipeline as slot photos. Label kept
-          empty — tray photos have no slot index. */}
-      <Box sx={{ width: '100%', height: '100%', pointerEvents: 'none' }}>
-        <PhotoEditorApi
-          key={photo.id}
-          photo={photo}
-          label=""
-          onUpdate={() => { /* no-op — modal edits propagate via parent */ }}
-          onRemove={() => { /* delete via context menu */ }}
-          size="grid"
-        />
+      {/* Image area — click opens the edit modal. pointerEvents on the inner
+          editor are disabled so the parent's drag/click handlers receive
+          events instead. */}
+      <Box
+        onClick={onClick}
+        sx={{
+          width: '100%',
+          height: THUMB_IMAGE_HEIGHT,
+          position: 'relative',
+          cursor: 'pointer',
+        }}
+      >
+        <Box sx={{ width: '100%', height: '100%', pointerEvents: 'none' }}>
+          <PhotoEditorApi
+            key={photo.id}
+            photo={photo}
+            label=""
+            onUpdate={() => { /* persisted via parent's updateCandidatePhotoState */ }}
+            onRemove={() => { /* delete via toolbar */ }}
+            size="grid"
+          />
+        </Box>
       </Box>
-      {/* Flag badge */}
-      {flag === 'pick' && (
-        <BadgeIcon><Star sx={{ fontSize: 14, color: 'warning.dark' }} /></BadgeIcon>
-      )}
-      {flag === 'reject' && (
-        <BadgeIcon color="error"><Block sx={{ fontSize: 14, color: 'common.white' }} /></BadgeIcon>
-      )}
+
+      {/* Always-visible control toolbar. Left-click only — no right-click menu
+          (first dev-test feedback 2026-05-12). Flag toggles act radio-like:
+          clicking the active flag clears it back to neutral. */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 0.25,
+          px: 0.5,
+          py: 0.5,
+          borderTop: `1px solid ${theme.palette.divider}`,
+          bgcolor: alpha(theme.palette.background.default, 0.6),
+        }}
+      >
+        {/* Flag toggles */}
+        <Box sx={{ display: 'flex', gap: 0.25 }}>
+          {tbBtn(
+            t('candidates.flag.pick'),
+            isPick,
+            'warning',
+            isPick ? <Star sx={{ fontSize: 16 }} /> : <StarBorder sx={{ fontSize: 16 }} />,
+            () => onSetFlag(isPick ? 'neutral' : 'pick'),
+          )}
+          {tbBtn(
+            t('candidates.flag.reject'),
+            isReject,
+            'error',
+            <Block sx={{ fontSize: 16 }} />,
+            () => onSetFlag(isReject ? 'neutral' : 'reject'),
+          )}
+        </Box>
+
+        {/* Send to set */}
+        <Box sx={{ display: 'flex', gap: 0.25 }}>
+          {tbBtn(
+            t('candidates.sendToSet1'),
+            false,
+            'primary',
+            <Box sx={{ display: 'flex', alignItems: 'center', fontSize: 11, fontWeight: 700 }}>
+              <KeyboardDoubleArrowRight sx={{ fontSize: 14 }} />1
+            </Box>,
+            () => onSendToSet('set1'),
+          )}
+          {!hideSet2 && tbBtn(
+            t('candidates.sendToSet2'),
+            false,
+            'primary',
+            <Box sx={{ display: 'flex', alignItems: 'center', fontSize: 11, fontWeight: 700 }}>
+              <KeyboardDoubleArrowRight sx={{ fontSize: 14 }} />2
+            </Box>,
+            () => onSendToSet('set2'),
+          )}
+          {tbBtn(
+            t('common.delete'),
+            false,
+            'error',
+            <DeleteOutline sx={{ fontSize: 16 }} />,
+            onDelete,
+          )}
+        </Box>
+      </Box>
     </Box>
   );
 };
-
-const BadgeIcon: React.FC<{ children: React.ReactNode; color?: 'error' }> = ({ children, color }) => (
-  <Box
-    sx={{
-      position: 'absolute',
-      top: 4,
-      right: 4,
-      width: 20,
-      height: 20,
-      borderRadius: '50%',
-      bgcolor: color === 'error' ? 'error.main' : 'common.white',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
-    }}
-  >
-    {children}
-  </Box>
-);

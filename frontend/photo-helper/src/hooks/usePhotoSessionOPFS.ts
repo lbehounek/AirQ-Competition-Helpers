@@ -298,7 +298,7 @@ export function usePhotoSessionOPFS() {
       if (route.kind === 'tray') {
         setLoading(false);
         await addPhotosToCandidates(files);
-        return;
+        return { routedTo: 'tray' as const, count: route.files.length };
       }
 
       const photosDir = handlesRef.current.photosDir;
@@ -363,6 +363,7 @@ export function usePhotoSessionOPFS() {
       (next as any)[modeKey] = next.sets;
       await persistSession(next);
       await updateStorageEstimate();
+      return { routedTo: 'slot' as const, count: newPhotos.length };
     } catch (e: any) {
       setError(e?.message || 'Failed to add photos');
     } finally {

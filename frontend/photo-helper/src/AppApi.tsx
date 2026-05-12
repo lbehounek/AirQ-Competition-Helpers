@@ -22,7 +22,8 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  TextField
+  TextField,
+  Snackbar
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -33,10 +34,8 @@ import {
   Warning,
   Home,
   Map,
-  Add as AddIcon,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
-import { DropZone } from './components/DropZone';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
 import { EditableHeading } from './components/EditableHeading';
@@ -162,6 +161,21 @@ function AppApi() {
   // time so the user sees the same figure on the dialog as in the toast.
   const [cleanupCandidatesDialog, setCleanupCandidatesDialog] = useState<{ count: number; sizeMB: number } | null>(null);
 
+  // Snackbar shown when smart-drop routes a slot-targeted batch into the
+  // candidate tray (because the batch exceeded remaining slot capacity).
+  // First dev-test feedback 2026-05-12: the routing was silent and felt
+  // like the photos "disappeared" from the user's perspective.
+  const [dropToast, setDropToast] = useState<{ count: number } | null>(null);
+
+  // Wrapper around the hook's `addPhotosToSet` that surfaces the smart-drop
+  // routing result. Calling sites stay simple — they just pass files + set.
+  const handleAddToSet = async (files: File[], setKey: 'set1' | 'set2') => {
+    const result = await addPhotosToSet(files, setKey);
+    if (result && (result as any).routedTo === 'tray' && (result as any).count > 0) {
+      setDropToast({ count: (result as any).count });
+    }
+  };
+
   // selectedPhoto.setKey === 'candidates' for tray-source photos. Label is
   // empty in that case (tray photos have no slot index). The modal reuses
   // the same editor and persistence dispatches to the right hook method.
@@ -200,23 +214,15 @@ function AppApi() {
     }
   }, [session?.layoutMode, setLayoutMode]);
 
-  // Precision discipline: slot count follows actual photo count (feedback 2026-04-18
-  // — a 10-slot layout with 9 photos printed an empty 10th tile).
-  //   turning   → always 9 slots (landscape 3×3) — spec is SP + TP1..TP7 + FP
-  //   track     → 10 slots (portrait 2×5) *only when* the user reaches 10 photos;
-  //               otherwise 9-slot landscape so the printed page isn't padded with
-  //               an empty tile. Uploading the 10th photo snaps to portrait.
-  useEffect(() => {
-    if (!isPrecision || !session?.mode) return;
-    const photoCount = session.sets.set1.photos.length;
-    const required: 'portrait' | 'landscape' = (session.mode === 'track' && photoCount === 10)
-      ? 'portrait'
-      : 'landscape';
-    if (layoutMode !== required) {
-      setLayoutMode(required);
-      updateLayoutMode(required);
-    }
-  }, [isPrecision, session?.mode, session?.sets.set1.photos.length, layoutMode, setLayoutMode, updateLayoutMode]);
+  // Precision-track auto-layout switching removed (first dev-test feedback
+  // 2026-05-12): the 9→10 portrait flip is gone. Users pick layout manually
+  // via `LayoutModeSelector`; capacity follows that choice via
+  // `getGridCapacity`. The candidate tray now absorbs any drop that exceeds
+  // the current slot capacity, so a "10th photo" no longer needs a special
+  // path. (Rally turning-point's grid column expand from 3×3 → 5×2 at 10
+  // photos in landscape is left in place — it's not a layout-mode change,
+  // just grid columns within landscape — but can be re-evaluated if it also
+  // feels confusing.)
 
   const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
     const setPhotos = session?.sets[setKey].photos || [];
@@ -685,10 +691,15 @@ function AppApi() {
           </Alert>
         )}
 
-        {/* Candidate tray — slotless pool above the print layout. Hidden
-            when no candidates exist so existing UX is untouched until the
-            user opts in by dropping >capacity photos. */}
-        {candidatePhotos.length > 0 && (
+        {/* Candidate tray — slotless pool above the print layout. We render
+            it whenever EITHER candidates exist OR slots have photos. The
+            empty-state branch in CandidateTray itself shows a "drop more
+            here" dropzone — the only entry point for adding files once all
+            slots are full (otherwise the user gets stuck on a maxed-out
+            grid with no dropzone, first dev test 2026-05-12). Stays hidden
+            only on the truly-fresh empty state (no slots, no candidates)
+            so the initial DropZone hero remains unobstructed. */}
+        {(candidatePhotos.length > 0 || stats.totalPhotos > 0) && (
           <CandidateTray
             photos={candidatePhotos}
             onAddFiles={(files) => { if (addPhotosToCandidates) addPhotosToCandidates(files); }}
@@ -708,12 +719,12 @@ function AppApi() {
             set2={session.sets.set2}
             loading={loading}
             error={error}
-            onFilesDropped={(setKey, files) => addPhotosToSet(files, setKey)}
+            onFilesDropped={(setKey, files) => handleAddToSet(files, setKey)}
             /* Initial Rally drop can span 10-18 photos — distribute across
                both sets instead of overflowing set1 invisibly. Precision stays
                capped at 9 so single-set flow still applies. */
             onInitialFilesDropped={isPrecision
-              ? (files) => addPhotosToSet(files, 'set1')
+              ? (files) => handleAddToSet(files, 'set1')
               : (files) => addPhotosToTurningPoint(files)}
             onPhotoClick={handlePhotoClick}
             onPhotoUpdate={handlePhotoUpdate}
@@ -743,7 +754,7 @@ function AppApi() {
                       </Typography>
                     </Box>
                     <GridSizedDropZone
-                      onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
+                      onFilesDropped={(files) => handleAddToSet(files, 'set1')}
                       setName={t('sets.set1')}
                       // Precision track allows up to 10 regardless of current
                       // layoutMode — a fresh 10-photo drop will switch the
@@ -775,7 +786,7 @@ function AppApi() {
                         onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
                         onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
                         onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
-                        onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
+                        onFilesDropped={(files) => handleAddToSet(files, 'set1')}
                         onCandidateDropped={handleCandidateDropped('set1')}
                         maxPhotosOverride={isPrecision && session.mode === 'track' ? 10 : undefined}
                       />
@@ -796,7 +807,7 @@ function AppApi() {
                       </Typography>
                     </Box>
                     <GridSizedDropZone
-                      onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
+                      onFilesDropped={(files) => handleAddToSet(files, 'set2')}
                       setName={t('sets.set2')}
                       maxPhotos={layoutMode === 'portrait' ? 10 : 9}
                       loading={loading}
@@ -826,7 +837,7 @@ function AppApi() {
                         onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
                         onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
                         onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
-                        onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
+                        onFilesDropped={(files) => handleAddToSet(files, 'set2')}
                         onCandidateDropped={handleCandidateDropped('set2')}
                       />
                     </Paper>
@@ -835,49 +846,15 @@ function AppApi() {
               </Box>
             );
 
-            // Precision track mode: user feedback 2026-04-18 — single upload of
-            // up to 10 photos, no second set. Rally keeps the two-set layout.
+            // Precision track mode: single-set layout (no Set 2). The
+            // "Add 10th photo" affordance was removed with the auto-flip
+            // (first dev-test feedback 2026-05-12) — overflow now lands in
+            // the candidate tray, and users flip to portrait themselves
+            // when they want a 10-slot layout.
             if (isPrecision) {
-              // When the user has exactly 9 photos in landscape (3×3), the grid
-              // is full and offers no visible drop target for a 10th photo.
-              // Surface an explicit compact add-one affordance below the grid;
-              // dropping here triggers the layout auto-switch to portrait.
-              const showAddTenth = session?.mode === 'track' && stats.set1Photos === 9;
               return (
                 <Box sx={{ mb: 6 }}>
                   {Set1Component}
-                  {showAddTenth && (
-                    <Box sx={{ mt: 2 }}>
-                      <Paper
-                        elevation={1}
-                        sx={{
-                          p: 2,
-                          borderRadius: 2,
-                          border: '2px dashed',
-                          borderColor: 'primary.light',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: 1,
-                        }}
-                      >
-                        <AddIcon color="primary" />
-                        <Typography variant="body2" color="text.secondary">
-                          {t('upload.addTenthPhoto')}
-                        </Typography>
-                        <Box sx={{ width: '100%' }}>
-                          <DropZone
-                            onFilesDropped={(files) => addPhotosToSet(files.slice(0, 1), 'set1')}
-                            setName={t('upload.addTenthPhoto')}
-                            currentPhotoCount={9}
-                            maxPhotos={10}
-                            loading={loading}
-                            error={null}
-                          />
-                        </Box>
-                      </Paper>
-                    </Box>
-                  )}
                 </Box>
               );
             }
@@ -1261,6 +1238,16 @@ function AppApi() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Smart-drop notification — surfaces silent batches routed to the
+          candidate tray so the user doesn't think their photos vanished. */}
+      <Snackbar
+        open={Boolean(dropToast)}
+        autoHideDuration={6000}
+        onClose={() => setDropToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={dropToast ? t('candidates.smartDropToast', { count: dropToast.count }) : ''}
+      />
 
       {/* Post-export candidate cleanup dialog */}
       <Dialog
