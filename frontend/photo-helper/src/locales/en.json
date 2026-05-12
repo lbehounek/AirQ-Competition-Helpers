@@ -165,6 +165,7 @@
     "autoWhiteBalance": "Auto White Balance",
     "autoShort": "Auto",
     "labelPosition": "Label Position",
+    "syncLabelToAll": "Sync corner to all photos",
     "resetAll": "Reset All",
     "preview": "Preview",
     "resetBrightness": "Reset brightness",

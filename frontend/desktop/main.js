@@ -887,7 +887,7 @@ safeHandle('competition-delete', async (event, id) => {
 // Save map print image via native save dialog. Prefers the directory the
 // source KML was imported from (feedback 2026-04-23: every export dialog
 // should land in the user's race folder, not our internal storage).
-safeHandle('save-map-image', async (event, base64Data, defaultDir) => {
+safeHandle('save-map-image', async (event, base64Data, defaultDir, fileNameArg) => {
   if (typeof base64Data !== 'string' || base64Data.length === 0) {
     throw new Error('Invalid image data');
   }
@@ -899,7 +899,13 @@ safeHandle('save-map-image', async (event, base64Data, defaultDir) => {
   // at an attacker-controlled SMB share (NTLMv2 hash leak on Windows).
   let startDir = validateUserDir(defaultDir);
   if (!startDir) startDir = app.getPath('documents');
-  const fileName = `map-print-${new Date().toISOString().slice(0, 10)}.png`;
+  // Renderer-supplied filename carries the slugified competition name when
+  // available (feedback 2026-05-10 — every export should be self-identifying).
+  // Sanitise + force the .png extension; fall back to the legacy date-only
+  // default when the renderer didn't (or couldn't) supply a name.
+  const fileName = (typeof fileNameArg === 'string' && fileNameArg.trim())
+    ? sanitizeFileName(fileNameArg).replace(/\.png$/i, '') + '.png'
+    : `map-print-${new Date().toISOString().slice(0, 10)}.png`;
   const { filePath } = await dialog.showSaveDialog(mainWindow, {
     defaultPath: path.join(startDir, fileName),
     filters: [{ name: 'PNG Images', extensions: ['png'] }]

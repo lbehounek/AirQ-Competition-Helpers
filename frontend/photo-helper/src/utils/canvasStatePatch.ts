@@ -137,3 +137,52 @@ export function applySettingToAllInSession<
     },
   };
 }
+
+/**
+ * Label position is a string union (`'top-left' | 'top-right' | 'bottom-left'
+ * | 'bottom-right'`) rather than a number, so it sits outside `CanvasSetting`
+ * and gets its own narrow helper. Used by the modal "Sync to all" button so
+ * one click pins the same corner for every photo across both sets.
+ */
+export type LabelPosition = CanvasState['labelPosition'];
+
+export function applyLabelPositionToAllPhotos<
+  T extends { id: string; canvasState: CanvasState },
+>(
+  photos: T[] | undefined | null,
+  position: LabelPosition,
+  excludePhotoId?: string,
+): T[] {
+  if (!photos) return [];
+  return photos.map(p =>
+    p.id === excludePhotoId
+      ? p
+      : { ...p, canvasState: { ...p.canvasState, labelPosition: position } }
+  );
+}
+
+export function applyLabelPositionToAllInSession<
+  P extends { id: string; canvasState: CanvasState },
+  S extends PhotoSessionShape<P>,
+>(
+  session: S,
+  position: LabelPosition,
+  excludePhotoId?: string,
+): S {
+  return {
+    ...session,
+    version: session.version + 1,
+    updatedAt: new Date().toISOString(),
+    sets: {
+      ...session.sets,
+      set1: {
+        ...session.sets.set1,
+        photos: applyLabelPositionToAllPhotos(session.sets.set1.photos, position, excludePhotoId),
+      },
+      set2: {
+        ...session.sets.set2,
+        photos: applyLabelPositionToAllPhotos(session.sets.set2.photos, position, excludePhotoId),
+      },
+    },
+  };
+}

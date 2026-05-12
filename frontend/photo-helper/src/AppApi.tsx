@@ -121,6 +121,7 @@ function AppApi() {
   const refreshSession = supportsRefresh ? sessionHookResult.refreshSession : undefined;
   const supportsApplyToAll = Boolean(sessionHookResult.applySettingToAll);
   const applySettingToAll = supportsApplyToAll ? sessionHookResult.applySettingToAll : undefined;
+  const applyLabelPositionToAll = sessionHookResult.applyLabelPositionToAll;
   
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
@@ -1028,6 +1029,7 @@ function AppApi() {
                         circleMode={circleMode}
                         onCircleModeToggle={() => setCircleMode(!circleMode)}
                         onApplyToAll={supportsApplyToAll && applySettingToAll ? (setting, value) => applySettingToAll(setting, value) : undefined}
+                        onSyncLabelPositionToAll={applyLabelPositionToAll ? (position) => applyLabelPositionToAll(position) : undefined}
                       />
                     </Box>
                   </Box>

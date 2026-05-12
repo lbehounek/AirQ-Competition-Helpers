@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Point } from 'geojson'
+import { KML_GROUND_MARKER_ICON_SCALE, KML_PHOTO_MARKER_ICON_SCALE } from './markerSizes'
 
 const KML_NS = 'http://www.opengis.net/kml/2.2'
 
@@ -109,15 +110,14 @@ function ensureGroundMarkerStyle(doc: Document, type: string, iconHref: string) 
   // pin tip) on the marker's lat/lng — feedback 2026-04-25: the symbol now
   // sits in a square at the top with a pin underneath, so the point of
   // contact is the bottom of the canvas, not the centre.
-  // scale=0.6 makes the icon visually match the yellow photo pushpins at
-  // typical map zooms — feedback 2026-04-25: "make it smaller when zoomed
-  // out, to visually match other elements". The source PNG is 128×192,
-  // 1.5× taller than Google's standard pushpin, so a sub-1 scale evens
-  // them out; the symbol stays legible when the user zooms in.
+  // The base icon scale was originally 0.6 to match the yellow photo
+  // pushpins at typical map zooms (feedback 2026-04-25). It now lives in
+  // `markerSizes.ts` and was bumped +50% (feedback 2026-05-10) so markers
+  // read clearly at the zoom levels users actually browse to.
   ensureStyle(
     doc,
     id,
-    `<IconStyle><scale>0.6</scale><Icon><href>${escapeXmlAttr(iconHref)}</href></Icon><hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0</scale></LabelStyle>`,
+    `<IconStyle><scale>${KML_GROUND_MARKER_ICON_SCALE}</scale><Icon><href>${escapeXmlAttr(iconHref)}</href></Icon><hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0</scale></LabelStyle>`,
   )
   return id
 }
@@ -166,7 +166,7 @@ export function appendFeaturesToKML(originalKml: string, extra: GeoJSON, docName
   ensureStyle(
     xml,
     'photoMarker',
-    '<IconStyle><color>ff00ffff</color><scale>1.1</scale><Icon><href>https://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href></Icon><hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/></IconStyle><LabelStyle><scale>0.9</scale></LabelStyle>',
+    `<IconStyle><color>ff00ffff</color><scale>${KML_PHOTO_MARKER_ICON_SCALE}</scale><Icon><href>https://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href></Icon><hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/></IconStyle><LabelStyle><scale>0.9</scale></LabelStyle>`,
   )
 
   // Register one IconStyle per used ground-marker type (feedback 2026-04-18:

@@ -10,16 +10,13 @@ export interface AspectRatioOption {
   description: string;
 }
 
+// 4:3 listed first so it's the default — the FAI official answer-sheet uses
+// 87.3×65.1 mm cells (aspect ratio 1.341, essentially 4:3), and a 3×3 grid of
+// 4:3 photos is height-constrained on A4 landscape (grid aspect 1.333 < page
+// aspect 1.415), which is what produces the "photos fill A4 vertically with
+// white edges on the sides" look you see on the official sheet (feedback
+// 2026-05-12 — earlier "default to 3:2" was a misread of the official spec).
 export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
-  {
-    id: '3:2',
-    name: '3:2 DSLR',
-    ratio: 3 / 2,
-    widthRatio: 3,
-    heightRatio: 2,
-    cssRatio: '3/2',
-    description: 'DSLR'
-  },
   {
     id: '4:3',
     name: '4:3 Classic',
@@ -28,6 +25,15 @@ export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
     heightRatio: 3,
     cssRatio: '4/3',
     description: 'Classic'
+  },
+  {
+    id: '3:2',
+    name: '3:2 DSLR',
+    ratio: 3 / 2,
+    widthRatio: 3,
+    heightRatio: 2,
+    cssRatio: '3/2',
+    description: 'DSLR'
   },
   {
     id: '16:9',
@@ -52,7 +58,10 @@ interface AspectRatioContextType {
 const AspectRatioContext = createContext<AspectRatioContextType | null>(null);
 
 export const AspectRatioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentRatio, setCurrentRatio] = useState<AspectRatioOption>(ASPECT_RATIO_OPTIONS[0]); // Default to 3:2
+  // Default to 4:3 (FAI official answer-sheet); ratio order in
+  // `ASPECT_RATIO_OPTIONS` keeps 4:3 at index 0 — see the comment on
+  // that constant for the rationale.
+  const [currentRatio, setCurrentRatio] = useState<AspectRatioOption>(ASPECT_RATIO_OPTIONS[0]);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const transitionTimeoutRef = useRef<number | null>(null);
 

@@ -95,15 +95,17 @@ export const drawLabel = (
     return;
   }
   
-  // Scale font size based on canvas size to maintain consistent visual appearance
-  // Base font size for 300x225 canvas, scale proportionally (reduced by 30% from 48px)
-  const baseFontSize = 34;
+  // Scale font size based on canvas size to maintain consistent visual appearance.
+  // Base font size for the 300px-wide on-screen canvas; scales proportionally for
+  // hi-res PDF renders. Bumped 34 → 68 (feedback 2026-05-12) so jury graders can
+  // read the photo number at arm's length on the printed sheet; `bold` removed
+  // at the same time — the heavier stroke at this size felt obtrusive.
+  const baseFontSize = 68;
   const baseCanvasWidth = 300;
   const scaleFactor = canvas.width / baseCanvasWidth;
   const fontSize = Math.round(baseFontSize * scaleFactor);
-  
-  // Label styling - 3x bigger than default with thin black border
-  ctx.font = `bold ${fontSize}px Arial`;
+
+  ctx.font = `${fontSize}px Arial`;
   ctx.fillStyle = 'white';
   ctx.strokeStyle = 'black';
   ctx.lineWidth = Math.max(1, Math.round(scaleFactor)); // Scale border width too

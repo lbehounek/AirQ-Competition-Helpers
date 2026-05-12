@@ -26,6 +26,7 @@ export type {
 } from './types';
 
 export { dirnameOf } from './pathUtils';
+export { slugifyForFilename } from './slugify';
 
 import type { StorageInterface, StorageType } from './types';
 import { OPFSStorage, opfsStorage } from './opfsStorage';

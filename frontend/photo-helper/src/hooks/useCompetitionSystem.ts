@@ -14,7 +14,7 @@ import type { ApiPhotoSession } from '../types/api';
 import { competitionService } from '../services/competitionService';
 import { migrationService } from '../services/migrationService';
 import { useI18n } from '../contexts/I18nContext';
-import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
+import { applyLabelPositionToAllInSession, applySettingToAllInSession, type CanvasSetting, type LabelPosition } from '../utils/canvasStatePatch';
 import { distributeRallyDrop } from '../utils/distributeRallyDrop';
 import { getGridCapacity } from '../utils/getGridCapacity';
 import { parseDiscipline } from '../utils/parseDiscipline';
@@ -644,6 +644,22 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     });
   }, [updateCurrentCompetition]);
 
+  // Sync label corner across every photo in both sets — see usePhotoSessionOPFS
+  // for the canonical comment. This wrapper keeps the competition-system
+  // surface symmetric with applySettingToAll.
+  const applyLabelPositionToAll = useCallback(async (position: LabelPosition, excludePhotoId?: string) => {
+    await updateCurrentCompetition(session => {
+      const normalized = {
+        ...session,
+        sets: {
+          set1: session.sets?.set1 || { title: '', photos: [] },
+          set2: session.sets?.set2 || { title: '', photos: [] },
+        },
+      };
+      return applyLabelPositionToAllInSession(normalized, position, excludePhotoId);
+    });
+  }, [updateCurrentCompetition]);
+
   const updatePhotoState = useCallback(async (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
     await updateCurrentCompetition(session => {
       // Ensure sets structure is valid
@@ -963,6 +979,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     }) as any,
     refreshSession: (async () => {}) as any,
     applySettingToAll,
+    applyLabelPositionToAll,
     
     // Cleanup & storage
     cleanupCandidates,

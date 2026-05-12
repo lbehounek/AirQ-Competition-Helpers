@@ -15,6 +15,7 @@ import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
 import { parseDisciplineFromSearch } from './utils/parseDiscipline'
+import { slugifyForFilename } from '@airq/shared-storage'
 import { MapStyleSelector } from './components/MapStyleSelector'
 import { GROUND_MARKER_ICON } from './components/GroundMarkerIcons'
 import { useMapStyle } from './hooks/useMapStyle'
@@ -554,7 +555,16 @@ function App() {
         alert(t('errors.someGroundMarkersFailed', { types: failed.join(', ') }))
       }
     }
-    const mergedKml = appendFeaturesToKML(originalKmlText, combinedGeoJSON, 'corridors_export', { groundMarkerIcons })
+    // Filename uses a slug of the competition name so a folder of exports
+    // stays sortable and self-identifying (e.g. corridors-plzen-2026.kml).
+    // The inner KML <Document><name> keeps the human-readable name so
+    // Google Earth's tree view shows "Plzeň 2026" rather than the slug.
+    // Both fall back to the legacy 'corridors_export' when no competition
+    // is loaded (web build, or no competitionId in the URL).
+    const slug = competitionName ? slugifyForFilename(competitionName) : ''
+    const kmlFilename = slug ? `corridors-${slug}.kml` : 'corridors_export.kml'
+    const kmlDocName = competitionName || 'corridors_export'
+    const mergedKml = appendFeaturesToKML(originalKmlText, combinedGeoJSON, kmlDocName, { groundMarkerIcons })
     // Prefer the Electron save dialog when running in the desktop app so the
     // dialog defaults to the folder the source KML was imported from
     // (feedback 2026-04-23 — users don't care about our internal storage).
@@ -570,21 +580,29 @@ function App() {
         // competition's working dir (see comment near top of this file).
         // The return value is intentionally unused here; null vs path
         // only matters for diagnostics.
-        await api.saveKml(mergedKml, 'corridors_export.kml', importedKmlDir || undefined, competitionId || undefined)
+        await api.saveKml(mergedKml, kmlFilename, importedKmlDir || undefined, competitionId || undefined)
       } catch (err) {
         console.error('electronAPI.saveKml failed:', err)
         alert(err instanceof Error ? err.message : t('errors.exportFailed'))
       }
       return
     }
-    downloadKML(mergedKml, 'corridors_export.kml')
-  }, [markers, groundMarkers, loadOriginalKmlText, t, competitionId, importedKmlDir])
+    downloadKML(mergedKml, kmlFilename)
+  }, [markers, groundMarkers, loadOriginalKmlText, t, competitionId, competitionName, importedKmlDir])
 
   const handlePrintMap = useCallback(async () => {
     if (!mapRef.current) return
     try {
       const { blob, warnings } = await mapRef.current.captureForPrint()
       const electronAPI = window.electronAPI
+
+      // Filename mirrors the KML / PDF exports — slug of the competition
+      // name when available, falling back to the legacy date-only form.
+      const printSlug = competitionName ? slugifyForFilename(competitionName) : ''
+      const printDate = new Date().toISOString().slice(0, 10)
+      const printFileName = printSlug
+        ? `map-print-${printSlug}-${printDate}.png`
+        : `map-print-${printDate}.png`
 
       if (electronAPI?.saveMapImage) {
         // Electron: save via native dialog
@@ -598,13 +616,13 @@ function App() {
           reader.readAsDataURL(blob)
         })
         // Round-5: chosen folder is no longer auto-promoted to workingDir.
-        await electronAPI.saveMapImage(base64, importedKmlDir || undefined)
+        await electronAPI.saveMapImage(base64, importedKmlDir || undefined, printFileName)
       } else {
         // Browser: download via anchor
         const url = URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `map-print-${new Date().toISOString().slice(0, 10)}.png`
+        link.download = printFileName
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
@@ -620,7 +638,7 @@ function App() {
       console.error('Map print failed:', err)
       alert(err instanceof Error ? err.message : t('errors.printFailed'))
     }
-  }, [t, importedKmlDir])
+  }, [t, importedKmlDir, competitionName])
 
   // Drag source for placing photo markers
   const onDragStartMarker = useCallback((e: React.DragEvent) => {

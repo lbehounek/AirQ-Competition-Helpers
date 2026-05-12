@@ -10,6 +10,11 @@ import type { PrintCaptureResult } from '../utils/mapCapture'
 import type { PhotoLabel, GroundMarkerCallbacks } from '../types/markers'
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
+import {
+  LIVE_GROUND_MARKER_ICON_PX,
+  LIVE_MARKER_DOT_BORDER_RADIUS_PX,
+  LIVE_MARKER_DOT_PX,
+} from '../utils/markerSizes'
 
 type Overlay = {
   id: string
@@ -370,9 +375,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
             }}
           >
             <div style={{
-              width: 8,
-              height: 8,
-              borderRadius: 4,
+              width: LIVE_MARKER_DOT_PX,
+              height: LIVE_MARKER_DOT_PX,
+              borderRadius: LIVE_MARKER_DOT_BORDER_RADIUS_PX,
               background: '#FFFF00',
               border: '1px solid #333333',
               cursor: 'pointer',
@@ -584,9 +589,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               }}
             >
               <div style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
+                width: LIVE_MARKER_DOT_PX,
+                height: LIVE_MARKER_DOT_PX,
+                borderRadius: LIVE_MARKER_DOT_BORDER_RADIUS_PX,
                 background: '#FF9800',
                 border: '1px solid #333333',
                 cursor: 'pointer',
@@ -603,7 +608,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 display: 'flex',
                 alignItems: 'center',
               }}>
-                <Icon size={16} />
+                <Icon size={LIVE_GROUND_MARKER_ICON_PX} />
               </div>
             </Marker>
             {gmp.activeGroundMarkerId === gm.id && (

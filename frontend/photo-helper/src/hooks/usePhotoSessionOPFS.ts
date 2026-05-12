@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Photo } from '../types';
 import type { ApiPhoto, ApiPhotoSession } from '../types/api';
-import { applySettingToAllInSession, type CanvasSetting } from '../utils/canvasStatePatch';
+import { applyLabelPositionToAllInSession, applySettingToAllInSession, type CanvasSetting, type LabelPosition } from '../utils/canvasStatePatch';
 import { deriveSet1FromSet2, deriveSet2FromSet1 } from '../utils/autoPrefillSetTitle';
 import { getGridCapacity, TURNING_POINT_PER_SET } from '../utils/getGridCapacity';
 import {
@@ -355,6 +355,19 @@ export function usePhotoSessionOPFS() {
     await updateStorageEstimate();
   }, [session, persistSession]);
 
+  // Sync label corner across every photo in both sets — used by the modal
+  // "Sync to all" button (feedback 2026-05-10). Same atomic-update pattern as
+  // applySettingToAll; mirrors the result into the mode-specific bucket so a
+  // later mode switch keeps the corner.
+  const applyLabelPositionToAll = useCallback(async (position: LabelPosition, excludePhotoId?: string) => {
+    if (!session) return;
+
+    const next: ApiPhotoSession = applyLabelPositionToAllInSession(session, position, excludePhotoId);
+    (next as ApiPhotoSession)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    await persistSession(next);
+    await updateStorageEstimate();
+  }, [session, persistSession]);
+
   const updateSetTitle = useCallback(async (setKey: 'set1' | 'set2', title: string) => {
     if (!session) return;
     // Apply title
@@ -538,6 +551,7 @@ export function usePhotoSessionOPFS() {
     removePhoto,
     updatePhotoState,
     applySettingToAll,
+    applyLabelPositionToAll,
     updateSetTitle,
     updateSetTitles,
     reorderPhotos,

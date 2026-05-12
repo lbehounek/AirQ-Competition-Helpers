@@ -115,4 +115,66 @@ describe('calculateLandscapeGrid', () => {
       expect(layout.startY).toBeCloseTo(HEADER_TOP_PAD, 5);
     });
   });
+
+  describe("headerPlacement: 'left' (rotated side-header for 4:3)", () => {
+    // Side-header mode (feedback 2026-05-12): the rotated header lives in
+    // a left gutter, so it should eat WIDTH and leave the full page HEIGHT
+    // for photos. Default remains 'top' for back-compat. Production
+    // trigger is 4:3 — the FAI answer-sheet ratio, which is the case the
+    // side header actually helps (cells grow ~3% because the grid is
+    // height-constrained and there's horizontal slack to reclaim).
+    const ASPECT_4_3 = 4 / 3;
+    const SIDE_GUTTER = 22;
+
+    it("defaults to 'top' placement when the arg is omitted", () => {
+      const layout = calculateLandscapeGrid(ASPECT_4_3, HEADER_HEIGHT, HEADER_TOP_PAD, 9);
+      expect(layout.headerPlacement).toBe('top');
+    });
+
+    it('left placement reclaims the full vertical extent for the grid', () => {
+      const layout = calculateLandscapeGrid(ASPECT_4_3, SIDE_GUTTER, HEADER_TOP_PAD, 9, 'left');
+      // The grid is centered vertically inside the full page height — its
+      // total height plus 2 * startY should equal A4 height (within
+      // floor-rounding tolerance).
+      const totalHeight = layout.photoHeight * layout.rows + layout.gap * (layout.rows - 1);
+      expect(2 * layout.startY + totalHeight).toBeCloseTo(A4_LANDSCAPE_HEIGHT_PT, 0);
+    });
+
+    it('left placement pushes the grid past the gutter horizontally', () => {
+      const layout = calculateLandscapeGrid(ASPECT_4_3, SIDE_GUTTER, HEADER_TOP_PAD, 9, 'left');
+      // Grid starts at or beyond the gutter (header occupies headerPad
+      // through headerPad + SIDE_GUTTER on the left).
+      expect(layout.startX).toBeGreaterThanOrEqual(HEADER_TOP_PAD + SIDE_GUTTER);
+    });
+
+    it("exposes headerX at the headerPad offset (caller uses it for placement)", () => {
+      const layout = calculateLandscapeGrid(ASPECT_4_3, SIDE_GUTTER, HEADER_TOP_PAD, 9, 'left');
+      expect(layout.headerX).toBeCloseTo(HEADER_TOP_PAD, 5);
+      // headerY is 0 in left-placement mode — caller centers the rotated
+      // image vertically itself using the rasterised image height.
+      expect(layout.headerY).toBe(0);
+    });
+
+    it('still respects the photo aspect ratio in left placement', () => {
+      const layout = calculateLandscapeGrid(ASPECT_4_3, SIDE_GUTTER, HEADER_TOP_PAD, 9, 'left');
+      expect(layout.photoWidth / layout.photoHeight).toBeCloseTo(ASPECT_4_3, 5);
+    });
+
+    it('grows 4:3 cells vs the top-header baseline (the whole point)', () => {
+      // The side-header trade only makes sense for height-constrained
+      // grids (4:3 on A4 landscape). Pin the gain so a future refactor
+      // that accidentally flips the constraint will fail this test.
+      const top = calculateLandscapeGrid(ASPECT_4_3, HEADER_HEIGHT, HEADER_TOP_PAD, 9, 'top');
+      const left = calculateLandscapeGrid(ASPECT_4_3, SIDE_GUTTER, HEADER_TOP_PAD, 9, 'left');
+      expect(left.photoHeight).toBeGreaterThan(top.photoHeight);
+      expect(left.photoWidth).toBeGreaterThan(top.photoWidth);
+    });
+
+    it('5×2 grid also switches axis in left placement', () => {
+      const layout = calculateLandscapeGrid(ASPECT_4_3, SIDE_GUTTER, HEADER_TOP_PAD, 10, 'left');
+      expect(layout.cols).toBe(5);
+      expect(layout.rows).toBe(2);
+      expect(layout.headerPlacement).toBe('left');
+    });
+  });
 });

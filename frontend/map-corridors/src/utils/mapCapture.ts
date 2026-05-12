@@ -3,6 +3,7 @@ import type { LngLatBoundsLike, StyleSpecification } from 'mapbox-gl'
 import type { GeoJSON } from 'geojson'
 import { groundMarkerSvgString } from '../components/GroundMarkerIcons'
 import type { GroundMarkerType, PhotoLabel } from '../types/markers'
+import { PRINT_GROUND_ICON_SIZE, PRINT_MARKER_DOT_RADIUS } from './markerSizes'
 
 type OverlayConfig = {
   id: string
@@ -175,7 +176,7 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     // Composite photo markers. Screen uses 8px diameter; print was tuned up to
     // 36px diameter originally — testing feedback (2026-04-18) said that was too
     // large on paper, so we drop to 20px diameter (10px radius) here.
-    const markerRadius = 10 * scaleX
+    const markerRadius = PRINT_MARKER_DOT_RADIUS * scaleX
     const fontSize = Math.round(42 * scaleX)
 
     for (const m of markers) {
@@ -221,10 +222,10 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     // is a correctness bug, not a cosmetic one.
     const gms = options.groundMarkers || []
     if (gms.length) {
-      // Match the photo-marker label pill height (~46 px) so the two symbol
-      // types read at the same visual weight on A4 (feedback 2026-04-18 —
-      // 72 px made ground markers dominate their photo neighbours).
-      const iconSize = Math.round(40 * scaleX)
+      // Base icon size originally tuned (40) so the two symbol types read at
+      // similar visual weight on A4 (feedback 2026-04-18). Bumped +50% to 60
+      // (feedback 2026-05-10) — markers were undersized on print.
+      const iconSize = Math.round(PRINT_GROUND_ICON_SIZE * scaleX)
       const uniqueTypes = [...new Set(gms.map(gm => gm.type))]
       const gmImages = new Map<GroundMarkerType, HTMLImageElement>()
       const failedTypes = new Set<GroundMarkerType>()
