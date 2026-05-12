@@ -4,3 +4,48 @@ packages:
   - photo-helper
   - map-corridors
   - desktop
+
+# `onlyBuiltDependencies` allowlist — packages with `postinstall`/`install`
+# lifecycle scripts that pnpm v10+ blocks by default for supply-chain safety.
+# Each entry below has been individually reviewed; everything else stays
+# blocked. Migrated from `frontend/package.json` (pnpm.onlyBuiltDependencies)
+# at PR #61 — pnpm v10 deprecated that location and v11 stops honouring it.
+onlyBuiltDependencies:
+  - canvas
+  - core-js
+  - electron
+  - electron-winstaller
+  - esbuild
+
+# Security overrides. These pin transitive resolutions to versions that
+# carry CVE patches. The conditional `pkg@<version` syntax means the
+# override only fires when a transitive resolution would otherwise yield
+# the vulnerable range — so it's a no-op when upstream has already moved
+# on, and we don't have to remember to remove entries. Carets are
+# intentional here (unlike direct-dep deps where exact pinning is the
+# default per global CLAUDE.md): an override is itself a security pin, so
+# `^10.1.1` means "the lowest patched 10.x or newer", which is the
+# tightest range that still allows future patch-level updates without
+# requiring a manual revisit.
+#
+# Migrated from `frontend/package.json` (pnpm.overrides) at PR #61 — same
+# pnpm v10 deprecation reason as above.
+overrides:
+  '@xmldom/xmldom': '0.8.13'
+  postcss: '8.5.10'
+  flatted: '^3.4.2'
+  lodash: '^4.18.1'
+  picomatch: '^4.0.4'
+  tar: '^7.5.11'
+  'yaml@<1.10.3': '^1.10.3'
+  'brace-expansion@<1.1.13': '^1.1.13'
+  'brace-expansion@>=2.0.0 <2.0.3': '^2.0.3'
+  'brace-expansion@>=4.0.0 <5.0.5': '^5.0.5'
+  'protocol-buffers-schema@<3.6.1': '3.6.1'
+  # CVE-2026-42338 / GHSA-v2v4-37r5-5v8g — XSS in ip-address Address6
+  # HTML-emitting methods. Patched in 10.1.1. We only pull this in
+  # transitively via electron-builder → node-gyp → socks-proxy-agent;
+  # no consumer in our code calls the vulnerable methods (group/link/
+  # spanAll/parseMessage), so real-world exposure here is zero — the
+  # override is defense-in-depth + cleans the Dependabot alert.
+  'ip-address@<10.1.1': '^10.1.1'
