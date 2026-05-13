@@ -28,8 +28,8 @@ geographic context immediately and skip the blind Explorer-thumbnail step.
 - After drop, the map zooms (fit-bounds) to enclose all photos with GPS.
 - Each photo with GPS appears as a small grey dot at its capture location.
 - Import progress is visible (progress bar / count) for batches > 10 photos.
-- Files without GPS are still imported, placed along the lower edge of the
-  visible map ([ADR-012](./decisions.md#adr-012-no-gps-photo-placement-strategy), [US-8](#us-8--work-with-photos-that-have-no-gps)).
+- Files without GPS are still imported, surfaced in an off-map tray
+  pinned to the map corner ([ADR-012](./decisions.md#adr-012-no-gps-photo-placement-off-map-tray-pinned-to-map-corner), [US-8](#us-8--work-with-photos-that-have-no-gps)).
 - Existing KML/GPX corridor data, if loaded, remains visible alongside photos.
 
 **Out of scope:** HEIC files trigger an error toast ([ADR-006](./decisions.md#adr-006-no-heic-support-in-v1)).
@@ -64,8 +64,10 @@ and the corridor check.
 - Clicking "Include" in the popup flips the photo's flag to `pick`.
 - The grey capture dot becomes a coloured pin at the same location, marked
   for subject placement.
-- The photo appears in the photo-helper candidate tray with `flag: 'pick'`
-  on the next visit ([ADR-005](./decisions.md#adr-005-cross-app-handoff-via-shared-candidate-pool)).
+- The flag change is persisted to `map-picks.json` within 300 ms (debounced).
+- Photo-helper, on next competition load (or tab focus), reads
+  `map-picks.json` and adds the photo to its candidate tray with
+  `flag: 'pick'` ([ADR-005](./decisions.md#adr-005-cross-app-handoff-via-a-one-way-map-picksjson-file)).
 - The pin is visually distinct from corridor-derived markers (different
   default colour or border style).
 
@@ -144,26 +146,32 @@ and answer sheet.
 ## US-8 — Work with photos that have no GPS
 
 **As an** organizer who occasionally has photos without GPS metadata, **I
-want** them placed somewhere reasonable on the map, **so that** I can
-quickly drag them to where they belong without hunting for them in a
-sidebar.
+want** to see them as draggable thumbnails on the map surface, **so that**
+I can grab one and place it where it belongs without hunting for it in a
+hidden sidebar.
 
 **Acceptance criteria**
 
-- Photos without GPS appear along the **lower edge of the current map
-  viewport**, in a single row.
-- They are ordered left-to-right by EXIF `DateTimeOriginal` (with filename
-  as a tiebreaker for photos missing time).
-- Each is rendered as a distinct "needs placement" marker — orange/yellow
-  background with a `?` glyph — visually different from located photos.
-- Spacing between markers is ~80 px so they don't overlap.
-- If more no-GPS photos than fit in the viewport width, they wrap to a
-  second row above the first.
-- When the user drags one to a position, it converts to a normal subject
-  pin (no ghost marker / dashed line, since there was no capture point).
-- They are also listed in the right-side panel under a "No GPS" section
-  ([US-12](#us-12--filter-the-photo-list-by-flag-or-no-gps)).
-- Strategy locked in [ADR-012](./decisions.md#adr-012-no-gps-photo-placement-strategy).
+- Photos without GPS appear as thumbnails in an **off-map tray** pinned
+  to the bottom-left corner of the map view, layered above the map but
+  not anchored to map coordinates.
+- Tray scrolls horizontally; thumbnails are ordered left-to-right by
+  EXIF `DateTimeOriginal` (with filename as a tiebreaker for photos
+  missing time).
+- Tray height ≤ ~120 px so it does not dominate the map.
+- A thumbnail in the tray can be dragged onto any point on the map. On
+  drop, a normal subject pin (flag = `pick`) is created at the projected
+  lng/lat (`map.unproject([clientX, clientY])`) and the thumbnail leaves
+  the tray.
+- Each thumbnail offers click-to-popup (label assignment, mark
+  rejected, etc.) without leaving the tray.
+- When the tray is empty, it collapses to a small chevron icon so the
+  map surface is fully visible.
+- Tray collapsed/expanded state persists across reload via
+  `corridors-session.json:noGpsTrayOpen`.
+- These same photos are also listed in the right-side panel under a
+  "No GPS" section ([US-12](#us-12--filter-the-photo-list-by-flag-or-no-gps)).
+- Strategy locked in [ADR-012](./decisions.md#adr-012-no-gps-photo-placement-off-map-tray-pinned-to-map-corner).
 
 ---
 

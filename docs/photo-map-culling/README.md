@@ -7,7 +7,25 @@ location they were taken, decide which ones to use, and place a pin at the
 automatically into both the photo editor (for printing) and the corridor
 checker (for legality / answer sheet generation).
 
-Single biggest workflow win in the competition-prep pipeline.
+**Implemented as a new "Photo source" mode inside the existing
+`map-corridors` app — not a new app and not an extension of
+`photo-helper`.** That choice (see [ADR-001](./decisions.md#adr-001-extend-map-corridors-rather-than-build-a-new-app))
+reuses the map infrastructure already in place (MapLibre + Mapbox via
+`react-map-gl`, token wiring, marker drag, popup, discipline-aware label
+generation, per-competition OPFS dir) instead of duplicating ~3000 LoC
+of map code in a new workspace.
+
+**Rough workflow time budget (per competition).**
+
+| Step | Today | After |
+|---|---|---|
+| Cull 30–100 photos | ~2 min/photo (Explorer thumbs + open viewer) | ~15–20 s/photo (drop + click Include) |
+| Place markers in corridor app | ~1 min/photo (re-type by clicking map) | ~10 s/photo (drag pin from capture to subject) |
+| **Total for 60 photos** | **≈ 3 hours** | **≈ 30 minutes** |
+
+These are rough numbers, not measured — point being the order-of-magnitude
+win, not the precise minute count. Single biggest workflow improvement in
+the competition-prep pipeline.
 
 ---
 
