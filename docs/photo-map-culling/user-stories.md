@@ -29,7 +29,7 @@ geographic context immediately and skip the blind Explorer-thumbnail step.
 - Each photo with GPS appears as a small grey dot at its capture location.
 - Import progress is visible (progress bar / count) for batches > 10 photos.
 - Files without GPS are still imported, placed along the lower edge of the
-  visible map ([ADR-013](./decisions.md#adr-013-no-gps-photo-placement-strategy), [US-8](#us-8--work-with-photos-that-have-no-gps)).
+  visible map ([ADR-012](./decisions.md#adr-012-no-gps-photo-placement-strategy), [US-8](#us-8--work-with-photos-that-have-no-gps)).
 - Existing KML/GPX corridor data, if loaded, remains visible alongside photos.
 
 **Out of scope:** HEIC files trigger an error toast ([ADR-006](./decisions.md#adr-006-no-heic-support-in-v1)).
@@ -48,7 +48,7 @@ separate viewer.
 - Clicking a capture dot opens a popup with a larger thumbnail (~200×150),
   filename, capture time, and action buttons (Include / Skip / Reject).
 - The thumbnail loads instantly because it was pre-generated at import time
-  ([ADR-012](./decisions.md#adr-012-thumbnail-storage-in-photosthumbs)).
+  ([ADR-011](./decisions.md#adr-011-thumbnail-storage-in-photosthumbs)).
 - Popup can be dismissed by clicking elsewhere on the map or pressing Esc.
 
 ---
@@ -111,7 +111,7 @@ corridor legality check and answer sheet use the right coordinates.
 **Acceptance criteria**
 
 - On Include, the subject pin defaults to the capture point
-  ([ADR-008](./decisions.md#adr-008-default-subject-pin-position-at-capture-point)).
+  ([ADR-007](./decisions.md#adr-007-default-subject-pin-position-at-capture-point)).
 - The pin is draggable; on drag-end, its `lng/lat` updates.
 - The original capture point becomes a small ghost marker (dimmer than the
   pin), with a dashed line connecting them, so the relationship is visible.
@@ -131,7 +131,7 @@ and answer sheet.
 **Acceptance criteria**
 
 - Discipline (Rally vs Precision) is inherited from the active competition
-  ([ADR-009](./decisions.md#adr-009-discipline-support-both-rally-and-precision)).
+  ([ADR-008](./decisions.md#adr-008-discipline-support-both-rally-and-precision)).
 - Rally uses letters A–T, Precision uses numbers 1–20 (existing
   `getLabelsForDiscipline` from `@airq/shared-discipline`).
 - The popup shows a label picker. Already-assigned labels are visually
@@ -163,7 +163,7 @@ sidebar.
   pin (no ghost marker / dashed line, since there was no capture point).
 - They are also listed in the right-side panel under a "No GPS" section
   ([US-12](#us-12--filter-the-photo-list-by-flag-or-no-gps)).
-- Strategy locked in [ADR-013](./decisions.md#adr-013-no-gps-photo-placement-strategy).
+- Strategy locked in [ADR-012](./decisions.md#adr-012-no-gps-photo-placement-strategy).
 
 ---
 
@@ -197,7 +197,7 @@ cropping/labeling without manually opening a different app.
   `electronAPI.navigateToApp('photo-helper', { competitionId })` IPC
   (Electron) or `/photo-helper/?competitionId=…` URL (web).
 - **No** explicit data transfer happens at click time — data already lives
-  in the shared candidate pool ([ADR-010](./decisions.md#adr-010-send-to-editor-navigates-only)).
+  in the shared candidate pool ([ADR-009](./decisions.md#adr-009-send-to-editor-navigates-only)).
 - On arrival in photo-helper, the candidate tray contains all picked
   photos, ready for slot assignment.
 

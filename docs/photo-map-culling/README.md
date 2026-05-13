@@ -84,8 +84,6 @@ map-corridors app (decision recorded in [decisions.md](./decisions.md#adr-001-ex
 
 - **HEIC / HEIF support.** iPhone-default format; not supported in v1.
   Documented as a known limitation. ([ADR-006](./decisions.md#adr-006-no-heic-support-in-v1))
-- **Drone XMP / DJI-specific metadata.** Drones not in scope. ([ADR-007](./decisions.md#adr-007-no-drone-xmp-support))
-- **Auto-suggest subject from EXIF heading.** Future enhancement.
 - **Side-by-side compare modal.** Future enhancement.
 - **Time-clustering** ("you took 5 photos in 30s, you probably only need one").
 - **Keyboard shortcuts.**

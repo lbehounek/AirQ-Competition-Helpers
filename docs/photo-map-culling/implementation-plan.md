@@ -58,7 +58,6 @@ change.
       lng: number;
       lat: number;
       altitude?: number;
-      heading?: number;
       timestamp?: string;
     };
     photoId?: string;
@@ -70,7 +69,7 @@ change.
   export interface ApiPhoto {
     // ...existing fields
     gps?: {
-      capturedAt?: { lng: number; lat: number; altitude?: number; heading?: number };
+      capturedAt?: { lng: number; lat: number; altitude?: number };
       subjectAt?: { lng: number; lat: number };
       timestamp?: string;
     };
@@ -107,7 +106,7 @@ domain logic — no UI, no map, no storage. Fully unit-testable.
 - `frontend/map-corridors/src/photoImport/extractExif.ts`
   ```ts
   export type ExifData = {
-    capturedAt?: { lng: number; lat: number; altitude?: number; heading?: number };
+    capturedAt?: { lng: number; lat: number; altitude?: number };
     timestamp?: string;
     orientation?: number;
   };
@@ -145,7 +144,7 @@ domain logic — no UI, no map, no storage. Fully unit-testable.
   ```
   Orchestrates: filter HEIC (reject with reason), filter non-image MIME
   types, generate `photoId`, run extractExif + generateThumb per file with
-  `Promise.all` in batches of 8 ([ADR-015](./decisions.md#adr-015-import-throughput-main-thread-throttled-at-8-concurrent)).
+  `Promise.all` in batches of 8 ([ADR-014](./decisions.md#adr-014-import-throughput-main-thread-throttled-at-8-concurrent)).
 
 **Exit criteria.**
 
@@ -316,7 +315,7 @@ filename, timestamp, label picker, and the three action buttons.
 
 ## Phase 6 — No-GPS placement strategy
 
-**Scope.** Implement [ADR-013](./decisions.md#adr-013-no-gps-photo-placement-strategy):
+**Scope.** Implement [ADR-012](./decisions.md#adr-012-no-gps-photo-placement-strategy):
 photos without GPS arrive in a row along the bottom of the viewport,
 ordered by capture time.
 
@@ -410,7 +409,7 @@ Every flag change in the map tool writes to
 ## Phase 9 — Send-to-editor button
 
 **Scope.** A button at the bottom of the photo list panel: "Send to editor
-(N picks)". Navigates only ([ADR-010](./decisions.md#adr-010-send-to-editor-navigates-only)).
+(N picks)". Navigates only ([ADR-009](./decisions.md#adr-009-send-to-editor-navigates-only)).
 
 **Files touched.**
 
@@ -505,7 +504,7 @@ edge cases. Move PR out of draft.
 - Decision links to each ADR.
 - Screenshots / GIFs of the four marker states.
 - Test plan checked items.
-- Known limitations (HEIC, drone, etc.).
+- Known limitations (HEIC, etc.).
 
 ---
 
@@ -579,7 +578,7 @@ implementation by the implementer:
 3. **Thumbnail max dimensions.** 200×150 is a guess for popup; pick
    smaller for tooltip (80×60?). Confirm with design pass.
 4. **Should "needsPlacement" markers re-anchor to current viewport on
-   pan/zoom**, or stay where they were initially placed? ADR-013 says
+   pan/zoom**, or stay where they were initially placed? ADR-012 says
    stay; revisit if it feels off in smoke testing.
 5. **Photo-helper change for `gps` field display**. Out of scope for v1
    (just metadata); but consider a small footer line on printed photos in

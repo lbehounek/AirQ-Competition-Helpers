@@ -35,7 +35,7 @@ wiring, a new launcher tile, a new icon, and a new build target.
 
 - map-corridors becomes "the map app", not strictly "the corridor app". The
   user-facing label `Photo Placement` / `Umístění fotek` already fits both
-  flows (see [ADR-011](#adr-011-no-rename-photo-placement--umístění-fotek-stays)).
+  flows (see [ADR-010](#adr-010-no-rename-photo-placement--umístění-fotek-stays)).
 - A new `Photo source` mode toggle ships in the map-corridors header.
 - The internal package name `@airq/map-corridors` is **not** renamed —
   doing so would touch every workspace dependency, the desktop launcher's
@@ -133,7 +133,7 @@ map-corridors (already carries MapLibre + Mapbox + react-map-gl).
 import { gps, parse } from 'exifr/dist/lite.esm.mjs';
 const gpsCoords = await gps(file);
 const tags = await parse(file, {
-  pick: ['DateTimeOriginal', 'GPSAltitude', 'GPSImgDirection', 'Orientation'],
+  pick: ['DateTimeOriginal', 'GPSAltitude', 'Orientation'],
 });
 ```
 
@@ -176,7 +176,7 @@ selection, with `pick` / `neutral` / `reject` flag). Reuse it.
   the same `@airq/shared-storage` abstraction; sequential read-modify-write
   with retry is sufficient (single-window apps).
 - "Send to editor" becomes a pure navigation, not a data transfer — see
-  [ADR-010](#adr-010-send-to-editor-navigates-only).
+  [ADR-009](#adr-009-send-to-editor-navigates-only).
 - Photo-helper does not need any changes to consume the photos — they
   arrive shaped exactly as the existing candidate pool expects.
 
@@ -210,25 +210,7 @@ this user base; the 600 KB cost is not justified by usage.
 
 ---
 
-## ADR-007 — No drone XMP support
-
-**Status:** Accepted
-
-**Context.** Drone photos (DJI especially) embed gimbal yaw / pitch in XMP
-metadata, which could be used to auto-suggest subject offset direction.
-
-**Decision.** Drones are not part of the competition photography workflow.
-Not supported. The `capturedAt.heading` field exists in the data model for
-future-proofing only; nothing reads it in v1.
-
-**Consequences.**
-
-- No XMP parsing added to the EXIF pipeline.
-- No bearing arrow on map markers in v1.
-
----
-
-## ADR-008 — Default subject pin position: at the capture point
+## ADR-007 — Default subject pin position: at the capture point
 
 **Status:** Accepted
 
@@ -253,7 +235,7 @@ draggable subject pin start?
 
 ---
 
-## ADR-009 — Discipline support: both Rally and Precision
+## ADR-008 — Discipline support: both Rally and Precision
 
 **Status:** Accepted
 
@@ -272,7 +254,7 @@ Precision?
 
 ---
 
-## ADR-010 — "Send to editor" navigates only
+## ADR-009 — "Send to editor" navigates only
 
 **Status:** Accepted
 
@@ -299,7 +281,7 @@ job; auto-filling would couple two concerns and hide which photo went where.
 
 ---
 
-## ADR-011 — No rename. "Photo Placement" / "Umístění fotek" stays
+## ADR-010 — No rename. "Photo Placement" / "Umístění fotek" stays
 
 **Status:** Accepted
 
@@ -319,7 +301,7 @@ package name `@airq/map-corridors`. No rename.
 
 ---
 
-## ADR-012 — Thumbnail storage in `photos/thumbs/`
+## ADR-011 — Thumbnail storage in `photos/thumbs/`
 
 **Status:** Accepted
 
@@ -352,7 +334,7 @@ parse on every load). Separate files load lazily into popups via
 
 ---
 
-## ADR-013 — No-GPS photo placement strategy: lower viewport edge, capture-time order
+## ADR-012 — No-GPS photo placement strategy: lower viewport edge, capture-time order
 
 **Status:** Accepted
 
@@ -396,7 +378,7 @@ on the map so the user can drag them to position. Three options:
 
 ---
 
-## ADR-014 — Atomic per-photo import (no partial-batch state)
+## ADR-013 — Atomic per-photo import (no partial-batch state)
 
 **Status:** Accepted
 
@@ -424,7 +406,7 @@ corrupted file, etc.). What's the recovery story?
 
 ---
 
-## ADR-015 — Import throughput: main-thread, throttled at 8 concurrent
+## ADR-014 — Import throughput: main-thread, throttled at 8 concurrent
 
 **Status:** Accepted
 
@@ -460,10 +442,7 @@ These are recorded so they're not re-debated during v1 review.
 
 - **Side-by-side compare modal.** Out of scope.
 - **Time-cluster suggestion** ("photos taken within 30 s — pick best").
-- **Auto-suggest subject from heading.** Needs `capturedAt.heading` data,
-  which is captured but not consumed in v1.
 - **Keyboard shortcuts** (I/S/R, ←/→).
 - **Manual EXIF correction** (overriding GPS for individual photos).
 - **HEIC support.** Revisit if user demand emerges (ADR-006).
-- **Drone XMP / gimbal yaw.** ADR-007.
-- **Web Workers for import.** ADR-015.
+- **Web Workers for import.** ADR-014.
