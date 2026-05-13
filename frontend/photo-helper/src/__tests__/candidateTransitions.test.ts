@@ -105,6 +105,56 @@ describe('promoteCandidateToSlot', () => {
     const next = promoteCandidateToSlot(session, 'missing', 'set1', 0);
     expect(next).toBe(session);
   });
+
+  // PR #62 review A1: pinning current behavior for negative `slotIndex` so a
+  // refactor (e.g., a stricter guard) doesn't silently change behavior. The
+  // hook wrapper now clamps `slotIndex` to a safe range, but the pure helper
+  // historically accepted negatives — `Math.min(-1, photos.length)` yields -1
+  // which `splice(-1, 0, x)` interprets as "insert before the last element".
+  it('with negative slotIndex on empty set: appends at index 0', () => {
+    const cand = makePhoto('c1');
+    const session = makeSession([], [], [cand]);
+    const next = promoteCandidateToSlot(session, 'c1', 'set1', -1);
+    expect(next.sets.set1.photos.map(p => p.id)).toEqual(['c1']);
+  });
+
+  it('with negative slotIndex on populated set: inserts before last element', () => {
+    const cand = makePhoto('c1');
+    const session = makeSession([makePhoto('s1'), makePhoto('s2')], [], [cand]);
+    // photos.length=2; slotIndex=-1; splice(min(-1,2)=-1, 0, c1) → ['s1','c1','s2']
+    const next = promoteCandidateToSlot(session, 'c1', 'set1', -1);
+    expect(next.sets.set1.photos.map(p => p.id)).toEqual(['s1', 'c1', 's2']);
+  });
+
+  // PR #62 review C1 + A3: when "Send to Set X" is called on a full set, the
+  // AppApi handler now passes `slotIndex = capacity - 1`, which lands in the
+  // swap branch. This test pins the helper-level behavior the handler relies on.
+  it('with slotIndex = length - 1 on full set: SWAPS with the last photo (not append)', () => {
+    const cand = makePhoto('c1', { flag: 'pick' as CandidateFlag });
+    const slots = Array.from({ length: 9 }, (_, i) => makePhoto(`s${i + 1}`));
+    const session = makeSession(slots, [], [cand]);
+
+    const next = promoteCandidateToSlot(session, 'c1', 'set1', 8);
+
+    expect(next.sets.set1.photos).toHaveLength(9);
+    expect(next.sets.set1.photos[8].id).toBe('c1');
+    expect(next.sets.set1.photos[8].flag).toBeUndefined();
+    expect(next.candidates?.photos.map(p => p.id)).toEqual(['s9']);
+    expect(next.candidates?.photos[0].flag).toBe('pick');
+  });
+
+  // Documents the original C1 bug, kept as a regression marker: with
+  // slotIndex == photos.length on a full set, the helper falls into the
+  // APPEND branch (NOT swap). This is why the hook wrapper / handler must
+  // clamp to capacity-1 before calling.
+  it('with slotIndex = length on full set: APPENDS past capacity (helper unaware of capacity)', () => {
+    const cand = makePhoto('c1');
+    const slots = Array.from({ length: 9 }, (_, i) => makePhoto(`s${i + 1}`));
+    const session = makeSession(slots, [], [cand]);
+    const next = promoteCandidateToSlot(session, 'c1', 'set1', 9);
+    expect(next.sets.set1.photos).toHaveLength(10);
+    expect(next.sets.set1.photos[9].id).toBe('c1');
+  });
 });
 
 describe('demoteSlotToCandidate', () => {

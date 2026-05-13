@@ -61,6 +61,7 @@ import type { Discipline } from './utils/parseDiscipline';
 import { buildPdfSets } from './utils/buildPdfSets';
 import { pickEffectiveLayout } from './utils/pickEffectiveLayout';
 import { deriveSet2FromSet1 } from './utils/autoPrefillSetTitle';
+import { getGridCapacity } from './utils/getGridCapacity';
 import type { ApiPhoto } from './types/api';
 
 function AppApi() {
@@ -167,12 +168,34 @@ function AppApi() {
   // like the photos "disappeared" from the user's perspective.
   const [dropToast, setDropToast] = useState<{ count: number } | null>(null);
 
+  // Hint snackbar for cross-set slot→slot drags (out of scope in v1 per
+  // docs/CANDIDATE_PHOTOS.md). Previously a silent no-op (PR #62 review I4).
+  const [crossSetHintOpen, setCrossSetHintOpen] = useState(false);
+
   // Wrapper around the hook's `addPhotosToSet` that surfaces the smart-drop
   // routing result. Calling sites stay simple — they just pass files + set.
   const handleAddToSet = async (files: File[], setKey: 'set1' | 'set2') => {
-    const result = await addPhotosToSet(files, setKey);
-    if (result && (result as any).routedTo === 'tray' && (result as any).count > 0) {
-      setDropToast({ count: (result as any).count });
+    try {
+      const result = await addPhotosToSet(files, setKey);
+      if (result && result.routedTo === 'tray' && result.count > 0) {
+        setDropToast({ count: result.count });
+      }
+    } catch (err) {
+      console.error('handleAddToSet failed:', err);
+    }
+  };
+
+  // Initial drop for rally turning-point distributes across set1+set2; on total
+  // overflow the hook routes everything to the candidate tray. Surface the toast
+  // the same way `handleAddToSet` does (PR #62 review I1).
+  const handleInitialTurningPointDrop = async (files: File[]) => {
+    try {
+      const result = await addPhotosToTurningPoint(files);
+      if (result && result.routedTo === 'tray' && result.count > 0) {
+        setDropToast({ count: result.count });
+      }
+    } catch (err) {
+      console.error('handleInitialTurningPointDrop failed:', err);
     }
   };
 
@@ -266,24 +289,41 @@ function AppApi() {
     setSelectedPhoto({ photo, setKey: 'candidates', label: '' });
   };
 
-  // Tray → slot promotion. The hook handles swap-on-occupied semantics; we
-  // just route the candidate id and target slot.
-  const handleCandidateDropped = (setKey: 'set1' | 'set2') => (candidateId: string, slotIndex: number) => {
-    if (promoteCandidateToSlot) promoteCandidateToSlot(candidateId, setKey, slotIndex);
+  // Tray → slot promotion. The hook handles swap-on-occupied semantics and the
+  // capacity clamp for out-of-range indices (PR #62 review C1).
+  const handleCandidateDropped = (setKey: 'set1' | 'set2') => async (candidateId: string, slotIndex: number) => {
+    if (!promoteCandidateToSlot) return;
+    try {
+      await promoteCandidateToSlot(candidateId, setKey, slotIndex);
+    } catch (err) {
+      console.error('promoteCandidateToSlot failed:', err);
+    }
   };
 
   // Slot → tray demotion when a slot photo is dragged onto the tray drop zone.
-  const handleSlotDroppedToTray = (payload: { setKey: 'set1' | 'set2'; photoId: string }) => {
-    if (demoteSlotToCandidate) demoteSlotToCandidate(payload.setKey, payload.photoId);
+  const handleSlotDroppedToTray = async (payload: { setKey: 'set1' | 'set2'; photoId: string }) => {
+    if (!demoteSlotToCandidate) return;
+    try {
+      await demoteSlotToCandidate(payload.setKey, payload.photoId);
+    } catch (err) {
+      console.error('demoteSlotToCandidate failed:', err);
+    }
   };
 
-  // "Send to Set X" from the tray context menu — appends to the next slot.
-  // If the target set is full, the hook's promote logic swaps with the last
-  // slot photo (demoted as pick).
-  const handleSendCandidateToSet = (photoId: string, setKey: 'set1' | 'set2') => {
+  // "Send to Set X" from the tray toolbar. If the target set is full, we ask
+  // the hook for a swap with the LAST slot photo by passing `capacity - 1`;
+  // otherwise we append at the next empty index. The hook clamps anyway, but
+  // computing it here keeps the intent explicit at the call site.
+  const handleSendCandidateToSet = async (photoId: string, setKey: 'set1' | 'set2') => {
     if (!session || !promoteCandidateToSlot) return;
-    const slotIndex = session.sets[setKey].photos.length;
-    promoteCandidateToSlot(photoId, setKey, slotIndex);
+    const capacity = getGridCapacity(session as any);
+    const slotCount = session.sets[setKey].photos.length;
+    const slotIndex = slotCount < capacity ? slotCount : Math.max(0, capacity - 1);
+    try {
+      await promoteCandidateToSlot(photoId, setKey, slotIndex);
+    } catch (err) {
+      console.error('handleSendCandidateToSet failed:', err);
+    }
   };
 
   const handlePhotoUpdate = (setKey: 'set1' | 'set2' | 'candidates', photoId: string, canvasState: any) => {
@@ -442,8 +482,17 @@ function AppApi() {
   };
 
   const handleCleanupCandidatesConfirm = async () => {
-    if (clearAllCandidates) await clearAllCandidates();
-    setCleanupCandidatesDialog(null);
+    if (!clearAllCandidates) return;
+    try {
+      await clearAllCandidates();
+      setCleanupCandidatesDialog(null);
+    } catch (err) {
+      // PR #62 review I6: previously dismissed even on failure. Keep the
+      // dialog open and surface the error so the user knows the action
+      // didn't complete.
+      console.error('handleCleanupCandidatesConfirm failed:', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete candidates');
+    }
   };
   const handleCleanupCandidatesDecline = () => setCleanupCandidatesDialog(null);
 
@@ -725,7 +774,7 @@ function AppApi() {
                capped at 9 so single-set flow still applies. */
             onInitialFilesDropped={isPrecision
               ? (files) => handleAddToSet(files, 'set1')
-              : (files) => addPhotosToTurningPoint(files)}
+              : handleInitialTurningPointDrop}
             onPhotoClick={handlePhotoClick}
             onPhotoUpdate={handlePhotoUpdate}
             onPhotoRemove={handlePhotoRemove}
@@ -788,6 +837,7 @@ function AppApi() {
                         onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
                         onFilesDropped={(files) => handleAddToSet(files, 'set1')}
                         onCandidateDropped={handleCandidateDropped('set1')}
+                        onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
                         maxPhotosOverride={isPrecision && session.mode === 'track' ? 10 : undefined}
                       />
                     </Paper>
@@ -839,6 +889,7 @@ function AppApi() {
                         onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
                         onFilesDropped={(files) => handleAddToSet(files, 'set2')}
                         onCandidateDropped={handleCandidateDropped('set2')}
+                        onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
                       />
                     </Paper>
                   )
@@ -1247,6 +1298,16 @@ function AppApi() {
         onClose={() => setDropToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={dropToast ? t('candidates.smartDropToast', { count: dropToast.count }) : ''}
+      />
+
+      {/* Hint when the user tries an unsupported cross-set slot drag (PR #62
+          review I4). The two-step via the tray works; this just tells them. */}
+      <Snackbar
+        open={crossSetHintOpen}
+        autoHideDuration={5000}
+        onClose={() => setCrossSetHintOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={t('candidates.crossSetHint')}
       />
 
       {/* Post-export candidate cleanup dialog */}

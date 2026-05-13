@@ -280,6 +280,44 @@ export class CompetitionService {
     }
   }
 
+  /**
+   * Best-effort deletion of specific photo files from a competition's `photos/`
+   * directory. Used to reclaim OPFS storage for culled candidate photos —
+   * `saveSessionPhotos` deliberately never prunes (to protect non-active mode
+   * buckets), so per-photo deletes must be explicit (PR #62 review C3). Per-id
+   * failures are logged and swallowed: the caller has already removed the id
+   * from the session, so a stuck file would just orphan rather than refuse the
+   * UX flow.
+   */
+  async deletePhotosByIds(competitionId: string, photoIds: string[]): Promise<void> {
+    if (photoIds.length === 0) return;
+    await this.ensureInitialized();
+    let competitionDir: DirectoryHandle;
+    let photosDir: DirectoryHandle;
+    try {
+      competitionDir = await this.storage!.getDirectoryHandle(
+        this.competitionsDir!,
+        competitionId,
+        { create: false }
+      );
+      photosDir = await this.storage!.getDirectoryHandle(
+        competitionDir,
+        'photos',
+        { create: false }
+      );
+    } catch (err) {
+      console.warn(`deletePhotosByIds: cannot open photos dir for ${competitionId}:`, err);
+      return;
+    }
+    for (const id of photoIds) {
+      try {
+        await this.storage!.deletePhotoFile(photosDir, id);
+      } catch (err) {
+        console.warn(`deletePhotosByIds: failed to delete ${id}:`, err);
+      }
+    }
+  }
+
   async deleteCompetition(id: string): Promise<void> {
     await this.ensureInitialized();
 

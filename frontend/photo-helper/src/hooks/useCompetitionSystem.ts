@@ -560,6 +560,15 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     const sess = currentCompetition.session as any;
     const slotCapacity = getGridCapacity(sess);
     const currentSlotCount = sess.sets?.[setKey]?.photos?.length ?? 0;
+    // Mirror the over-cap guard from usePhotoSessionOPFS (PR #62 review I2):
+    // a legacy session or a layout switch can leave a set already over the
+    // current cap. Without this check the smart-drop routes everything to
+    // tray anyway (remaining = 0), but surfacing the corruption explicitly
+    // lets the user know to clean up.
+    if (currentSlotCount > slotCapacity) {
+      setError(`This set already has ${currentSlotCount} photos but the cap is now ${slotCapacity}. Please reload the competition or remove photos before adding more.`);
+      return;
+    }
     const route = routeDrop({ files, currentSlotCount, slotCapacity });
     if (route.kind === 'tray') {
       await addPhotosToCandidates(route.files);
@@ -603,19 +612,35 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   }, [updateCurrentCompetition, currentCompetition, t, filesToPhotos, addPhotosToCandidates]);
 
   const removePhoto = useCallback(async (setKey: 'set1' | 'set2', photoId: string) => {
+    const compId = currentCompetition?.id;
+    // Only schedule the OPFS delete if the id is NOT referenced from the other
+    // mode bucket — `saveSessionPhotos` shares the photos/ dir across buckets,
+    // so deleting a file still listed in `setsTrack`/`setsTurning` would break
+    // the inactive mode (PR #62 review C3).
+    const isReferencedElsewhere = (() => {
+      const s = currentCompetition?.session as any;
+      if (!s) return true;
+      const buckets = [s.setsTrack, s.setsTurning];
+      for (const b of buckets) {
+        if (b?.set1?.photos?.some?.((p: any) => p.id === photoId)) return true;
+        if (b?.set2?.photos?.some?.((p: any) => p.id === photoId)) return true;
+      }
+      if (s.candidates?.photos?.some?.((p: any) => p.id === photoId)) return true;
+      const otherKey = setKey === 'set1' ? 'set2' : 'set1';
+      if (s.sets?.[otherKey]?.photos?.some?.((p: any) => p.id === photoId)) return true;
+      return false;
+    })();
     await updateCurrentCompetition(session => {
-      // Ensure sets structure is valid
       const ensuredSets = {
         set1: session.sets?.set1 || { title: '', photos: [] },
         set2: session.sets?.set2 || { title: '', photos: [] }
       };
-      // Revoke blob URL of the photo being removed (if any) before dropping it
-      try {
-        const photoToRemove = (ensuredSets as any)[setKey]?.photos?.find((p: any) => p.id === photoId);
-        if (photoToRemove && typeof photoToRemove.url === 'string' && photoToRemove.url.startsWith('blob:')) {
-          URL.revokeObjectURL(photoToRemove.url);
+      const photoToRemove = (ensuredSets as any)[setKey]?.photos?.find((p: any) => p.id === photoId);
+      if (photoToRemove && typeof photoToRemove.url === 'string' && photoToRemove.url.startsWith('blob:')) {
+        try { URL.revokeObjectURL(photoToRemove.url); } catch (err) {
+          console.warn(`removePhoto: revoke failed for ${photoId}:`, err);
         }
-      } catch {}
+      }
 
       return {
         ...session,
@@ -630,7 +655,14 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         }
       };
     }, { updatePhotos: true });
-  }, [updateCurrentCompetition]);
+    if (compId && !isReferencedElsewhere) {
+      try {
+        await competitionService.deletePhotosByIds(compId, [photoId]);
+      } catch (err) {
+        console.warn('removePhoto: deletePhotosByIds failed:', err);
+      }
+    }
+  }, [updateCurrentCompetition, currentCompetition]);
 
   // ── Candidate pool operations ─────────────────────────────────────────────
   // All transitions delegate to the pure helpers in `candidateTransitions.ts`
@@ -638,14 +670,26 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   // hook implementations. See docs/CANDIDATE_PHOTOS.md.
 
   const removeCandidate = useCallback(async (photoId: string) => {
+    const compId = currentCompetition?.id;
     await updateCurrentCompetition(session => {
-      try {
-        const target = session.candidates?.photos?.find(p => p.id === photoId);
-        if (target?.url?.startsWith?.('blob:')) URL.revokeObjectURL(target.url);
-      } catch {}
+      const target = session.candidates?.photos?.find(p => p.id === photoId);
+      if (typeof target?.url === 'string' && target.url.startsWith('blob:')) {
+        try { URL.revokeObjectURL(target.url); } catch (err) {
+          console.warn(`removeCandidate: revoke failed for ${photoId}:`, err);
+        }
+      }
       return removeCandidatePure(session, photoId);
     }, { updatePhotos: true });
-  }, [updateCurrentCompetition]);
+    // Free the OPFS file (PR #62 review C3). `saveSessionPhotos` never prunes,
+    // so without an explicit delete the file orphans and storage stats lie.
+    if (compId) {
+      try {
+        await competitionService.deletePhotosByIds(compId, [photoId]);
+      } catch (err) {
+        console.warn('removeCandidate: deletePhotosByIds failed:', err);
+      }
+    }
+  }, [updateCurrentCompetition, currentCompetition]);
 
   const promoteCandidateToSlot = useCallback(async (
     candidateId: string,
@@ -653,7 +697,24 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     slotIndex: number,
   ) => {
     await updateCurrentCompetition(session => {
-      return promoteCandidateToSlotPure(session, candidateId, setKey, slotIndex);
+      // Capacity gate: the pure helper trusts the caller, but `handleSendCandidateToSet`
+      // passes `slotIndex = photos.length` which would silently APPEND past capacity
+      // when the set is full (PR #62 review C1, contract violation vs.
+      // docs/CANDIDATE_PHOTOS.md swap-on-full row). Clamp out-of-range indices to
+      // `capacity - 1` so the helper's swap branch fires instead.
+      const capacity = getGridCapacity(session as any);
+      const slotCount = session.sets[setKey].photos.length;
+      const safeIndex = slotIndex >= capacity
+        ? Math.max(0, capacity - 1)
+        : slotIndex < 0
+          ? 0
+          : slotIndex;
+      // Mirror the slot mutation into the active mode bucket so a subsequent
+      // mode switch doesn't resurrect pre-promotion state from the bucket.
+      const next = promoteCandidateToSlotPure(session, candidateId, setKey, safeIndex);
+      const modeKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
+      (next as any)[modeKey] = next.sets;
+      return next;
     }, { updatePhotos: true });
   }, [updateCurrentCompetition]);
 
@@ -662,7 +723,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     photoId: string,
   ) => {
     await updateCurrentCompetition(session => {
-      return demoteSlotToCandidatePure(session, setKey, photoId, 'pick');
+      const next = demoteSlotToCandidatePure(session, setKey, photoId, 'pick');
+      const modeKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
+      (next as any)[modeKey] = next.sets;
+      return next;
     }, { updatePhotos: true });
   }, [updateCurrentCompetition]);
 
@@ -675,16 +739,28 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   }, [updateCurrentCompetition]);
 
   const clearAllCandidates = useCallback(async () => {
+    const compId = currentCompetition?.id;
+    // Snapshot ids BEFORE the state mutation so we still know which OPFS files
+    // to free after the pure helper empties the pool (PR #62 review C3).
+    const idsToDelete = (currentCompetition?.session.candidates?.photos ?? []).map(p => p.id);
     await updateCurrentCompetition(session => {
-      // Revoke blob URLs of every removed candidate so we don't leak.
-      try {
-        for (const p of session.candidates?.photos ?? []) {
-          if (p.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url);
+      for (const p of session.candidates?.photos ?? []) {
+        if (typeof p.url === 'string' && p.url.startsWith('blob:')) {
+          try { URL.revokeObjectURL(p.url); } catch (err) {
+            console.warn(`clearAllCandidates: revoke failed for ${p.id}:`, err);
+          }
         }
-      } catch {}
+      }
       return clearAllCandidatesPure(session);
     }, { updatePhotos: true });
-  }, [updateCurrentCompetition]);
+    if (compId && idsToDelete.length > 0) {
+      try {
+        await competitionService.deletePhotosByIds(compId, idsToDelete);
+      } catch (err) {
+        console.warn('clearAllCandidates: deletePhotosByIds failed:', err);
+      }
+    }
+  }, [updateCurrentCompetition, currentCompetition]);
 
   const reorderPhotos = useCallback(async (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
     await updateCurrentCompetition(session => {
@@ -1109,13 +1185,16 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       const result = distributeRallyDrop({ files, layoutMode, set1Count, set2Count });
       if (!result.ok) {
         // Smart-drop at total-capacity level: rather than erroring on a
-        // 25-photo drop into a 20-cap rally turning-point session, route
-        // the whole batch to candidates so the user can cull from there.
+        // 25-photo drop into a 20-cap rally turning-point session, route the
+        // whole batch to candidates. Return `routedTo: 'tray'` so AppApi can
+        // surface the toast (PR #62 review I1: previously this was silent
+        // and felt like the photos "vanished").
         await addPhotosToCandidates(files);
-        return;
+        return { routedTo: 'tray' as const, count: files.length };
       }
       if (result.toSet1.length) await addPhotosToSet(result.toSet1, 'set1');
       if (result.toSet2.length) await addPhotosToSet(result.toSet2, 'set2');
+      return { routedTo: 'slot' as const, count: result.toSet1.length + result.toSet2.length };
     }) as any,
     refreshSession: (async () => {}) as any,
     applySettingToAll,

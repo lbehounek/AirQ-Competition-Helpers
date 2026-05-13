@@ -34,6 +34,7 @@ import { useTheme, alpha } from '@mui/material/styles';
 import { PhotoEditorApi } from './PhotoEditorApi';
 import { useI18n } from '../contexts/I18nContext';
 import { isValidImageFile } from '../utils/imageProcessing';
+import { filterCandidates, countByFlag } from '../utils/candidateFilter';
 import type { ApiPhoto, CandidateFlag } from '../types/api';
 
 export interface CandidateTrayProps {
@@ -74,26 +75,22 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
 
   // Filter rejects out when "Hide rejects" is on. Rejects with the toggle off
   // render at 50% opacity to keep the cull-state visible without forcing a
-  // mode switch.
-  const visiblePhotos = useMemo(() => {
-    if (!hideRejects) return photos;
-    return photos.filter((p) => p.flag !== 'reject');
-  }, [photos, hideRejects]);
+  // mode switch. Logic lives in `utils/candidateFilter` so it stays unit-
+  // testable in isolation (PR #62 review).
+  const visiblePhotos = useMemo(
+    () => filterCandidates(photos, { hideRejects }),
+    [photos, hideRejects],
+  );
 
-  const counts = useMemo(() => {
-    let pick = 0, neutral = 0, reject = 0;
-    for (const p of photos) {
-      if (p.flag === 'pick') pick++;
-      else if (p.flag === 'reject') reject++;
-      else neutral++;
-    }
-    return { pick, neutral, reject, total: photos.length };
-  }, [photos]);
+  const counts = useMemo(() => countByFlag(photos), [photos]);
 
-  // Outer drop zone — accepts native file drops AND slot-photo drags. We
-  // disable react-dropzone's noClick when photos exist; the "Add more" button
-  // becomes the explicit click target in that case.
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  // Outer drop zone — accepts native file drops AND slot-photo drags.
+  // `noClick: true` is required when the tray is populated so MUI Buttons
+  // inside the dropzone (e.g. flag toggles) don't open the file picker on
+  // every click. We expose `open()` and wire it explicitly to the "Add more"
+  // Button below (PR #62 review C2: spreading rootProps onto the Button while
+  // noClick was true made the Button click a no-op).
+  const { getRootProps, getInputProps, isDragActive, open: openFilePicker } = useDropzone({
     accept: {
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png'],
@@ -120,13 +117,23 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
     setDropActive(false);
     const raw = e.dataTransfer.getData('application/x-airq-photo');
     if (!raw) return;
+    let payload: unknown;
     try {
-      const payload = JSON.parse(raw) as { kind: string; setKey?: 'set1' | 'set2'; photoId?: string };
-      if (payload.kind === 'slot' && payload.setKey && payload.photoId) {
-        e.preventDefault();
-        onSlotDroppedIn({ setKey: payload.setKey, photoId: payload.photoId });
-      }
-    } catch {}
+      payload = JSON.parse(raw);
+    } catch (err) {
+      // PR #62 review I5: log instead of `catch {}` so debugging a misbehaving
+      // drag-and-drop doesn't require source patching.
+      console.warn('CandidateTray: malformed drag payload', raw, err);
+      return;
+    }
+    if (!payload || typeof payload !== 'object') return;
+    const p = payload as { kind?: unknown; setKey?: unknown; photoId?: unknown };
+    // Strict literal-union check on setKey (PR #62 review I5).
+    const isValidSet = p.setKey === 'set1' || p.setKey === 'set2';
+    if (p.kind === 'slot' && isValidSet && typeof p.photoId === 'string') {
+      e.preventDefault();
+      onSlotDroppedIn({ setKey: p.setKey as 'set1' | 'set2', photoId: p.photoId });
+    }
   };
 
   const handleThumbDragStart = (e: React.DragEvent, photo: ApiPhoto) => {
@@ -227,17 +234,19 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
         <Tooltip title={t('candidates.addMore')}>
           <span>
             <Button
-              {...(getRootProps() as any)}
+              onClick={(e) => { e.stopPropagation(); openFilePicker(); }}
               size="small"
               variant="outlined"
               startIcon={<AddIcon />}
               sx={{ mr: 1, minHeight: 32 }}
             >
-              <input {...getInputProps()} />
               {t('candidates.addMore')}
             </Button>
           </span>
         </Tooltip>
+        {/* Hidden file input owned by the Paper-level dropzone (rendered once
+            so the `Add more` button + native drop both feed the same picker). */}
+        <input {...getInputProps()} />
         <IconButton size="small" onClick={() => setCollapsed((c) => !c)}>
           {collapsed ? <ExpandMore /> : <ExpandLess />}
         </IconButton>

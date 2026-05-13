@@ -58,4 +58,20 @@ describe('routeDrop', () => {
     const result = routeDrop({ files, currentSlotCount: 0, slotCapacity: 10 });
     expect(result.kind).toBe('slot');
   });
+
+  // PR #62 review A2: corrupted state (currentSlotCount already > capacity,
+  // possible after legacy layout flip). `Math.max(0, capacity - count)` clamps
+  // remaining to 0, so any drop routes to tray. The hook layer now also
+  // surfaces a setError, but the routing itself stays defensive.
+  it('drop into an over-cap set → tray (remaining clamped to 0)', () => {
+    const files = fakeFiles(1);
+    const result = routeDrop({ files, currentSlotCount: 11, slotCapacity: 9 });
+    expect(result.kind).toBe('tray');
+    expect(result.files).toHaveLength(1);
+  });
+
+  it('empty batch with over-cap set → slot (no-op, no spurious tray route)', () => {
+    const result = routeDrop({ files: [], currentSlotCount: 11, slotCapacity: 9 });
+    expect(result).toEqual({ kind: 'slot', files: [] });
+  });
 });

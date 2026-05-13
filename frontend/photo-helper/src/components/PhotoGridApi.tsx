@@ -28,6 +28,13 @@ interface PhotoGridApiProps {
    * docs/CANDIDATE_PHOTOS.md "Drag/drop interactions".
    */
   onCandidateDropped?: (candidateId: string, slotIndex: number) => void;
+  /**
+   * Optional hint hook for the (out-of-scope-in-v1) cross-set slot→slot drag.
+   * Fired when a user drops a slot photo from another set onto this grid.
+   * AppApi uses it to nudge the user toward the tray (PR #62 review I4 —
+   * previously silently ignored).
+   */
+  onCrossSetDropRejected?: () => void;
   labelOffset?: number; // Offset for label sequence (e.g., set2 continues from where set1 left off)
   customLabels?: string[]; // Custom labels to use instead of generated ones (for turning point mode)
   /**
@@ -70,6 +77,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   onFilesDropped,
   onPhotoMove,
   onCandidateDropped,
+  onCrossSetDropRejected,
   labelOffset = 0,
   customLabels,
   maxPhotosOverride,
@@ -176,26 +184,41 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
     // a slot photo dropping in is the existing reorder flow.
     const raw = e.dataTransfer.getData('application/x-airq-photo');
     if (raw) {
+      let payload: unknown;
       try {
-        const payload = JSON.parse(raw) as { kind: string; photoId?: string; setKey?: 'set1' | 'set2' };
-        if (payload.kind === 'tray' && payload.photoId && onCandidateDropped) {
-          onCandidateDropped(payload.photoId, dropIndex);
+        payload = JSON.parse(raw);
+      } catch (err) {
+        // PR #62 review I5: log instead of `catch {}` so a malformed payload
+        // is debuggable in devtools.
+        console.warn('PhotoGridApi: malformed drag payload', raw, err);
+        payload = null;
+      }
+      if (payload && typeof payload === 'object') {
+        const p = payload as { kind?: unknown; photoId?: unknown; setKey?: unknown };
+        if (p.kind === 'tray' && typeof p.photoId === 'string' && onCandidateDropped) {
+          onCandidateDropped(p.photoId, dropIndex);
           setDraggedIndex(null);
           setDragOverIndex(null);
           return;
         }
-        if (payload.kind === 'slot' && payload.setKey && payload.setKey !== setKey) {
+        // Strict literal-union check (PR #62 review I5): never index `sets[
+        // payload.setKey]` with an arbitrary string — `__proto__` would crash
+        // downstream consumers.
+        const isValidSet = p.setKey === 'set1' || p.setKey === 'set2';
+        if (p.kind === 'slot' && isValidSet && p.setKey !== setKey) {
           // Cross-set drops aren't supported in v1 (two-step via tray works).
-          // Silently ignore so the user doesn't see a half-applied move.
+          // Surface the rejection so the user knows what happened (PR #62
+          // review I4 — previously silently ignored).
+          if (onCrossSetDropRejected) onCrossSetDropRejected();
           setDraggedIndex(null);
           setDragOverIndex(null);
           return;
         }
-      } catch {}
+      }
     }
 
     // Legacy in-grid reorder.
-    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
+    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
     if (Number.isFinite(dragIndex) && dragIndex !== dropIndex && onPhotoMove) {
       onPhotoMove(dragIndex, dropIndex);
     }
