@@ -53,25 +53,35 @@ change.
 
 **Files touched.**
 
-- `frontend/map-corridors/src/types/markers.ts` — extend `PhotoMarker`:
+- `frontend/map-corridors/src/types/markers.ts` — extend `PhotoMarker`,
+  preserving the existing `Readonly<...>` immutability wrapper used
+  throughout the codebase:
   ```ts
-  export type PhotoMarker = {
+  export type PhotoMarker = Readonly<{
     id: string;
     lng: number;
     lat: number;
     name: string;
     label?: PhotoLabel;
-    capturedAt?: {
+    capturedAt?: Readonly<{
       lng: number;
       lat: number;
       altitude?: number;
       timestamp?: string;
-    };
+    }>;
     photoId?: string;
-  };
+  }>;
   ```
-  (No `needsPlacement` field — per [ADR-012](./decisions.md#adr-012-no-gps-photo-placement-off-map-tray-pinned-to-map-corner)
-  a no-GPS photo is *not* a PhotoMarker until placed.)
+  Notes:
+  - No `flag` field (per [ADR-017](./decisions.md#adr-017-flag-lives-in-map-picksjson-only-denormalized-to-geojson-properties-at-render-time);
+    flag lives only in `map-picks.json`).
+  - No `needsPlacement` field (per [ADR-012](./decisions.md#adr-012-no-gps-photo-placement-off-map-tray-pinned-to-map-corner);
+    no-GPS photos exist as candidate-pool entries until placed).
+- `frontend/map-corridors/src/types/markers.ts` — extend
+  `isPhotoMarker` to validate optional `capturedAt` (nested
+  `isFinite` lng/lat) and `photoId` (string, non-empty). The existing
+  `sanitizePhotoMarkers` array filter then handles upgrade-from-pre-feature
+  data without further changes.
 - `frontend/photo-helper/src/types/api.ts` — extend `ApiPhoto`:
   ```ts
   export interface ApiPhoto {
@@ -87,14 +97,25 @@ change.
   no caret per global dependency-pinning rule). Optionally `pica` if
   Phase 1 measurement shows plain canvas downscale quality is poor
   (likely not needed for 200×150 popups).
-- `frontend/map-corridors/package.json` — add `@vitest/browser` and a
-  Playwright browser provider to `devDependencies` (canvas tests can't
-  run in jsdom). Pin exact versions.
-- `frontend/map-corridors/vite.config.ts` — add a `test.browser` block
-  for the canvas-touching test suite (the jsdom suite stays as today).
-- `frontend/map-corridors/src/hooks/useCorridorSessionOPFS.ts` —
-  bump session JSON schema version + add migration shim that defaults the
-  new fields to `undefined` on load.
+- `frontend/map-corridors/vitest.config.ts` — confirm jsdom environment
+  is available; for the `generateThumb` test cases that need real
+  Canvas / `createImageBitmap`, the **first attempt** is to use the
+  `canvas` npm package as a jsdom shim (already on the
+  `onlyBuiltDependencies` allowlist in `pnpm-workspace.yaml`). Only
+  if the shim proves inadequate, add `@vitest/browser` + Playwright
+  browser provider as a separate `test:browser` script — gated off
+  the default `pnpm test` so CI is not forced to install a Chromium
+  download. Pin exact versions if/when adopted.
+- `frontend/map-corridors/src/hooks/useCorridorSessionOPFS.ts` — extend
+  `CorridorsSession` with `sourceMode: 'corridor' | 'photo'` (default
+  `'corridor'`) and `noGpsTrayOpen: boolean` (default `true`). Expose
+  `setSourceMode` and `setNoGpsTrayOpen` setters from the hook,
+  mirroring the existing `setMarkers` pattern. **Note on the existing
+  `version` field**: it is a per-mutation write counter
+  (`session.version + 1` on every persist), not a schema version.
+  Backwards compatibility for pre-feature sessions relies on
+  `sanitizePhotoMarkers` (extended above) ignoring missing fields,
+  not on a schema-version bump.
 
 **Exit criteria.**
 
@@ -103,10 +124,12 @@ change.
   `pnpm --filter @airq/photo-helper build` succeed.
 - Existing corridor session JSONs from before the change load without
   errors (schema migration path exercised).
-- **Bundle-size budget verified.** Run `pnpm --filter @airq/map-corridors build`
-  and inspect the Vite build report; the new `exifr` import contributes
-  ≤ 12 KB gz. If higher, switch to manual EXIF parser (5 lines for GPS-only)
-  or accept and document.
+- **Bundle-size measured.** Run `pnpm --filter @airq/map-corridors build`
+  and inspect the Vite build report. Aim for `exifr` to contribute
+  ≤ 15 KB gz (its documented lite-build target is ~9 KB). If
+  significantly higher (e.g., > 25 KB), reconsider the library or
+  switch to a 5-line manual GPS-only parser. Record the measured
+  number in the PR description.
 - Test fixture set bootstrapped in
   `frontend/map-corridors/test/fixtures/photos/` with anonymized GPS
   coords.
@@ -196,32 +219,17 @@ domain logic — no UI, no map, no storage. Fully unit-testable.
 
 **Test focus.**
 
-```
-extractExif.test.ts                                    (vitest + jsdom)
-  ✓ extracts lat/lng from JPEG with GPS
-  ✓ returns capturedAt: undefined for JPEG without GPS
-  ✓ treats (0,0) exact GPS as absent (not (0, 0.0001))
-  ✓ returns timestamp from DateTimeOriginal in ISO format
-  ✓ returns orientation tag
-  ✓ rejects HEIC by extension AND by content (mis-named .jpg HEIC)
-
-generateThumb.test.ts                                  (@vitest/browser)
-  ✓ produces JPEG at most maxWidth × maxHeight
-  ✓ output is upright for camera-sideways JPEG (Orientation=6)
-  ✓ output is upright for phone-pre-rotated JPEG (Orientation=1)
-     — guards against double-rotation
-  ✓ JPEG quality 0.7 produces < 30 KB for typical 4 MP input
-  ✓ rejects corrupt JPEG with thrown reason (caught by importPhotoFiles)
-
-importPhotoFiles.test.ts                               (vitest + jsdom)
-  ✓ runs in parallel batches of 8 (verifies concurrency, not wall-clock)
-  ✓ surfaces per-file progress
-  ✓ collects failures without aborting the batch
-  ✓ rejects HEIC at the top
-  ✓ rejects non-image MIME types
-  ✓ simulated savePhotoFile rejection mid-batch → failure list contains
-     the file, no orphan marker
-```
+- `extractExif.test.ts` *(vitest + jsdom)*: GPS present, GPS absent,
+  GPS `(0,0)` exact, ISO timestamp, orientation tag, HEIC reject by
+  content (mis-named `.jpg`).
+- `generateThumb.test.ts` *(vitest + jsdom + canvas shim)*: size cap,
+  JPEG quality < 30 KB for 4 MP input, corrupt input throws, contentHash
+  produced. Single browser-spec test: produces upright JPEG for
+  Orientation=6 — we trust `createImageBitmap` for the Orientation=1
+  no-op case rather than testing the browser implementation.
+- `importPhotoFiles.test.ts` *(vitest + jsdom)*: batch concurrency,
+  progress callbacks, failure isolation, mid-batch storage rejection,
+  HEIC rejection.
 
 ---
 
@@ -328,17 +336,27 @@ remain individual `<Marker>` components.
 
 - 100 capture dots render at 60 fps on pan/zoom.
 - Clicking a capture dot opens the popup (Phase 5).
-- Subject pin drag updates `marker.lng/lat`; dashed line redraws via
-  GeoJSON source-data update on **drag-end** (not per-tick).
+- Subject pin drag updates `marker.lng/lat`; the active drag's dashed
+  line redraws each rAF tick (one line, cheap); non-active dashed
+  lines redraw only when their underlying coords change.
 - "Hide rejects" toggle (US-13) hides red dots via a Mapbox paint filter,
   zero DOM churn.
+- Dev smoke verifies layers persist correctly across React StrictMode
+  double-mount and Vite HMR reloads.
 - Existing KML-marker rendering unchanged.
 
-**Note on library naming.** The React binding entry point is
-`react-map-gl/mapbox` (Mapbox GL), not `maplibre-gl`. Earlier doc
-references to "MapLibre clustering" were imprecise — the existing
-infrastructure uses Mapbox GL. MapLibre remains in deps as a fallback
-style provider but is not the marker-mount layer.
+See [ADR-016](./decisions.md#adr-016-marker-rendering-split-geojson-layer-for-static-dots-individual-marker-for-picks)
+for the library-naming note and the additive-not-replacing nature of
+this change for corridor markers.
+
+**Dashed line drag tracking.** During an active subject-pin drag, the
+dashed line back to the capture ghost is updated per animation frame
+(rAF-throttled GeoJSON source data update for the *active* pin only).
+Drag-end commits the final position. Pre-drag and post-drag states use
+the cached source data.
+
+**Active drag uses `setDragPan(false)`** during a marker drag so the map
+doesn't pan under the user's finger.
 
 ---
 
@@ -395,15 +413,21 @@ viewport-anchored lng/lat strategy is dropped (ADR-012 revised).
 No-GPS photos exist only as candidate-pool entries until placed; they
 never receive synthetic coordinates.
 
+**Edge case.** If a user starts dragging from the tray while a marker
+popup is open, the popup is closed on `dragstart` from the tray to
+prevent the drop landing on the popup DOM instead of the map canvas.
+
 **Exit criteria.**
 
 - Import 5 photos with no GPS → 5 thumbs appear in the tray, ordered
   by EXIF timestamp.
 - Drag thumb onto map → subject pin appears at exact drop coord, tray
   shrinks by one.
+- Drag thumb when a popup is open → popup closes on `dragstart`; drop
+  lands on the map underneath.
 - Tray empty → collapses to chevron; click chevron re-opens tray (when
   more no-GPS photos arrive).
-- Tray state persists across reload.
+- Tray state persists across reload (`noGpsTrayOpen` field).
 - Tray covers ≤ 20% of map width and ≤ 120 px tall.
 - Side panel "No GPS" group lists the same photos until placed.
 
@@ -474,23 +498,50 @@ visibility regain.
   on every flag / label change. Register `pagehide` and `beforeunload`
   listeners to call `flushPendingMapPicks()` synchronously.
 
+*Photo-helper prep (first commit of this branch):*
+
+- Refactor `frontend/photo-helper/src/hooks/usePhotoSessionOPFS.ts`:
+  extract the inline canvas-state literal in `buildPhotoFromFile`
+  (around line 234) into an exported helper:
+  ```ts
+  export function createDefaultCanvasState(): ApiPhoto['canvasState'];
+  ```
+  Pure function, no `File` argument. `buildPhotoFromFile` calls it to
+  build photo-helper-originated photos; `useMapPicksSync` (below)
+  reuses it.
+
 *Reader (photo-helper):*
 
-- `frontend/photo-helper/src/hooks/useMapPicksSync.ts` *(new)*: ~50 LoC.
+- `frontend/photo-helper/src/hooks/useMapPicksSync.ts` *(new)*: ~70 LoC.
+  Implements upsert + delete semantics per
+  [ADR-019](./decisions.md#adr-019-usemappickssync-upsert-semantics-delete-propagation):
   ```ts
   export function useMapPicksSync(
     competitionDir: DirectoryHandle | null,
-    sessionApi: { addCandidatePhotos: (apiPhotos: ApiPhoto[]) => void; existingPhotoIds: Set<string> }
+    storage: StorageInterface,
+    sessionApi: {
+      candidates: ApiPhoto[];
+      upsertCandidate: (photo: ApiPhoto) => void;
+      removeCandidate: (photoId: string) => void;
+    }
   ): void;
   ```
-  Effect:
-  1. On `competitionDir` change: read `map-picks.json`, project each
-     `MapPickEntry` whose `photoId` is *not* in `existingPhotoIds` into
-     an `ApiPhoto` with default `canvasState` (using existing
-     `createDefaultCanvasState()` helper), and push into the candidate
-     pool.
-  2. Subscribe to `document.visibilitychange`; re-run the read on
-     `visible`.
+  Effect (runs on `competitionDir` change and on
+  `document.visibilitychange === 'visible'`):
+  1. Read `competitions/{compId}/map-picks.json`; if absent, no-op.
+  2. Build a `Set<photoId>` from the read entries.
+  3. For each `MapPickEntry`:
+     - If `photoId` not in pool: load the blob
+       (`storage.getPhotoBlob(photosDir, photoId)`), `URL.createObjectURL`,
+       construct `ApiPhoto` via `createDefaultCanvasState()`,
+       `upsertCandidate`.
+     - If `photoId` already in pool and entry is map-originated
+       (`pm-` prefix): `upsertCandidate` with the new
+       `flag` / `label` (preserve `canvasState` and other photo-helper
+       fields).
+  4. For each existing candidate with `photoId.startsWith('pm-')` that
+     is **not** in the read set: `removeCandidate(photoId)`. This
+     cleans up after deletes in map-corridors.
 - `frontend/photo-helper/src/AppApi.tsx` — call `useMapPicksSync` once
   after the competition is loaded.
 
@@ -538,9 +589,11 @@ millisecond-stale read on focus, fixed on the next visibilitychange).
     }
   }
   ```
-- Register `pagehide` and `beforeunload` listeners that synchronously
-  invoke `flushPendingMapPicks()` as a belt-and-suspenders safeguard for
-  back-button navigation, tab close, refresh.
+- Register a `pagehide` listener that calls `flushPendingMapPicks()`.
+  On web, this is best-effort (OPFS writes are async; if the page is
+  frozen mid-write, the next session sees the last successful write).
+  `beforeunload` is intentionally **not** used — it doesn't await
+  async work and only adds the appearance of safety.
 
 **Exit criteria.**
 
@@ -640,6 +693,12 @@ edge cases. Move PR out of draft.
 14. Drop a `.heic` file → friendly error toast.
 15. Drop a corrupt `.jpg` → it appears in the failure list, import does
     not abort.
+16. Fresh install, no Mapbox token configured → photo mode surfaces
+    the token-config CTA prominently. After dismissing, photo mode
+    still works with the OSM fallback (or shows a clear "configure
+    a map provider" empty state if no fallback ships).
+17. Re-import the same folder a second time → "N photos already
+    imported, M new" toast; no duplicate thumbs in the right-side panel.
 
 **PR description checklist.**
 
@@ -677,43 +736,47 @@ edge cases. Move PR out of draft.
 
 - Smoke script above.
 
-### Cross-app contract test (mandatory, not optional)
+### Cross-app contract coverage
 
-This is the load-bearing assumption of the feature, so it gets a
-real test:
+The `map-picks.json` contract is the load-bearing handoff between the
+two apps. Primary coverage comes from per-side unit tests that exercise
+the contract from each direction:
 
-- Boot map-corridors against a temporary OPFS competition directory.
-- Toggle a flag → wait for debounced write → verify `map-picks.json`
-  shape and content.
-- Boot photo-helper against the same dir. Invoke `useMapPicksSync` and
-  assert the candidate pool receives the corresponding `ApiPhoto`.
-- Add a regression case: photo-helper-originated photos in the
-  candidate pool are not overwritten by map-side picks (namespace
-  check on `pm-` prefix).
-- Test in `frontend/test/cross-app/` as a new test target, running
-  against an OPFS shim so it works in CI.
+- `mapPicksWriter.test.ts` (map-corridors side): writes a fixture
+  picks set, asserts the produced `map-picks.json` matches the
+  expected shape and content.
+- `useMapPicksSync.test.ts` (photo-helper side): given a fixture
+  `map-picks.json`, asserts the hook upserts / deletes correctly and
+  preserves photo-helper-originated entries (`pm-` namespace check).
+
+A full cross-app integration test (booting both apps against a
+shared OPFS shim) is **recommended** but not blocking; if the per-side
+unit tests stay tight and the Phase 11 manual smoke exercises the
+end-to-end path, the integration test can land as a follow-up.
 
 ---
 
 ## Risks and mitigations
 
+Risks already resolved by an ADR are not repeated here — see ADR-005
+(write race), ADR-009 (navigation race), ADR-015 (EXIF double-rotation),
+ADR-016 (marker perf), ADR-018 (OPFS quota policy), ADR-019 (deletion
+propagation).
+
 | Risk | Severity | Mitigation |
 |---|---|---|
-| `exifr` tree-shake doesn't kick in → 30 KB+ added | MED | Phase 0 gates on a measured ≤ 12 KB gz contribution. Fall back to inline canvas EXIF parser (~5 lines for GPS-only) if size unacceptable. |
-| `pica` added but bloats map-corridors bundle | LOW | v1 starts without `pica` — plain canvas downscale to 200×150 is adequate for popup thumbs. Only add `pica` if Phase 1 measurement shows visible quality regression at popup size. |
-| Marker render perf at 100+ photos | HIGH | Resolved by ADR-016 (GeoJSON layers for static dots; `<Marker>` only for picks). Phase 4 exit criterion verifies 60 fps at 100 dots. |
-| Concurrent writers to a single JSON file | RESOLVED | ADR-005 (revised) uses one-way `map-picks.json`: one writer (map-corridors), one reader (photo-helper). No lock needed. |
-| Navigation race: debounced write lost on app switch | RESOLVED | ADR-009 (revised) requires `await flushPendingMapPicks()` before navigation + `pagehide`/`beforeunload` listeners. |
-| EXIF orientation double-rotation on phone-pre-rotated photos | RESOLVED | ADR-015: use `createImageBitmap(file, { imageOrientation: 'from-image' })` — the browser handles both conventions per spec. |
-| OPFS quota at high photo counts | MED | Hard pre-flight check: `getStorageEstimate().usage + estimatedBatch > 0.8 * quota` blocks the drop with a friendly modal. Existing `isStorageLow` warning continues to fire. |
-| Mapbox token not configured on first app open | MED | Photo source mode is useless without a map. Surface the token-config CTA prominently. Fallback to OpenStreetMap raster tile (no token needed) if token absent. |
+| `exifr` bundle larger than expected | MED | Phase 0 measures actual contribution and records in PR. Soft target ≤ 15 KB gz; if > 25 KB, switch to a manual GPS-only parser (~5 lines). |
+| `pica` added but bloats map-corridors bundle | LOW | v1 starts without `pica` — plain canvas downscale to 200×150 is adequate for popup thumbs. Only add if Phase 1 measurement shows visible quality regression. |
+| Mapbox token not configured on first app open | MED | Photo source mode is useless without a map. Surface the token-config CTA prominently when entering photo mode without a token. Fallback to OpenStreetMap raster tile (no token needed) — see [Open question](#open-implementation-questions). |
 | User accidentally clicks "Send to editor" with 0 picks | LOW | Button disabled when picks = 0. |
-| Coordinate precision loss when dragging at high zoom | LOW | float64 throughout. Existing `dragMovedPxRef` threshold of 8 px equals ~1.2 m at zoom 19 — could misclassify a precise placement as click. Lower threshold to 3 px for photo-mode subject pins. |
-| Browser drag-and-drop API quirks on Windows | LOW | Already exercised by existing dropzone code. Reuse `react-dropzone`. |
-| `competitionService.saveSessionPhotos` re-fetches all blobs on every save | MED | Existing dedup-by-id at line 591 helps but every persistence still iterates all pools. At 100 photos this can add 200–400 ms per save. Mitigation: track a dirty-photo set; only re-fetch blob URLs for changed photos. |
-| Photo blob orphans after OPFS eviction | LOW | On session load, validate each `photoId` in the candidate pool has a corresponding file in `photos/`. Surface a non-blocking banner if any are missing. |
-| Web tab × two = OPFS shared origin race | MED | Mitigated by ADR-005's single-writer-per-file design. Photo-helper reads on visibilitychange so a stale read self-heals within a focus cycle. |
+| Coordinate precision at high zoom (sub-meter) | LOW | float64 throughout. The existing `dragMovedPxRef` click-vs-drag threshold of 8 px (≈ 1.2 m at zoom 19) is shared by all marker types in `MapProviderView`; do not lower it globally. If photo-mode subject pins prove to misclassify drag-as-click, add a per-marker threshold prop rather than changing the default. |
+| Browser drag-and-drop quirks on Windows | LOW | Already exercised by existing dropzone code. Reuse `react-dropzone`. |
+| `competitionService.saveSessionPhotos` re-fetches all blobs on every save | MED | At 100 photos this can add 200–400 ms per save. Track a dirty-photo set; only re-fetch blob URLs for changed photos. |
+| Photo blob orphans after OPFS eviction | LOW | On session load, validate each `photoId` has a corresponding file in `photos/`. Surface a non-blocking banner if any are missing. |
 | HEIC by content but `.jpg` extension | LOW | `extractExif` checks file content (magic bytes), not just extension. Test fixture covers misnamed HEIC. |
+| StrictMode double-mount drops GeoJSON source registrations in dev | LOW | Smoke against `pnpm dev` before merge; pattern is documented in `react-map-gl` issues. Production builds aren't affected. |
+| Cross-tab photo write collision (same content, two tabs) | LOW | `pm-` namespace prevents accidental collisions across apps; deliberate cross-tab duplication is last-write-wins (acceptable). `savePhotoFile` is documented as last-write-wins. |
+| `getPathForFile` Electron-only | LOW | Map-corridors photo import path uses the standard browser File API; no Electron-only path needed (unlike photo-helper's existing `read-photo-file` IPC for some edge cases). Document in Phase 3. |
 
 ---
 

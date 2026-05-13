@@ -171,24 +171,12 @@ question is who writes to it and how.
 
 **Decision.** Option 2.
 
-**Why Option 1 was rejected after review.**
-
-- `ApiPhoto` is *photo-helper-specific*: it requires `sessionId`, `url`,
-  `label`, and a fully-populated `canvasState` with brightness, contrast,
-  whitebalance, labelPosition, circle, etc. Map-corridors does not own
-  those concepts. Writing them forces map-corridors to fabricate defaults
-  that only photo-helper's hook should own. If photo-helper later adds a
-  required `canvasState` field, the map writer silently produces invalid
-  records.
-- Writing `session.json` directly means map-corridors must round-trip the
-  *entire* photo-helper schema (`mode`, `setsTrack`/`setsTurning`,
-  `version`, `updatedAt`, `competition_name`). Any unknown field added to
-  photo-helper's schema is at risk of being dropped on the next map
-  write.
-- In web mode, the user can open `/photo-helper/` and `/map-corridors/`
-  in two tabs of the same browser; they share the OPFS root. Two
-  concurrent writers to `session.json` with debounce → unbounded
-  read-modify-write race. `@airq/shared-storage` exposes no lock API.
+**Why Option 1 was rejected.** `ApiPhoto` requires fields map-corridors
+doesn't own (`canvasState`, `sessionId`, `url`); direct writing would
+couple the writer to photo-helper's full session schema and race in
+two-tab web mode (shared OPFS, no lock primitive in `@airq/shared-storage`).
+A consumer-side projection is cheaper and keeps both apps' schemas
+independent.
 
 **Consequences.**
 
@@ -197,12 +185,14 @@ question is who writes to it and how.
   ```ts
   type MapPicksFile = {
     version: 1;
+    competitionId: string;        // self-identifying — survives dir moves
     updatedAt: string;            // ISO
     picks: MapPickEntry[];
   };
   type MapPickEntry = {
     photoId: string;              // namespaced — see below
     filename: string;
+    contentHash: string;          // SHA-1, for dedup on re-import (ADR-020)
     flag: 'pick' | 'neutral' | 'reject';
     gps?: {
       capturedAt?: { lng: number; lat: number; altitude?: number; timestamp?: string };
@@ -345,12 +335,16 @@ job; auto-filling would couple two concerns and hide which photo went where.
   pre-populates the candidate tray on load.
 - **Navigation must flush pending writes.** `map-picks.json` writes are
   debounced (see Phase 8). If the user toggles a flag and immediately
-  clicks "Send to editor", the renderer is torn down by the
-  Electron `loadURL` (or web `window.location.href` set) before the
-  debounce fires — the last toggle is lost. Implementation requirement:
-  on click, `await flushPendingMapPicks()` *before* the navigation call.
-  Equivalently, hook into `beforeunload` / `pagehide` to flush
-  synchronously. Both belt and suspenders are cheap.
+  clicks "Send to editor", the renderer is torn down before the debounce
+  fires — the last toggle is lost. Implementation requirement: on click,
+  `await flushPendingMapPicks()` *before* the navigation call. This is
+  the only reliable path on web (OPFS writes are async; neither
+  `pagehide` nor `beforeunload` can await them). On Electron the
+  same await suffices because IPC is sequential per channel.
+- A `pagehide` listener triggers the same flush as a defence against
+  tab close / back-button. The flush is best-effort there — if it
+  doesn't complete before the page is frozen, the next session sees
+  state from the last successful write.
 
 ---
 
@@ -412,30 +406,14 @@ parse on every load). Separate files load lazily into popups via
 **Status:** Accepted (revised after design review)
 
 **Context.** Some photos arrive without GPS. They still need to be
-visible so the user can drag them to position. The earlier v1 strategy
-(viewport-anchored lower-edge placement) was rejected on review:
+visible so the user can drag them to position. An earlier v1 design
+(viewport-anchored lower-edge placement) was rejected because markers
+anchored to fake screen-projected coords would drift off-screen on pan
+and lie about what `PhotoMarker.lng/lat` means.
 
-- Markers placed at viewport-anchored lng/lat lie about what
-  `PhotoMarker.lng/lat` means (it should be the subject location, not a
-  fake screen-projected coord).
-- Map pan/zoom does not rearrange the placements, so a no-GPS marker
-  can end up off-screen with no way to find it without the side panel —
-  defeating the "see them on the map" benefit.
-- Multiple no-GPS markers in the same competition pile up at unrelated
-  lng/lat values that have no semantic meaning.
-- The original ADR self-flagged "if it feels off, v2 can pin them to
-  current viewport" — the design owner expected to redo it. Don't ship
-  the version you expect to redo.
-
-**Options reconsidered.**
-
-1. **Lower viewport edge, viewport-anchored.** Rejected, above.
-2. **Stacked at corridor route midpoint or map center.** Pile-up problem.
-3. **Off-map tray pinned to a map corner** (e.g., bottom-left dock).
-   Tray holds thumbnails ordered by capture time, each draggable directly
-   *onto* the map.
-
-**Decision.** Option 3.
+**Decision.** Off-map tray pinned to a map corner (bottom-left), holding
+thumbnails ordered by capture time, each draggable directly *onto* the
+map.
 
 **Reasoning.**
 
@@ -519,14 +497,12 @@ complexity.
 
 **Decision.** Option 2 for v1.
 
-**Reasoning (honest version).** Per photo: ~30 ms EXIF parse (mostly
-I/O, parallelizes freely) + ~80 ms canvas decode + downscale + JPEG
-encode (CPU, single-threaded JS event loop). For 100 photos: I/O fully
-overlapped, CPU sequential at ~80 ms × 100 ≈ **8 s wall-clock**.
-Batching 8 wide changes peak memory (and bursty I/O), not wall-clock —
-`Promise.all` does not multi-core JavaScript compute. That's tolerable
-for a one-time per-competition operation, with a progress bar to make
-it tolerable to look at.
+**Reasoning.** Per photo: ~30 ms EXIF parse (mostly I/O, parallelizes
+freely) + ~80 ms canvas decode + downscale + JPEG encode (CPU,
+single-threaded). For 100 photos: I/O overlapped, CPU sequential at
+~80 ms × 100 ≈ **8 s wall-clock**. Batching at 8 wide caps peak memory,
+not wall-clock — `Promise.all` doesn't multi-core JS compute. A progress
+bar makes 8 s tolerable.
 
 **Consequences.**
 
@@ -538,47 +514,6 @@ it tolerable to look at.
 - If real-world batches exceed 30 s, revisit with `OffscreenCanvas` in
   a Worker pool — only `OffscreenCanvas` actually lets canvas work
   multi-thread.
-
----
-
-## Visual state matrix — flag × GPS presence
-
-This table enumerates every visual state a photo can be in, to keep the
-UI specification and the Phase 4/5 test plans aligned.
-
-| GPS | Flag = `pick`   | Flag = `neutral`     | Flag = `reject`        |
-|---|---|---|---|
-| **With GPS** | Subject pin at `lng/lat`; ghost capture marker + dashed line iff drag has occurred | Small grey capture dot | Red `×` at capture, 40% opacity, hidden when "Hide rejects" is on |
-| **No GPS** | Subject pin at user-dropped `lng/lat`; no capture ghost or dashed line | Thumbnail in the off-map tray ([ADR-012](#adr-012-no-gps-photo-placement-off-map-tray-pinned-to-map-corner)) | Thumbnail in the off-map tray with a red overlay; same "Hide rejects" filter applies |
-
-The `neutral`-with-GPS state is the on-import default for every photo
-that has GPS. The `neutral`-no-GPS state is "still in the tray, awaiting
-placement". A click on Skip in the popup for a *placed* photo demotes
-its `pick` back to `neutral` and removes the subject pin (keeping the
-capture dot if GPS exists; sending it back to the tray if not).
-
-Click semantics per state:
-
-| Visual | Click action | Right-click |
-|---|---|---|
-| Capture dot (GPS / neutral) | Open popup with thumb + Include/Skip/Reject | Quick label submenu |
-| Subject pin (pick) | Open popup with thumb + label picker + Demote/Reject | Quick label submenu |
-| Red × (reject) | Open popup with Restore | — |
-| Tray thumb (no-GPS / neutral) | Open popup with Reject | Reject |
-| Tray thumb (no-GPS / reject) | Open popup with Restore | Restore |
-
----
-
-## Decisions explicitly deferred to v2
-
-These are recorded so they're not re-debated during v1 review.
-
-- **Side-by-side compare modal.** Out of scope.
-- **Time-cluster suggestion** ("photos taken within 30 s — pick best").
-- **Keyboard shortcuts** (I/S/R, ←/→).
-- **Manual EXIF correction** (overriding GPS for individual photos).
-- **HEIC support.** Revisit if user demand emerges (ADR-006).
-- **Web Workers for import.** ADR-014.
 
 ---
 
@@ -656,14 +591,214 @@ draggable/static line gives:
 - Click handling on layers goes through
   `map.on('click', 'photo-capture-dots', handler)` +
   `queryRenderedFeatures`.
-- Dashed lines redraw on **drag-end** (not drag-tick) via source-data
-  update.
 - The "Hide rejects" toggle (US-13) becomes a Mapbox paint filter —
   fast, no DOM churn.
 - Phase 4 of the implementation plan is rescoped accordingly.
 
-**Note on library naming.** The codebase imports from
-`react-map-gl/mapbox` (Mapbox GL), not `maplibre-gl`. Earlier doc
-references to "MapLibre" were imprecise — the existing infrastructure
-uses Mapbox GL via react-map-gl. MapLibre is also in the deps for
-non-Mapbox tile providers but isn't the React-binding entry point.
+**Note on library naming.** Photo layers use whichever map engine
+`MapProviderView` is mounted on (currently `mapbox-gl` via
+`react-map-gl/mapbox` — confirmed at `MapProviderView.tsx` line 2).
+The workspace also ships `maplibre-gl` and `@vis.gl/react-maplibre`
+for non-Mapbox tile providers; if a future engine swap lands, GeoJSON
+`circle` / `line` paint expressions are spec-compatible across both
+renderers. **The new GeoJSON layers are purely additive** — existing
+KML-clicked corridor markers continue to render as individual
+`<Marker>` components unchanged, so the corridor flow has no
+regression surface.
+
+---
+
+## ADR-017 — `flag` lives in `map-picks.json` only, denormalized to GeoJSON properties at render time
+
+**Status:** Accepted
+
+**Context.** The visual `flag` (`pick` / `neutral` / `reject`) needs to
+be (a) persisted so it survives reload, and (b) available to the Mapbox
+paint expressions on the static-dot GeoJSON layers so the right colour
+renders without a per-feature DOM update.
+
+The naive choice would be: store `flag` on `PhotoMarker` (in
+`corridors-session.json`) *and* on `MapPickEntry` (in `map-picks.json`).
+That duplicates the data, and every flag toggle writes both files.
+`corridors-session.json` includes markers + geojson + leftSegments + …
+— at 100 photos it can be hundreds of KB. Writing the whole blob on
+every keystroke is a write storm.
+
+**Decision.** `flag` lives **only** in `map-picks.json`. `PhotoMarker`
+does **not** carry a flag field.
+
+For rendering, App.tsx maintains an in-memory `Map<photoId, flag>` fed
+by the latest `map-picks.json` state, and **denormalizes** the flag
+into the GeoJSON feature properties when building the source data
+passed to `CaptureDotsLayer` / `RejectedDotsLayer`. The Mapbox paint
+expression matches on `feature.properties.flag` exactly as it would
+have if the flag were persisted on the marker.
+
+**Consequences.**
+
+- One write per flag toggle (just `map-picks.json`).
+- Source data for static layers is rebuilt when the in-memory flag map
+  changes, which is cheap (a Map lookup per feature) and only fires
+  when something the user did changed state.
+- `PhotoMarker` stays minimal: `id`, `lng`, `lat`, `name`, `label?`,
+  `capturedAt?`, `photoId?`. No state-machine field.
+- Photos without an entry in `map-picks.json` default to flag `neutral`
+  at render time.
+- Removes the consistency invariant that a duplicated `flag` field
+  would otherwise force the code to maintain by hand.
+
+---
+
+## ADR-018 — OPFS quota: hard pre-flight gate, soft warning band
+
+**Status:** Accepted
+
+**Context.** A 100-photo competition is ~500 MB of original blobs +
+~5 MB of thumbs. Web browsers grant OPFS quota of roughly 60% of free
+disk with no warning before eviction. Once eviction starts, partial
+deletes leave a session that points at gone files. Today's only
+mechanism is the `isStorageLow` warning, which fires *after* the user
+has already imported.
+
+**Options.**
+
+1. Warn only (today's behaviour). User can blunder past it and lose data.
+2. **Hard pre-flight gate**: before a bulk import, sum estimated bytes
+   and call `getStorageEstimate()`. If `usage + estimated > 0.8 * quota`,
+   block the drop with a modal that shows the deficit. If `usage +
+   estimated > 0.5 * quota`, warn but allow.
+3. Throttle: split the import into smaller batches and check after each.
+
+**Decision.** Option 2. Hard pre-flight gate at 0.8 of quota; soft
+warning band at 0.5.
+
+**Consequences.**
+
+- New helper `await checkQuotaForImport(estimatedBytes): { ok: true } | { ok: false; deficitBytes; usage; quota }`.
+- The modal at the blocked state offers two actions: "Free space"
+  (links to the existing storage-management UI) and "Cancel".
+- The warning state is a non-blocking toast with the bytes/quota
+  delta visible.
+- Per-photo size estimate uses `file.size + 25 KB` (the thumb).
+  Slightly over-estimates so we don't push past quota under
+  measurement error.
+- Electron filesystem has no quota; the gate is a no-op there but the
+  same code path runs (it just always returns `{ ok: true }` for
+  Electron's storage backend).
+
+---
+
+## ADR-019 — `useMapPicksSync` upsert semantics, delete propagation
+
+**Status:** Accepted
+
+**Context.** Round 1 spec'd `useMapPicksSync` as "for each entry not
+already in `existingPhotoIds`, push into the candidate pool". That
+covers the *initial* import case but breaks for:
+
+- A photo flag changes in map-corridors after photo-helper has already
+  loaded the entry. The hook re-reads `map-picks.json` on
+  `visibilitychange` but `existingPhotoIds.has(photoId)` is true, so
+  nothing happens. Photo-helper's tray shows a stale flag.
+- A photo is deleted in map-corridors (entry removed from `map-picks.json`).
+  Photo-helper still has it in its candidate pool — no clean-up.
+
+**Decision.** Upsert + delete.
+
+- **On read:** for every entry in `map-picks.json`:
+  - If `photoId` not in pool → insert (today's behaviour).
+  - If `photoId` in pool and origin is map (`pm-` prefix) → **update**
+    the flag and any other map-owned fields. Do not touch
+    `canvasState`, `label`, or any photo-helper-owned fields.
+- **On read:** for every `pm-`-prefixed `photoId` *in* the pool but
+  *not* in `map-picks.json` → **remove from the pool** (clean-up).
+  Photos without the `pm-` prefix (photo-helper-originated) are
+  untouched.
+
+**Consequences.**
+
+- Flag changes propagate within one focus cycle.
+- Deletes propagate cleanly.
+- The `pm-` namespace becomes load-bearing for "is it safe to remove?"
+  decisions — the prefix is the policy boundary.
+- The hook is still ~50 LoC; just an upsert + a set-difference instead
+  of a one-shot insert.
+
+---
+
+## ADR-020 — Photo re-import: skip duplicates by content hash
+
+**Status:** Accepted
+
+**Context.** User drops a folder of photos, then later drops the same
+folder again (perhaps after re-organising files outside the app, or
+re-dragging the wrong set). What happens?
+
+**Options.**
+
+1. **Overwrite** by `photoId` — but photoIds are generated fresh on
+   import, so a re-import produces new IDs. Doesn't help.
+2. **Detect duplicate by filename + size** — fast but fragile (same
+   filename can wrap different content; size is a weak signal).
+3. **Detect duplicate by content hash** (SHA-1 of the file bytes) —
+   robust; cost is one file read per imported photo, parallel with
+   EXIF parse.
+4. **Always import as new** with fresh photoId — disk fills, user
+   confusion at duplicate thumbs.
+
+**Decision.** Option 3. Compute a content hash during import and key
+deduplication on it.
+
+**Consequences.**
+
+- `MapPickEntry` gains a `contentHash: string` field for fast
+  duplicate checks across batches.
+- On import: for each file, compute SHA-1; if `contentHash` matches an
+  existing `MapPickEntry`, skip with toast "N photos already imported,
+  M new".
+- Hash compute is ~10 ms per 5 MB JPEG via `crypto.subtle.digest` —
+  fully overlapped with EXIF + thumb work.
+- The toast offers an "Import as duplicate anyway" override for the
+  edge case where the same content is needed twice (rare).
+
+---
+
+## Visual state matrix — flag × GPS presence
+
+This table enumerates every visual state a photo can be in, to keep the
+UI specification and the Phase 4/5 test plans aligned.
+
+| GPS | Flag = `pick`   | Flag = `neutral`     | Flag = `reject`        |
+|---|---|---|---|
+| **With GPS** | Subject pin at `lng/lat`; ghost capture marker + dashed line iff drag has occurred | Small grey capture dot | Red `×` at capture, 40% opacity, hidden when "Hide rejects" is on |
+| **No GPS** | Subject pin at user-dropped `lng/lat`; no capture ghost or dashed line | Thumbnail in the off-map tray ([ADR-012](#adr-012-no-gps-photo-placement-off-map-tray-pinned-to-map-corner)) | Thumbnail in the off-map tray with a red overlay; same "Hide rejects" filter applies |
+
+The `neutral`-with-GPS state is the on-import default for every photo
+that has GPS. The `neutral`-no-GPS state is "still in the tray, awaiting
+placement". A click on Skip in the popup for a *placed* photo demotes
+its `pick` back to `neutral` and removes the subject pin (keeping the
+capture dot if GPS exists; sending it back to the tray if not).
+
+Click semantics per state:
+
+| Visual | Click action | Right-click |
+|---|---|---|
+| Capture dot (GPS / neutral) | Open popup with thumb + Include/Skip/Reject | Quick label submenu |
+| Subject pin (pick) | Open popup with thumb + label picker + Demote/Reject | Quick label submenu |
+| Red × (reject) | Open popup with Restore | — |
+| Tray thumb (no-GPS / neutral) | Open popup with Reject | Reject |
+| Tray thumb (no-GPS / reject) | Open popup with Restore | Restore |
+
+---
+
+## Decisions explicitly deferred to v2
+
+These are recorded so they're not re-debated during v1 review.
+
+- **Side-by-side compare modal.** Out of scope.
+- **Time-cluster suggestion** ("photos taken within 30 s — pick best").
+- **Keyboard shortcuts** (I/S/R, ←/→).
+- **Manual EXIF correction** (overriding GPS for individual photos).
+- **HEIC support.** Revisit if user demand emerges (ADR-006).
+- **Web Workers for import.** ADR-014.
+
