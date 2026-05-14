@@ -68,6 +68,14 @@ export interface UseCompetitionSystemResult {
 
   // Candidate pool operations (see docs/CANDIDATE_PHOTOS.md)
   addPhotosToCandidates: (files: File[]) => Promise<void>;
+  /**
+   * Insert a pre-built `ApiPhoto` (bytes + thumb already on disk).
+   * Used by `useMapPicksSync` (Phase 8b of photo-map-culling) to
+   * project map-corridors picks into the candidate pool without
+   * re-uploading. Idempotent — replaces if `photo.id` already exists
+   * to avoid duplicates on visibility-change re-syncs.
+   */
+  addExistingCandidate: (photo: ApiPhoto) => Promise<void>;
   removeCandidate: (photoId: string) => Promise<void>;
   promoteCandidateToSlot: (candidateId: string, setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
   demoteSlotToCandidate: (setKey: 'set1' | 'set2', photoId: string) => Promise<void>;
@@ -556,6 +564,30 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       };
     }, { updatePhotos: true });
   }, [updateCurrentCompetition, currentCompetition, filesToPhotos, t]);
+
+  /**
+   * Insert / replace a pre-built ApiPhoto. The bytes live in OPFS at
+   * `competitions/{compId}/photos/{photoId}` already (writer side is
+   * map-corridors' importPhotosToStorage). We only mutate the session
+   * JSON. Idempotent by `photo.id` so re-syncs from useMapPicksSync
+   * don't duplicate.
+   */
+  const addExistingCandidate = useCallback(async (photo: ApiPhoto) => {
+    if (!currentCompetition?.session) return;
+    await updateCurrentCompetition(session => {
+      const existing = session.candidates?.photos ?? [];
+      const filtered = existing.filter(p => p.id !== photo.id);
+      // Preserve sessionId so the photo is consistent with the rest of
+      // the pool (the caller often doesn't know it).
+      const normalized: ApiPhoto = { ...photo, sessionId: session.id };
+      return {
+        ...session,
+        version: session.version + 1,
+        updatedAt: new Date().toISOString(),
+        candidates: { photos: [...filtered, normalized] },
+      };
+    }, { updatePhotos: true });
+  }, [updateCurrentCompetition, currentCompetition]);
 
   const addPhotosToSet = useCallback(async (files: File[], setKey: 'set1' | 'set2'): Promise<AddPhotosResult> => {
     if (!currentCompetition?.session) {
@@ -1285,6 +1317,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
 
     // Candidate pool surface
     addPhotosToCandidates,
+    addExistingCandidate,
     removeCandidate,
     promoteCandidateToSlot,
     demoteSlotToCandidate,

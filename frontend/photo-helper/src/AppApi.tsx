@@ -36,6 +36,8 @@ import {
   Map,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
+import { useMapPicksSync } from './hooks/useMapPicksSync';
+import { getStorage, type DirectoryHandle } from '@airq/shared-storage';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
 import { EditableHeading } from './components/EditableHeading';
@@ -98,6 +100,7 @@ function AppApi() {
     isDesktopManaged,
     // Candidate pool operations (see docs/CANDIDATE_PHOTOS.md)
     addPhotosToCandidates,
+    addExistingCandidate,
     removeCandidate,
     promoteCandidateToSlot,
     demoteSlotToCandidate,
@@ -109,6 +112,47 @@ function AppApi() {
   // Candidate photos — derived from session for stable rendering. The pool
   // is optional on older sessions, so default to empty.
   const candidatePhotos: ApiPhoto[] = session?.candidates?.photos ?? [];
+
+  // Phase 8b of photo-map-culling — resolve the per-competition dirs
+  // and mount the map-picks sync hook. The dirs come from the OPFS
+  // layout `competitions/{compId}/{photos,}`; matches map-corridors'
+  // useCorridorSessionOPFS resolution, so the writer + reader agree
+  // on paths.
+  const [pmcCompetitionDir, setPmcCompetitionDir] = useState<DirectoryHandle | null>(null);
+  const [pmcPhotosDir, setPmcPhotosDir] = useState<DirectoryHandle | null>(null);
+  const pmcCompetitionId = currentCompetition?.id ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    if (!pmcCompetitionId) {
+      setPmcCompetitionDir(null);
+      setPmcPhotosDir(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const storage = getStorage();
+        const handles = await storage.init();
+        const competitionsDir = await storage.getDirectoryHandle(handles.root, 'competitions', { create: true });
+        const compDir = await storage.getDirectoryHandle(competitionsDir, pmcCompetitionId, { create: true });
+        const photosDir = await storage.getDirectoryHandle(compDir, 'photos', { create: true });
+        if (cancelled) return;
+        setPmcCompetitionDir(compDir);
+        setPmcPhotosDir(photosDir);
+      } catch (err) {
+        console.warn('[AppApi] failed to resolve photo-map-culling dirs:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pmcCompetitionId]);
+
+  const pmcSessionApi = useMemo(() => ({
+    candidates: candidatePhotos,
+    addCandidate: addExistingCandidate,
+    removeCandidate,
+    setCandidateFlag,
+  }), [candidatePhotos, addExistingCandidate, removeCandidate, setCandidateFlag]);
+
+  useMapPicksSync(pmcCompetitionDir, pmcPhotosDir, pmcSessionApi);
 
   // Session identifiers and storage stats come from the OPFS-backed
   // useCompetitionSystem hook — no network round-trip, so availability is
