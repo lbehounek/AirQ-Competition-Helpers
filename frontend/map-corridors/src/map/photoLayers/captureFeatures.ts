@@ -1,61 +1,79 @@
-// Phase 4 of photo-map-culling: capture-dots GeoJSON projection.
-// See docs/photo-map-culling/implementation-plan.md and ADR-016
-// (marker rendering split: GeoJSON layer for static dots).
+// Phase 4/5 follow-up — projections for the photo overlay layers.
+// File kept under its original name (captureFeatures.ts) to preserve
+// imports; previously exported buildCaptureDotFeatures. Layers/exports
+// re-purposed once "drag every photo, not just picks" became the model:
 //
-// Pure projection — `PhotoMarker[]` → `FeatureCollection<Point>` — so the
-// expensive React tree only sees a single Source/Layer pair regardless of
-// how many photos are imported (30..100 typical, 200+ edge case).
+//   • Pins are individual <Marker> components for ALL photos (drag +
+//     click-to-popup).
+//   • Ghost dots + dashed lines are GeoJSON layers that ONLY render
+//     when a photo has been moved away from its EXIF capture point.
+//     "Moved" = the user has confirmed the subject location, so the
+//     ghost is the cue: "this photo is processed; here's where the
+//     camera was".
 
-import type { FeatureCollection, Point } from 'geojson'
-import type { PhotoFlag, PhotoMarker } from '../../types/markers'
+import type { FeatureCollection, LineString, Point } from 'geojson'
+import type { PhotoMarker } from '../../types/markers'
 
-// `'neutral'` is denormalized at projection time so the Mapbox `match`
-// paint expression can branch on a single property — it's not stored on
-// the marker (absence of `flag` is the neutral state).
-export type CaptureDotFlag = PhotoFlag | 'neutral'
+/** True when the marker's subject coords differ from its capture coords. */
+export function isPhotoMoved(m: PhotoMarker): boolean {
+  if (!m.capturedAt) return false
+  return m.lng !== m.capturedAt.lng || m.lat !== m.capturedAt.lat
+}
 
-export interface CaptureDotProperties {
+export interface GhostProperties {
   photoId: string
-  /** Filename — surfaced in hover tooltips downstream. */
-  name: string
-  /** Drives the data-driven paint expression in CaptureDotsLayer. */
-  flag: CaptureDotFlag
 }
 
 /**
- * Build the GeoJSON FeatureCollection for the capture-dots layer.
- *
- * A photo marker appears in the capture-dots layer when ALL hold:
- *   - `capturedAt` is set (EXIF GPS was extracted at import time)
- *   - `photoId` is set (otherwise it's a KML/click marker, not a photo)
- *   - `label` is unset (a labelled marker renders via the subject-pin
- *     path, not a capture dot)
- *   - `flag !== 'pick'` (picks render via the subject-pin path too,
- *     even without a label yet — user can pick first, label later)
- *
- * The feature is positioned at `capturedAt.lng/lat` — where the camera
- * GPS recorded the photo. The marker's primary `lng/lat` is the subject
- * location; once the user drags the subject pin away, the capture dot
- * must stay where the camera was. Test pins this invariant.
+ * Ghost points at the original EXIF capture location, rendered as a
+ * faded grey dot for every photo whose subject pin has been dragged
+ * away from where the camera recorded it. Skipped when subject ==
+ * capture (no need to show a ghost on top of the live pin).
  */
-export function buildCaptureDotFeatures(
+export function buildGhostFeatures(
   markers: readonly PhotoMarker[],
-): FeatureCollection<Point, CaptureDotProperties> {
-  const features: FeatureCollection<Point, CaptureDotProperties>['features'] = []
+): FeatureCollection<Point, GhostProperties> {
+  const features: FeatureCollection<Point, GhostProperties>['features'] = []
   for (const m of markers) {
-    if (!m.capturedAt) continue
-    if (!m.photoId) continue
-    if (m.label) continue
-    if (m.flag === 'pick') continue
+    if (!m.capturedAt || !m.photoId) continue
+    if (!isPhotoMoved(m)) continue
     features.push({
       type: 'Feature',
       id: m.id,
       geometry: { type: 'Point', coordinates: [m.capturedAt.lng, m.capturedAt.lat] },
-      properties: {
-        photoId: m.photoId,
-        name: m.name,
-        flag: m.flag ?? 'neutral',
+      properties: { photoId: m.photoId },
+    })
+  }
+  return { type: 'FeatureCollection', features }
+}
+
+export interface DashedLineProperties {
+  photoId: string
+}
+
+/**
+ * Dashed LineStrings linking each ghost (capturedAt) to its live subject
+ * pin (lng/lat). Same membership rule as buildGhostFeatures — only for
+ * moved photos.
+ */
+export function buildDashedLineFeatures(
+  markers: readonly PhotoMarker[],
+): FeatureCollection<LineString, DashedLineProperties> {
+  const features: FeatureCollection<LineString, DashedLineProperties>['features'] = []
+  for (const m of markers) {
+    if (!m.capturedAt || !m.photoId) continue
+    if (!isPhotoMoved(m)) continue
+    features.push({
+      type: 'Feature',
+      id: m.id,
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          [m.capturedAt.lng, m.capturedAt.lat],
+          [m.lng, m.lat],
+        ],
       },
+      properties: { photoId: m.photoId },
     })
   }
   return { type: 'FeatureCollection', features }
