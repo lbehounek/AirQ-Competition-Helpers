@@ -168,15 +168,15 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // own layer-lifecycle effects and the click silently drops.
   const [mapCursor, setMapCursor] = useState<string>('')
 
-  // Close the photo popup if its marker disappears from the layer
-  // (e.g., user picked it via popup → marker promoted to subject pin →
-  // capture-dot layer filters it out; popup should follow).
+  // Close the photo popup only when the marker disappears entirely
+  // (deleted elsewhere). The Include/Skip/Reject handlers below call
+  // setActivePhotoMarkerId(null) explicitly — that path doesn't need
+  // this effect. Previously this also closed on flag/label transitions,
+  // which broke re-opening picks/rejects from the side-panel click.
   useEffect(() => {
     if (!activePhotoMarkerId) return
-    const stillCapture = props.markers?.some(m =>
-      m.id === activePhotoMarkerId && m.capturedAt && !m.label && m.flag !== 'pick'
-    )
-    if (!stillCapture) setActivePhotoMarkerId(null)
+    const exists = props.markers?.some(m => m.id === activePhotoMarkerId)
+    if (!exists) setActivePhotoMarkerId(null)
   }, [props.markers, activePhotoMarkerId])
 
   const uploadedGeojson = useMemo(() => {
@@ -302,6 +302,12 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         ? [marker.lng, marker.lat]
         : [marker.capturedAt?.lng ?? marker.lng, marker.capturedAt?.lat ?? marker.lat]
       map.flyTo({ center, zoom: Math.max(map.getZoom(), 14), duration: 700 })
+      // Also open the photo popup so the panel click is a one-step
+      // action (fly + preview + actions). KML/click markers don't have
+      // a photo popup — guarded by photoId + capturedAt.
+      if (marker.photoId && marker.capturedAt) {
+        setActivePhotoMarkerId(markerId)
+      }
     },
   }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, mapStyle, mapboxAccessToken])
 
