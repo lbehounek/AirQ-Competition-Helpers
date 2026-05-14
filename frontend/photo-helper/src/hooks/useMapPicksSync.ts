@@ -29,6 +29,8 @@ export interface MapPickEntry {
     subjectAt?: { lng: number; lat: number };
   };
   label?: string;
+  /** ISO 8601 — when label was last set in map-corridors. */
+  labelUpdatedAt?: string;
 }
 
 interface MapPicksFile {
@@ -51,6 +53,12 @@ export interface MapPicksSyncSessionApi {
   removeCandidate: (photoId: string) => Promise<void> | void;
   /** Update flag in place; preserves canvasState + photo-helper-owned fields. */
   setCandidateFlag: (photoId: string, flag: CandidateFlag) => Promise<void> | void;
+  /**
+   * Update label in place (bidirectional label sync, Phase A).
+   * Called when remote `entry.labelUpdatedAt` is newer than the local
+   * `labelUpdatedAt`. Empty string = explicit clear.
+   */
+  setCandidateLabel: (photoId: string, label: string) => Promise<void> | void;
 }
 
 const PM_PREFIX = 'pm-';
@@ -97,14 +105,29 @@ export async function syncMapPicksOnce(
         url,
         filename: entry.filename,
         canvasState: createDefaultCanvasState(),
-        label: '',
+        label: entry.label ?? '',
         flag: entry.flag,
+        ...(entry.labelUpdatedAt ? { labelUpdatedAt: entry.labelUpdatedAt } : {}),
       };
       await session.addCandidate(photo);
       inserts++;
-    } else if (existing.flag !== entry.flag) {
-      await session.setCandidateFlag(entry.photoId, entry.flag);
-      updates++;
+    } else {
+      let touched = false;
+      if (existing.flag !== entry.flag) {
+        await session.setCandidateFlag(entry.photoId, entry.flag);
+        touched = true;
+      }
+      // Bidirectional label sync — newer wins. Equal timestamps → local
+      // wins (deterministic tie-break for in-flight edits).
+      const remoteLabel = entry.label ?? '';
+      const remoteAt = entry.labelUpdatedAt;
+      const localAt = existing.labelUpdatedAt;
+      const remoteIsNewer = remoteAt && (!localAt || remoteAt > localAt);
+      if (remoteIsNewer && existing.label !== remoteLabel) {
+        await session.setCandidateLabel(entry.photoId, remoteLabel);
+        touched = true;
+      }
+      if (touched) updates++;
     }
   }
 

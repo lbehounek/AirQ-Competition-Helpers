@@ -41,6 +41,14 @@ export interface ApiPhoto {
    */
   flag?: CandidateFlag;
   gps?: ApiPhotoGps;
+  /**
+   * ISO 8601 stamp of when `label` was last set, in EITHER app
+   * (set by photo-helper directly OR by useMapPicksSync mirroring a
+   * map-corridors edit). Drives the cross-app "newer wins" tie-break
+   * in `useEditorPicksSync` (map side) and `useMapPicksSync` (editor
+   * side). Absent on legacy data.
+   */
+  labelUpdatedAt?: string;
 }
 
 export interface ApiPhotoSet {

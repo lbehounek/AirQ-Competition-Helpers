@@ -80,6 +80,14 @@ export interface UseCompetitionSystemResult {
   promoteCandidateToSlot: (candidateId: string, setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
   demoteSlotToCandidate: (setKey: 'set1' | 'set2', photoId: string) => Promise<void>;
   setCandidateFlag: (photoId: string, flag: CandidateFlag) => Promise<void>;
+  /**
+   * Set or clear a candidate's label. Stamps `labelUpdatedAt = now()`
+   * so the cross-app sync can decide newer-wins against map-corridors'
+   * `map-picks.json`. Empty string is an explicit clear (vs. undefined
+   * which means "no change" — but the API uses the empty-string idiom
+   * to keep `ApiPhoto.label: string` non-nullable).
+   */
+  setCandidateLabel: (photoId: string, label: string) => Promise<void>;
   updateCandidatePhotoState: (photoId: string, canvasState: Partial<ApiPhoto['canvasState']>) => Promise<void>;
   /**
    * Delete a specific subset of candidate ids — session entries removed AND
@@ -796,6 +804,19 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     await updateCurrentCompetition(session => setCandidateFlagPure(session, photoId, flag));
   }, [updateCurrentCompetition]);
 
+  // Phase A of bidirectional label sync. Stamps labelUpdatedAt so
+  // useEditorPicksSync on the map side can decide newer-wins against
+  // its own marker.labelUpdatedAt. Empty string = explicit clear.
+  const setCandidateLabel = useCallback(async (photoId: string, label: string) => {
+    await updateCurrentCompetition(session => {
+      const existing = session.candidates?.photos ?? [];
+      const next = existing.map(p => p.id === photoId
+        ? { ...p, label, labelUpdatedAt: new Date().toISOString() }
+        : p);
+      return { ...session, candidates: { photos: next } };
+    });
+  }, [updateCurrentCompetition]);
+
   const updateCandidatePhotoState = useCallback(async (photoId: string, canvasState: Partial<ApiPhoto['canvasState']>) => {
     await updateCurrentCompetition(session => updateCandidateCanvasStatePure(session, photoId, canvasState));
   }, [updateCurrentCompetition]);
@@ -1322,6 +1343,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     promoteCandidateToSlot,
     demoteSlotToCandidate,
     setCandidateFlag,
+    setCandidateLabel,
     updateCandidatePhotoState,
     deleteCandidates,
     clearAllCandidates,

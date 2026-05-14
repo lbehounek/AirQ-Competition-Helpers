@@ -37,6 +37,7 @@ function fakeSession(initialCandidates: ApiPhoto[] = []): MapPicksSyncSessionApi
   addCandidate: Mock
   removeCandidate: Mock
   setCandidateFlag: Mock
+  setCandidateLabel: Mock
 } {
   const candidates = [...initialCandidates]
   const api = {
@@ -50,8 +51,20 @@ function fakeSession(initialCandidates: ApiPhoto[] = []): MapPicksSyncSessionApi
       const found = candidates.find(p => p.id === id)
       if (found) found.flag = flag
     }),
+    setCandidateLabel: vi.fn(async (id: string, label: string) => {
+      const found = candidates.find(p => p.id === id)
+      if (found) {
+        found.label = label
+        found.labelUpdatedAt = new Date().toISOString()
+      }
+    }),
   }
-  return api as MapPicksSyncSessionApi & { addCandidate: Mock; removeCandidate: Mock; setCandidateFlag: Mock }
+  return api as MapPicksSyncSessionApi & {
+    addCandidate: Mock
+    removeCandidate: Mock
+    setCandidateFlag: Mock
+    setCandidateLabel: Mock
+  }
 }
 
 function pmEntry(id: string, flag: 'pick' | 'neutral' | 'reject' = 'pick') {
@@ -199,6 +212,107 @@ describe('syncMapPicksOnce — update path', () => {
     const session = fakeSession([existing('pm-abc', 'pick')])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(session.addCandidate).not.toHaveBeenCalled()
+  })
+})
+
+describe('syncMapPicksOnce — label sync (bidirectional)', () => {
+  it('propagates label on insert', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{
+        photoId: 'pm-new', filename: 'a.jpg', flag: 'pick',
+        label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z',
+      }],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
+    const session = fakeSession([])
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.addCandidate).toHaveBeenCalledTimes(1)
+    const inserted = session.addCandidate.mock.calls[0][0] as ApiPhoto
+    expect(inserted.label).toBe('A')
+    expect(inserted.labelUpdatedAt).toBe('2024-01-01T00:00:00Z')
+  })
+
+  it('updates label when remote labelUpdatedAt is newer than local', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{
+        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick',
+        label: 'B', labelUpdatedAt: '2024-02-01T00:00:00Z',
+      }],
+    })
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick'), label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z' }
+    const session = fakeSession([local])
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.setCandidateLabel).toHaveBeenCalledWith('pm-abc', 'B')
+  })
+
+  it('keeps local label when local labelUpdatedAt is newer (local-wins on edits-in-flight)', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{
+        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick',
+        label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z',
+      }],
+    })
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick'), label: 'B', labelUpdatedAt: '2024-02-01T00:00:00Z' }
+    const session = fakeSession([local])
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.setCandidateLabel).not.toHaveBeenCalled()
+  })
+
+  it('tie-break: equal timestamps → local wins (no update)', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{
+        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick',
+        label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z',
+      }],
+    })
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick'), label: 'B', labelUpdatedAt: '2024-01-01T00:00:00Z' }
+    const session = fakeSession([local])
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.setCandidateLabel).not.toHaveBeenCalled()
+  })
+
+  it('applies remote label when local has no labelUpdatedAt (legacy data)', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{
+        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick',
+        label: 'C', labelUpdatedAt: '2024-01-01T00:00:00Z',
+      }],
+    })
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick'), label: 'A' }
+    const session = fakeSession([local])
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.setCandidateLabel).toHaveBeenCalledWith('pm-abc', 'C')
+  })
+
+  it('propagates a label CLEAR (empty string) when remote is newer', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{
+        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick',
+        label: '', labelUpdatedAt: '2024-02-01T00:00:00Z',
+      }],
+    })
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick'), label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z' }
+    const session = fakeSession([local])
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.setCandidateLabel).toHaveBeenCalledWith('pm-abc', '')
   })
 })
 

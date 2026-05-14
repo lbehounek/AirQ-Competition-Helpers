@@ -37,6 +37,11 @@ import {
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { useMapPicksSync } from './hooks/useMapPicksSync';
+import {
+  buildEditorPicks,
+  flushPendingEditorPicks,
+  scheduleWriteEditorPicks,
+} from './handoff/editorPicksWriter';
 import { getStorage, type DirectoryHandle } from '@airq/shared-storage';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
@@ -105,6 +110,7 @@ function AppApi() {
     promoteCandidateToSlot,
     demoteSlotToCandidate,
     setCandidateFlag,
+    setCandidateLabel,
     updateCandidatePhotoState,
     deleteCandidates,
   } = sessionHookResult;
@@ -150,9 +156,30 @@ function AppApi() {
     addCandidate: addExistingCandidate,
     removeCandidate,
     setCandidateFlag,
-  }), [candidatePhotos, addExistingCandidate, removeCandidate, setCandidateFlag]);
+    setCandidateLabel,
+  }), [candidatePhotos, addExistingCandidate, removeCandidate, setCandidateFlag, setCandidateLabel]);
 
   useMapPicksSync(pmcCompetitionDir, pmcPhotosDir, pmcSessionApi);
+
+  // Phase B — write photo-helper-picks.json on every candidate change so
+  // map-corridors picks up label edits made in this app. Debounced 300ms
+  // by the writer; pagehide flushes best-effort.
+  useEffect(() => {
+    if (!pmcCompetitionDir) return;
+    try {
+      const storage = getStorage();
+      const picks = buildEditorPicks(candidatePhotos);
+      scheduleWriteEditorPicks(storage, pmcCompetitionDir, picks);
+    } catch (err) {
+      console.warn('[AppApi] scheduleWriteEditorPicks failed:', err);
+    }
+  }, [candidatePhotos, pmcCompetitionDir]);
+
+  useEffect(() => {
+    const onPageHide = () => { void flushPendingEditorPicks(); };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, []);
 
   // Session identifiers and storage stats come from the OPFS-backed
   // useCompetitionSystem hook — no network round-trip, so availability is

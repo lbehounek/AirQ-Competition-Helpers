@@ -33,6 +33,10 @@ export type PhotoMarker = Readonly<{
   }>
   photoId?: string
   flag?: PhotoFlag
+  // Phase D of photo-map-culling — when the label was last set, ISO 8601.
+  // Drives the "newer wins" conflict resolution in `useEditorPicksSync`
+  // and `useMapPicksSync` (label may be set in either app now).
+  labelUpdatedAt?: string
 }>
 
 // Ground marker types — FAI precision flying canvas shapes (12 letters + 14 symbols).
@@ -114,7 +118,8 @@ export function isPhotoMarker(value: unknown): value is PhotoMarker {
     (v.label === undefined || (typeof v.label === 'string' && PHOTO_LABEL_SET.has(v.label))) &&
     isValidCapturedAt(v.capturedAt) &&
     (v.photoId === undefined || (typeof v.photoId === 'string' && v.photoId.length > 0)) &&
-    (v.flag === undefined || (typeof v.flag === 'string' && PHOTO_FLAG_SET.has(v.flag)))
+    (v.flag === undefined || (typeof v.flag === 'string' && PHOTO_FLAG_SET.has(v.flag))) &&
+    (v.labelUpdatedAt === undefined || typeof v.labelUpdatedAt === 'string')
   )
 }
 

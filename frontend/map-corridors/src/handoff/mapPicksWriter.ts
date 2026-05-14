@@ -27,6 +27,9 @@ export interface MapPickEntry {
     subjectAt?: { lng: number; lat: number }
   }
   label?: PhotoLabel
+  // When label was last changed; drives bidirectional sync resolution.
+  // Absent if the marker never had a label set explicitly (legacy data).
+  labelUpdatedAt?: string
 }
 
 export interface MapPicksFile {
@@ -50,6 +53,7 @@ export function buildMapPickEntry(marker: PhotoMarker): MapPickEntry | null {
     flag,
   }
   if (marker.label) entry.label = marker.label
+  if (marker.labelUpdatedAt) entry.labelUpdatedAt = marker.labelUpdatedAt
   // GPS — emit `capturedAt` for photos that had EXIF GPS; `subjectAt`
   // only when the subject differs from the capture point (i.e., the
   // user dragged the pin). Saves a few bytes and makes downstream

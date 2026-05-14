@@ -44,6 +44,7 @@ import {
   flushPendingMapPicks,
   scheduleWriteMapPicks,
 } from './handoff/mapPicksWriter'
+import { useEditorPicksSync } from './hooks/useEditorPicksSync'
 
 // File-type routing for the dropzone. KML/GPX → existing corridor
 // parser, JPEG/PNG → photo import pipeline (Phase 3 of photo-map-culling,
@@ -643,6 +644,10 @@ function App() {
     return () => window.removeEventListener('pagehide', onPageHide)
   }, [])
 
+  // Phase C — read photo-helper-picks.json on competition load and on
+  // visibilitychange. Newer-wins applies remote labels to local markers.
+  useEditorPicksSync(storage, competitionDir, persistMarkers)
+
   // Phase 5 photo-popup action handlers. `flag` lives on PhotoMarker as
   // an intermediate until Phase 8 moves the source of truth to
   // map-picks.json — see PhotoMarker type docstring.
@@ -1000,12 +1005,18 @@ function App() {
       if (!current) return prev
       const isUsedElsewhere = prev.some(m => m.id !== id && m.label === label)
       if (isUsedElsewhere) return prev
-      return prev.map(m => m.id === id ? { ...m, label } : m)
+      // Stamp labelUpdatedAt so the editor's sync reads "newer than mine"
+      // and adopts the change. Required for bidirectional label sync
+      // (Phase D of photo-map-culling).
+      return prev.map(m => m.id === id ? { ...m, label, labelUpdatedAt: new Date().toISOString() } : m)
     })
   }, [persistMarkers])
 
   const handleMarkerLabelClear = useCallback((id: string) => {
-    persistMarkers(prev => prev.map(m => m.id === id ? ({ ...m, label: undefined }) : m))
+    persistMarkers(prev => prev.map(m => m.id === id
+      ? ({ ...m, label: undefined, labelUpdatedAt: new Date().toISOString() })
+      : m,
+    ))
   }, [persistMarkers])
 
   // Ground marker callbacks
