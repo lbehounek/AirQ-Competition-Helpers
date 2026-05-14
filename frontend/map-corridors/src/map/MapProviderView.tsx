@@ -7,8 +7,9 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { useI18n } from '../contexts/I18nContext'
 import { captureMapForPrint } from '../utils/mapCapture'
 import type { PrintCaptureResult } from '../utils/mapCapture'
-import type { PhotoLabel, GroundMarkerCallbacks } from '../types/markers'
+import type { PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
+import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
 import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
 import {
   LIVE_GROUND_MARKER_ICON_PX,
@@ -42,7 +43,12 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   /** Mapbox access token — required for `mapbox://` styles, optional otherwise. */
   mapboxAccessToken?: string
   geojsonOverlays?: Overlay[]
-  markers?: readonly { id: string; lng: number; lat: number; name: string; label?: PhotoLabel }[]
+  // Now `PhotoMarker[]` — the type gained optional `capturedAt`/`photoId`
+  // in Phase 0. Markers without `capturedAt` are KML/click-placed (today's
+  // behaviour); markers WITH `capturedAt` are EXIF-imported photos and
+  // render through the photo-layers path (CaptureDotsLayer for unlabelled,
+  // Phase 5 subject-pin for labelled).
+  markers?: readonly PhotoMarker[]
   activeMarkerId?: string | null
   usedLabels?: string[]
   /**
@@ -328,8 +334,17 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           ]}
         </Source>
       ))}
-      {/* Interactive markers */}
-      {props.markers?.map(m => (
+      {/* Photo-import capture dots (Phase 4 of photo-map-culling).
+          Renders unlabelled photo markers (capturedAt present, no label
+          yet) as a flat GeoJSON layer instead of N <Marker> components —
+          keeps 100+ photo imports cheap. Labelled (picked) photo markers
+          fall through to the individual-<Marker> path below, where they
+          get the same draggable/clickable behaviour as KML markers. */}
+      {props.markers && <CaptureDotsLayer markers={props.markers} />}
+      {/* Interactive markers — KML/click-placed AND labelled photo picks.
+          A photo marker that still has `capturedAt && !label` is filtered
+          out of this loop because it's already on the capture-dots layer. */}
+      {props.markers?.filter(m => !(m.capturedAt && !m.label)).map(m => (
         <React.Fragment key={m.id}>
           <Marker
             longitude={m.lng}

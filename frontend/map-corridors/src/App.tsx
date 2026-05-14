@@ -525,6 +525,35 @@ function App() {
       const result = await importPhotosToStorage(storage, photosDir, files, {
         onProgress: (done, total) => setImportProgress({ done, total }),
       })
+      // Phase 4: surface imported photos on the map. Each ImportedPhoto
+      // becomes a PhotoMarker with `lng/lat = capturedAt` (subject starts
+      // at capture point per ADR-007) and `photoId` set so the
+      // capture-dots layer can find it. No-GPS photos (capturedAt absent)
+      // land in the markers array too but render via Phase 6's tray.
+      if (result.ok.length > 0) {
+        await persistMarkers((prev) => {
+          const next = [...prev]
+          for (const p of result.ok) {
+            const startLng = p.exif.capturedAt?.lng
+            const startLat = p.exif.capturedAt?.lat
+            if (startLng === undefined || startLat === undefined) continue
+            next.push({
+              id: p.photoId,
+              photoId: p.photoId,
+              lng: startLng,
+              lat: startLat,
+              name: p.file.name,
+              capturedAt: {
+                lng: startLng,
+                lat: startLat,
+                ...(p.exif.capturedAt?.altitude !== undefined ? { altitude: p.exif.capturedAt.altitude } : {}),
+                ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
+              },
+            })
+          }
+          return next
+        })
+      }
       if (result.failed.length === 0) {
         setSnack({
           severity: 'success',
@@ -553,7 +582,7 @@ function App() {
     } finally {
       setImportProgress(null)
     }
-  }, [storage, photosDir, t])
+  }, [storage, photosDir, t, persistMarkers])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
