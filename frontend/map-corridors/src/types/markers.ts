@@ -14,12 +14,20 @@ export {
 } from '@airq/shared-discipline'
 export type { PhotoLabel } from '@airq/shared-discipline'
 
+// `lng/lat` is the subject (answer-sheet) location; `capturedAt` is the optional EXIF source. See docs/photo-map-culling/implementation-plan.md Phase 0.
 export type PhotoMarker = Readonly<{
   id: string
   lng: number
   lat: number
   name: string
   label?: PhotoLabel
+  capturedAt?: Readonly<{
+    lng: number
+    lat: number
+    altitude?: number
+    timestamp?: string
+  }>
+  photoId?: string
 }>
 
 // Ground marker types — FAI precision flying canvas shapes (12 letters + 14 symbols).
@@ -79,6 +87,16 @@ export function isGroundMarker(value: unknown): value is GroundMarker {
   )
 }
 
+function isValidCapturedAt(value: unknown): boolean {
+  if (value === undefined) return true
+  if (!value || typeof value !== 'object') return false
+  const c = value as Record<string, unknown>
+  if (!isValidLngLat(c.lng, c.lat)) return false
+  if (c.altitude !== undefined && !(typeof c.altitude === 'number' && Number.isFinite(c.altitude))) return false
+  if (c.timestamp !== undefined && typeof c.timestamp !== 'string') return false
+  return true
+}
+
 export function isPhotoMarker(value: unknown): value is PhotoMarker {
   if (!value || typeof value !== 'object') return false
   const v = value as Record<string, unknown>
@@ -86,7 +104,9 @@ export function isPhotoMarker(value: unknown): value is PhotoMarker {
     typeof v.id === 'string' && v.id.length > 0 &&
     isValidLngLat(v.lng, v.lat) &&
     typeof v.name === 'string' &&
-    (v.label === undefined || (typeof v.label === 'string' && PHOTO_LABEL_SET.has(v.label)))
+    (v.label === undefined || (typeof v.label === 'string' && PHOTO_LABEL_SET.has(v.label))) &&
+    isValidCapturedAt(v.capturedAt) &&
+    (v.photoId === undefined || (typeof v.photoId === 'string' && v.photoId.length > 0))
   )
 }
 

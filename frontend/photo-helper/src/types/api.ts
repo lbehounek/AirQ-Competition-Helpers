@@ -19,6 +19,13 @@ export type AddPhotosResult =
   | { kind: 'ok'; routedTo: 'slot' | 'tray'; count: number }
   | { kind: 'err'; reason: 'no-competition' | 'over-capacity' | 'unknown'; message: string };
 
+// `capturedAt` is the EXIF source; `subjectAt` is the user-placed marker coord that flows to the answer sheet. See docs/photo-map-culling/implementation-plan.md Phase 0.
+export interface ApiPhotoGps {
+  capturedAt?: { lng: number; lat: number; altitude?: number };
+  subjectAt?: { lng: number; lat: number };
+  timestamp?: string;
+}
+
 export interface ApiPhoto {
   id: string;
   sessionId: string; // Required for image cache and API consistency
@@ -33,6 +40,7 @@ export interface ApiPhoto {
    * from a slot back to the tray. See docs/CANDIDATE_PHOTOS.md.
    */
   flag?: CandidateFlag;
+  gps?: ApiPhotoGps;
 }
 
 export interface ApiPhotoSet {

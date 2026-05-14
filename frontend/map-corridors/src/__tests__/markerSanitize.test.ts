@@ -104,3 +104,87 @@ describe('sanitizePhotoMarkers', () => {
     expect(result[0].id).toBe('pm-1')
   })
 })
+
+// EXIF photo-import fields (docs/photo-map-culling/implementation-plan.md Phase 0)
+describe('isPhotoMarker — capturedAt', () => {
+  const base = { id: 'pm-1', lng: 14, lat: 50, name: 'Test' }
+
+  it('accepts a marker with valid capturedAt', () => {
+    expect(isPhotoMarker({ ...base, capturedAt: { lng: 14.1, lat: 50.1 } })).toBe(true)
+  })
+
+  it('accepts capturedAt with optional altitude/timestamp', () => {
+    expect(isPhotoMarker({
+      ...base,
+      capturedAt: { lng: 14.1, lat: 50.1, altitude: 320, timestamp: '2026-05-14T08:00:00Z' },
+    })).toBe(true)
+  })
+
+  it.each([
+    ['non-object capturedAt', { ...base, capturedAt: 'not an object' }],
+    ['null capturedAt', { ...base, capturedAt: null }],
+    ['capturedAt missing coords', { ...base, capturedAt: {} }],
+    ['capturedAt with out-of-range lng', { ...base, capturedAt: { lng: 999, lat: 50 } }],
+    ['capturedAt with NaN lat', { ...base, capturedAt: { lng: 14, lat: NaN } }],
+    ['capturedAt with non-numeric altitude', { ...base, capturedAt: { lng: 14, lat: 50, altitude: 'high' } }],
+    ['capturedAt with non-string timestamp', { ...base, capturedAt: { lng: 14, lat: 50, timestamp: 1234 } }],
+  ])('rejects %s', (_label, input) => {
+    expect(isPhotoMarker(input)).toBe(false)
+  })
+})
+
+describe('isPhotoMarker — photoId', () => {
+  const base = { id: 'pm-1', lng: 14, lat: 50, name: 'Test' }
+
+  it('accepts non-empty photoId', () => {
+    expect(isPhotoMarker({ ...base, photoId: 'photo-abc-123' })).toBe(true)
+  })
+
+  it('accepts absent photoId', () => {
+    expect(isPhotoMarker(base)).toBe(true)
+  })
+
+  it.each([
+    ['empty photoId', { ...base, photoId: '' }],
+    ['non-string photoId', { ...base, photoId: 42 }],
+  ])('rejects %s', (_label, input) => {
+    expect(isPhotoMarker(input)).toBe(false)
+  })
+})
+
+describe('sanitizePhotoMarkers — round-trip of EXIF fields', () => {
+  it('preserves capturedAt and photoId on valid markers', () => {
+    const input = [{
+      id: 'pm-1',
+      lng: 14.5,
+      lat: 50.1,
+      name: 'IMG_001.JPG',
+      label: 'A',
+      capturedAt: { lng: 14.49, lat: 50.105, altitude: 280, timestamp: '2026-05-14T08:00:00Z' },
+      photoId: 'photo-abc',
+    }]
+    const result = sanitizePhotoMarkers(input)
+    expect(result).toHaveLength(1)
+    const m = result[0]
+    expect(m.capturedAt).toEqual({ lng: 14.49, lat: 50.105, altitude: 280, timestamp: '2026-05-14T08:00:00Z' })
+    expect(m.photoId).toBe('photo-abc')
+  })
+
+  it('drops markers whose EXIF fields are corrupted (fail-loud philosophy)', () => {
+    const input = [
+      { id: 'pm-1', lng: 14, lat: 50, name: 'good' },
+      { id: 'pm-2', lng: 14, lat: 50, name: 'bad-capturedAt', capturedAt: { lng: 999, lat: 50 } },
+      { id: 'pm-3', lng: 14, lat: 50, name: 'bad-photoId', photoId: '' },
+    ]
+    const result = sanitizePhotoMarkers(input)
+    expect(result.map(m => m.id)).toEqual(['pm-1'])
+  })
+
+  it('round-trips a pre-feature marker (v1 → v2 migration: missing fields stay missing)', () => {
+    const v1Marker = { id: 'pm-1', lng: 14, lat: 50, name: 'old-format' }
+    const result = sanitizePhotoMarkers([v1Marker])
+    expect(result).toHaveLength(1)
+    expect(result[0].capturedAt).toBeUndefined()
+    expect(result[0].photoId).toBeUndefined()
+  })
+})
