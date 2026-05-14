@@ -23,6 +23,25 @@ import {
 
 type LayoutMode = 'landscape' | 'portrait';
 
+/**
+ * Default canvas state for a newly-imported photo. Extracted from
+ * `buildPhotoFromFile` so that `useMapPicksSync` (Phase 8b of
+ * photo-map-culling) can build identical ApiPhoto records when it
+ * projects map-originated picks into the candidate pool — keeps the
+ * two code paths from drifting on the editor's initial appearance.
+ */
+export function createDefaultCanvasState(): ApiPhoto['canvasState'] {
+  return {
+    position: { x: 0, y: 0 },
+    scale: 1,
+    brightness: 0,
+    contrast: 1,
+    sharpness: 0,
+    whiteBalance: { temperature: 0, tint: 0, auto: false },
+    labelPosition: 'bottom-left',
+  };
+}
+
 const defaultSession = (id: string): ApiPhotoSession => ({
   id,
   version: 1,
@@ -232,15 +251,7 @@ export function usePhotoSessionOPFS() {
       sessionId: session?.id ?? '',
       url,
       filename: file.name,
-      canvasState: {
-        position: { x: 0, y: 0 },
-        scale: 1,
-        brightness: 0,
-        contrast: 1,
-        sharpness: 0,
-        whiteBalance: { temperature: 0, tint: 0, auto: false },
-        labelPosition: 'bottom-left',
-      },
+      canvasState: createDefaultCanvasState(),
       label: '',
       ...(flag !== undefined ? { flag } : {}),
     };
