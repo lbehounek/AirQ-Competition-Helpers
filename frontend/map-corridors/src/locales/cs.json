@@ -39,7 +39,10 @@
       "include": "Vybrat",
       "skip": "Přeskočit",
       "reject": "Odmítnout",
-      "thumbMissing": "Náhled není k dispozici"
+      "thumbMissing": "Náhled není k dispozici",
+      "label": "Štítek",
+      "labelSet": "Přiřadit štítek",
+      "labelUsed": "Již použito"
     },
     "tray": {
       "title": "Bez GPS ({{count}})",

@@ -7,6 +7,8 @@ import { Box, Button, CircularProgress, Stack, Typography } from '@mui/material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import { useI18n } from '../contexts/I18nContext'
 import { usePhotoThumbUrl } from './usePhotoThumbUrl'
+import type { PhotoLabel } from '../types/markers'
+import { ALL_PHOTO_LABELS } from '../types/markers'
 
 export interface PhotoMarkerPopupProps {
   photoId: string
@@ -15,6 +17,15 @@ export interface PhotoMarkerPopupProps {
   timestamp?: string
   storage: StorageInterface
   photosDir: DirectoryHandle
+  // Label state — the popup is the single place to assign / clear the
+  // answer-sheet label on a photo marker (mirrors the KML popup pattern).
+  // Without this, picks have no path to a label and never appear in the
+  // answer sheet, breaking the locate → select → score flow.
+  label?: PhotoLabel
+  availableLabels?: readonly PhotoLabel[]
+  usedLabels?: readonly string[]
+  onLabelChange?: (label: PhotoLabel) => void
+  onLabelClear?: () => void
   onInclude: () => void
   onSkip: () => void
   onReject: () => void
@@ -76,6 +87,47 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
           {t('photo.popup.reject')}
         </Button>
       </Stack>
+      {props.onLabelChange && (
+        <Box sx={{ mt: 1.5 }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
+            {t('photo.popup.label')}
+          </Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 0.5 }}>
+            {(props.availableLabels ?? ALL_PHOTO_LABELS).map((L) => {
+              const used = (props.usedLabels ?? []).includes(L)
+              const isCurrent = props.label === L
+              const disabled = used && !isCurrent
+              return (
+                <button
+                  key={L}
+                  type="button"
+                  onClick={() => {
+                    if (disabled) return
+                    if (isCurrent) {
+                      props.onLabelClear?.()
+                    } else {
+                      props.onLabelChange?.(L)
+                    }
+                  }}
+                  disabled={disabled}
+                  title={disabled ? t('photo.popup.labelUsed') : `${t('photo.popup.labelSet')} ${L}`}
+                  style={{
+                    padding: '2px 0',
+                    borderRadius: 4,
+                    border: '1px solid #cbd5e1',
+                    background: isCurrent ? '#facc15' : '#ffffff',
+                    color: isCurrent ? '#111827' : (disabled ? '#9ca3af' : '#111827'),
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    fontWeight: 600,
+                    fontSize: 12,
+                    minWidth: 0,
+                  }}
+                >{L}</button>
+              )
+            })}
+          </Box>
+        </Box>
+      )}
     </Box>
   )
 }

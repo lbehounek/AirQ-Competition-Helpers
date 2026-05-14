@@ -626,10 +626,15 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           PhotoOverlayLayers render only for moved photos. */}
       {props.markers?.filter(m => !!m.photoId).map(m => {
         const moved = !!m.capturedAt && (m.lng !== m.capturedAt.lng || m.lat !== m.capturedAt.lat)
-        const flagColor = m.flag === 'pick' ? '#1976d2'
+        // Yellow = "labelled, answer-sheet ready" — matches the KML
+        // marker color so a user scanning the map sees one consistent
+        // visual for "this is going on the score sheet" regardless of
+        // origin. Unlabelled photos colour by flag.
+        const ringColor = m.label ? '#facc15'
+          : m.flag === 'pick' ? '#1976d2'
           : m.flag === 'reject' ? '#d32f2f'
           : '#616161'
-        const bg = moved ? flagColor : '#ffffff'
+        const bg = moved ? ringColor : '#ffffff'
         return (
           <Marker
             key={m.id}
@@ -681,7 +686,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               height: 14,
               borderRadius: '50%',
               background: bg,
-              border: `2px solid ${flagColor}`,
+              border: `2px solid ${ringColor}`,
               boxShadow: moved ? '0 1px 2px rgba(0,0,0,0.25)' : 'none',
               cursor: 'pointer',
             }} />
@@ -852,6 +857,12 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
             anchor="top"
             closeButton
             closeOnMove={false}
+            // Default Mapbox Popup auto-closes on any map click, which
+            // races setActivePhotoMarkerId when the user clicks a
+            // different marker — net state ends up null and the popup
+            // appears stuck. closeOnClick=false lets the React state be
+            // the single source of truth for popup visibility.
+            closeOnClick={false}
             onClose={() => setActivePhotoMarkerId(null)}
             maxWidth="240px"
           >
@@ -861,9 +872,15 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               timestamp={marker.capturedAt.timestamp}
               storage={props.photoStorage}
               photosDir={props.photoDir}
+              label={marker.label}
+              availableLabels={props.availableLabels}
+              usedLabels={props.usedLabels}
+              onLabelChange={(L) => props.onMarkerLabelChange?.(popupId, L)}
+              onLabelClear={() => props.onMarkerLabelClear?.(popupId)}
               onInclude={() => {
                 props.onPhotoInclude?.(popupId)
-                setActivePhotoMarkerId(null)
+                // Keep the popup open after Include — user often wants
+                // to assign a label right after picking. Was: closed.
               }}
               onSkip={() => {
                 props.onPhotoSkip?.(popupId)

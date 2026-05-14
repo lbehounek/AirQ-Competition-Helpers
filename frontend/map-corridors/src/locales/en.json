@@ -39,7 +39,10 @@
       "include": "Include",
       "skip": "Skip",
       "reject": "Reject",
-      "thumbMissing": "Thumbnail unavailable"
+      "thumbMissing": "Thumbnail unavailable",
+      "label": "Label",
+      "labelSet": "Set label",
+      "labelUsed": "Already used"
     },
     "tray": {
       "title": "No GPS ({{count}})",
