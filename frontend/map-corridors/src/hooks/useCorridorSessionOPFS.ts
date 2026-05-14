@@ -144,6 +144,9 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
   // target for imported photo bytes + thumbnails (see ADR-005 storage
   // layout: `competitions/{compId}/photos/`).
   const [photosDir, setPhotosDir] = useState<DirectoryHandle | null>(null)
+  // Parent of corridors/ and photos/. Where map-picks.json lands
+  // (Phase 8 cross-app handoff). Null in the legacy flat-session path.
+  const [competitionDir, setCompetitionDir] = useState<DirectoryHandle | null>(null)
 
   useEffect(() => {
     (async () => {
@@ -175,12 +178,14 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
           corridorsDir = await storage.getDirectoryHandle(compDir, 'corridors', { create: true })
           const photos = await storage.getDirectoryHandle(compDir, 'photos', { create: true })
           setPhotosDir(photos)
+          setCompetitionDir(compDir)
         } else {
           // Legacy flat session
           id = loadOrCreateSessionId()
           const sessionsDir = await storage.getDirectoryHandle(handles.root, 'sessions', { create: true })
           corridorsDir = await storage.getDirectoryHandle(sessionsDir, id, { create: true })
           setPhotosDir(null)
+          setCompetitionDir(null)
         }
 
         sessionDirRef.current = corridorsDir
@@ -352,6 +357,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     backendAvailable: storageAvailable,
     storage: storageRef.current,
     photosDir,
+    competitionDir,
     // actions
     setMapStyleId,
     setDiscipline,

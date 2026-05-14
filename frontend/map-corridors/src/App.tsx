@@ -39,6 +39,11 @@ import { importPhotosToStorage } from './photoImport/importPhotosToStorage'
 import type { ImportFailureReason, ImportFailure } from './photoImport/types'
 import { NoGpsTray } from './components/NoGpsTray'
 import { PhotoListPanel } from './components/PhotoListPanel'
+import {
+  buildMapPicks,
+  flushPendingMapPicks,
+  scheduleWriteMapPicks,
+} from './handoff/mapPicksWriter'
 
 // File-type routing for the dropzone. KML/GPX → existing corridor
 // parser, JPEG/PNG → photo import pipeline (Phase 3 of photo-map-culling,
@@ -184,6 +189,7 @@ function App() {
     backendAvailable,
     storage,
     photosDir,
+    competitionDir,
     setMapStyleId,
     setMarkers: persistMarkers,
     setGroundMarkers: persistGroundMarkers,
@@ -602,6 +608,24 @@ function App() {
       setImportProgress(null)
     }
   }, [storage, photosDir, t, persistMarkers, persistNoGpsPhotos])
+
+  // Phase 8a — mirror the in-memory photo markers into map-picks.json
+  // every time they change. The writer debounces (300ms) so rapid flag
+  // toggles coalesce into one disk write. Pagehide flushes best-effort.
+  useEffect(() => {
+    if (!storage || !competitionDir) return
+    const picks = buildMapPicks(markers)
+    scheduleWriteMapPicks(storage, competitionDir, picks)
+  }, [markers, storage, competitionDir])
+
+  // Pagehide-flush. Fire-and-forget per ADR-009 (async OPFS won't fully
+  // settle before unload, but kicking the timer is strictly better than
+  // letting the debounce drop the latest changes).
+  useEffect(() => {
+    const onPageHide = () => { void flushPendingMapPicks() }
+    window.addEventListener('pagehide', onPageHide)
+    return () => window.removeEventListener('pagehide', onPageHide)
+  }, [])
 
   // Phase 5 photo-popup action handlers. `flag` lives on PhotoMarker as
   // an intermediate until Phase 8 moves the source of truth to
