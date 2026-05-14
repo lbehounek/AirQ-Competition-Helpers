@@ -162,30 +162,11 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     }
   }, [isMapLoaded, props.onMarkerAdd, props.groundMarkerProps, props.onNoGpsPhotoPlaced])
 
-  // Phase 5 — click capture dot to open photo popup. Mapbox listeners
-  // need a string layer id matching CaptureDotsLayer's. Cursor changes
-  // on hover so users learn the dot is interactive.
-  useEffect(() => {
-    if (!isMapLoaded || !mapRef.current) return
-    const map = mapRef.current.getMap()
-    const onClick = (e: { features?: Array<{ id?: string | number }> }) => {
-      const feature = e.features?.[0]
-      if (!feature) return
-      const id = feature.id
-      if (typeof id !== 'string') return
-      setActivePhotoMarkerId(id)
-    }
-    const onEnter = () => { map.getCanvas().style.cursor = 'pointer' }
-    const onLeave = () => { map.getCanvas().style.cursor = '' }
-    map.on('click', 'photo-capture-dots', onClick as never)
-    map.on('mouseenter', 'photo-capture-dots', onEnter)
-    map.on('mouseleave', 'photo-capture-dots', onLeave)
-    return () => {
-      map.off('click', 'photo-capture-dots', onClick as never)
-      map.off('mouseenter', 'photo-capture-dots', onEnter)
-      map.off('mouseleave', 'photo-capture-dots', onLeave)
-    }
-  }, [isMapLoaded])
+  // Phase 5 — click capture dot to open photo popup. Use react-map-gl's
+  // `interactiveLayerIds` + MapGL.onClick (below) instead of attaching
+  // listeners via map.on() in a useEffect — the latter races react-map-gl's
+  // own layer-lifecycle effects and the click silently drops.
+  const [mapCursor, setMapCursor] = useState<string>('')
 
   // Close the photo popup if its marker disappears from the layer
   // (e.g., user picked it via popup → marker promoted to subject pin →
@@ -381,6 +362,23 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       preserveDrawingBuffer
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}
+      cursor={mapCursor}
+      interactiveLayerIds={['photo-capture-dots']}
+      onMouseEnter={(e) => {
+        if (e.features?.some(f => f.layer?.id === 'photo-capture-dots')) setMapCursor('pointer')
+      }}
+      onMouseLeave={() => setMapCursor('')}
+      onClick={(e) => {
+        const hit = e.features?.find(f => f.layer?.id === 'photo-capture-dots')
+        if (!hit) return
+        // photoId is on properties (denormalized at projection time in
+        // captureFeatures.ts); use it to look up the marker by photoId
+        // rather than trusting feature.id round-tripping through Mapbox.
+        const photoId = hit.properties?.photoId as string | undefined
+        if (!photoId) return
+        const marker = props.markers?.find(m => m.photoId === photoId)
+        if (marker) setActivePhotoMarkerId(marker.id)
+      }}
       onLoad={() => setIsMapLoaded(true)}
       ref={mapRef}
     >
