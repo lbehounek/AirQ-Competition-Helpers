@@ -852,8 +852,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         const popupId = activePhotoMarkerId
         return (
           <Popup
-            longitude={marker.capturedAt.lng}
-            latitude={marker.capturedAt.lat}
+            longitude={marker.lng}
+            latitude={marker.lat}
             anchor="top"
             closeButton
             closeOnMove={false}
