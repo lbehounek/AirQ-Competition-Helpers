@@ -9,6 +9,11 @@ import type {
   StorageHandles,
   SessionDirectoryHandles,
 } from './types';
+import {
+  savePhotoThumb as savePhotoThumbImpl,
+  getPhotoThumb as getPhotoThumbImpl,
+  deletePhotoThumb as deletePhotoThumbImpl,
+} from './photoThumbs';
 
 /**
  * Create a DirectoryHandle from a path string (Electron)
@@ -115,6 +120,18 @@ export class ElectronStorage implements StorageInterface {
   async deletePhotoFile(photosDir: DirectoryHandle, photoId: string): Promise<void> {
     const api = getElectronAPI();
     await api.deletePhotoFile(photosDir.path, photoId);
+  }
+
+  async savePhotoThumb(photosDir: DirectoryHandle, photoId: string, blob: Blob): Promise<void> {
+    return savePhotoThumbImpl(this, photosDir, photoId, blob);
+  }
+
+  async getPhotoThumb(photosDir: DirectoryHandle, photoId: string): Promise<Blob | null> {
+    return getPhotoThumbImpl(this, photosDir, photoId);
+  }
+
+  async deletePhotoThumb(photosDir: DirectoryHandle, photoId: string): Promise<void> {
+    return deletePhotoThumbImpl(this, photosDir, photoId);
   }
 
   async clearDirectory(dir: DirectoryHandle): Promise<void> {
