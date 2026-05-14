@@ -152,6 +152,27 @@ describe('isPhotoMarker — photoId', () => {
   })
 })
 
+describe('isPhotoMarker — flag', () => {
+  const base = { id: 'pm-1', lng: 14, lat: 50, name: 'Test' }
+
+  it.each(['pick', 'reject'])('accepts flag = %s', (flag) => {
+    expect(isPhotoMarker({ ...base, flag })).toBe(true)
+  })
+
+  it('accepts absent flag (neutral state)', () => {
+    expect(isPhotoMarker(base)).toBe(true)
+  })
+
+  it.each([
+    ['unknown string', { ...base, flag: 'something' }],
+    ['empty string', { ...base, flag: '' }],
+    ['number', { ...base, flag: 1 }],
+    ['null', { ...base, flag: null }],
+  ])('rejects %s', (_label, input) => {
+    expect(isPhotoMarker(input)).toBe(false)
+  })
+})
+
 describe('sanitizePhotoMarkers — round-trip of EXIF fields', () => {
   it('preserves capturedAt and photoId on valid markers', () => {
     const input = [{

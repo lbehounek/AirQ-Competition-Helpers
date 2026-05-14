@@ -10,6 +10,8 @@ import type { PrintCaptureResult } from '../utils/mapCapture'
 import type { PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
+import { PhotoMarkerPopup } from '../components/PhotoMarkerPopup'
+import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
 import {
   LIVE_GROUND_MARKER_ICON_PX,
@@ -67,6 +69,16 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   onMarkerLabelChange?: (id: string, label: PhotoLabel) => void
   onMarkerLabelClear?: (id: string) => void
   groundMarkerProps?: GroundMarkerCallbacks
+  // Phase 5 of photo-map-culling — popup wiring for capture dots.
+  // `storage` + `photosDir` let the popup load its thumbnail on demand.
+  // The three action callbacks mutate `marker.flag` in the parent.
+  // All five are optional so existing call sites (KML-only flows) don't
+  // have to touch them; absence simply means no photo popup is shown.
+  photoStorage?: StorageInterface | null
+  photoDir?: DirectoryHandle | null
+  onPhotoInclude?: (markerId: string) => void
+  onPhotoSkip?: (markerId: string) => void
+  onPhotoReject?: (markerId: string) => void
 }>(function MapProviderView(props, ref) {
   const { mapStyle, mapboxAccessToken, geojsonOverlays } = props
 
@@ -75,6 +87,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   const mapRef = useRef<MapRef | null>(null)
   const [isMapLoaded, setIsMapLoaded] = useState(false)
   const [confirmDeleteForId, setConfirmDeleteForId] = useState<string | null>(null)
+  // Phase 5: which photo marker has its popup open. Null = no photo popup.
+  const [activePhotoMarkerId, setActivePhotoMarkerId] = useState<string | null>(null)
   const dragStartLngLatRef = useRef<Map<string, { lng: number, lat: number }>>(new Map())
   const dragMovedPxRef = useRef<Map<string, number>>(new Map())
   // Attach native DnD listeners on the canvas to support custom marker drops
@@ -127,6 +141,42 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       canvas.removeEventListener('drop', onDrop)
     }
   }, [isMapLoaded, props.onMarkerAdd, props.groundMarkerProps])
+
+  // Phase 5 — click capture dot to open photo popup. Mapbox listeners
+  // need a string layer id matching CaptureDotsLayer's. Cursor changes
+  // on hover so users learn the dot is interactive.
+  useEffect(() => {
+    if (!isMapLoaded || !mapRef.current) return
+    const map = mapRef.current.getMap()
+    const onClick = (e: { features?: Array<{ id?: string | number }> }) => {
+      const feature = e.features?.[0]
+      if (!feature) return
+      const id = feature.id
+      if (typeof id !== 'string') return
+      setActivePhotoMarkerId(id)
+    }
+    const onEnter = () => { map.getCanvas().style.cursor = 'pointer' }
+    const onLeave = () => { map.getCanvas().style.cursor = '' }
+    map.on('click', 'photo-capture-dots', onClick as never)
+    map.on('mouseenter', 'photo-capture-dots', onEnter)
+    map.on('mouseleave', 'photo-capture-dots', onLeave)
+    return () => {
+      map.off('click', 'photo-capture-dots', onClick as never)
+      map.off('mouseenter', 'photo-capture-dots', onEnter)
+      map.off('mouseleave', 'photo-capture-dots', onLeave)
+    }
+  }, [isMapLoaded])
+
+  // Close the photo popup if its marker disappears from the layer
+  // (e.g., user picked it via popup → marker promoted to subject pin →
+  // capture-dot layer filters it out; popup should follow).
+  useEffect(() => {
+    if (!activePhotoMarkerId) return
+    const stillCapture = props.markers?.some(m =>
+      m.id === activePhotoMarkerId && m.capturedAt && !m.label && m.flag !== 'pick'
+    )
+    if (!stillCapture) setActivePhotoMarkerId(null)
+  }, [props.markers, activePhotoMarkerId])
 
   const uploadedGeojson = useMemo(() => {
     return geojsonOverlays?.find((o) => o.id === 'uploaded-geojson')?.data
@@ -334,17 +384,18 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           ]}
         </Source>
       ))}
-      {/* Photo-import capture dots (Phase 4 of photo-map-culling).
-          Renders unlabelled photo markers (capturedAt present, no label
-          yet) as a flat GeoJSON layer instead of N <Marker> components —
-          keeps 100+ photo imports cheap. Labelled (picked) photo markers
-          fall through to the individual-<Marker> path below, where they
-          get the same draggable/clickable behaviour as KML markers. */}
+      {/* Photo-import capture dots (Phase 4 + 5 of photo-map-culling).
+          Renders neutral + rejected photo markers (capturedAt present,
+          no label, flag !== 'pick') as a flat GeoJSON layer instead of
+          N <Marker> components — keeps 100+ photo imports cheap. Click
+          on a dot opens the photo popup (Phase 5). Picked photos fall
+          through to the individual-<Marker> path so the user can drag
+          their subject pin. */}
       {props.markers && <CaptureDotsLayer markers={props.markers} />}
-      {/* Interactive markers — KML/click-placed AND labelled photo picks.
-          A photo marker that still has `capturedAt && !label` is filtered
-          out of this loop because it's already on the capture-dots layer. */}
-      {props.markers?.filter(m => !(m.capturedAt && !m.label)).map(m => (
+      {/* Interactive markers — KML/click-placed AND photo picks.
+          A neutral or rejected photo marker (capturedAt && !label &&
+          flag !== 'pick') is on the capture-dots layer; skip here. */}
+      {props.markers?.filter(m => !(m.capturedAt && !m.label && m.flag !== 'pick')).map(m => (
         <React.Fragment key={m.id}>
           <Marker
             longitude={m.lng}
@@ -683,6 +734,47 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           </React.Fragment>
         )
       })}
+      {/* Phase 5 photo-marker popup. Mounted only when a capture dot is
+          clicked AND the parent provides photo storage + handlers. */}
+      {(() => {
+        if (!activePhotoMarkerId) return null
+        if (!props.photoStorage || !props.photoDir) return null
+        if (!props.onPhotoInclude || !props.onPhotoSkip || !props.onPhotoReject) return null
+        const marker = props.markers?.find(m => m.id === activePhotoMarkerId)
+        if (!marker || !marker.capturedAt || !marker.photoId) return null
+        const popupId = activePhotoMarkerId
+        return (
+          <Popup
+            longitude={marker.capturedAt.lng}
+            latitude={marker.capturedAt.lat}
+            anchor="top"
+            closeButton
+            closeOnMove={false}
+            onClose={() => setActivePhotoMarkerId(null)}
+            maxWidth="240px"
+          >
+            <PhotoMarkerPopup
+              photoId={marker.photoId}
+              filename={marker.name}
+              timestamp={marker.capturedAt.timestamp}
+              storage={props.photoStorage}
+              photosDir={props.photoDir}
+              onInclude={() => {
+                props.onPhotoInclude?.(popupId)
+                setActivePhotoMarkerId(null)
+              }}
+              onSkip={() => {
+                props.onPhotoSkip?.(popupId)
+                setActivePhotoMarkerId(null)
+              }}
+              onReject={() => {
+                props.onPhotoReject?.(popupId)
+                setActivePhotoMarkerId(null)
+              }}
+            />
+          </Popup>
+        )
+      })()}
     </MapGL>
   )
 })

@@ -28,10 +28,20 @@ export function CaptureDotsLayer({ markers }: Props) {
         type="circle"
         paint={{
           'circle-radius': 5,
-          // Neutral grey — the user has not yet decided about this photo.
-          // Phase 5 will repaint the dot based on the flag stored in
-          // map-picks.json (ADR-017 denormalization at render time).
-          'circle-color': '#9e9e9e',
+          // Data-driven match on `flag` denormalized at projection time
+          // (see captureFeatures). Picks aren't in this layer at all.
+          'circle-color': [
+            'match',
+            ['get', 'flag'],
+            'reject', '#d32f2f', // red (MUI error.main)
+            '#9e9e9e',            // neutral grey (default)
+          ],
+          'circle-opacity': [
+            'match',
+            ['get', 'flag'],
+            'reject', 0.55, // visibly de-emphasized but not invisible
+            1,
+          ],
           'circle-stroke-width': 1.5,
           'circle-stroke-color': '#ffffff',
         }}

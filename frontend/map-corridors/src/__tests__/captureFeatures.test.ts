@@ -75,11 +75,15 @@ describe('buildCaptureDotFeatures — geometry + properties', () => {
     expect(fc.features[0].geometry.coordinates).toEqual([14.1, 50.1])
   })
 
-  it('writes photoId and filename into the feature properties', () => {
+  it('writes photoId, filename and flag into the feature properties', () => {
     const fc = buildCaptureDotFeatures([
       pm({ photoId: 'pid-abc', name: 'RIMG0169.JPG', capturedAt: { lng: 14, lat: 50 } }),
     ])
-    expect(fc.features[0].properties).toEqual({ photoId: 'pid-abc', name: 'RIMG0169.JPG' })
+    expect(fc.features[0].properties).toEqual({
+      photoId: 'pid-abc',
+      name: 'RIMG0169.JPG',
+      flag: 'neutral',
+    })
   })
 
   it('uses marker.id as the GeoJSON feature id (stable identity for paint expressions)', () => {
@@ -98,5 +102,39 @@ describe('buildCaptureDotFeatures — geometry + properties', () => {
       pm({ photoId: 'pid-1', capturedAt: { lng: 14, lat: 50 } }),
     ])
     expect(fc.features[0].geometry.type).toBe('Point')
+  })
+})
+
+describe('buildCaptureDotFeatures — flag (Phase 5)', () => {
+  it('absent flag denormalizes to "neutral" in properties', () => {
+    const fc = buildCaptureDotFeatures([
+      pm({ photoId: 'pid-1', capturedAt: { lng: 14, lat: 50 } }),
+    ])
+    expect(fc.features[0].properties.flag).toBe('neutral')
+  })
+
+  it('flag="reject" is preserved (red dot via paint expression)', () => {
+    const fc = buildCaptureDotFeatures([
+      pm({ photoId: 'pid-1', flag: 'reject', capturedAt: { lng: 14, lat: 50 } }),
+    ])
+    expect(fc.features).toHaveLength(1)
+    expect(fc.features[0].properties.flag).toBe('reject')
+  })
+
+  it('flag="pick" excludes the marker from the capture-dot layer entirely', () => {
+    // Picks render as a draggable subject pin, even without a label yet.
+    const fc = buildCaptureDotFeatures([
+      pm({ photoId: 'pid-1', flag: 'pick', capturedAt: { lng: 14, lat: 50 } }),
+    ])
+    expect(fc.features).toEqual([])
+  })
+
+  it('mixed flags — keeps neutral + reject, drops pick', () => {
+    const fc = buildCaptureDotFeatures([
+      pm({ id: 'n', photoId: 'pid-n', capturedAt: { lng: 14, lat: 50 } }),
+      pm({ id: 'r', photoId: 'pid-r', flag: 'reject', capturedAt: { lng: 14.1, lat: 50.1 } }),
+      pm({ id: 'p', photoId: 'pid-p', flag: 'pick', capturedAt: { lng: 14.2, lat: 50.2 } }),
+    ])
+    expect(fc.features.map(f => f.id).sort()).toEqual(['n', 'r'])
   })
 })

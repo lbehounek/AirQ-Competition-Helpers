@@ -584,6 +584,36 @@ function App() {
     }
   }, [storage, photosDir, t, persistMarkers])
 
+  // Phase 5 photo-popup action handlers. `flag` lives on PhotoMarker as
+  // an intermediate until Phase 8 moves the source of truth to
+  // map-picks.json — see PhotoMarker type docstring.
+  const setPhotoFlag = useCallback(async (markerId: string, flag: 'pick' | 'reject' | null) => {
+    await persistMarkers((prev) =>
+      prev.map(m => {
+        if (m.id !== markerId) return m
+        if (flag === null) {
+          const { flag: _ignored, ...rest } = m
+          return rest as typeof m
+        }
+        return { ...m, flag }
+      }),
+    )
+  }, [persistMarkers])
+
+  const handlePhotoInclude = useCallback((markerId: string) => {
+    void setPhotoFlag(markerId, 'pick')
+  }, [setPhotoFlag])
+
+  const handlePhotoSkip = useCallback((markerId: string) => {
+    // Skip = explicitly leave the photo neutral. If it was previously
+    // rejected (user revisiting from Phase 7's panel), Skip restores it.
+    void setPhotoFlag(markerId, null)
+  }, [setPhotoFlag])
+
+  const handlePhotoReject = useCallback((markerId: string) => {
+    void setPhotoFlag(markerId, 'reject')
+  }, [setPhotoFlag])
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
     const isMarkerDrag = types.includes('application/x-photo-marker') || types.includes('application/x-ground-marker')
@@ -1072,6 +1102,11 @@ function App() {
               onGroundMarkerTypeChange: handleGroundMarkerTypeChange,
               onGroundMarkerDelete: handleGroundMarkerDelete,
             }}
+            photoStorage={storage}
+            photoDir={photosDir}
+            onPhotoInclude={handlePhotoInclude}
+            onPhotoSkip={handlePhotoSkip}
+            onPhotoReject={handlePhotoReject}
           />
         </Box>
       </Container>

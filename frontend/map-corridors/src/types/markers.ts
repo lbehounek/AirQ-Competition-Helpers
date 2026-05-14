@@ -15,6 +15,10 @@ export {
 export type { PhotoLabel } from '@airq/shared-discipline'
 
 // `lng/lat` is the subject (answer-sheet) location; `capturedAt` is the optional EXIF source. See docs/photo-map-culling/implementation-plan.md Phase 0.
+// `flag` is a Phase-5 intermediate — until Phase 8 (map-picks.json), the
+// flag persists on the marker. Phase 8 makes map-picks.json the source
+// of truth and the marker.flag becomes a render-time projection.
+export type PhotoFlag = 'pick' | 'reject'
 export type PhotoMarker = Readonly<{
   id: string
   lng: number
@@ -28,6 +32,7 @@ export type PhotoMarker = Readonly<{
     timestamp?: string
   }>
   photoId?: string
+  flag?: PhotoFlag
 }>
 
 // Ground marker types — FAI precision flying canvas shapes (12 letters + 14 symbols).
@@ -97,6 +102,8 @@ function isValidCapturedAt(value: unknown): boolean {
   return true
 }
 
+const PHOTO_FLAG_SET: ReadonlySet<string> = new Set<string>(['pick', 'reject'])
+
 export function isPhotoMarker(value: unknown): value is PhotoMarker {
   if (!value || typeof value !== 'object') return false
   const v = value as Record<string, unknown>
@@ -106,7 +113,8 @@ export function isPhotoMarker(value: unknown): value is PhotoMarker {
     typeof v.name === 'string' &&
     (v.label === undefined || (typeof v.label === 'string' && PHOTO_LABEL_SET.has(v.label))) &&
     isValidCapturedAt(v.capturedAt) &&
-    (v.photoId === undefined || (typeof v.photoId === 'string' && v.photoId.length > 0))
+    (v.photoId === undefined || (typeof v.photoId === 'string' && v.photoId.length > 0)) &&
+    (v.flag === undefined || (typeof v.flag === 'string' && PHOTO_FLAG_SET.has(v.flag)))
   )
 }
 
