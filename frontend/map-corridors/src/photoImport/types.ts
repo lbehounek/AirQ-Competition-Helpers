@@ -32,7 +32,7 @@ export interface ImportedPhoto {
   contentHash: string
 }
 
-export type ImportFailureReason = 'heic' | 'corrupt' | 'unsupported'
+export type ImportFailureReason = 'heic' | 'corrupt' | 'unsupported' | 'storage'
 
 export interface ImportFailure {
   filename: string

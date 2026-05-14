@@ -8,7 +8,7 @@
       "streets": "Mapa",
       "satellite": "Satelit"
     },
-    "dropHint": "Přetáhni KML pro načtení",
+    "dropHint": "Přetáhni KML nebo fotky",
     "answerSheet": "Zobrazit answer sheet",
     "dragToPlace": "Přetáhni pro umístění fotky",
     "use1NmAfterSp": "Koridor začíná 1 NM po SP",
@@ -19,6 +19,22 @@
     "printMap": "Tisk mapy",
     "dragToPlaceGround": "Přetáhni pro umístění znaku",
     "backToMenu": "Zpět do hlavního menu"
+  },
+  "photo": {
+    "import": {
+      "progress": "Importuji {{done}} z {{total}} fotek…",
+      "success": "Naimportováno {{count}} fotek",
+      "successOne": "Naimportována 1 fotka",
+      "partial": "Naimportováno {{ok}} z {{total}} — {{failed}} selhalo",
+      "failureHeic": "{{count}} fotek HEIC přeskočeno (nepodporováno)",
+      "failureHeicOne": "1 fotka HEIC přeskočena (nepodporováno)",
+      "failureCorrupt": "{{count}} fotek nelze přečíst",
+      "failureCorruptOne": "1 fotku nelze přečíst",
+      "failureStorage": "{{count}} fotek nelze uložit (úložiště)",
+      "failureStorageOne": "1 fotku nelze uložit (úložiště)",
+      "unsupported": "Nepodporovaný soubor: {{name}}",
+      "noCompetition": "Před importem fotek otevři soutěž z hlavního menu"
+    }
   },
   "groundPopup": {
     "type": "Typ znaku"

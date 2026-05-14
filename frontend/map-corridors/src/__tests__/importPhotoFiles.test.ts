@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Mock } from 'vitest'
 import { importPhotoFiles } from '../photoImport/importPhotoFiles'
 import { extractExif } from '../photoImport/extractExif'

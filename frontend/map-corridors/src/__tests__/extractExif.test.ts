@@ -22,7 +22,10 @@ beforeEach(() => {
 })
 
 function makeFile(bytes: Uint8Array, name = 'photo.jpg', type = 'image/jpeg'): File {
-  return new File([bytes], name, { type })
+  // Cast: `Uint8Array<ArrayBufferLike>` confuses the strict TS lib about
+  // BlobPart assignability when the buffer could be a SharedArrayBuffer.
+  // Runtime is fine — we always allocate fresh ArrayBuffer-backed views.
+  return new File([bytes as BlobPart], name, { type })
 }
 
 // Minimal JPEG: SOI + EOI. extractExif only sniffs first 12 bytes for HEIC,

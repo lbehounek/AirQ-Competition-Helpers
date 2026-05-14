@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 import { buildPreciseCorridorsAndGates, DISCIPLINE_CONFIGS } from './corridors/preciseCorridor'
 import type { Discipline } from './corridors/preciseCorridor'
 
-import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert } from '@mui/material'
+import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert, Snackbar, LinearProgress } from '@mui/material'
 import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -35,6 +35,71 @@ import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
 import { DEFAULT_GROUND_MARKER_TYPE, getLabelsForDiscipline } from './types/markers'
+import { importPhotosToStorage } from './photoImport/importPhotosToStorage'
+import type { ImportFailureReason, ImportFailure } from './photoImport/types'
+
+// File-type routing for the dropzone. KML/GPX → existing corridor
+// parser, JPEG/PNG → photo import pipeline (Phase 3 of photo-map-culling,
+// ADR-021 — implicit routing, no mode toggle). Anything else lands in
+// `unsupported` so the caller can surface a name-bearing toast.
+const SUPPORTED_KML_EXT_RX = /\.(kml|gpx)$/i
+const SUPPORTED_IMAGE_EXT_RX = /\.(jpe?g|png)$/i
+
+function classifyDroppedFiles(files: File[]): {
+  kml: File[]
+  image: File[]
+  unsupported: File[]
+} {
+  const kml: File[] = []
+  const image: File[] = []
+  const unsupported: File[] = []
+  for (const f of files) {
+    if (SUPPORTED_KML_EXT_RX.test(f.name)) {
+      kml.push(f)
+    } else if (SUPPORTED_IMAGE_EXT_RX.test(f.name) || f.type === 'image/jpeg' || f.type === 'image/png') {
+      image.push(f)
+    } else {
+      unsupported.push(f)
+    }
+  }
+  return { kml, image, unsupported }
+}
+
+// Pick the dominant failure category for the result snackbar.
+// HEIC complaints come first because that's the only "you need to do
+// something different" failure — corrupt and storage are operational.
+function summarizeFailures(
+  failed: ImportFailure[],
+  t: (key: string, params?: Record<string, string | number>) => string,
+): { severity: 'error'; text: string } {
+  const counts: Record<ImportFailureReason, number> = {
+    heic: 0, corrupt: 0, unsupported: 0, storage: 0,
+  }
+  for (const f of failed) counts[f.reason]++
+
+  if (counts.heic > 0) {
+    return {
+      severity: 'error',
+      text: counts.heic === 1
+        ? t('photo.import.failureHeicOne')
+        : t('photo.import.failureHeic', { count: counts.heic }),
+    }
+  }
+  if (counts.storage > 0) {
+    return {
+      severity: 'error',
+      text: counts.storage === 1
+        ? t('photo.import.failureStorageOne')
+        : t('photo.import.failureStorage', { count: counts.storage }),
+    }
+  }
+  return {
+    severity: 'error',
+    text: counts.corrupt === 1
+      ? t('photo.import.failureCorruptOne')
+      : t('photo.import.failureCorrupt', { count: counts.corrupt }),
+  }
+}
 
 function App() {
   const { t } = useI18n()
@@ -115,6 +180,8 @@ function App() {
   const {
     session,
     backendAvailable,
+    storage,
+    photosDir,
     setMapStyleId,
     setMarkers: persistMarkers,
     setGroundMarkers: persistGroundMarkers,
@@ -344,6 +411,13 @@ function App() {
   // photo-helper and other apps inherit it on next launch.
   const [importedKmlDir, setImportedKmlDir] = useState<string | null>(null)
 
+  // Photo-import UI state (Phase 3). `importProgress` drives the
+  // LinearProgress bar; null = idle. `snack` is the one user-visible
+  // feedback channel — progress, success/partial summary, unsupported
+  // hints. Severity drives the MUI Alert color.
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
+  const [snack, setSnack] = useState<{ severity: 'success' | 'info' | 'warning' | 'error'; text: string } | null>(null)
+
   // Hydrate from the competition's persisted working dir on mount so that
   // re-opening map-corridors later (without a fresh KML import) still
   // remembers where the user wants files to land.
@@ -440,6 +514,47 @@ function App() {
     }
   }, [session?.geojson, effectiveDiscipline, use1NmAfterSp, effectiveConfig])
 
+  const handlePhotoFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return
+    if (!storage || !photosDir) {
+      setSnack({ severity: 'warning', text: t('photo.import.noCompetition') })
+      return
+    }
+    setImportProgress({ done: 0, total: files.length })
+    try {
+      const result = await importPhotosToStorage(storage, photosDir, files, {
+        onProgress: (done, total) => setImportProgress({ done, total }),
+      })
+      if (result.failed.length === 0) {
+        setSnack({
+          severity: 'success',
+          text: result.ok.length === 1
+            ? t('photo.import.successOne')
+            : t('photo.import.success', { count: result.ok.length }),
+        })
+      } else if (result.ok.length === 0) {
+        setSnack(summarizeFailures(result.failed, t))
+      } else {
+        setSnack({
+          severity: 'warning',
+          text: t('photo.import.partial', {
+            ok: result.ok.length,
+            total: files.length,
+            failed: result.failed.length,
+          }),
+        })
+      }
+    } catch (err) {
+      // importPhotosToStorage shouldn't throw — per-file failures land in
+      // result.failed. A top-level throw means something foundational broke
+      // (storage init, etc.). Surface it generically.
+      console.error('photo import failed:', err)
+      setSnack({ severity: 'error', text: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setImportProgress(null)
+    }
+  }, [storage, photosDir, t])
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
     const isMarkerDrag = types.includes('application/x-photo-marker') || types.includes('application/x-ground-marker')
@@ -477,23 +592,43 @@ function App() {
     } else if (dt.files && dt.files.length) {
       for (let i = 0; i < dt.files.length; i++) dropped.push(dt.files[i])
     }
-    const kmlOrGpx = dropped.filter(f => f.name.toLowerCase().endsWith('.kml') || f.name.toLowerCase().endsWith('.gpx'))
-    if (kmlOrGpx.length) {
-      await onFiles(kmlOrGpx)
+    const { kml, image, unsupported } = classifyDroppedFiles(dropped)
+    if (unsupported.length > 0) {
+      setSnack({
+        severity: 'warning',
+        text: t('photo.import.unsupported', { name: unsupported.map(f => f.name).join(', ') }),
+      })
     }
-  }, [onFiles])
+    // Mixed batches: parse the KML and import photos in parallel. Neither
+    // path blocks the other (ADR-021 implicit routing).
+    const tasks: Promise<unknown>[] = []
+    if (kml.length) tasks.push(onFiles(kml))
+    if (image.length) tasks.push(handlePhotoFiles(image))
+    await Promise.all(tasks)
+  }, [onFiles, handlePhotoFiles, t])
 
   const onClickSelectFile = useCallback(() => {
     fileInputRef.current?.click()
   }, [])
 
   const onFileInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-    await onFiles([files[0]])
+    const fileList = e.target.files
+    if (!fileList || fileList.length === 0) return
+    const selected = Array.from(fileList)
+    const { kml, image, unsupported } = classifyDroppedFiles(selected)
+    if (unsupported.length > 0) {
+      setSnack({
+        severity: 'warning',
+        text: t('photo.import.unsupported', { name: unsupported.map(f => f.name).join(', ') }),
+      })
+    }
+    const tasks: Promise<unknown>[] = []
+    if (kml.length) tasks.push(onFiles(kml))
+    if (image.length) tasks.push(handlePhotoFiles(image))
+    await Promise.all(tasks)
     // allow selecting the same file again later
     e.target.value = ''
-  }, [onFiles])
+  }, [onFiles, handlePhotoFiles, t])
 
   const handleExportKML = useCallback(async () => {
     const originalKmlText = await loadOriginalKmlText()
@@ -799,7 +934,7 @@ function App() {
           '& .MuiFormControlLabel-label': { color: 'white', fontSize: '0.8rem' },
           '& .MuiCheckbox-root': { color: 'rgba(255,255,255,0.7)', '&.Mui-checked': { color: 'white' } },
         }}>
-          <input type="file" ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,application/vnd.google-earth.kml+xml,application/gpx+xml" style={{ display: 'none' }} />
+          <input type="file" multiple ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,.jpg,.jpeg,.png,application/vnd.google-earth.kml+xml,application/gpx+xml,image/jpeg,image/png" style={{ display: 'none' }} />
           <Button variant="contained" size="small" onClick={onClickSelectFile}>{t('app.selectKml')}</Button>
           {(session?.leftSegments || session?.rightSegments || session?.gates) && (
             <Button variant="outlined" size="small" onClick={handleExportKML} startIcon={<Download sx={{ fontSize: 16 }} />}>{t('app.exportKml')}</Button>
@@ -978,6 +1113,33 @@ function App() {
         </Box>
       </DialogContent>
     </Dialog>
+    {/* Phase 3 photo-import UX (docs/photo-map-culling).
+        LinearProgress sits below the controls row during a batch import.
+        Snackbar at top-right shows summary on completion + unsupported
+        hints. Both are non-blocking — user can keep working on the map. */}
+    {importProgress && importProgress.total > 0 && (
+      <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30 }}>
+        <LinearProgress
+          variant="determinate"
+          value={Math.round((importProgress.done / importProgress.total) * 100)}
+        />
+        <Box sx={{ bgcolor: 'primary.main', color: 'white', px: 2, py: 0.5, fontSize: 13 }}>
+          {t('photo.import.progress', { done: importProgress.done, total: importProgress.total })}
+        </Box>
+      </Box>
+    )}
+    <Snackbar
+      open={snack !== null}
+      autoHideDuration={snack?.severity === 'error' ? null : 6000}
+      onClose={() => setSnack(null)}
+      anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+    >
+      {snack ? (
+        <Alert severity={snack.severity} onClose={() => setSnack(null)} sx={{ width: '100%' }}>
+          {snack.text}
+        </Alert>
+      ) : undefined}
+    </Snackbar>
     </>
   )
 }

@@ -132,6 +132,12 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
 
   const storageRef = useRef<StorageInterface | null>(null)
   const sessionDirRef = useRef<DirectoryHandle | null>(null)
+  // Photos directory for the active competition. Resolved alongside the
+  // corridors session dir during init when `competitionId` is provided —
+  // otherwise null. Phase 3 of photo-map-culling uses it as the write
+  // target for imported photo bytes + thumbnails (see ADR-005 storage
+  // layout: `competitions/{compId}/photos/`).
+  const [photosDir, setPhotosDir] = useState<DirectoryHandle | null>(null)
 
   useEffect(() => {
     (async () => {
@@ -156,16 +162,19 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
         let id: string
 
         if (competitionId) {
-          // Scope under competitions/{competitionId}/corridors/
+          // Scope under competitions/{competitionId}/{corridors,photos}/
           id = `corridors-${competitionId}`
           const competitionsDir = await storage.getDirectoryHandle(handles.root, 'competitions', { create: true })
           const compDir = await storage.getDirectoryHandle(competitionsDir, competitionId, { create: true })
           corridorsDir = await storage.getDirectoryHandle(compDir, 'corridors', { create: true })
+          const photos = await storage.getDirectoryHandle(compDir, 'photos', { create: true })
+          setPhotosDir(photos)
         } else {
           // Legacy flat session
           id = loadOrCreateSessionId()
           const sessionsDir = await storage.getDirectoryHandle(handles.root, 'sessions', { create: true })
           corridorsDir = await storage.getDirectoryHandle(sessionsDir, id, { create: true })
+          setPhotosDir(null)
         }
 
         sessionDirRef.current = corridorsDir
@@ -323,6 +332,8 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     sessionId,
     error,
     backendAvailable: storageAvailable,
+    storage: storageRef.current,
+    photosDir,
     // actions
     setMapStyleId,
     setDiscipline,
