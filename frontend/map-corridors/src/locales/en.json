@@ -40,6 +40,12 @@
       "skip": "Skip",
       "reject": "Reject",
       "thumbMissing": "Thumbnail unavailable"
+    },
+    "tray": {
+      "title": "No GPS ({{count}})",
+      "dragHint": "Drag onto the map to place",
+      "expand": "Show no-GPS photos",
+      "collapse": "Hide no-GPS photos"
     }
   },
   "groundPopup": {

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GeoJSON } from 'geojson'
 import type { Discipline } from '../corridors/preciseCorridor'
-import type { PhotoMarker, GroundMarker } from '../types/markers'
-import { sanitizeGroundMarkers, sanitizePhotoMarkers } from '../types/markers'
+import type { NoGpsPhoto, PhotoMarker, GroundMarker } from '../types/markers'
+import { sanitizeGroundMarkers, sanitizeNoGpsPhotos, sanitizePhotoMarkers } from '../types/markers'
 import {
   initStorage,
   isStorageAvailable,
@@ -100,6 +100,11 @@ export type CorridorsSession = {
   // UI data
   markers: readonly PhotoMarker[]
   groundMarkers: readonly GroundMarker[]
+  // Photos imported without EXIF GPS (Phase 6 of photo-map-culling,
+  // ADR-012). Live here as candidate-pool entries until the user drags
+  // one onto the map; on drop, an entry is removed and a PhotoMarker
+  // is appended to `markers` with `flag: 'pick'` at the drop coord.
+  noGpsPhotos: readonly NoGpsPhoto[]
   // Persisted UI state for the no-GPS photo tray (ADR-012). `true` = open,
   // `false` = collapsed. Defaults open on first run + after migration.
   noGpsTrayOpen: boolean
@@ -121,6 +126,7 @@ const defaultSession = (id: string): CorridorsSession => ({
   exactPoints: null,
   markers: [],
   groundMarkers: [],
+  noGpsPhotos: [],
   noGpsTrayOpen: true,
 })
 
@@ -191,6 +197,8 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
           const rawPm = asRec.markers
           const cleanGm = sanitizeGroundMarkers(rawGm)
           const cleanPm = sanitizePhotoMarkers(rawPm)
+          const rawNoGps = asRec.noGpsPhotos
+          const cleanNoGps = sanitizeNoGpsPhotos(rawNoGps)
           if (Array.isArray(rawGm) && cleanGm.length !== rawGm.length) {
             console.warn(`[session] Dropped ${rawGm.length - cleanGm.length} invalid ground marker(s) from persisted session`)
           } else if (rawGm !== undefined && !Array.isArray(rawGm)) {
@@ -213,6 +221,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
             discipline: (asRec.discipline as CorridorsSession['discipline']) || 'rally',
             markers: cleanPm,
             groundMarkers: cleanGm,
+            noGpsPhotos: cleanNoGps,
             noGpsTrayOpen,
           })
         } else {
@@ -282,6 +291,15 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     await persistSession(next)
   }, [session, persistSession])
 
+  // Setter for the no-GPS tray entries. Caller passes an updater (mirrors
+  // setMarkers) so atomic add/remove can read-modify-write in one shot
+  // without losing concurrent edits to siblings on the same session.
+  const setNoGpsPhotos = useCallback(async (updater: (prev: readonly NoGpsPhoto[]) => readonly NoGpsPhoto[]) => {
+    if (!session) return
+    const next: CorridorsSession = { ...session, noGpsPhotos: updater(session.noGpsPhotos || []), version: session.version + 1, updatedAt: new Date().toISOString() }
+    await persistSession(next)
+  }, [session, persistSession])
+
   const saveOriginalKmlText = useCallback(async (text: string | null) => {
     if (!session) return
     const storage = storageRef.current
@@ -340,6 +358,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setUse1NmAfterSp,
     setMarkers,
     setGroundMarkers,
+    setNoGpsPhotos,
     setNoGpsTrayOpen,
     setComputedData,
     saveOriginalKmlText,

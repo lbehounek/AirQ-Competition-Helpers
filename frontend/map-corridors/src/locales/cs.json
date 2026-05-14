@@ -40,6 +40,12 @@
       "skip": "Přeskočit",
       "reject": "Odmítnout",
       "thumbMissing": "Náhled není k dispozici"
+    },
+    "tray": {
+      "title": "Bez GPS ({{count}})",
+      "dragHint": "Přetáhni na mapu pro umístění",
+      "expand": "Zobrazit fotky bez GPS",
+      "collapse": "Skrýt fotky bez GPS"
     }
   },
   "groundPopup": {

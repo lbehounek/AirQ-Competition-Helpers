@@ -3,10 +3,10 @@
 // list panel). Loads its own thumbnail via storage.getPhotoThumb — keeps
 // MapProviderView ignorant of storage.
 
-import { useEffect, useState } from 'react'
 import { Box, Button, CircularProgress, Stack, Typography } from '@mui/material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import { useI18n } from '../contexts/I18nContext'
+import { usePhotoThumbUrl } from './usePhotoThumbUrl'
 
 export interface PhotoMarkerPopupProps {
   photoId: string
@@ -26,35 +26,7 @@ const THUMB_HEIGHT_PX = 150
 export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
   const { t } = useI18n()
   const { photoId, filename, timestamp, storage, photosDir } = props
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null)
-  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing'>('loading')
-
-  useEffect(() => {
-    let cancelled = false
-    let urlToRevoke: string | null = null
-    setLoadState('loading')
-    setThumbUrl(null)
-    void (async () => {
-      try {
-        const blob = await storage.getPhotoThumb(photosDir, photoId)
-        if (cancelled) return
-        if (!blob) {
-          setLoadState('missing')
-          return
-        }
-        const url = URL.createObjectURL(blob)
-        urlToRevoke = url
-        setThumbUrl(url)
-        setLoadState('ready')
-      } catch {
-        if (!cancelled) setLoadState('missing')
-      }
-    })()
-    return () => {
-      cancelled = true
-      if (urlToRevoke) URL.revokeObjectURL(urlToRevoke)
-    }
-  }, [photoId, photosDir, storage])
+  const { url: thumbUrl, state: loadState } = usePhotoThumbUrl(storage, photosDir, photoId)
 
   return (
     <Box sx={{ minWidth: THUMB_WIDTH_PX + 16 }}>

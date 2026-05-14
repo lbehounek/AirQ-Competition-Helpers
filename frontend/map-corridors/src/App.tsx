@@ -37,6 +37,7 @@ import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers
 import { DEFAULT_GROUND_MARKER_TYPE, getLabelsForDiscipline } from './types/markers'
 import { importPhotosToStorage } from './photoImport/importPhotosToStorage'
 import type { ImportFailureReason, ImportFailure } from './photoImport/types'
+import { NoGpsTray } from './components/NoGpsTray'
 
 // File-type routing for the dropzone. KML/GPX → existing corridor
 // parser, JPEG/PNG → photo import pipeline (Phase 3 of photo-map-culling,
@@ -185,6 +186,8 @@ function App() {
     setMapStyleId,
     setMarkers: persistMarkers,
     setGroundMarkers: persistGroundMarkers,
+    setNoGpsPhotos: persistNoGpsPhotos,
+    setNoGpsTrayOpen: persistNoGpsTrayOpen,
     setUse1NmAfterSp,
     setComputedData,
     saveOriginalKmlText,
@@ -525,34 +528,49 @@ function App() {
       const result = await importPhotosToStorage(storage, photosDir, files, {
         onProgress: (done, total) => setImportProgress({ done, total }),
       })
-      // Phase 4: surface imported photos on the map. Each ImportedPhoto
-      // becomes a PhotoMarker with `lng/lat = capturedAt` (subject starts
-      // at capture point per ADR-007) and `photoId` set so the
-      // capture-dots layer can find it. No-GPS photos (capturedAt absent)
-      // land in the markers array too but render via Phase 6's tray.
+      // Phase 4/6: surface imported photos. Photos WITH EXIF GPS become
+      // PhotoMarkers and join the capture-dots layer (Phase 4). Photos
+      // WITHOUT GPS get pushed to noGpsPhotos and surface in the
+      // bottom-left tray (Phase 6, ADR-012); they receive a marker only
+      // once the user drags one onto the map.
       if (result.ok.length > 0) {
-        await persistMarkers((prev) => {
-          const next = [...prev]
-          for (const p of result.ok) {
-            const startLng = p.exif.capturedAt?.lng
-            const startLat = p.exif.capturedAt?.lat
-            if (startLng === undefined || startLat === undefined) continue
-            next.push({
-              id: p.photoId,
-              photoId: p.photoId,
-              lng: startLng,
-              lat: startLat,
-              name: p.file.name,
-              capturedAt: {
-                lng: startLng,
-                lat: startLat,
-                ...(p.exif.capturedAt?.altitude !== undefined ? { altitude: p.exif.capturedAt.altitude } : {}),
+        const withGps = result.ok.filter(p => p.exif.capturedAt !== undefined)
+        const withoutGps = result.ok.filter(p => p.exif.capturedAt === undefined)
+        if (withGps.length > 0) {
+          await persistMarkers((prev) => {
+            const next = [...prev]
+            for (const p of withGps) {
+              const captured = p.exif.capturedAt!
+              next.push({
+                id: p.photoId,
+                photoId: p.photoId,
+                lng: captured.lng,
+                lat: captured.lat,
+                name: p.file.name,
+                capturedAt: {
+                  lng: captured.lng,
+                  lat: captured.lat,
+                  ...(captured.altitude !== undefined ? { altitude: captured.altitude } : {}),
+                  ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
+                },
+              })
+            }
+            return next
+          })
+        }
+        if (withoutGps.length > 0) {
+          await persistNoGpsPhotos((prev) => {
+            const next = [...prev]
+            for (const p of withoutGps) {
+              next.push({
+                photoId: p.photoId,
+                filename: p.file.name,
                 ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
-              },
-            })
-          }
-          return next
-        })
+              })
+            }
+            return next
+          })
+        }
       }
       if (result.failed.length === 0) {
         setSnack({
@@ -582,7 +600,7 @@ function App() {
     } finally {
       setImportProgress(null)
     }
-  }, [storage, photosDir, t, persistMarkers])
+  }, [storage, photosDir, t, persistMarkers, persistNoGpsPhotos])
 
   // Phase 5 photo-popup action handlers. `flag` lives on PhotoMarker as
   // an intermediate until Phase 8 moves the source of truth to
@@ -613,6 +631,29 @@ function App() {
   const handlePhotoReject = useCallback((markerId: string) => {
     void setPhotoFlag(markerId, 'reject')
   }, [setPhotoFlag])
+
+  // Phase 6 — drop-from-tray handler. Atomic: remove the entry from
+  // noGpsPhotos AND push a PhotoMarker. We do both writes back-to-back
+  // (each await persists session.json) — a crash between them would
+  // leave the photo "duplicated" (in both lists). Acceptable risk: on
+  // reload the marker takes precedence visually (tray entry is just a
+  // stale candidate; user can manually delete from tray if needed).
+  const handleNoGpsPhotoPlaced = useCallback(async (photoId: string, lng: number, lat: number) => {
+    if (!session) return
+    const entry = session.noGpsPhotos?.find(p => p.photoId === photoId)
+    if (!entry) return
+    // No `capturedAt` on no-GPS-placed markers — these photos never had
+    // EXIF GPS, so there's no "where the camera was" to draw a ghost from.
+    await persistMarkers((prev) => [...prev, {
+      id: photoId,
+      photoId,
+      lng,
+      lat,
+      name: entry.filename,
+      flag: 'pick',
+    }])
+    await persistNoGpsPhotos((prev) => prev.filter(p => p.photoId !== photoId))
+  }, [session, persistMarkers, persistNoGpsPhotos])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
@@ -1107,6 +1148,15 @@ function App() {
             onPhotoInclude={handlePhotoInclude}
             onPhotoSkip={handlePhotoSkip}
             onPhotoReject={handlePhotoReject}
+            onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}
+          />
+          {/* Phase 6 — no-GPS tray, pinned to bottom-left of the map. */}
+          <NoGpsTray
+            photos={session?.noGpsPhotos ?? []}
+            open={session?.noGpsTrayOpen ?? true}
+            onToggleOpen={() => { void persistNoGpsTrayOpen(!(session?.noGpsTrayOpen ?? true)) }}
+            storage={storage}
+            photosDir={photosDir}
           />
         </Box>
       </Container>

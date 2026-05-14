@@ -11,6 +11,7 @@ import type { PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/ma
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
 import { PhotoMarkerPopup } from '../components/PhotoMarkerPopup'
+import { NO_GPS_PHOTO_DRAG_TYPE } from '../components/NoGpsTray'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
 import {
@@ -79,6 +80,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   onPhotoInclude?: (markerId: string) => void
   onPhotoSkip?: (markerId: string) => void
   onPhotoReject?: (markerId: string) => void
+  // Phase 6 — fires when a no-GPS thumbnail from NoGpsTray is dropped
+  // on the map. Receives the photoId and the unprojected drop coords.
+  onNoGpsPhotoPlaced?: (photoId: string, lng: number, lat: number) => void
 }>(function MapProviderView(props, ref) {
   const { mapStyle, mapboxAccessToken, geojsonOverlays } = props
 
@@ -102,9 +106,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       const types = Array.from(dt.types)
       const wantsPhoto = types.includes('application/x-photo-marker') && !!props.onMarkerAdd
       const wantsGround = types.includes('application/x-ground-marker') && !!props.groundMarkerProps
-      if (wantsPhoto || wantsGround) {
+      const wantsNoGps = types.includes(NO_GPS_PHOTO_DRAG_TYPE) && !!props.onNoGpsPhotoPlaced
+      if (wantsPhoto || wantsGround || wantsNoGps) {
         e.preventDefault()
-        dt.dropEffect = 'copy'
+        dt.dropEffect = wantsNoGps ? 'move' : 'copy'
       }
     }
     const onDrop = (e: DragEvent) => {
@@ -132,6 +137,13 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         e.preventDefault()
         const lngLat = unprojectAt(e.clientX, e.clientY)
         props.groundMarkerProps.onGroundMarkerAdd(lngLat.lng, lngLat.lat)
+      } else if (types.includes(NO_GPS_PHOTO_DRAG_TYPE)) {
+        if (!props.onNoGpsPhotoPlaced) return
+        const photoId = dt.getData(NO_GPS_PHOTO_DRAG_TYPE)
+        if (!photoId) return
+        e.preventDefault()
+        const lngLat = unprojectAt(e.clientX, e.clientY)
+        props.onNoGpsPhotoPlaced(photoId, lngLat.lng, lngLat.lat)
       }
     }
     canvas.addEventListener('dragover', onDragOver)
@@ -140,7 +152,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       canvas.removeEventListener('dragover', onDragOver)
       canvas.removeEventListener('drop', onDrop)
     }
-  }, [isMapLoaded, props.onMarkerAdd, props.groundMarkerProps])
+  }, [isMapLoaded, props.onMarkerAdd, props.groundMarkerProps, props.onNoGpsPhotoPlaced])
 
   // Phase 5 — click capture dot to open photo popup. Mapbox listeners
   // need a string layer id matching CaptureDotsLayer's. Cursor changes

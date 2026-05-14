@@ -3,8 +3,10 @@ import {
   DEFAULT_GROUND_MARKER_TYPE,
   GROUND_MARKER_TYPES,
   isGroundMarker,
+  isNoGpsPhoto,
   isPhotoMarker,
   sanitizeGroundMarkers,
+  sanitizeNoGpsPhotos,
   sanitizePhotoMarkers,
 } from '../types/markers'
 
@@ -207,5 +209,47 @@ describe('sanitizePhotoMarkers — round-trip of EXIF fields', () => {
     expect(result).toHaveLength(1)
     expect(result[0].capturedAt).toBeUndefined()
     expect(result[0].photoId).toBeUndefined()
+  })
+})
+
+// Phase 6 — no-GPS tray entries (ADR-012)
+describe('isNoGpsPhoto', () => {
+  const valid = { photoId: 'pm-abc', filename: 'IMG_0001.JPG' }
+
+  it('accepts a minimal valid entry', () => {
+    expect(isNoGpsPhoto(valid)).toBe(true)
+  })
+
+  it('accepts an entry with a timestamp', () => {
+    expect(isNoGpsPhoto({ ...valid, timestamp: '2024-01-01T00:00:00Z' })).toBe(true)
+  })
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['empty photoId', { ...valid, photoId: '' }],
+    ['non-string photoId', { ...valid, photoId: 42 }],
+    ['missing filename', { photoId: 'pm-abc' }],
+    ['empty filename', { ...valid, filename: '' }],
+    ['non-string timestamp', { ...valid, timestamp: 1234 }],
+  ])('rejects %s', (_label, input) => {
+    expect(isNoGpsPhoto(input)).toBe(false)
+  })
+})
+
+describe('sanitizeNoGpsPhotos', () => {
+  it('returns [] for non-array input', () => {
+    expect(sanitizeNoGpsPhotos(undefined)).toEqual([])
+    expect(sanitizeNoGpsPhotos({})).toEqual([])
+  })
+
+  it('drops invalid entries, keeps valid ones', () => {
+    const result = sanitizeNoGpsPhotos([
+      { photoId: 'a', filename: 'a.jpg' },
+      { photoId: '', filename: 'b.jpg' },   // bad photoId
+      { photoId: 'c', filename: 'c.jpg', timestamp: '2024-01-01T00:00:00Z' },
+      'nope',
+    ])
+    expect(result.map(r => r.photoId)).toEqual(['a', 'c'])
   })
 })

@@ -127,3 +127,30 @@ export function sanitizePhotoMarkers(input: unknown): PhotoMarker[] {
   if (!Array.isArray(input)) return []
   return input.filter(isPhotoMarker)
 }
+
+// Phase 6 of photo-map-culling — no-GPS photo tray entries.
+// These photos live in this list (not in `markers`) until the user drags
+// one onto the map, at which point a `PhotoMarker` is created at the drop
+// coords and the entry leaves this list. ADR-012 — they never receive
+// synthetic coordinates while in the tray.
+export type NoGpsPhoto = Readonly<{
+  photoId: string
+  filename: string
+  /** ISO 8601 EXIF DateTimeOriginal; used for tray sort order. Optional — some cameras don't set it. */
+  timestamp?: string
+}>
+
+export function isNoGpsPhoto(value: unknown): value is NoGpsPhoto {
+  if (!value || typeof value !== 'object') return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.photoId === 'string' && v.photoId.length > 0 &&
+    typeof v.filename === 'string' && v.filename.length > 0 &&
+    (v.timestamp === undefined || typeof v.timestamp === 'string')
+  )
+}
+
+export function sanitizeNoGpsPhotos(input: unknown): NoGpsPhoto[] {
+  if (!Array.isArray(input)) return []
+  return input.filter(isNoGpsPhoto)
+}
