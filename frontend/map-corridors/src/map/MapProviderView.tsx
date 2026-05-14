@@ -32,6 +32,14 @@ type Overlay = {
 
 export type MapProviderViewHandle = {
   captureForPrint: () => Promise<PrintCaptureResult>
+  /**
+   * Phase 7 — fly the map to a photo marker's location. Uses subject
+   * coordinates for picks (`m.lng/lat`) and capture coordinates for
+   * neutral/reject (`m.capturedAt.lng/lat`) so the user lands on the
+   * dot they clicked in the side panel. No-op for unknown id or for
+   * markers without coordinates we can land on.
+   */
+  flyToPhotoMarker: (markerId: string) => void
 }
 
 export const MapProviderView = forwardRef<MapProviderViewHandle, {
@@ -299,7 +307,21 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         markers: printMarkers,
         groundMarkers: printGroundMarkers,
       })
-    }
+    },
+    flyToPhotoMarker(markerId: string) {
+      const marker = props.markers?.find(m => m.id === markerId)
+      if (!marker) return
+      const map = mapRef.current?.getMap()
+      if (!map) return
+      // Picks live at subject coords; neutral/reject live at capture
+      // coords. Both use lng/lat or capturedAt.lng/lat — subject is
+      // initialised to capturedAt on import (ADR-007), so for unmoved
+      // markers either works. Picks may have been dragged.
+      const center: [number, number] = marker.flag === 'pick'
+        ? [marker.lng, marker.lat]
+        : [marker.capturedAt?.lng ?? marker.lng, marker.capturedAt?.lat ?? marker.lat]
+      map.flyTo({ center, zoom: Math.max(map.getZoom(), 14), duration: 700 })
+    },
   }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, mapStyle, mapboxAccessToken])
 
   if (needsToken) {

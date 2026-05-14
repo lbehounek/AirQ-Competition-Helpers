@@ -38,6 +38,7 @@ import { DEFAULT_GROUND_MARKER_TYPE, getLabelsForDiscipline } from './types/mark
 import { importPhotosToStorage } from './photoImport/importPhotosToStorage'
 import type { ImportFailureReason, ImportFailure } from './photoImport/types'
 import { NoGpsTray } from './components/NoGpsTray'
+import { PhotoListPanel } from './components/PhotoListPanel'
 
 // File-type routing for the dropzone. KML/GPX → existing corridor
 // parser, JPEG/PNG → photo import pipeline (Phase 3 of photo-map-culling,
@@ -1157,6 +1158,15 @@ function App() {
             onToggleOpen={() => { void persistNoGpsTrayOpen(!(session?.noGpsTrayOpen ?? true)) }}
             storage={storage}
             photosDir={photosDir}
+          />
+          {/* Phase 7 — right-side photo list panel. Auto-hides when there
+              are no imported photos (KML-only sessions look unchanged). */}
+          <PhotoListPanel
+            markers={markers}
+            noGpsPhotos={session?.noGpsPhotos ?? []}
+            storage={storage}
+            photosDir={photosDir}
+            onMarkerClick={(markerId) => mapRef.current?.flyToPhotoMarker(markerId)}
           />
         </Box>
       </Container>

@@ -46,6 +46,15 @@
       "dragHint": "Drag onto the map to place",
       "expand": "Show no-GPS photos",
       "collapse": "Hide no-GPS photos"
+    },
+    "list": {
+      "title": "Photos",
+      "picks": "Picks",
+      "neutral": "Neutral",
+      "rejects": "Rejects",
+      "noGps": "No GPS",
+      "expand": "Show photo list",
+      "collapse": "Hide photo list"
     }
   },
   "groundPopup": {
