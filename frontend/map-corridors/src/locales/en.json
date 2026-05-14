@@ -54,7 +54,8 @@
       "rejects": "Rejects",
       "noGps": "No GPS",
       "expand": "Show photo list",
-      "collapse": "Hide photo list"
+      "collapse": "Hide photo list",
+      "sendToEditor": "Send to editor ({{count}})"
     }
   },
   "groundPopup": {

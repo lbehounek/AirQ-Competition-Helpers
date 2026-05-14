@@ -609,6 +609,22 @@ function App() {
     }
   }, [storage, photosDir, t, persistMarkers, persistNoGpsPhotos])
 
+  // Phase 9 — Send-to-editor button handler. Flushes the pending
+  // map-picks write FIRST (ADR-009 navigation-flush requirement) so a
+  // toggle made within the 300ms debounce window before the click still
+  // lands on disk before photo-helper opens. Then navigates via the
+  // existing Electron IPC, or falls back to a URL change in web mode.
+  const handleSendToEditor = useCallback(async () => {
+    await flushPendingMapPicks()
+    if (!competitionId) return
+    const api = (window as { electronAPI?: { navigateToApp?: (app: string, id: string) => void } }).electronAPI
+    if (api?.navigateToApp) {
+      api.navigateToApp('photo-helper', competitionId)
+    } else {
+      window.location.href = `/photo-helper/?competitionId=${competitionId}`
+    }
+  }, [competitionId])
+
   // Phase 8a — mirror the in-memory photo markers into map-picks.json
   // every time they change. The writer debounces (300ms) so rapid flag
   // toggles coalesce into one disk write. Pagehide flushes best-effort.
@@ -1191,6 +1207,7 @@ function App() {
             storage={storage}
             photosDir={photosDir}
             onMarkerClick={(markerId) => mapRef.current?.flyToPhotoMarker(markerId)}
+            onSendToEditor={competitionId ? handleSendToEditor : undefined}
           />
         </Box>
       </Container>

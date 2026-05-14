@@ -54,7 +54,8 @@
       "rejects": "Odmítnuté",
       "noGps": "Bez GPS",
       "expand": "Zobrazit seznam fotek",
-      "collapse": "Skrýt seznam fotek"
+      "collapse": "Skrýt seznam fotek",
+      "sendToEditor": "Poslat do editoru ({{count}})"
     }
   },
   "groundPopup": {

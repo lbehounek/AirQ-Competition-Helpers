@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react'
 import {
   Badge,
   Box,
+  Button,
   Collapse,
   IconButton,
   List,
@@ -16,7 +17,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import { ChevronLeft, ChevronRight, ExpandLess, ExpandMore } from '@mui/icons-material'
+import { ChevronLeft, ChevronRight, ExpandLess, ExpandMore, SendOutlined } from '@mui/icons-material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import type { NoGpsPhoto, PhotoMarker } from '../types/markers'
 import { useI18n } from '../contexts/I18nContext'
@@ -33,6 +34,13 @@ export interface PhotoListPanelProps {
   photosDir: DirectoryHandle | null
   /** Called when the user clicks an item whose photo has a placed marker. */
   onMarkerClick: (markerId: string) => void
+  /**
+   * Phase 9 — click handler for the "Send to editor" footer button.
+   * Undefined hides the button entirely (e.g., no active competition).
+   * The handler is expected to flush any pending map-picks write before
+   * navigating, per ADR-009.
+   */
+  onSendToEditor?: () => void | Promise<void>
 }
 
 type GroupKey = 'picks' | 'neutral' | 'rejects' | 'noGps'
@@ -41,7 +49,7 @@ const GROUP_ORDER: readonly GroupKey[] = ['picks', 'neutral', 'rejects', 'noGps'
 
 export function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
-  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick } = props
+  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     picks: false,
@@ -108,6 +116,20 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
               items={renderGroupItems(groups, key, { storage, photosDir, onMarkerClick })}
             />
           ))}
+        </Box>
+      )}
+      {!collapsedPanel && onSendToEditor && (
+        <Box sx={{ p: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Button
+            fullWidth
+            variant="contained"
+            size="small"
+            startIcon={<SendOutlined fontSize="small" />}
+            disabled={groups.picks.length === 0}
+            onClick={() => { void onSendToEditor() }}
+          >
+            {t('photo.list.sendToEditor', { count: groups.picks.length })}
+          </Button>
         </Box>
       )}
     </Paper>
