@@ -247,24 +247,67 @@ type CorridorsSession = {
 
 ## Cross-app handoff
 
-Currently **one-way** (map-corridors → photo-helper):
+**Bidirectional** via two mirror files, one per writer.
 
 ```
-┌────────────────┐  flag change /  ┌──────────────┐ visibilitychange ┌────────────────┐
-│ map-corridors  │  drag / label   │ map-picks    │  ───────────►    │ photo-helper   │
-│ (writes)       │  ───────────►   │ .json        │                  │ candidate tray │
-└────────────────┘   300 ms debounce └────────────┘                  └────────────────┘
+                  ┌──────────────────────┐
+                  │   map-picks.json     │
+   ┌──writes──►   │   (flag, gps, label) │   ──reads──┐
+   │              └──────────────────────┘            │
+┌──┴────────────┐                              ┌──────▼───────────┐
+│ map-corridors │                              │  photo-helper    │
+└──────▲────────┘                              └──────┬───────────┘
+       │       ┌──────────────────────────────┐      │
+       └──reads──   photo-helper-picks.json   ◄──writes──┘
+               │   (label only — newer-wins)  │
+               └──────────────────────────────┘
 ```
 
-- **Writer**: `frontend/map-corridors/src/handoff/mapPicksWriter.ts`.
+| File | Writer | Reader | Owns |
+|---|---|---|---|
+| `map-picks.json` | map-corridors | photo-helper | flag, gps, label (with `labelUpdatedAt`) |
+| `photo-helper-picks.json` | photo-helper | map-corridors | label (with `labelUpdatedAt`) |
+
+Each file has exactly one writer (no write race). Both files include a
+per-photo `labelUpdatedAt` ISO timestamp; the reader applies the remote
+label only when `remote.labelUpdatedAt > local.labelUpdatedAt`. Equal
+timestamps → local wins (deterministic tie-break that protects edits
+in-flight when a `visibilitychange` happens to land on the same ms).
+
+### Writers
+
+- **map-corridors** — `frontend/map-corridors/src/handoff/mapPicksWriter.ts`.
   `scheduleWriteMapPicks` debounces 300 ms; `flushPendingMapPicks` is
-  called by the "Send to editor" button + `pagehide` for best-effort
-  durability before navigation/unload.
-- **Reader**: `frontend/photo-helper/src/hooks/useMapPicksSync.ts`.
-  Mounted from `AppApi.tsx`. Implements upsert + delete semantics per
+  called by the "Send to editor" button + `pagehide`.
+- **photo-helper** — `frontend/photo-helper/src/handoff/editorPicksWriter.ts`.
+  Symmetric: `scheduleWriteEditorPicks` / `flushPendingEditorPicks`.
+  Only `pm-`-prefixed candidates emit entries (photo-helper-originated
+  photos stay in the editor and never propagate).
+
+### Readers
+
+- **photo-helper** — `frontend/photo-helper/src/hooks/useMapPicksSync.ts`.
+  Upsert + delete semantics per
   [ADR-019](./decisions.md#adr-019--usemappickssync-upsert-semantics-delete-propagation).
-  Photo-helper-originated photos (no `pm-` prefix) are NEVER touched
-  by the sync.
+  Label changes propagate via the same newer-wins rule.
+- **map-corridors** — `frontend/map-corridors/src/hooks/useEditorPicksSync.ts`.
+  Read-only-update — never inserts markers (the editor file isn't a
+  source of new photos). Newer-wins label updates only.
+
+### Known limitations
+
+- Cross-app **label-collision prevention** is implicit through the
+  pm- label sync: editor-set labels show up on the map's local markers
+  after the next read, automatically appearing in `usedLabels`. Two
+  CORNER cases aren't covered:
+  - **KML-click-placed markers** in map-corridors that use a letter
+    photo-helper has independently claimed for one of its **non-pm-**
+    photos. Map's local `usedLabels` won't include the editor-only
+    photo's letter. Mitigation: the editor's picker rejects the
+    collision when the user goes to assign.
+  - **Symmetric** of the above. Same reasoning, opposite direction.
+  Both are rare in the typical workflow (most photos flow map → editor).
+  Add `claimedLabels: string[]` to both files if this surfaces in practice.
 
 ---
 
@@ -272,13 +315,7 @@ Currently **one-way** (map-corridors → photo-helper):
 
 Things intentionally NOT done in v1, in rough priority order:
 
-1. **Two-way label sync.** If a user assigns a label in photo-helper's
-   editor it should propagate back to map-corridors (and vice-versa).
-   Today map-corridors is the single label authority. Path forward:
-   photo-helper writes its own `photo-helper-picks.json` mirror file;
-   map-corridors reads it on visibilitychange. Symmetrical to the
-   existing `map-picks.json` flow. ~50 LoC.
-2. **Browser-mode tests for Canvas + EXIF Orientation.** The two
+1. **Browser-mode tests for Canvas + EXIF Orientation.** The two
    `.todo` placeholders in
    `frontend/map-corridors/src/__tests__/generateThumb.test.ts`
    (real-pixel JPEG output + Orientation=6 rotation) require
