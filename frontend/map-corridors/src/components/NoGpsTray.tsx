@@ -113,6 +113,8 @@ function NoGpsTrayThumb(props: {
     <Tooltip title={`${photo.filename} — ${dragHint}`} placement="top" enterDelay={300}>
       <Box
         draggable
+        role="img"
+        aria-label={`${photo.filename}. ${dragHint}.`}
         onDragStart={(e: React.DragEvent) => {
           e.dataTransfer.setData(NO_GPS_PHOTO_DRAG_TYPE, photo.photoId)
           e.dataTransfer.effectAllowed = 'move'
