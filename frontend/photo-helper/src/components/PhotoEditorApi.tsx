@@ -20,7 +20,10 @@ interface PhotoEditorApiProps {
   onUpdate: (canvasState: Photo['canvasState']) => void;
   onRemove: () => void;
   size?: 'grid' | 'large';
-  setKey?: 'set1' | 'set2'; // For PDF generation canvas identification
+  // `'candidates'` is accepted but never reaches PDF generation —
+  // `buildPdfSets` only reads `session.sets.{set1,set2}`. The attribute is
+  // emitted so devtools can tell tray vs slot canvases apart.
+  setKey?: 'set1' | 'set2' | 'candidates'; // For PDF generation canvas identification
   showOriginal?: boolean; // Whether to show original (no effects) or edited version
   circleMode?: boolean; // Whether circle mode is enabled
 }

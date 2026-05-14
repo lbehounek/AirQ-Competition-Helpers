@@ -4,6 +4,21 @@
 
 import type { Photo } from './index';
 
+export type CandidateFlag = 'pick' | 'neutral' | 'reject';
+
+/**
+ * Result of a photo-add operation (`addPhotosToSet`, `addPhotosToTurningPoint`).
+ * Discriminated union so callers can react specifically to smart-drop routing
+ * vs. error paths without sniffing `result === undefined` (PR #62 review IMP-6).
+ *
+ * The hook still calls `setError` on the `err` arm for the global Alert
+ * banner; the returned result is for callers that want to react more
+ * specifically (toast on tray-routing, dialog on over-capacity, etc.).
+ */
+export type AddPhotosResult =
+  | { kind: 'ok'; routedTo: 'slot' | 'tray'; count: number }
+  | { kind: 'err'; reason: 'no-competition' | 'over-capacity' | 'unknown'; message: string };
+
 export interface ApiPhoto {
   id: string;
   sessionId: string; // Required for image cache and API consistency
@@ -12,10 +27,20 @@ export interface ApiPhoto {
   canvasState: Photo['canvasState']; // Inherits from main Photo type
   label: string;
   uploadedAt?: string; // Optional for backward compatibility
+  /**
+   * Triage flag — meaningful only while the photo lives in the candidates
+   * pool. Cleared on promotion to a slot, defaulted to `'pick'` on demotion
+   * from a slot back to the tray. See docs/CANDIDATE_PHOTOS.md.
+   */
+  flag?: CandidateFlag;
 }
 
 export interface ApiPhotoSet {
   title: string;
+  photos: ApiPhoto[];
+}
+
+export interface CandidatePool {
   photos: ApiPhoto[];
 }
 
@@ -30,6 +55,12 @@ export interface ApiPhotoSession {
     set1: ApiPhotoSet;
     set2: ApiPhotoSet;
   };
+  /**
+   * Slotless workspace pool of photos the user is still triaging. Photos here
+   * never appear in the PDF; the export logic in `buildPdfSets` reads `sets`
+   * only. Global (not per-mode) — see docs/CANDIDATE_PHOTOS.md "Data model".
+   */
+  candidates?: CandidatePool;
   // Mode-specific photo storage for separate track/turning point collections
   setsTrack?: {
     set1: ApiPhotoSet;

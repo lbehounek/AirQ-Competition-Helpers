@@ -167,3 +167,48 @@ describe('buildPdfSets — non-mutation guarantee', () => {
     expect(set2).toEqual(frozen2);
   });
 });
+
+// PR #62 review G8: structural regression marker for the
+// "tray photos never reach the printed PDF" invariant. The candidate
+// pool is a *workspace* concept; promoting candidates into the printed
+// PDF would silently put the wrong photos in front of a judge.
+//
+// We pin this at the type level (`PdfSetsInput` has no candidates
+// channel) AND at the behavior level (driving the builder with both
+// containers populated and asserting only slot ids appear in output).
+describe('buildPdfSets — tray-photo leak guard (PR #62 review G8)', () => {
+  it('PdfSetsInput shape contains no `candidates` field', () => {
+    // Structural pin: if a future refactor adds `candidates?: CandidatePool`
+    // to PdfSetsInput, the type assertion below breaks at compile time and
+    // forces a deliberate review (does the PDF really want tray photos?).
+    type RequiredKeys = 'mode' | 'layoutMode' | 'isPrecision' | 'set1' | 'set2' | 'generateLabel';
+    type ActualKeys = keyof import('../utils/buildPdfSets').PdfSetsInput;
+    // Both directions: ActualKeys must be a subset of RequiredKeys (no
+    // extras like 'candidates') AND vice versa (no removals).
+    const _exhaustive1: RequiredKeys extends ActualKeys ? true : false = true;
+    const _exhaustive2: ActualKeys extends RequiredKeys ? true : false = true;
+    void _exhaustive1; void _exhaustive2;
+    expect(true).toBe(true);
+  });
+
+  it('only emits photos that came from set1/set2 — never references a candidate-only id', () => {
+    // Build sets with 3 slot ids and verify the output's photo ids match
+    // the input's set1+set2 ids exactly (no extra ids leaking in).
+    const result = buildPdfSets({
+      mode: 'track',
+      layoutMode: 'landscape',
+      isPrecision: false,
+      set1: makeSet('s1', ['slot-a', 'slot-b']),
+      set2: makeSet('s2', ['slot-c']),
+      generateLabel: letterLabel,
+    });
+
+    const outputIds = [
+      ...result.set1WithLabels.photos.map(p => p.id),
+      ...result.set2WithLabels.photos.map(p => p.id),
+    ];
+    expect(outputIds).toEqual(['slot-a', 'slot-b', 'slot-c']);
+    // Sanity: no candidate-shaped ids materialise.
+    expect(outputIds.every(id => !id.startsWith('cand-'))).toBe(true);
+  });
+});

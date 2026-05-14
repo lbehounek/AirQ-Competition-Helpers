@@ -22,7 +22,8 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  TextField
+  TextField,
+  Snackbar
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -33,10 +34,8 @@ import {
   Warning,
   Home,
   Map,
-  Add as AddIcon,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
-import { DropZone } from './components/DropZone';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
 import { EditableHeading } from './components/EditableHeading';
@@ -50,6 +49,7 @@ import { LayoutModeSelector } from './components/LayoutModeSelector';
 import { CompetitionSelector } from './components/CompetitionSelector';
 import { CreateCompetitionButton } from './components/CreateCompetitionButton';
 import { CleanupModal } from './components/CleanupModal';
+import { CandidateTray } from './components/CandidateTray';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
@@ -61,6 +61,7 @@ import type { Discipline } from './utils/parseDiscipline';
 import { buildPdfSets } from './utils/buildPdfSets';
 import { pickEffectiveLayout } from './utils/pickEffectiveLayout';
 import { deriveSet2FromSet1 } from './utils/autoPrefillSetTitle';
+import { getGridCapacity } from './utils/getGridCapacity';
 import type { ApiPhoto } from './types/api';
 
 function AppApi() {
@@ -94,8 +95,20 @@ function AppApi() {
     performCleanup,
     dismissCleanup,
     updateStorageStats,
-    isDesktopManaged
+    isDesktopManaged,
+    // Candidate pool operations (see docs/CANDIDATE_PHOTOS.md)
+    addPhotosToCandidates,
+    removeCandidate,
+    promoteCandidateToSlot,
+    demoteSlotToCandidate,
+    setCandidateFlag,
+    updateCandidatePhotoState,
+    deleteCandidates,
   } = sessionHookResult;
+
+  // Candidate photos — derived from session for stable rendering. The pool
+  // is optional on older sessions, so default to empty.
+  const candidatePhotos: ApiPhoto[] = session?.candidates?.photos ?? [];
 
   // Session identifiers and storage stats come from the OPFS-backed
   // useCompetitionSystem hook — no network round-trip, so availability is
@@ -144,9 +157,55 @@ function AppApi() {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameText, setRenameText] = useState('');
 
+  // Post-export cleanup dialog (offers to delete unused candidates after a
+  // successful PDF generation). Snapshots BOTH the count AND the specific
+  // candidate ids at export time so adding more candidates between dialog
+  // open and confirm doesn't sweep them away (PR #62 review IMP-4).
+  const [cleanupCandidatesDialog, setCleanupCandidatesDialog] = useState<{ count: number; sizeMB: number; ids: string[] } | null>(null);
+
+  // Snackbar shown when smart-drop routes a slot-targeted batch into the
+  // candidate tray (because the batch exceeded remaining slot capacity).
+  // First dev-test feedback 2026-05-12: the routing was silent and felt
+  // like the photos "disappeared" from the user's perspective.
+  const [dropToast, setDropToast] = useState<{ count: number } | null>(null);
+
+  // Hint snackbar for cross-set slot→slot drags (out of scope in v1 per
+  // docs/CANDIDATE_PHOTOS.md). Previously a silent no-op (PR #62 review I4).
+  const [crossSetHintOpen, setCrossSetHintOpen] = useState(false);
+
+  // Error snackbar for cleanup-dialog failures (PR #62 review IMP-5). The
+  // hook's `deleteCandidates` rethrows on OPFS partial failure (CRIT-3); the
+  // snackbar replaces the previous blocking `alert()` and is i18n-friendly.
+  const [cleanupErrorToast, setCleanupErrorToast] = useState<string | null>(null);
+
+  // Wrapper around the hook's `addPhotosToSet` that surfaces the smart-drop
+  // routing result. Calling sites stay simple — they just pass files + set.
+  // The hook owns error reporting via `setError` → global Alert (PR #62
+  // review IMP-8: dropped dead AppApi try/catch); we just react to the
+  // 'ok'-arm tray-routing for the toast.
+  const handleAddToSet = async (files: File[], setKey: 'set1' | 'set2') => {
+    const result = await addPhotosToSet(files, setKey);
+    if (result?.kind === 'ok' && result.routedTo === 'tray' && result.count > 0) {
+      setDropToast({ count: result.count });
+    }
+  };
+
+  // Initial drop for rally turning-point distributes across set1+set2; on total
+  // overflow the hook routes everything to the candidate tray. Surface the toast
+  // the same way `handleAddToSet` does (PR #62 review I1).
+  const handleInitialTurningPointDrop = async (files: File[]) => {
+    const result = await addPhotosToTurningPoint(files);
+    if (result?.kind === 'ok' && result.routedTo === 'tray' && result.count > 0) {
+      setDropToast({ count: result.count });
+    }
+  };
+
+  // selectedPhoto.setKey === 'candidates' for tray-source photos. Label is
+  // empty in that case (tray photos have no slot index). The modal reuses
+  // the same editor and persistence dispatches to the right hook method.
   const [selectedPhoto, setSelectedPhoto] = useState<{
     photo: ApiPhoto;
-    setKey: 'set1' | 'set2';
+    setKey: 'set1' | 'set2' | 'candidates';
     label: string;
   } | null>(null);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -179,23 +238,15 @@ function AppApi() {
     }
   }, [session?.layoutMode, setLayoutMode]);
 
-  // Precision discipline: slot count follows actual photo count (feedback 2026-04-18
-  // — a 10-slot layout with 9 photos printed an empty 10th tile).
-  //   turning   → always 9 slots (landscape 3×3) — spec is SP + TP1..TP7 + FP
-  //   track     → 10 slots (portrait 2×5) *only when* the user reaches 10 photos;
-  //               otherwise 9-slot landscape so the printed page isn't padded with
-  //               an empty tile. Uploading the 10th photo snaps to portrait.
-  useEffect(() => {
-    if (!isPrecision || !session?.mode) return;
-    const photoCount = session.sets.set1.photos.length;
-    const required: 'portrait' | 'landscape' = (session.mode === 'track' && photoCount === 10)
-      ? 'portrait'
-      : 'landscape';
-    if (layoutMode !== required) {
-      setLayoutMode(required);
-      updateLayoutMode(required);
-    }
-  }, [isPrecision, session?.mode, session?.sets.set1.photos.length, layoutMode, setLayoutMode, updateLayoutMode]);
+  // Precision-track auto-layout switching removed (first dev-test feedback
+  // 2026-05-12): the 9→10 portrait flip is gone. Users pick layout manually
+  // via `LayoutModeSelector`; capacity follows that choice via
+  // `getGridCapacity`. The candidate tray now absorbs any drop that exceeds
+  // the current slot capacity, so a "10th photo" no longer needs a special
+  // path. (Rally turning-point's grid column expand from 3×3 → 5×2 at 10
+  // photos in landscape is left in place — it's not a layout-mode change,
+  // just grid columns within landscape — but can be re-evaluated if it also
+  // feels confusing.)
 
   const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
     const setPhotos = session?.sets[setKey].photos || [];
@@ -226,16 +277,58 @@ function AppApi() {
       }
     }
 
-    setSelectedPhoto({ 
-      photo, 
-      setKey, 
+    setSelectedPhoto({
+      photo,
+      setKey,
       label
     });
   };
 
-  const handlePhotoUpdate = (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => {
-    // Update the backend first
-    updatePhotoState(setKey, photoId, canvasState);
+  // Click handler for tray thumbs — opens the same editor modal, label is
+  // empty because tray photos have no slot index yet.
+  const handleCandidateClick = (photo: ApiPhoto) => {
+    setSelectedPhoto({ photo, setKey: 'candidates', label: '' });
+  };
+
+  // Tray → slot promotion. The hook handles swap-on-occupied semantics and the
+  // capacity clamp for out-of-range indices (PR #62 review C1). Errors are
+  // routed through the hook's internal try/catch → global error banner; no
+  // local try/catch needed (PR #62 review IMP-8 — dead catch was misleading).
+  const handleCandidateDropped = (setKey: 'set1' | 'set2') => async (candidateId: string, slotIndex: number) => {
+    if (!promoteCandidateToSlot) return;
+    await promoteCandidateToSlot(candidateId, setKey, slotIndex);
+  };
+
+  // Slot → tray demotion when a slot photo is dragged onto the tray drop zone.
+  const handleSlotDroppedToTray = async (payload: { setKey: 'set1' | 'set2'; photoId: string }) => {
+    if (!demoteSlotToCandidate) return;
+    await demoteSlotToCandidate(payload.setKey, payload.photoId);
+  };
+
+  // "Send to Set X" from the tray toolbar. If the target set is full, we ask
+  // the hook for a swap with the LAST slot photo by passing `capacity - 1`;
+  // otherwise we append at the next empty index. The hook clamps anyway, but
+  // computing it here keeps the intent explicit at the call site.
+  const handleSendCandidateToSet = async (photoId: string, setKey: 'set1' | 'set2') => {
+    if (!session || !promoteCandidateToSlot) return;
+    const capacity = getGridCapacity(session as any);
+    const slotCount = session.sets[setKey].photos.length;
+    const slotIndex = slotCount < capacity ? slotCount : Math.max(0, capacity - 1);
+    await promoteCandidateToSlot(photoId, setKey, slotIndex);
+  };
+
+  const handlePhotoUpdate = (setKey: 'set1' | 'set2' | 'candidates', photoId: string, canvasState: Partial<ApiPhoto['canvasState']>) => {
+    // Dispatch to the right backend method — slot photos go through
+    // updatePhotoState, candidates through updateCandidatePhotoState. The
+    // explicit `void` prefix marks fire-and-forget intent (PR #62 review
+    // IMP-8) — hook owns its error reporting via `setError`, and we want the
+    // optimistic local state update below to happen synchronously rather
+    // than waiting on persistence.
+    if (setKey === 'candidates') {
+      if (updateCandidatePhotoState) void updateCandidatePhotoState(photoId, canvasState);
+    } else {
+      void updatePhotoState(setKey, photoId, canvasState);
+    }
 
     // Optimistically update selected photo immediately for instant UI feedback
     if (selectedPhoto?.photo.id === photoId) {
@@ -249,12 +342,17 @@ function AppApi() {
     }
   };
 
-  const handlePhotoRemove = (setKey: 'set1' | 'set2', photoId: string) => {
-    removePhoto(setKey, photoId);
-
-    // Close detailed editor if this photo was selected
+  const handlePhotoRemove = (setKey: 'set1' | 'set2' | 'candidates', photoId: string) => {
+    // Close editor optimistically; persistence is fire-and-forget (errors
+    // surface via the global Alert from `setError`). Explicit `void`
+    // documents the intent (PR #62 review IMP-8).
     if (selectedPhoto?.photo.id === photoId) {
       setSelectedPhoto(null);
+    }
+    if (setKey === 'candidates') {
+      if (removeCandidate) void removeCandidate(photoId);
+    } else {
+      void removePhoto(setKey, photoId);
     }
   };
 
@@ -356,6 +454,19 @@ function AppApi() {
       });
 
       await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, effectiveLayout, t, session.mode, currentCompetition?.id);
+
+      // Post-export prompt: offer to clean up unused candidate photos so the
+      // user doesn't accumulate them across competitions. ~3 MB per photo
+      // matches the heuristic in `competitionService.estimateCompetitionSize`.
+      // Snapshot the specific candidate ids so adding more candidates between
+      // dialog open and confirm doesn't sweep them away (PR #62 review IMP-4).
+      if (candidatePhotos.length > 0) {
+        setCleanupCandidatesDialog({
+          count: candidatePhotos.length,
+          sizeMB: Math.round(candidatePhotos.length * 3),
+          ids: candidatePhotos.map((p) => p.id),
+        });
+      }
     } catch (error) {
       // Surface to the user — previously this was a TODO ("Could add user
       // notification here") and a generatePDF render failure produced a
@@ -368,6 +479,37 @@ function AppApi() {
       alert(message);
     }
   };
+
+  const handleCleanupCandidatesConfirm = async () => {
+    const dialog = cleanupCandidatesDialog;
+    if (!dialog || !deleteCandidates) return;
+    try {
+      // Targeted delete using the snapshot ids (PR #62 review IMP-4). The
+      // hook rethrows on OPFS partial failure so the dialog stays open and
+      // the user knows it didn't complete (PR #62 review CRIT-3 — previously
+      // `clearAllCandidates` swallowed failures internally, making the
+      // outer try/catch unreachable dead code).
+      const result = await deleteCandidates(dialog.ids);
+      setCleanupCandidatesDialog(null);
+      // PR #62 review I6: when every snapshot id was promoted to a slot
+      // between dialog-open and confirm, the dialog used to close with a
+      // silent success — the user believed 5 photos of storage were freed
+      // but 0 were. Surface the snapshot-drift via the same Snackbar so
+      // expectations match reality.
+      if (result.deleted === 0 && result.skipped > 0) {
+        setCleanupErrorToast(t('candidates.cleanup.allPromoted', { count: result.skipped }));
+      }
+    } catch (err) {
+      // PR #62 review IMP-5: replaced blocking `alert()` with a Snackbar
+      // consistent with the rest of the candidate-flow UX, and routed
+      // through `t()` so the message picks up the active locale rather than
+      // shipping an English exception message in the Czech UI.
+      console.error('handleCleanupCandidatesConfirm failed:', err);
+      const message = err instanceof Error ? err.message : t('candidates.cleanup.error');
+      setCleanupErrorToast(message);
+    }
+  };
+  const handleCleanupCandidatesDecline = () => setCleanupCandidatesDialog(null);
 
   // Helper: safely apply a setting to all photos with sane defaults
   // applySettingToAll now provided by hook for atomic updates across photos
@@ -613,6 +755,27 @@ function AppApi() {
           </Alert>
         )}
 
+        {/* Candidate tray — slotless pool above the print layout. We render
+            it whenever EITHER candidates exist OR slots have photos. The
+            empty-state branch in CandidateTray itself shows a "drop more
+            here" dropzone — the only entry point for adding files once all
+            slots are full (otherwise the user gets stuck on a maxed-out
+            grid with no dropzone, first dev test 2026-05-12). Stays hidden
+            only on the truly-fresh empty state (no slots, no candidates)
+            so the initial DropZone hero remains unobstructed. */}
+        {(candidatePhotos.length > 0 || stats.totalPhotos > 0) && (
+          <CandidateTray
+            photos={candidatePhotos}
+            onAddFiles={(files) => { if (addPhotosToCandidates) void addPhotosToCandidates(files); }}
+            onPhotoClick={handleCandidateClick}
+            onSetFlag={(photoId, flag) => { if (setCandidateFlag) void setCandidateFlag(photoId, flag); }}
+            onDelete={(photoId) => { if (removeCandidate) void removeCandidate(photoId); }}
+            onSendToSet={handleSendCandidateToSet}
+            onSlotDroppedIn={handleSlotDroppedToTray}
+            hideSet2={isPrecision && session?.mode === 'track'}
+          />
+        )}
+
         {/* Conditional Layout based on mode */}
         {session?.mode === 'turningpoint' ? (
           <TurningPointLayout
@@ -620,17 +783,20 @@ function AppApi() {
             set2={session.sets.set2}
             loading={loading}
             error={error}
-            onFilesDropped={(setKey, files) => addPhotosToSet(files, setKey)}
+            onFilesDropped={(setKey, files) => handleAddToSet(files, setKey)}
             /* Initial Rally drop can span 10-18 photos — distribute across
                both sets instead of overflowing set1 invisibly. Precision stays
                capped at 9 so single-set flow still applies. */
             onInitialFilesDropped={isPrecision
-              ? (files) => addPhotosToSet(files, 'set1')
-              : (files) => addPhotosToTurningPoint(files)}
+              ? (files) => handleAddToSet(files, 'set1')
+              : handleInitialTurningPointDrop}
             onPhotoClick={handlePhotoClick}
             onPhotoUpdate={handlePhotoUpdate}
             onPhotoRemove={handlePhotoRemove}
             onPhotoMove={handlePhotoMove}
+            onCandidateDropped={(setKey, candidateId, slotIndex) =>
+              handleCandidateDropped(setKey)(candidateId, slotIndex)
+            }
             totalPhotoCount={stats.set1Photos + stats.set2Photos}
             isPrecision={isPrecision}
           />
@@ -652,7 +818,7 @@ function AppApi() {
                       </Typography>
                     </Box>
                     <GridSizedDropZone
-                      onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
+                      onFilesDropped={(files) => handleAddToSet(files, 'set1')}
                       setName={t('sets.set1')}
                       // Precision track allows up to 10 regardless of current
                       // layoutMode — a fresh 10-photo drop will switch the
@@ -684,7 +850,9 @@ function AppApi() {
                         onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
                         onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
                         onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
-                        onFilesDropped={(files) => addPhotosToSet(files, 'set1')}
+                        onFilesDropped={(files) => handleAddToSet(files, 'set1')}
+                        onCandidateDropped={handleCandidateDropped('set1')}
+                        onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
                         maxPhotosOverride={isPrecision && session.mode === 'track' ? 10 : undefined}
                       />
                     </Paper>
@@ -704,7 +872,7 @@ function AppApi() {
                       </Typography>
                     </Box>
                     <GridSizedDropZone
-                      onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
+                      onFilesDropped={(files) => handleAddToSet(files, 'set2')}
                       setName={t('sets.set2')}
                       maxPhotos={layoutMode === 'portrait' ? 10 : 9}
                       loading={loading}
@@ -734,7 +902,9 @@ function AppApi() {
                         onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
                         onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
                         onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
-                        onFilesDropped={(files) => addPhotosToSet(files, 'set2')}
+                        onFilesDropped={(files) => handleAddToSet(files, 'set2')}
+                        onCandidateDropped={handleCandidateDropped('set2')}
+                        onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
                       />
                     </Paper>
                   )
@@ -742,49 +912,15 @@ function AppApi() {
               </Box>
             );
 
-            // Precision track mode: user feedback 2026-04-18 — single upload of
-            // up to 10 photos, no second set. Rally keeps the two-set layout.
+            // Precision track mode: single-set layout (no Set 2). The
+            // "Add 10th photo" affordance was removed with the auto-flip
+            // (first dev-test feedback 2026-05-12) — overflow now lands in
+            // the candidate tray, and users flip to portrait themselves
+            // when they want a 10-slot layout.
             if (isPrecision) {
-              // When the user has exactly 9 photos in landscape (3×3), the grid
-              // is full and offers no visible drop target for a 10th photo.
-              // Surface an explicit compact add-one affordance below the grid;
-              // dropping here triggers the layout auto-switch to portrait.
-              const showAddTenth = session?.mode === 'track' && stats.set1Photos === 9;
               return (
                 <Box sx={{ mb: 6 }}>
                   {Set1Component}
-                  {showAddTenth && (
-                    <Box sx={{ mt: 2 }}>
-                      <Paper
-                        elevation={1}
-                        sx={{
-                          p: 2,
-                          borderRadius: 2,
-                          border: '2px dashed',
-                          borderColor: 'primary.light',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: 1,
-                        }}
-                      >
-                        <AddIcon color="primary" />
-                        <Typography variant="body2" color="text.secondary">
-                          {t('upload.addTenthPhoto')}
-                        </Typography>
-                        <Box sx={{ width: '100%' }}>
-                          <DropZone
-                            onFilesDropped={(files) => addPhotosToSet(files.slice(0, 1), 'set1')}
-                            setName={t('upload.addTenthPhoto')}
-                            currentPhotoCount={9}
-                            maxPhotos={10}
-                            loading={loading}
-                            error={null}
-                          />
-                        </Box>
-                      </Paper>
-                    </Box>
-                  )}
                 </Box>
               );
             }
@@ -1159,12 +1295,76 @@ function AppApi() {
           <Button onClick={handleRenameCancel}>
             {t('competition.rename.cancel')}
           </Button>
-          <Button 
+          <Button
             onClick={handleRenameConfirm}
             variant="contained"
             disabled={!renameText.trim() || loading}
           >
             {loading ? t('common.loading') : t('competition.rename.confirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Smart-drop notification — surfaces silent batches routed to the
+          candidate tray so the user doesn't think their photos vanished. */}
+      <Snackbar
+        open={Boolean(dropToast)}
+        autoHideDuration={6000}
+        onClose={() => setDropToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={dropToast ? t('candidates.smartDropToast', { count: dropToast.count }) : ''}
+      />
+
+      {/* Hint when the user tries an unsupported cross-set slot drag (PR #62
+          review I4). The two-step via the tray works; this just tells them. */}
+      <Snackbar
+        open={crossSetHintOpen}
+        autoHideDuration={5000}
+        onClose={() => setCrossSetHintOpen(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={t('candidates.crossSetHint')}
+      />
+
+      {/* Cleanup-dialog failure surface (PR #62 review IMP-5). Replaces a
+          blocking `alert()`; consistent with `dropToast`/`crossSetHint`
+          snackbars elsewhere in this view. */}
+      <Snackbar
+        open={Boolean(cleanupErrorToast)}
+        autoHideDuration={8000}
+        onClose={() => setCleanupErrorToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={cleanupErrorToast ?? ''}
+      />
+
+      {/* Post-export candidate cleanup dialog */}
+      <Dialog
+        open={Boolean(cleanupCandidatesDialog)}
+        onClose={handleCleanupCandidatesDecline}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>{t('candidates.cleanup.title')}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {cleanupCandidatesDialog && t('candidates.cleanup.message', {
+              count: cleanupCandidatesDialog.count,
+              size: cleanupCandidatesDialog.sizeMB,
+            })}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCleanupCandidatesDecline}>
+            {t('candidates.cleanup.keep')}
+          </Button>
+          <Button
+            onClick={handleCleanupCandidatesConfirm}
+            color="error"
+            variant="contained"
+            disabled={loading}
+          >
+            {cleanupCandidatesDialog
+              ? t('candidates.cleanup.delete', { count: cleanupCandidatesDialog.count })
+              : t('candidates.cleanup.delete', { count: 0 })}
           </Button>
         </DialogActions>
       </Dialog>

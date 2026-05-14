@@ -280,6 +280,58 @@ export class CompetitionService {
     }
   }
 
+  /**
+   * Deletion of specific photo files from a competition's `photos/`
+   * directory. Used to reclaim OPFS storage for culled candidate photos —
+   * `saveSessionPhotos` deliberately never prunes (to protect non-active mode
+   * buckets), so per-photo deletes must be explicit (PR #62 review C3).
+   *
+   * Returns `{ failed }` listing ids whose individual delete operation
+   * threw. Callers that surface partial failures to the user (e.g., the
+   * cleanup dialog, see PR #62 review CRIT-3) inspect this list; callers
+   * doing background per-photo cleanup ignore it. A missing competition
+   * directory is treated as success (the files are gone by definition).
+   */
+  async deletePhotosByIds(competitionId: string, photoIds: string[]): Promise<{ failed: string[] }> {
+    if (photoIds.length === 0) return { failed: [] };
+    await this.ensureInitialized();
+    let photosDir: DirectoryHandle;
+    try {
+      const competitionDir = await this.storage!.getDirectoryHandle(
+        this.competitionsDir!,
+        competitionId,
+        { create: false }
+      );
+      photosDir = await this.storage!.getDirectoryHandle(
+        competitionDir,
+        'photos',
+        { create: false }
+      );
+    } catch (err) {
+      // Competition (or its photos/) doesn't exist — treat as already-cleaned.
+      // ONLY `NotFoundError` qualifies; anything else (transient OPFS error,
+      // lock contention from a concurrent tab, quota, permission) must be
+      // reported back to the caller as a partial failure or orphan files
+      // accumulate while the cleanup dialog claims success (PR #62 review I3).
+      const name = (err as { name?: string } | null)?.name;
+      if (name === 'NotFoundError') {
+        return { failed: [] };
+      }
+      console.error(`deletePhotosByIds: cannot open photos dir for ${competitionId}:`, err);
+      return { failed: photoIds };
+    }
+    const failed: string[] = [];
+    for (const id of photoIds) {
+      try {
+        await this.storage!.deletePhotoFile(photosDir, id);
+      } catch (err) {
+        console.warn(`deletePhotosByIds: failed to delete ${id}:`, err);
+        failed.push(id);
+      }
+    }
+    return { failed };
+  }
+
   async deleteCompetition(id: string): Promise<void> {
     await this.ensureInitialized();
 
@@ -507,11 +559,18 @@ export class CompetitionService {
       };
     };
 
+    // Candidate pool uses the same URL-stripping pass. The pool is a flat
+    // `{ photos: [] }` shape so it's not symmetric with `{ set1, set2 }` and
+    // can't share the helper above.
+    const clearCandidateUrls = (pool?: { photos: any[] }) =>
+      pool ? { photos: (pool.photos || []).map((p: any) => ({ ...p, url: '' })) } : undefined;
+
     return {
       ...session,
       sets: clearUrls(session.sets) as any,
       ...(session as any).setsTrack ? { setsTrack: clearUrls((session as any).setsTrack) as any } : {},
-      ...(session as any).setsTurning ? { setsTurning: clearUrls((session as any).setsTurning) as any } : {}
+      ...(session as any).setsTurning ? { setsTurning: clearUrls((session as any).setsTurning) as any } : {},
+      ...(session as any).candidates ? { candidates: clearCandidateUrls((session as any).candidates) as any } : {}
     };
   }
 
@@ -529,6 +588,7 @@ export class CompetitionService {
     const activePhotos = collect(session.sets as any);
     const trackPhotos = collect((session as any).setsTrack);
     const turningPhotos = collect((session as any).setsTurning);
+    const candidatePhotos = ((session as any).candidates?.photos as any[]) || [];
 
     // Deduplicate by id while preserving first occurrence with a blob url if available
     const idToPhoto = new Map<string, any>();
@@ -544,7 +604,7 @@ export class CompetitionService {
       }
     };
 
-    [...activePhotos, ...trackPhotos, ...turningPhotos].forEach(pushPhoto);
+    [...activePhotos, ...trackPhotos, ...turningPhotos, ...candidatePhotos].forEach(pushPhoto);
 
     for (const photo of idToPhoto.values()) {
       if (photo.url && photo.url.startsWith('blob:')) {
@@ -593,6 +653,14 @@ export class CompetitionService {
       };
     };
 
+    // Candidates pool — flat array, not the {set1, set2} shape. Reuses the
+    // same blob-load helper as slot photos. Missing pool stays missing
+    // (older sessions on disk have no candidates field).
+    const loadCandidates = async (pool: { photos: any[] } | undefined) => {
+      if (!pool) return undefined;
+      return { photos: await loadPhotoUrls((pool.photos || []) as any) };
+    };
+
     return {
       ...session,
       sets: {
@@ -606,7 +674,8 @@ export class CompetitionService {
         }
       },
       setsTrack: await loadModeSpecificSets(session.setsTrack),
-      setsTurning: await loadModeSpecificSets(session.setsTurning)
+      setsTurning: await loadModeSpecificSets(session.setsTurning),
+      candidates: await loadCandidates((session as any).candidates)
     };
   }
 }

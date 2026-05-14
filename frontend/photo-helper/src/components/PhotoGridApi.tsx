@@ -11,6 +11,8 @@ import { useLabeling } from '../contexts/LabelingContext';
 import { useI18n } from '../contexts/I18nContext';
 import { useLayoutMode } from '../contexts/LayoutModeContext';
 import { getImageCache } from '../utils/imageCache';
+import { parseDragPayload, serializeDragPayload, DRAG_PAYLOAD_MIME } from '../utils/dragPayload';
+import { dispatchSlotDrop } from '../utils/slotDropDispatch';
 import type { ApiPhoto, ApiPhotoSet } from '../types/api';
 
 interface PhotoGridApiProps {
@@ -21,6 +23,20 @@ interface PhotoGridApiProps {
   onPhotoClick?: (photo: ApiPhoto) => void;
   onFilesDropped?: (files: File[]) => void; // For uploading files to empty slots
   onPhotoMove?: (fromIndex: number, toIndex: number) => void; // For drag-and-drop reordering
+  /**
+   * Candidate-tray → slot promotion handler. Receives the candidate's photo
+   * id and the target slot index. The hook layer handles swap-on-occupied
+   * semantics; the grid just decides where to drop. See
+   * docs/CANDIDATE_PHOTOS.md "Drag/drop interactions".
+   */
+  onCandidateDropped?: (candidateId: string, slotIndex: number) => void;
+  /**
+   * Optional hint hook for the (out-of-scope-in-v1) cross-set slot→slot drag.
+   * Fired when a user drops a slot photo from another set onto this grid.
+   * AppApi uses it to nudge the user toward the tray (PR #62 review I4 —
+   * previously silently ignored).
+   */
+  onCrossSetDropRejected?: () => void;
   labelOffset?: number; // Offset for label sequence (e.g., set2 continues from where set1 left off)
   customLabels?: string[]; // Custom labels to use instead of generated ones (for turning point mode)
   /**
@@ -62,6 +78,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   onPhotoClick,
   onFilesDropped,
   onPhotoMove,
+  onCandidateDropped,
+  onCrossSetDropRejected,
   labelOffset = 0,
   customLabels,
   maxPhotosOverride,
@@ -123,11 +141,27 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
   
   // Drag and drop handlers
-  const handleDragStart = (e: React.DragEvent, index: number) => {
+  //
+  // Two payload channels:
+  //   text/plain                 — legacy in-grid reorder: just the slot index
+  //   application/x-airq-photo   — structured payload for tray↔slot transfers.
+  //                                 See `utils/dragPayload.ts` for the parser
+  //                                 and the strict literal-union check on
+  //                                 setKey (PR #62 review G3 — formerly
+  //                                 duplicated inline in two components).
+  // Slot drags emit both so the tray can recognise the source. The grid only
+  // needs the structured payload on drops that *could* be from the tray.
+  const handleDragStart = (e: React.DragEvent, index: number, photoId: string | undefined) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', index.toString());
-    
+    if (photoId) {
+      e.dataTransfer.setData(
+        DRAG_PAYLOAD_MIME,
+        serializeDragPayload({ kind: 'slot', setKey, index, photoId }),
+      );
+    }
+
     // Create custom drag image (optional - use default for now)
     (e.currentTarget as HTMLElement).style.opacity = '0.5';
   };
@@ -150,12 +184,40 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
   const handleDrop = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
-    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'));
-    
-    if (dragIndex !== dropIndex && onPhotoMove) {
-      onPhotoMove(dragIndex, dropIndex);
+
+    // Dispatch decided by a pure helper (PR #62 review I4) — the component
+    // stays in charge of drag-state resets but no longer holds the branch
+    // logic, which is unit-tested in slotDropDispatch.test.ts.
+    const action = dispatchSlotDrop({
+      payload: parseDragPayload(e.dataTransfer.getData(DRAG_PAYLOAD_MIME)),
+      textPlain: e.dataTransfer.getData('text/plain'),
+      files: Array.from(e.dataTransfer.files),
+      dropIndex,
+      setKey,
+      isValidImageFile,
+    });
+
+    switch (action.kind) {
+      case 'promote':
+        if (onCandidateDropped) onCandidateDropped(action.photoId, action.dropIndex);
+        break;
+      case 'cross-set-rejected':
+        if (onCrossSetDropRejected) onCrossSetDropRejected();
+        break;
+      case 'reorder':
+        if (onPhotoMove) onPhotoMove(action.fromIndex, action.toIndex);
+        break;
+      case 'files':
+        // Native OS file drop on an occupied slot — without this branch the
+        // files vanished from the cursor silently because `e.preventDefault()`
+        // already suppressed the dropzone wrapper. Route to smart-drop so it
+        // sends the batch to the candidate tray.
+        if (onFilesDropped) onFilesDropped(action.files);
+        break;
+      case 'none':
+        break;
     }
-    
+
     setDraggedIndex(null);
     setDragOverIndex(null);
   };
@@ -207,7 +269,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
             <Paper
               elevation={slot.photo ? 2 : 0}
               draggable={slot.photo ? true : false}
-              onDragStart={slot.photo ? (e) => handleDragStart(e, slot.index) : undefined}
+              onDragStart={slot.photo ? (e) => handleDragStart(e, slot.index, slot.photo?.id) : undefined}
               onDragEnd={slot.photo ? handleDragEnd : undefined}
               onDragOver={(e) => handleDragOver(e, slot.index)}
               onDragLeave={handleDragLeave}
