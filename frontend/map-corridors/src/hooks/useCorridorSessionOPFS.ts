@@ -60,6 +60,22 @@ export function resolveMapStyleIdFromPersisted(record: unknown, defaultId: strin
   return defaultId
 }
 
+/**
+ * Resolve `noGpsTrayOpen` for a persisted session. Defaults to `true` for
+ * pre-feature sessions (no field present) so the no-GPS tray starts open
+ * after the user upgrades — they see the new feature surface immediately.
+ * Non-boolean values are logged and ignored. Exported for unit testing.
+ */
+export function resolveNoGpsTrayOpen(record: unknown, defaultValue: boolean): boolean {
+  const asRec = (record && typeof record === 'object') ? record as Record<string, unknown> : {}
+  const raw = asRec.noGpsTrayOpen
+  if (typeof raw === 'boolean') return raw
+  if (raw !== undefined) {
+    console.warn('[session] Persisted noGpsTrayOpen was not a boolean, resetting to default:', raw)
+  }
+  return defaultValue
+}
+
 export type CorridorsSession = {
   id: string
   version: number
@@ -84,6 +100,9 @@ export type CorridorsSession = {
   // UI data
   markers: readonly PhotoMarker[]
   groundMarkers: readonly GroundMarker[]
+  // Persisted UI state for the no-GPS photo tray (ADR-012). `true` = open,
+  // `false` = collapsed. Defaults open on first run + after migration.
+  noGpsTrayOpen: boolean
 }
 
 const defaultSession = (id: string): CorridorsSession => ({
@@ -102,6 +121,7 @@ const defaultSession = (id: string): CorridorsSession => ({
   exactPoints: null,
   markers: [],
   groundMarkers: [],
+  noGpsTrayOpen: true,
 })
 
 export function useCorridorSessionOPFS(competitionId?: string | null) {
@@ -176,6 +196,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
           // new `mapStyleId` field so users don't lose their current pick.
           // Logic extracted to `resolveMapStyleIdFromPersisted` for unit tests.
           const mapStyleId = resolveMapStyleIdFromPersisted(asRec, defaultSession(id).mapStyleId)
+          const noGpsTrayOpen = resolveNoGpsTrayOpen(asRec, defaultSession(id).noGpsTrayOpen)
           setSession({
             ...defaultSession(id),
             ...existing,
@@ -183,6 +204,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
             discipline: (asRec.discipline as CorridorsSession['discipline']) || 'rally',
             markers: cleanPm,
             groundMarkers: cleanGm,
+            noGpsTrayOpen,
           })
         } else {
           const fresh = defaultSession(id)
@@ -245,6 +267,12 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     await persistSession(next)
   }, [session, persistSession])
 
+  const setNoGpsTrayOpen = useCallback(async (open: boolean) => {
+    if (!session) return
+    const next: CorridorsSession = { ...session, noGpsTrayOpen: open, version: session.version + 1, updatedAt: new Date().toISOString() }
+    await persistSession(next)
+  }, [session, persistSession])
+
   const saveOriginalKmlText = useCallback(async (text: string | null) => {
     if (!session) return
     const storage = storageRef.current
@@ -301,6 +329,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setUse1NmAfterSp,
     setMarkers,
     setGroundMarkers,
+    setNoGpsTrayOpen,
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,

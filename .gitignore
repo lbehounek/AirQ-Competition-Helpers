@@ -1,5 +1,7 @@
 # Test photos and documentation
-photos/
+# `/photos/` only at repo root — the photo-map-culling test fixture dir
+# at frontend/map-corridors/test/fixtures/photos/ is legitimately tracked.
+/photos/
 tmp/
 TODO.md
 
