@@ -20,6 +20,24 @@ export type DragPayload =
 
 const SET_KEY_UNION: ReadonlyArray<'set1' | 'set2'> = ['set1', 'set2'];
 
+/**
+ * Slot indices and photo IDs must be sane positive integers. The bound of
+ * 1000 is far above any realistic per-set grid (max is 10) but cheap to
+ * check — rejects NaN, Infinity, negative, float, and absurd values.
+ * Without this guard, a hostile payload with `index: NaN` flows into
+ * array indexing in `candidateTransitions.promoteCandidateToSlot` and
+ * downstream pure helpers, where `>=` / `<` comparisons against NaN
+ * silently fall to the append branch (PR #62 review I5).
+ */
+const MAX_REASONABLE_INDEX = 1000;
+function isValidIndex(n: unknown): n is number {
+  return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n < MAX_REASONABLE_INDEX;
+}
+
+function isNonEmptyString(s: unknown): s is string {
+  return typeof s === 'string' && s.length > 0;
+}
+
 export function parseDragPayload(raw: string | null | undefined): DragPayload | null {
   if (!raw) return null;
   let parsed: unknown;
@@ -35,7 +53,7 @@ export function parseDragPayload(raw: string | null | undefined): DragPayload | 
   if (!parsed || typeof parsed !== 'object') return null;
   const p = parsed as { kind?: unknown; setKey?: unknown; photoId?: unknown; index?: unknown };
 
-  if (p.kind === 'tray' && typeof p.photoId === 'string') {
+  if (p.kind === 'tray' && isNonEmptyString(p.photoId)) {
     return { kind: 'tray', photoId: p.photoId };
   }
 
@@ -45,8 +63,8 @@ export function parseDragPayload(raw: string | null | undefined): DragPayload | 
   // or crashing downstream code (PR #62 review I5).
   if (
     p.kind === 'slot' &&
-    typeof p.photoId === 'string' &&
-    typeof p.index === 'number' &&
+    isNonEmptyString(p.photoId) &&
+    isValidIndex(p.index) &&
     SET_KEY_UNION.includes(p.setKey as 'set1' | 'set2')
   ) {
     return {

@@ -22,7 +22,15 @@ function ensureChildDir(parent: Entry, name: string, create: boolean): Entry {
   if (parent.kind !== 'dir') throw new Error(`Not a directory`);
   let child = parent.children.get(name);
   if (!child) {
-    if (!create) throw new Error(`Directory missing: ${name}`);
+    if (!create) {
+      // Mirror real OPFS: a missing directory looked up with create:false
+      // throws a DOMException with name 'NotFoundError'. PR #62 review I3
+      // depends on this name to distinguish "already cleaned" from a real
+      // transient error.
+      const err = new Error(`Directory missing: ${name}`);
+      err.name = 'NotFoundError';
+      throw err;
+    }
     child = makeDir();
     parent.children.set(name, child);
   }
@@ -376,5 +384,188 @@ describe('useCompetitionSystem — addPhotosToTurningPoint overflow (PR #62 revi
     expect(result.current.session!.candidates!.photos.length).toBe(25);
     expect(result.current.session!.sets.set1.photos.length).toBe(0);
     expect(result.current.session!.sets.set2.photos.length).toBe(0);
+  });
+});
+
+// PR #62 review I1: pre-fix, the rally turning-point dispatcher discarded the
+// AddPhotosResult of each inner addPhotosToSet call and computed count as
+// `result.toSet1.length + result.toSet2.length`. The fix routes the count
+// through the inner result so the outer caller can never claim more than
+// what actually landed. Under the current `distributeRallyDrop` invariants
+// (total cap = 20, set1 filled first then overflow into set2) the inner err
+// / inner-tray branches are unreachable — distribute itself protects them.
+// The test below pins the aggregation contract on the happy path; the err
+// / inner-tray branches are defense-in-depth for future distribute changes.
+describe('useCompetitionSystem — addPhotosToTurningPoint result aggregation (PR #62 review I1)', () => {
+  it('returns r1.count when only set1 fires (distribute toSet2 is empty)', async () => {
+    const result = await setup();
+    await act(async () => { await result.current.updateSessionMode('turningpoint'); });
+
+    // 8 photos: distribute → toSet1=8 (set1Remaining=10), toSet2=0. Only r1
+    // runs; r2 short-circuits to null. The new aggregation must return
+    // r1.count (8) — pre-fix it returned `toSet1.length + toSet2.length`
+    // which happens to also be 8 here, but the code PATH is different and
+    // a future inner clamp could diverge.
+    const files = Array.from({ length: 8 }, (_, i) => makeFile(`f${i}.jpg`));
+    let aggResult: any;
+    await act(async () => {
+      aggResult = await (result.current as any).addPhotosToTurningPoint(files);
+    });
+
+    expect(aggResult.kind).toBe('ok');
+    expect(aggResult.routedTo).toBe('slot');
+    expect(aggResult.count).toBe(8);
+    expect(result.current.session!.sets.set1.photos.length).toBe(8);
+    expect(result.current.session!.sets.set2.photos.length).toBe(0);
+  });
+
+  it('returns r2.count when only set2 fires (set1 pre-filled to cap)', async () => {
+    const result = await setup();
+    await act(async () => { await result.current.updateSessionMode('turningpoint'); });
+    // Pre-fill set1 to its turning-point cap of 10. Distribute then sends
+    // all subsequent files to set2 (set1Remaining=0). r1 short-circuits to
+    // null; r2 carries the count.
+    await act(async () => {
+      await result.current.addPhotosToSet(
+        Array.from({ length: 10 }, (_, i) => makeFile(`pre${i}.jpg`)),
+        'set1',
+      );
+    });
+
+    let aggResult: any;
+    await act(async () => {
+      aggResult = await (result.current as any).addPhotosToTurningPoint(
+        Array.from({ length: 5 }, (_, i) => makeFile(`new${i}.jpg`)),
+      );
+    });
+
+    expect(aggResult.kind).toBe('ok');
+    expect(aggResult.routedTo).toBe('slot');
+    // The critical regression marker: count comes from r2.count via the
+    // new aggregation, not from raw slice lengths.
+    expect(aggResult.count).toBe(5);
+    expect(result.current.session!.sets.set1.photos.length).toBe(10);
+    expect(result.current.session!.sets.set2.photos.length).toBe(5);
+  });
+});
+
+// PR #62 review I2: pre-fix, the addPhotosToSet over-capacity branch
+// hardcoded an English error message — even after the IMP-5 cleanup-dialog
+// localisation, this banner was still English for Czech users. The fix
+// routes through t() with `errors.setOverCapacity`.
+describe('useCompetitionSystem — over-capacity error is localised (PR #62 review I2)', () => {
+  it('returns a localised over-capacity message instead of hardcoded English', async () => {
+    const result = await setup();
+    // Force corruption: set1 already over the 9-slot landscape cap.
+    const session = result.current.currentCompetition!.session;
+    (session.sets.set1.photos as any).push(
+      ...Array.from({ length: 11 }, (_, i) => ({
+        id: `c-${i}`,
+        sessionId: session.id,
+        url: '',
+        filename: 'x',
+        canvasState: {} as any,
+        label: '',
+      })),
+    );
+
+    let errResult: any;
+    await act(async () => {
+      errResult = await result.current.addPhotosToSet([makeFile('z.jpg')], 'set1');
+    });
+
+    expect(errResult.kind).toBe('err');
+    expect(errResult.reason).toBe('over-capacity');
+    // The mock `t()` echoes `key:params-json`. A localised message must
+    // include the key — a hardcoded English string would NOT, so this is
+    // a direct regression guard.
+    expect(errResult.message).toContain('errors.setOverCapacity');
+    expect(errResult.message).toContain('"current":11');
+    expect(errResult.message).toContain('"cap":9');
+  });
+});
+
+// PR #62 review I6: pre-fix, deleteCandidates returned `Promise<void>` and
+// silently no-op'd when `presentIds.length === 0` (every snapshot id was
+// already promoted to a slot before confirm). The post-export cleanup
+// dialog claimed it freed N photos worth of storage when in fact zero
+// were deleted. The fix returns `{ deleted, skipped }` so the dialog can
+// surface "0 of N deleted — moved to slots".
+describe('useCompetitionSystem — deleteCandidates snapshot-drift result (PR #62 review I6)', () => {
+  it('returns { deleted: 0, skipped: N } when all snapshot ids were already promoted', async () => {
+    const result = await setup();
+    await act(async () => {
+      await result.current.addPhotosToCandidates([makeFile('a.jpg'), makeFile('b.jpg')]);
+    });
+    const snapshotIds = result.current.session!.candidates!.photos.map(p => p.id);
+
+    // Simulate the snapshot-drift case: between dialog-open and confirm,
+    // the user promoted both candidates to slots. Each mutation in its own
+    // `act` so React's render-between-mutations gives the second promote
+    // the post-first-promote state — chaining them in one act leaves the
+    // closure-captured `result.current.session` stale.
+    await act(async () => {
+      await result.current.promoteCandidateToSlot(snapshotIds[0], 'set1', 0);
+    });
+    await act(async () => {
+      await result.current.promoteCandidateToSlot(snapshotIds[1], 'set1', 1);
+    });
+    expect(result.current.session!.candidates!.photos.length).toBe(0);
+
+    let returnValue: { deleted: number; skipped: number } | undefined;
+    await act(async () => {
+      returnValue = await (result.current as any).deleteCandidates(snapshotIds);
+    });
+
+    expect(returnValue).toEqual({ deleted: 0, skipped: 2 });
+    // Both photos are still in slots — promotion was NOT undone by the cleanup.
+    expect(result.current.session!.sets.set1.photos.length).toBe(2);
+  });
+
+  it('returns { deleted: N, skipped: 0 } for a full-success cleanup', async () => {
+    const result = await setup();
+    await act(async () => {
+      await result.current.addPhotosToCandidates([makeFile('a.jpg'), makeFile('b.jpg'), makeFile('c.jpg')]);
+    });
+    const ids = result.current.session!.candidates!.photos.map(p => p.id);
+
+    let returnValue: { deleted: number; skipped: number } | undefined;
+    await act(async () => {
+      returnValue = await (result.current as any).deleteCandidates(ids);
+    });
+
+    expect(returnValue).toEqual({ deleted: 3, skipped: 0 });
+    expect(result.current.session!.candidates!.photos.length).toBe(0);
+  });
+
+  it('returns { deleted: 2, skipped: 1 } for a mixed snapshot — 2 still candidates, 1 already promoted', async () => {
+    const result = await setup();
+    await act(async () => {
+      await result.current.addPhotosToCandidates([makeFile('a.jpg'), makeFile('b.jpg'), makeFile('c.jpg')]);
+    });
+    const ids = result.current.session!.candidates!.photos.map(p => p.id);
+
+    // Promote one between snapshot and delete.
+    await act(async () => {
+      await result.current.promoteCandidateToSlot(ids[0], 'set1', 0);
+    });
+
+    let returnValue: { deleted: number; skipped: number } | undefined;
+    await act(async () => {
+      returnValue = await (result.current as any).deleteCandidates(ids);
+    });
+
+    expect(returnValue).toEqual({ deleted: 2, skipped: 1 });
+    expect(result.current.session!.sets.set1.photos.length).toBe(1);
+    expect(result.current.session!.candidates!.photos.length).toBe(0);
+  });
+
+  it('returns { deleted: 0, skipped: 0 } for empty input (degenerate case)', async () => {
+    const result = await setup();
+    let returnValue: { deleted: number; skipped: number } | undefined;
+    await act(async () => {
+      returnValue = await (result.current as any).deleteCandidates([]);
+    });
+    expect(returnValue).toEqual({ deleted: 0, skipped: 0 });
   });
 });

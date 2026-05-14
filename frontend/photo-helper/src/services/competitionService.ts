@@ -309,9 +309,16 @@ export class CompetitionService {
       );
     } catch (err) {
       // Competition (or its photos/) doesn't exist — treat as already-cleaned.
-      // Distinct from per-id failure: this is a no-op, not a partial result.
-      console.warn(`deletePhotosByIds: cannot open photos dir for ${competitionId}:`, err);
-      return { failed: [] };
+      // ONLY `NotFoundError` qualifies; anything else (transient OPFS error,
+      // lock contention from a concurrent tab, quota, permission) must be
+      // reported back to the caller as a partial failure or orphan files
+      // accumulate while the cleanup dialog claims success (PR #62 review I3).
+      const name = (err as { name?: string } | null)?.name;
+      if (name === 'NotFoundError') {
+        return { failed: [] };
+      }
+      console.error(`deletePhotosByIds: cannot open photos dir for ${competitionId}:`, err);
+      return { failed: photoIds };
     }
     const failed: string[] = [];
     for (const id of photoIds) {

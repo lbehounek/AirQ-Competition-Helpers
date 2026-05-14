@@ -133,6 +133,63 @@ describe('serializeDragPayload + parseDragPayload round-trip', () => {
   });
 });
 
+// PR #62 review I5: the original parser accepted any `typeof p.index === 'number'`
+// (so NaN, Infinity, negative, float, 1e20 all passed) and any string photoId
+// (including empty string). Downstream code in candidateTransitions clamps,
+// but defense-in-depth at the parser is cheap and removes a whole class of
+// "hostile or buggy producer" failure modes.
+describe('parseDragPayload — index/photoId bounds-checks (PR #62 review I5)', () => {
+  const slot = (overrides: Record<string, unknown>) =>
+    JSON.stringify({ kind: 'slot', setKey: 'set1', index: 0, photoId: 'p', ...overrides });
+
+  it('rejects slot payload with NaN index', () => {
+    // JSON serialises NaN to null, so we go around JSON.stringify here.
+    const raw = '{"kind":"slot","setKey":"set1","index":NaN,"photoId":"p"}';
+    expect(parseDragPayload(raw)).toBeNull();
+  });
+
+  it('rejects slot payload with Infinity index', () => {
+    const raw = '{"kind":"slot","setKey":"set1","index":Infinity,"photoId":"p"}';
+    expect(parseDragPayload(raw)).toBeNull();
+  });
+
+  it('rejects slot payload with negative index', () => {
+    expect(parseDragPayload(slot({ index: -1 }))).toBeNull();
+    expect(parseDragPayload(slot({ index: -999 }))).toBeNull();
+  });
+
+  it('rejects slot payload with float index', () => {
+    expect(parseDragPayload(slot({ index: 1.5 }))).toBeNull();
+    expect(parseDragPayload(slot({ index: 0.1 }))).toBeNull();
+  });
+
+  it('rejects slot payload with absurdly large index', () => {
+    expect(parseDragPayload(slot({ index: 1000 }))).toBeNull();
+    expect(parseDragPayload(slot({ index: 1e20 }))).toBeNull();
+  });
+
+  it('accepts boundary index values (0 and a realistic max)', () => {
+    expect(parseDragPayload(slot({ index: 0 }))).not.toBeNull();
+    expect(parseDragPayload(slot({ index: 999 }))).not.toBeNull();
+    expect(parseDragPayload(slot({ index: 9 }))).not.toBeNull(); // typical grid slot
+  });
+
+  it('rejects slot payload with empty-string photoId', () => {
+    expect(parseDragPayload(slot({ photoId: '' }))).toBeNull();
+  });
+
+  it('rejects tray payload with empty-string photoId', () => {
+    expect(parseDragPayload(JSON.stringify({ kind: 'tray', photoId: '' }))).toBeNull();
+  });
+
+  it('accepts tray payload with non-empty photoId', () => {
+    expect(parseDragPayload(JSON.stringify({ kind: 'tray', photoId: 'x' }))).toEqual({
+      kind: 'tray',
+      photoId: 'x',
+    });
+  });
+});
+
 describe('DRAG_PAYLOAD_MIME', () => {
   it('is the documented in-app MIME type and is stable across releases', () => {
     // Pinning the literal: changing this MIME breaks the drag contract

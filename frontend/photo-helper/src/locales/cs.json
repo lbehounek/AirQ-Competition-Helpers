@@ -262,6 +262,7 @@
     "noActiveCompetition": "Není zvolena žádná aktivní soutěž, do které by šlo přidat fotografie.",
     "photoSetFull": "Sada {{set}} je plná. Nejprve odeberte fotografii.",
     "photoSetCapacityRemaining": "Sada {{set}} přijme už jen {{count}} dalších fotografií.",
+    "setOverCapacity": "Sada už obsahuje {{current}} fotografií, ale aktuální limit je {{cap}}. Načtěte soutěž znovu nebo nejprve odeberte fotografie, než budete přidávat další.",
     "candidateDeletePartialFailure": "Nepodařilo se smazat {{failed}} z {{total}} kandidátských souborů. Mohou stále zabírat úložiště."
   },
   "common": {
@@ -300,7 +301,8 @@
       "message": "Máte {{count}} kandidátských fotografií, které nejsou v žádné sadě. Smazat je a uvolnit přibližně {{size}} MB úložiště?",
       "keep": "Ponechat kandidáty",
       "delete": "Smazat {{count}} kandidátů",
-      "error": "Smazání kandidátů selhalo. Některé soubory mohou stále zabírat úložiště."
+      "error": "Smazání kandidátů selhalo. Některé soubory mohou stále zabírat úložiště.",
+      "allPromoted": "Žádný z {{count}} kandidátů nebyl smazán — všechny byly před potvrzením přesunuty do sad."
     }
   },
   "pdf": {

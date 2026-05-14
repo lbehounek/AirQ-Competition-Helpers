@@ -30,7 +30,15 @@ function ensureChildDir(parent: Entry, name: string, create: boolean): Entry {
   if (parent.kind !== 'dir') throw new Error(`Not a directory`);
   let child = parent.children.get(name);
   if (!child) {
-    if (!create) throw new Error(`Directory missing: ${name}`);
+    if (!create) {
+      // Mirror real OPFS: a missing directory looked up with create:false
+      // throws a DOMException with name 'NotFoundError'. PR #62 review I3
+      // depends on this name to distinguish "already cleaned" from a real
+      // transient error.
+      const err = new Error(`Directory missing: ${name}`);
+      err.name = 'NotFoundError';
+      throw err;
+    }
     child = makeDir();
     parent.children.set(name, child);
   }
@@ -418,5 +426,49 @@ describe('competitionService — candidate pool roundtrip', () => {
 
     const result = await competitionService.deletePhotosByIds(created.id, ['keep', 'boom']);
     expect(result.failed).toEqual(['boom']);
+  });
+
+  // PR #62 review I3: pre-fix, ANY error opening the competition / photos dir
+  // was conflated with "doesn't exist" and the caller saw `{ failed: [] }`
+  // — orphan OPFS files accumulated silently while the cleanup dialog
+  // claimed success. The fix narrows the success-treated path to errors
+  // whose `name === 'NotFoundError'` (real OPFS semantics) and reports any
+  // other error as a partial failure with ALL ids in `failed`.
+  it('deletePhotosByIds reports all ids as failed when the dir lookup throws a non-NotFoundError', async () => {
+    const { competitionService } = await import('../services/competitionService');
+    const created = await competitionService.createCompetition('Boom', makeSession({ candidates: [makePhoto('a')] }));
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Inject a transient error from the dir lookup. This is what OPFS would
+    // throw under lock contention or quota issues — NOT 'NotFoundError'.
+    const original = storageMock.getDirectoryHandle.bind(storageMock);
+    storageMock.getDirectoryHandle = (async (parent, name, options) => {
+      if (name === 'photos') {
+        // Lock contention from another tab — real OPFS surfaces this as
+        // 'InvalidStateError' or 'NoModificationAllowedError', not
+        // 'NotFoundError'. The fix MUST treat it as a failure.
+        const e = new Error('simulated transient OPFS error');
+        e.name = 'InvalidStateError';
+        throw e;
+      }
+      return original(parent, name, options);
+    }) as typeof storageMock.getDirectoryHandle;
+
+    const result = await competitionService.deletePhotosByIds(created.id, ['a', 'b', 'c']);
+    expect(result.failed).toEqual(['a', 'b', 'c']);
+    // The fix swapped console.warn for console.error on the real-failure
+    // branch so it's visible in production logs at the right severity.
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it('deletePhotosByIds treats NotFoundError as already-cleaned (returns empty failed)', async () => {
+    const { competitionService } = await import('../services/competitionService');
+    // Genuine "competition gone": the mock InMemoryStorage throws
+    // NotFoundError when getDirectoryHandle hits a non-existent name with
+    // create:false. PR #62 review I3 keeps this as the ONLY error type
+    // that's treated as success.
+    const result = await competitionService.deletePhotosByIds('comp-truly-gone', ['x', 'y']);
+    expect(result).toEqual({ failed: [] });
   });
 });

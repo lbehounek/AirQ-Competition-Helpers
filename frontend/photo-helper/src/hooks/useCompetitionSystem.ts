@@ -79,8 +79,14 @@ export interface UseCompetitionSystemResult {
    * (e.g. the post-export cleanup dialog) can keep their UI open and surface
    * the failure. Snapshot-id targeted variant of `clearAllCandidates`
    * (PR #62 review CRIT-3, IMP-4).
+   *
+   * Returns `{ deleted, skipped }` so callers can distinguish a real cleanup
+   * from snapshot-drift: when every snapshot id was promoted to a slot
+   * between dialog-open and confirm, `deleted === 0 && skipped === N` and
+   * the dialog should tell the user instead of claiming success silently
+   * (PR #62 review I6).
    */
-  deleteCandidates: (photoIds: string[]) => Promise<void>;
+  deleteCandidates: (photoIds: string[]) => Promise<{ deleted: number; skipped: number }>;
   clearAllCandidates: () => Promise<void>;
   
   // Cleanup & storage
@@ -577,7 +583,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // tray anyway (remaining = 0), but surfacing the corruption explicitly
     // lets the user know to clean up.
     if (currentSlotCount > slotCapacity) {
-      const message = `This set already has ${currentSlotCount} photos but the cap is now ${slotCapacity}. Please reload the competition or remove photos before adding more.`;
+      // PR #62 review I2: localised; was hardcoded English even after the
+      // IMP-5 cleanup-dialog fix, so Czech UI users hit an English banner.
+      const message = t('errors.setOverCapacity', { current: currentSlotCount, cap: slotCapacity });
       setError(message);
       return { kind: 'err', reason: 'over-capacity', message };
     }
@@ -770,8 +778,8 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
    * single-id path remains best-effort (warning + swallow) because it's
    * invoked from per-click UI where a per-failure modal would be hostile.
    */
-  const deleteCandidates = useCallback(async (photoIds: string[]) => {
-    if (photoIds.length === 0) return;
+  const deleteCandidates = useCallback(async (photoIds: string[]): Promise<{ deleted: number; skipped: number }> => {
+    if (photoIds.length === 0) return { deleted: 0, skipped: 0 };
     const compId = currentCompetition?.id;
     const idsSet = new Set(photoIds);
     // Filter to ids that are STILL in the candidate pool — protects against
@@ -781,7 +789,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     const presentIds = (currentCompetition?.session.candidates?.photos ?? [])
       .filter(p => idsSet.has(p.id))
       .map(p => p.id);
-    if (presentIds.length === 0) return;
+    // PR #62 review I6: `presentIds.length === 0` was previously a silent
+    // no-op — the cleanup dialog closed with no feedback even though 0 of
+    // N requested photos were deleted. Surface the snapshot-drift count.
+    if (presentIds.length === 0) return { deleted: 0, skipped: photoIds.length };
     let safeIds: string[] = [];
     await updateCurrentCompetition(session => {
       let next = session;
@@ -807,6 +818,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         );
       }
     }
+    return {
+      deleted: presentIds.length,
+      skipped: photoIds.length - presentIds.length,
+    };
   }, [updateCurrentCompetition, currentCompetition, t]);
 
   const clearAllCandidates = useCallback(async () => {
@@ -1228,7 +1243,8 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         // `setError`. Silently dropping 10–18 files because the session is
         // transiently null (initial load, switch-competition in flight) is
         // the exact silent-failure pattern this PR set out to eliminate.
-        const message = 'No active competition. Create or select one before adding photos.';
+        // PR #62 review I2: localised; was hardcoded English.
+        const message = t('errors.noActiveCompetition');
         setError(message);
         return { kind: 'err', reason: 'no-competition', message };
       }
@@ -1245,9 +1261,23 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         await addPhotosToCandidates(files);
         return { kind: 'ok', routedTo: 'tray', count: files.length };
       }
-      if (result.toSet1.length) await addPhotosToSet(result.toSet1, 'set1');
-      if (result.toSet2.length) await addPhotosToSet(result.toSet2, 'set2');
-      return { kind: 'ok', routedTo: 'slot', count: result.toSet1.length + result.toSet2.length };
+      // Inspect inner results so we don't claim `routedTo: 'slot', count: N`
+      // when an inner `addPhotosToSet` actually hit its over-capacity guard
+      // (PR #62 review I1). Previously the discarded inner err meant the
+      // outer caller's smart-drop toast never fired and the user had no
+      // map back from "set1 failed silently, set2 took 8 of 18".
+      const r1 = result.toSet1.length ? await addPhotosToSet(result.toSet1, 'set1') : null;
+      const r2 = result.toSet2.length ? await addPhotosToSet(result.toSet2, 'set2') : null;
+      if (r1?.kind === 'err') return r1;
+      if (r2?.kind === 'err') return r2;
+      const added = (r1?.kind === 'ok' ? r1.count : 0) + (r2?.kind === 'ok' ? r2.count : 0);
+      const r1Tray = r1?.kind === 'ok' && r1.routedTo === 'tray';
+      const r2Tray = r2?.kind === 'ok' && r2.routedTo === 'tray';
+      // If either half overflowed into the tray, the outer caller needs to
+      // know so it can surface the smart-drop toast. Only report 'slot' when
+      // BOTH halves landed in slots.
+      const routedTo: 'slot' | 'tray' = r1Tray || r2Tray ? 'tray' : 'slot';
+      return { kind: 'ok', routedTo, count: added };
     },
     refreshSession: (async () => {}) as any,
     applySettingToAll,

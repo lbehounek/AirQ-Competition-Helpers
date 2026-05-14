@@ -12,6 +12,7 @@ import { useI18n } from '../contexts/I18nContext';
 import { useLayoutMode } from '../contexts/LayoutModeContext';
 import { getImageCache } from '../utils/imageCache';
 import { parseDragPayload, serializeDragPayload, DRAG_PAYLOAD_MIME } from '../utils/dragPayload';
+import { dispatchSlotDrop } from '../utils/slotDropDispatch';
 import type { ApiPhoto, ApiPhotoSet } from '../types/api';
 
 interface PhotoGridApiProps {
@@ -184,31 +185,37 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   const handleDrop = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
 
-    // Check structured payload first — a tray photo dropping in promotes;
-    // a slot photo dropping in is the existing reorder flow.
-    const payload = parseDragPayload(e.dataTransfer.getData(DRAG_PAYLOAD_MIME));
-    if (payload) {
-      if (payload.kind === 'tray' && onCandidateDropped) {
-        onCandidateDropped(payload.photoId, dropIndex);
-        setDraggedIndex(null);
-        setDragOverIndex(null);
-        return;
-      }
-      if (payload.kind === 'slot' && payload.setKey !== setKey) {
-        // Cross-set drops aren't supported in v1 (two-step via tray works).
-        // Surface the rejection so the user knows what happened (PR #62
-        // review I4 — previously silently ignored).
-        if (onCrossSetDropRejected) onCrossSetDropRejected();
-        setDraggedIndex(null);
-        setDragOverIndex(null);
-        return;
-      }
-    }
+    // Dispatch decided by a pure helper (PR #62 review I4) — the component
+    // stays in charge of drag-state resets but no longer holds the branch
+    // logic, which is unit-tested in slotDropDispatch.test.ts.
+    const action = dispatchSlotDrop({
+      payload: parseDragPayload(e.dataTransfer.getData(DRAG_PAYLOAD_MIME)),
+      textPlain: e.dataTransfer.getData('text/plain'),
+      files: Array.from(e.dataTransfer.files),
+      dropIndex,
+      setKey,
+      isValidImageFile,
+    });
 
-    // Legacy in-grid reorder.
-    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
-    if (Number.isFinite(dragIndex) && dragIndex !== dropIndex && onPhotoMove) {
-      onPhotoMove(dragIndex, dropIndex);
+    switch (action.kind) {
+      case 'promote':
+        if (onCandidateDropped) onCandidateDropped(action.photoId, action.dropIndex);
+        break;
+      case 'cross-set-rejected':
+        if (onCrossSetDropRejected) onCrossSetDropRejected();
+        break;
+      case 'reorder':
+        if (onPhotoMove) onPhotoMove(action.fromIndex, action.toIndex);
+        break;
+      case 'files':
+        // Native OS file drop on an occupied slot — without this branch the
+        // files vanished from the cursor silently because `e.preventDefault()`
+        // already suppressed the dropzone wrapper. Route to smart-drop so it
+        // sends the batch to the candidate tray.
+        if (onFilesDropped) onFilesDropped(action.files);
+        break;
+      case 'none':
+        break;
     }
 
     setDraggedIndex(null);

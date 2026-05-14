@@ -489,8 +489,16 @@ function AppApi() {
       // the user knows it didn't complete (PR #62 review CRIT-3 — previously
       // `clearAllCandidates` swallowed failures internally, making the
       // outer try/catch unreachable dead code).
-      await deleteCandidates(dialog.ids);
+      const result = await deleteCandidates(dialog.ids);
       setCleanupCandidatesDialog(null);
+      // PR #62 review I6: when every snapshot id was promoted to a slot
+      // between dialog-open and confirm, the dialog used to close with a
+      // silent success — the user believed 5 photos of storage were freed
+      // but 0 were. Surface the snapshot-drift via the same Snackbar so
+      // expectations match reality.
+      if (result.deleted === 0 && result.skipped > 0) {
+        setCleanupErrorToast(t('candidates.cleanup.allPromoted', { count: result.skipped }));
+      }
     } catch (err) {
       // PR #62 review IMP-5: replaced blocking `alert()` with a Snackbar
       // consistent with the rest of the candidate-flow UX, and routed
