@@ -27,6 +27,9 @@ export interface ImportedPhoto {
   file: File
   thumbnail: Blob
   exif: ExifData
+  // SHA-1 hex of the file bytes — used by importPhotoFiles for re-import
+  // dedup per ADR-020. Computed in parallel with EXIF + thumb generation.
+  contentHash: string
 }
 
 export type ImportFailureReason = 'heic' | 'corrupt' | 'unsupported'
