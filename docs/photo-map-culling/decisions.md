@@ -22,8 +22,9 @@ wiring, a new launcher tile, a new icon, and a new build target.
 
 **Options.**
 
-1. **Extend `map-corridors`** with a new "Photo source" mode. Single mode
-   toggle in the existing UI.
+1. **Extend `map-corridors`** so its dropzone and marker layer accept
+   both KML/GPX (corridor) and JPEG/PNG (photos), side by side in the
+   same view (see [ADR-021](#adr-021--implicit-dropzone-routing-no-mode-toggle)).
 2. **Extend `photo-helper`** with a map tab. Pulls MapLibre into a canvas
    editor that today has zero map dependencies.
 3. **New sub-app** `photo-scout` (or similar). Standalone Vite package +
@@ -36,7 +37,8 @@ wiring, a new launcher tile, a new icon, and a new build target.
 - map-corridors becomes "the map app", not strictly "the corridor app". The
   user-facing label `Photo Placement` / `Umístění fotek` already fits both
   flows (see [ADR-010](#adr-010-no-rename-photo-placement--umístění-fotek-stays)).
-- A new `Photo source` mode toggle ships in the map-corridors header.
+- The dropzone, marker layers, and side panel all support photo inputs
+  alongside the existing corridor inputs — no mode toggle ([ADR-021](#adr-021--implicit-dropzone-routing-no-mode-toggle)).
 - The internal package name `@airq/map-corridors` is **not** renamed —
   doing so would touch every workspace dependency, the desktop launcher's
   protocol handler, and the build pipeline for ~zero user benefit.
@@ -46,7 +48,7 @@ wiring, a new launcher tile, a new icon, and a new build target.
 
 ## ADR-002 — Explicit mode toggle
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-021](#adr-021--implicit-dropzone-routing-no-mode-toggle)
 
 **Context.** The dropzone needs to accept either KML/GPX (corridor mode) or
 JPEG/PNG (photo mode). It could auto-route by file MIME type silently, or
@@ -60,15 +62,11 @@ expose an explicit mode toggle.
    map header. The toggle disambiguates UX (panels, tooltips, defaults) that
    depend on which source the user is working with.
 
-**Decision.** Option 2 for v1.
+**Decision.** Option 2 for v1. — **Superseded.** See ADR-021 — the user wants
+corridor and photo to work together without switching, which makes the toggle
+a friction point rather than a clarification.
 
-**Consequences.**
-
-- One chip pair in the map header: `Corridor` / `Photo`.
-- The right-side panel content varies by mode (photo list in photo mode;
-  nothing or corridor info in corridor mode).
-- Toggle state persists in the corridor session JSON.
-- v2 may revisit auto-routing once we see which mode dominates.
+**Consequences.** (no longer in effect)
 
 ---
 
@@ -293,8 +291,8 @@ draggable subject pin start?
 
 **Status:** Accepted
 
-**Context.** Should photo mode be enabled only for Rally, or both Rally and
-Precision?
+**Context.** Should photo culling be enabled only for Rally, or both Rally
+and Precision?
 
 **Decision.** Both. Label generation is already discipline-aware
 (`@airq/shared-discipline`); reuse it as-is.
@@ -760,6 +758,59 @@ deduplication on it.
   fully overlapped with EXIF + thumb work.
 - The toast offers an "Import as duplicate anyway" override for the
   edge case where the same content is needed twice (rare).
+
+---
+
+## ADR-021 — Implicit dropzone routing (no mode toggle)
+
+**Status:** Accepted (supersedes [ADR-002](#adr-002--explicit-mode-toggle))
+
+**Context.** ADR-002 introduced an explicit `Corridor / Photo` mode toggle.
+On reflection, the toggle conflicts with the actual user mental model:
+corridor checking and photo culling are part of one workflow ("place
+markers inside the corridor"), not two separate apps inside the same app.
+Forcing the user to pick a mode before they can drop a file is friction
+without information gain — the file extension already disambiguates.
+
+The data model in [ADR-003](#adr-003--photomarker-keeps-single-canonical-position--optional-capturedat)
+and the simultaneous-rendering criterion in [US-9](./user-stories.md#us-9--corridor-and-photo-work-coexist-on-one-map)
+already say corridor markers and EXIF-derived photo markers coexist on the
+same `markers[]` array. The toggle adds nothing to that coexistence; it
+only gates which dropzone handler runs on the next drop.
+
+**Options.**
+
+1. **Implicit routing** — single dropzone accepts everything; file type
+   determines which pipeline runs. No mode UI.
+2. **Keep the toggle** (ADR-002 as-is).
+3. **Auto-select toggle by recent activity** — toggle exists but switches
+   itself based on the last dropped file type.
+
+**Decision.** Option 1.
+
+**Consequences.**
+
+- No `Corridor / Photo` chip in the map header.
+- No `sourceMode: 'corridor' | 'photo'` field on `CorridorsSession`. No
+  `setSourceMode` setter.
+- The dropzone accepts both `.kml`/`.gpx` and `.jpg`/`.jpeg`/`.png`.
+  Routing happens after drop, by file extension (with MIME-type fallback
+  for safety). Mixed-batch drops are supported — KMLs go to the corridor
+  parser, JPEGs to `importPhotoFiles`.
+- The photo list side panel appears when there is ≥ 1 imported photo, and
+  hides when there are none. Corridor-related controls stay always-visible
+  (they're already part of map-corridors' baseline UI). No conditional
+  panel toggling based on a mode.
+- The HEIC reject error toast ([ADR-006](#adr-006--no-heic-support-in-v1))
+  fires on drop regardless of any prior file activity.
+- Wrong-file-type messaging changes: instead of "KML in photo mode, switch
+  sources" (a mode-aware message), it's just "Unsupported file: foo.bin"
+  for genuinely unsupported types — KML in any state is welcome, JPEG in
+  any state is welcome.
+- One fewer commit in Phase 3 (no toggle component); the photo dropzone
+  routing folds into the existing dropzone handler.
+- `noGpsTrayOpen` is unaffected — its visibility is data-driven (open iff
+  the no-GPS bucket is non-empty by default), not mode-driven.
 
 ---
 

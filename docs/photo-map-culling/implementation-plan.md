@@ -107,11 +107,11 @@ change.
   the default `pnpm test` so CI is not forced to install a Chromium
   download. Pin exact versions if/when adopted.
 - `frontend/map-corridors/src/hooks/useCorridorSessionOPFS.ts` — extend
-  `CorridorsSession` with `sourceMode: 'corridor' | 'photo'` (default
-  `'corridor'`) and `noGpsTrayOpen: boolean` (default `true`). Expose
-  `setSourceMode` and `setNoGpsTrayOpen` setters from the hook,
-  mirroring the existing `setMarkers` pattern. **Note on the existing
-  `version` field**: it is a per-mutation write counter
+  `CorridorsSession` with `noGpsTrayOpen: boolean` (default `true`).
+  Expose `setNoGpsTrayOpen` setter from the hook, mirroring the existing
+  `setMarkers` pattern. **No `sourceMode` field** — see [ADR-021](./decisions.md#adr-021--implicit-dropzone-routing-no-mode-toggle):
+  corridor and photo coexist by default, no mode persisted. **Note on the
+  existing `version` field**: it is a per-mutation write counter
   (`session.version + 1` on every persist), not a schema version.
   Backwards compatibility for pre-feature sessions relies on
   `sanitizePhotoMarkers` (extended above) ignoring missing fields,
@@ -267,29 +267,37 @@ helper.
 
 ---
 
-## Phase 3 — Mode toggle + photo dropzone in map-corridors
+## Phase 3 — Photo dropzone routing in map-corridors
 
-**Scope.** Add the visible `Corridor / Photo` chip to the map header. Wire
-the dropzone to accept JPEG/PNG in photo mode. Run `importPhotoFiles` and
-write to storage. Persist mode in corridor session JSON.
+**Scope.** Extend the existing dropzone to also accept JPEG/PNG. Route
+each dropped file by extension: KML/GPX → existing corridor parser; JPEG/
+PNG → `importPhotoFiles`. Run the import pipeline, write blobs/thumbs to
+storage, mirror picks to `map-picks.json`. No mode UI (see [ADR-021](./decisions.md#adr-021--implicit-dropzone-routing-no-mode-toggle)).
 
 **Files touched.**
 
-- `frontend/map-corridors/src/components/SourceModeToggle.tsx` *(new)* —
-  MUI `ToggleButtonGroup` with two options. Persists to session.
-- `frontend/map-corridors/src/App.tsx` — mount toggle, branch dropzone
-  behaviour.
-- `frontend/map-corridors/src/hooks/useCorridorSessionOPFS.ts` — add
-  `sourceMode: 'corridor' | 'photo'` field to `CorridorsSession`.
-- `frontend/map-corridors/src/locales/en.json` + `cs.json` — strings.
+- `frontend/map-corridors/src/App.tsx` — extend dropzone `accept` to
+  include image MIME types and `.jpg`/`.jpeg`/`.png` extensions. Add
+  per-file routing branch in the drop handler: `parsers/detect.ts` for
+  KML/GPX, `importPhotoFiles` for images. Mixed-batch drops are split
+  by extension and each branch runs independently.
+- `frontend/map-corridors/src/locales/en.json` + `cs.json` — strings
+  for the unsupported-file toast ("Unsupported file: {name}") and import
+  progress.
 
 **Exit criteria.**
 
-- Toggle renders correctly in light theme (matches existing chrome).
-- Dropping a `.kml` file in photo mode shows a friendly toast: "KML is for
-  Corridor mode — switch sources to import a corridor."
-- Dropping `.jpg` in photo mode → import pipeline runs, progress visible.
-- Mode survives reload.
+- Dropping a `.kml` continues to work exactly as it does today (no
+  regression on the corridor flow).
+- Dropping a `.jpg` triggers `importPhotoFiles`; progress visible for
+  batches > 10.
+- Dropping a mixed batch (1 KML + 30 JPEGs) parses the KML and imports
+  the photos in parallel — both end states reflected on the map.
+- Dropping an unsupported file (`.txt`, `.bin`) surfaces a toast naming
+  the file. No silent failures.
+- No mode chip rendered. The header looks identical to today's
+  map-corridors chrome aside from any panel-presence reactions from
+  Phase 6 (right-side photo list when there are photos).
 
 ---
 
@@ -316,8 +324,9 @@ remain individual `<Marker>` components.
 - `frontend/map-corridors/src/map/photoLayers/SubjectPin.tsx` *(new)* —
   individual draggable `<Marker>` per pick.
 - `frontend/map-corridors/src/map/MapProviderView.tsx` — mount these
-  layers in photo mode; preserve existing corridor-marker rendering for
-  KML/GPX flow.
+  layers whenever the markers array contains photo-derived entries
+  (`marker.photoId !== undefined`); existing corridor-marker rendering
+  for KML/GPX flow is unchanged and runs in parallel.
 
 **Paint expressions (sketch).**
 
@@ -443,8 +452,9 @@ flag. Two-way sync with the map.
 - `frontend/map-corridors/src/components/PhotoListPanel.tsx` *(new)*.
   MUI list grouped by `pick` / `neutral` / `reject` / `no-gps`. Group
   headers show counts; collapsible.
-- `frontend/map-corridors/src/App.tsx` — mount panel in photo mode;
-  hidden in corridor mode.
+- `frontend/map-corridors/src/App.tsx` — mount panel iff the markers
+  array contains at least one photo-derived entry (`marker.photoId !==
+  undefined`); auto-hides when there are no photos.
 
 **Acceptance (manual).**
 
@@ -671,8 +681,9 @@ edge cases. Move PR out of draft.
 
 1. Open desktop launcher, create a new competition "Smoke Test", select
    discipline Rally.
-2. Open Photo Placement → switch to Photo source mode.
-3. Drop 30 JPEGs with GPS → 30 dots appear, map fits bounds.
+2. Open Photo Placement.
+3. Drop 30 JPEGs with GPS → 30 dots appear, map fits bounds, photo
+   side panel appears.
 4. Drop 5 more JPEGs without GPS → 5 orange `?` markers along bottom.
 5. Click a GPS dot → popup with thumb. Click Include → becomes pin at
    capture point. Drag pin 100 m away → dashed line + ghost marker
@@ -693,10 +704,10 @@ edge cases. Move PR out of draft.
 14. Drop a `.heic` file → friendly error toast.
 15. Drop a corrupt `.jpg` → it appears in the failure list, import does
     not abort.
-16. Fresh install, no Mapbox token configured → photo mode surfaces
-    the token-config CTA prominently. After dismissing, photo mode
-    still works with the OSM fallback (or shows a clear "configure
-    a map provider" empty state if no fallback ships).
+16. Fresh install, no Mapbox token configured → after dropping photos,
+    the token-config CTA surfaces prominently. After dismissing, photo
+    rendering still works with the OSM fallback (or shows a clear
+    "configure a map provider" empty state if no fallback ships).
 17. Re-import the same folder a second time → "N photos already
     imported, M new" toast; no duplicate thumbs in the right-side panel.
 
@@ -767,7 +778,7 @@ propagation).
 |---|---|---|
 | `exifr` bundle larger than expected | MED | Phase 0 measures actual contribution and records in PR. Soft target ≤ 15 KB gz; if > 25 KB, switch to a manual GPS-only parser (~5 lines). |
 | `pica` added but bloats map-corridors bundle | LOW | v1 starts without `pica` — plain canvas downscale to 200×150 is adequate for popup thumbs. Only add if Phase 1 measurement shows visible quality regression. |
-| Mapbox token not configured on first app open | MED | Photo source mode is useless without a map. Surface the token-config CTA prominently when entering photo mode without a token. Fallback to OpenStreetMap raster tile (no token needed) — see [Open question](#open-implementation-questions). |
+| Mapbox token not configured on first app open | MED | Photo culling is useless without a map. Surface the token-config CTA prominently when the user has imported photos but no token is set. Fallback to OpenStreetMap raster tile (no token needed) — see [Open question](#open-implementation-questions). |
 | User accidentally clicks "Send to editor" with 0 picks | LOW | Button disabled when picks = 0. |
 | Coordinate precision at high zoom (sub-meter) | LOW | float64 throughout. The existing `dragMovedPxRef` click-vs-drag threshold of 8 px (≈ 1.2 m at zoom 19) is shared by all marker types in `MapProviderView`; do not lower it globally. If photo-mode subject pins prove to misclassify drag-as-click, add a per-marker threshold prop rather than changing the default. |
 | Browser drag-and-drop quirks on Windows | LOW | Already exercised by existing dropzone code. Reuse `react-dropzone`. |

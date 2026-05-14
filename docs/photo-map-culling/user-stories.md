@@ -22,9 +22,9 @@ geographic context immediately and skip the blind Explorer-thumbnail step.
 
 **Acceptance criteria**
 
-- Photo source mode is selectable via an explicit toggle at the top of
-  map-corridors ([ADR-002](./decisions.md#adr-002-explicit-mode-toggle)).
-- In photo source mode, the dropzone accepts `.jpg`, `.jpeg`, `.png`.
+- The map-corridors dropzone accepts `.jpg`, `.jpeg`, `.png` in addition
+  to KML/GPX. Routing is implicit by file extension — no mode toggle
+  ([ADR-021](./decisions.md#adr-021--implicit-dropzone-routing-no-mode-toggle)).
 - After drop, the map zooms (fit-bounds) to enclose all photos with GPS.
 - Each photo with GPS appears as a small grey dot at its capture location.
 - Import progress is visible (progress bar / count) for batches > 10 photos.
@@ -175,19 +175,24 @@ hidden sidebar.
 
 ---
 
-## US-9 — Switch between corridor and photo source without losing work
+## US-9 — Corridor and photo work coexist on one map
 
-**As an** organizer, **I want** to flip between corridor-mode (KML/GPX) and
-photo-mode without losing data in either, **so that** I can review both in
-the same session.
+**As an** organizer, **I want** to load a KML corridor and EXIF photos in
+the same session and see both on the same map, **so that** I can verify a
+photo's subject is inside the corridor without leaving the view.
 
 **Acceptance criteria**
 
-- The mode toggle is a non-destructive UI control. Switching does not
-  delete markers or photos.
-- Both corridor markers and photo-derived markers can be visible
-  simultaneously (the toggle controls the *input* surface, not visibility).
-- The toggle's state persists per-competition in the corridor session JSON.
+- A KML/GPX corridor and JPEG photos can be dropped onto map-corridors in
+  any order; both render simultaneously without switching anything.
+- No "Corridor / Photo" toggle exists in the UI ([ADR-021](./decisions.md#adr-021--implicit-dropzone-routing-no-mode-toggle)).
+- Dropping a KML when photos are already on the map does not remove the
+  photos; dropping photos when a corridor is loaded does not remove the
+  corridor.
+- The right-side photo list panel auto-appears when there is ≥ 1 imported
+  photo and auto-hides when there are none. No user action required.
+- The session file (`corridors-session.json`) carries no `sourceMode`
+  field — there's no mode to persist.
 
 ---
 
@@ -285,8 +290,9 @@ unreliable, **so that** the new feature never traps me.
 
 **Acceptance criteria**
 
-- The corridor source mode (click-to-place) is fully preserved.
-- It is the default mode for a fresh competition without any photo imports.
-- Switching to photo mode never disables the click-to-place behaviour for
-  the corridor markers already on the map; new EXIF markers and click-placed
-  markers coexist on the same `markers[]` array.
+- Click-to-place corridor-marker placement is fully preserved — it is the
+  existing map-corridors behaviour and continues to work at all times.
+- Importing photos never disables click-to-place; click-placed markers and
+  EXIF-imported markers coexist on the same `markers[]` array.
+- A fresh competition without any photo imports renders identically to
+  today's map-corridors (no extra chrome, no photo side panel).

@@ -7,13 +7,17 @@ location they were taken, decide which ones to use, and place a pin at the
 automatically into both the photo editor (for printing) and the corridor
 checker (for legality / answer sheet generation).
 
-**Implemented as a new "Photo source" mode inside the existing
-`map-corridors` app — not a new app and not an extension of
-`photo-helper`.** That choice (see [ADR-001](./decisions.md#adr-001-extend-map-corridors-rather-than-build-a-new-app))
+**Implemented inside the existing `map-corridors` app — not a new app and
+not an extension of `photo-helper`.** That choice (see [ADR-001](./decisions.md#adr-001-extend-map-corridors-rather-than-build-a-new-app))
 reuses the map infrastructure already in place (MapLibre + Mapbox via
 `react-map-gl`, token wiring, marker drag, popup, discipline-aware label
 generation, per-competition OPFS dir) instead of duplicating ~3000 LoC
 of map code in a new workspace.
+
+Corridor (KML/GPX) and photo (EXIF) inputs work **side by side** in the
+same view — no mode toggle, no switching. The dropzone routes by file
+extension; the side panel for photos appears when there are photos to
+show. See [ADR-021](./decisions.md#adr-021--implicit-dropzone-routing-no-mode-toggle).
 
 **Rough workflow time budget (per competition).**
 
@@ -71,9 +75,10 @@ One tool, one workflow:
                                  │ drag & drop
                                  ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ map-corridors — Photo source mode                                │
+│ map-corridors — single view, corridors + photos coexist          │
 │                                                                  │
-│   • EXIF GPS → dot at capture location                           │
+│   • drop a KML/GPX → corridor renders (today's behaviour)        │
+│   • drop JPEG/PNG → EXIF GPS → dot at capture location           │
 │   • click dot → thumbnail popup + Include / Skip / Reject        │
 │   • for Include: subject pin appears at capture loc, draggable   │
 │   • drag the pin to where the object actually is                 │
@@ -93,8 +98,10 @@ Three apps already share the per-competition OPFS/filesystem directory
 (`competitions/{compId}/`). Adding photos to that directory makes them
 visible everywhere; **no new contract between apps is needed**.
 
-The map tool is not a new app — it's a new **mode** of the existing
-map-corridors app (decision recorded in [decisions.md](./decisions.md#adr-001-extend-map-corridors-rather-than-build-a-new-app)).
+The map tool is not a new app — it's an extension of the existing
+map-corridors view (decision recorded in [decisions.md](./decisions.md#adr-001-extend-map-corridors-rather-than-build-a-new-app)).
+Corridor checking and photo culling share the same map, the same marker
+array, and the same session file — no mode toggle ([ADR-021](./decisions.md#adr-021--implicit-dropzone-routing-no-mode-toggle)).
 
 ---
 
