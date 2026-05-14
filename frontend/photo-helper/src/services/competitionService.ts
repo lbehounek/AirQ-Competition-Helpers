@@ -281,21 +281,23 @@ export class CompetitionService {
   }
 
   /**
-   * Best-effort deletion of specific photo files from a competition's `photos/`
+   * Deletion of specific photo files from a competition's `photos/`
    * directory. Used to reclaim OPFS storage for culled candidate photos —
    * `saveSessionPhotos` deliberately never prunes (to protect non-active mode
-   * buckets), so per-photo deletes must be explicit (PR #62 review C3). Per-id
-   * failures are logged and swallowed: the caller has already removed the id
-   * from the session, so a stuck file would just orphan rather than refuse the
-   * UX flow.
+   * buckets), so per-photo deletes must be explicit (PR #62 review C3).
+   *
+   * Returns `{ failed }` listing ids whose individual delete operation
+   * threw. Callers that surface partial failures to the user (e.g., the
+   * cleanup dialog, see PR #62 review CRIT-3) inspect this list; callers
+   * doing background per-photo cleanup ignore it. A missing competition
+   * directory is treated as success (the files are gone by definition).
    */
-  async deletePhotosByIds(competitionId: string, photoIds: string[]): Promise<void> {
-    if (photoIds.length === 0) return;
+  async deletePhotosByIds(competitionId: string, photoIds: string[]): Promise<{ failed: string[] }> {
+    if (photoIds.length === 0) return { failed: [] };
     await this.ensureInitialized();
-    let competitionDir: DirectoryHandle;
     let photosDir: DirectoryHandle;
     try {
-      competitionDir = await this.storage!.getDirectoryHandle(
+      const competitionDir = await this.storage!.getDirectoryHandle(
         this.competitionsDir!,
         competitionId,
         { create: false }
@@ -306,16 +308,21 @@ export class CompetitionService {
         { create: false }
       );
     } catch (err) {
+      // Competition (or its photos/) doesn't exist — treat as already-cleaned.
+      // Distinct from per-id failure: this is a no-op, not a partial result.
       console.warn(`deletePhotosByIds: cannot open photos dir for ${competitionId}:`, err);
-      return;
+      return { failed: [] };
     }
+    const failed: string[] = [];
     for (const id of photoIds) {
       try {
         await this.storage!.deletePhotoFile(photosDir, id);
       } catch (err) {
         console.warn(`deletePhotosByIds: failed to delete ${id}:`, err);
+        failed.push(id);
       }
     }
+    return { failed };
   }
 
   async deleteCompetition(id: string): Promise<void> {

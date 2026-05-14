@@ -261,7 +261,8 @@
     "shuffleFailed": "Nepodařilo se zamíchat fotografie",
     "noActiveCompetition": "Není zvolena žádná aktivní soutěž, do které by šlo přidat fotografie.",
     "photoSetFull": "Sada {{set}} je plná. Nejprve odeberte fotografii.",
-    "photoSetCapacityRemaining": "Sada {{set}} přijme už jen {{count}} dalších fotografií."
+    "photoSetCapacityRemaining": "Sada {{set}} přijme už jen {{count}} dalších fotografií.",
+    "candidateDeletePartialFailure": "Nepodařilo se smazat {{failed}} z {{total}} kandidátských souborů. Mohou stále zabírat úložiště."
   },
   "common": {
     "loading": "Načítání...",
@@ -298,7 +299,8 @@
       "title": "Smazat nepoužité kandidáty?",
       "message": "Máte {{count}} kandidátských fotografií, které nejsou v žádné sadě. Smazat je a uvolnit přibližně {{size}} MB úložiště?",
       "keep": "Ponechat kandidáty",
-      "delete": "Smazat {{count}} kandidátů"
+      "delete": "Smazat {{count}} kandidátů",
+      "error": "Smazání kandidátů selhalo. Některé soubory mohou stále zabírat úložiště."
     }
   },
   "pdf": {

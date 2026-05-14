@@ -6,6 +6,19 @@ import type { Photo } from './index';
 
 export type CandidateFlag = 'pick' | 'neutral' | 'reject';
 
+/**
+ * Result of a photo-add operation (`addPhotosToSet`, `addPhotosToTurningPoint`).
+ * Discriminated union so callers can react specifically to smart-drop routing
+ * vs. error paths without sniffing `result === undefined` (PR #62 review IMP-6).
+ *
+ * The hook still calls `setError` on the `err` arm for the global Alert
+ * banner; the returned result is for callers that want to react more
+ * specifically (toast on tray-routing, dialog on over-capacity, etc.).
+ */
+export type AddPhotosResult =
+  | { kind: 'ok'; routedTo: 'slot' | 'tray'; count: number }
+  | { kind: 'err'; reason: 'no-competition' | 'over-capacity' | 'unknown'; message: string };
+
 export interface ApiPhoto {
   id: string;
   sessionId: string; // Required for image cache and API consistency

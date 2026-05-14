@@ -23,7 +23,6 @@ import {
   Star,
   StarBorder,
   Block,
-  Close,
   PhotoLibrary,
   Add as AddIcon,
   KeyboardDoubleArrowRight,
@@ -35,6 +34,7 @@ import { PhotoEditorApi } from './PhotoEditorApi';
 import { useI18n } from '../contexts/I18nContext';
 import { isValidImageFile } from '../utils/imageProcessing';
 import { filterCandidates, countByFlag } from '../utils/candidateFilter';
+import { parseDragPayload, serializeDragPayload, DRAG_PAYLOAD_MIME } from '../utils/dragPayload';
 import type { ApiPhoto, CandidateFlag } from '../types/api';
 
 export interface CandidateTrayProps {
@@ -104,8 +104,11 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
 
   // Native HTML5 drag events for slot→tray transfers. react-dropzone owns the
   // file-drop path; we layer our intra-app slot/tray transfer protocol on top.
+  // Parsing + literal-union guard live in `utils/dragPayload.ts` (PR #62
+  // review G3) — formerly duplicated inline between this component and
+  // `PhotoGridApi`.
   const handleDragOver = (e: React.DragEvent) => {
-    const hasInternalPayload = e.dataTransfer.types.includes('application/x-airq-photo');
+    const hasInternalPayload = e.dataTransfer.types.includes(DRAG_PAYLOAD_MIME);
     if (hasInternalPayload) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -115,32 +118,35 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
   const handleDragLeave = () => setDropActive(false);
   const handleDrop = (e: React.DragEvent) => {
     setDropActive(false);
-    const raw = e.dataTransfer.getData('application/x-airq-photo');
-    if (!raw) return;
-    let payload: unknown;
-    try {
-      payload = JSON.parse(raw);
-    } catch (err) {
-      // PR #62 review I5: log instead of `catch {}` so debugging a misbehaving
-      // drag-and-drop doesn't require source patching.
-      console.warn('CandidateTray: malformed drag payload', raw, err);
-      return;
-    }
-    if (!payload || typeof payload !== 'object') return;
-    const p = payload as { kind?: unknown; setKey?: unknown; photoId?: unknown };
-    // Strict literal-union check on setKey (PR #62 review I5).
-    const isValidSet = p.setKey === 'set1' || p.setKey === 'set2';
-    if (p.kind === 'slot' && isValidSet && typeof p.photoId === 'string') {
+    const payload = parseDragPayload(e.dataTransfer.getData(DRAG_PAYLOAD_MIME));
+    if (payload?.kind === 'slot') {
       e.preventDefault();
-      onSlotDroppedIn({ setKey: p.setKey as 'set1' | 'set2', photoId: p.photoId });
+      onSlotDroppedIn({ setKey: payload.setKey, photoId: payload.photoId });
     }
   };
 
   const handleThumbDragStart = (e: React.DragEvent, photo: ApiPhoto) => {
-    const payload = JSON.stringify({ kind: 'tray', photoId: photo.id });
-    e.dataTransfer.setData('application/x-airq-photo', payload);
+    e.dataTransfer.setData(
+      DRAG_PAYLOAD_MIME,
+      serializeDragPayload({ kind: 'tray', photoId: photo.id }),
+    );
     e.dataTransfer.effectAllowed = 'move';
   };
+
+  // Compose our slot/tray handlers WITH react-dropzone's internal handlers so
+  // native file drops still work (PR #62 critical review CRIT-2). Previously
+  // the JSX `{...getRootProps()}` spread was followed by explicit
+  // `onDragOver`/`onDrop` props that OVERRODE dropzone's handlers — native
+  // drops were dead despite `t('candidates.emptyHint')` promising they'd work.
+  // Passing handlers through `getRootProps({...})` chains them: our handler
+  // runs first (for the internal `application/x-airq-photo` payload), then
+  // react-dropzone's runs (for native files; idempotent preventDefault is
+  // harmless). See react-dropzone `composeEventHandlers`.
+  const rootProps = getRootProps({
+    onDragOver: handleDragOver,
+    onDragLeave: handleDragLeave,
+    onDrop: handleDrop,
+  });
 
   // Empty-state — shows a wide drop hint. Only reached when slots have photos
   // (AppApi gates the whole tray on `candidates>0 OR slots>0`), so this acts
@@ -152,11 +158,8 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
     const active = isDragActive || dropActive;
     return (
       <Paper
-        {...(getRootProps() as any)}
+        {...(rootProps as any)}
         elevation={1}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
         sx={{
           mb: 2,
           p: 2.5,
@@ -185,6 +188,7 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
 
   return (
     <Paper
+      {...(rootProps as any)}
       elevation={1}
       sx={{
         mb: 2,
@@ -194,9 +198,6 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
         bgcolor: dropActive ? alpha(theme.palette.primary.main, 0.04) : 'background.paper',
         transition: 'all 0.15s ease-in-out',
       }}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
       {/* Header */}
       <Box

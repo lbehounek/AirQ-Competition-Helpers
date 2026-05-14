@@ -284,3 +284,50 @@ describe('flow: drop → promote → demote → flag → cleanup', () => {
     expect(session.candidates?.photos).toHaveLength(0);
   });
 });
+
+// PR #62 review G13: legacy sessions on disk don't have a `candidates`
+// field. The helpers must treat that the same as an empty pool, otherwise
+// reading an old session triggers a crash before the user can even
+// migrate. The hook layer never constructs `undefined` candidates today,
+// but persistence boundary code can.
+describe('candidate helpers handle undefined session.candidates (legacy)', () => {
+  function makeLegacySession(): ApiPhotoSession {
+    return {
+      id: 'sess-legacy',
+      version: 1,
+      createdAt: '2026-04-01T00:00:00Z',
+      updatedAt: '2026-04-01T00:00:00Z',
+      mode: 'track',
+      competition_name: 'Legacy',
+      sets: {
+        set1: { title: 'Set 1', photos: [] },
+        set2: { title: 'Set 2', photos: [] },
+      },
+      // candidates: intentionally absent
+    };
+  }
+
+  it('setCandidateFlag returns same session when candidates is undefined', () => {
+    const session = makeLegacySession();
+    const next = setCandidateFlag(session, 'any', 'pick');
+    expect(next).toBe(session);
+  });
+
+  it('removeCandidate returns same session when candidates is undefined', () => {
+    const session = makeLegacySession();
+    const next = removeCandidate(session, 'any');
+    expect(next).toBe(session);
+  });
+
+  it('clearAllCandidates returns same session when candidates is undefined', () => {
+    const session = makeLegacySession();
+    const next = clearAllCandidates(session);
+    expect(next).toBe(session);
+  });
+
+  it('updateCandidateCanvasState returns same session when candidates is undefined', () => {
+    const session = makeLegacySession();
+    const next = updateCandidateCanvasState(session, 'any', { brightness: 5 });
+    expect(next).toBe(session);
+  });
+});

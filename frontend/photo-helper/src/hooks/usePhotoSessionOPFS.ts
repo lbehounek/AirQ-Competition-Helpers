@@ -379,15 +379,23 @@ export function usePhotoSessionOPFS() {
 
   const removeCandidate = useCallback(async (photoId: string) => {
     if (!session) return;
-    try {
-      const target = session.candidates?.photos?.find(p => p.id === photoId);
-      if (target?.url?.startsWith?.('blob:')) URL.revokeObjectURL(target.url);
-      if (handlesRef.current.photosDir) {
-        const storage = getStorage();
-        try { await storage.deletePhotoFile(handlesRef.current.photosDir, photoId); } catch {}
+    const target = session.candidates?.photos?.find(p => p.id === photoId);
+    if (target?.url?.startsWith?.('blob:')) {
+      try { URL.revokeObjectURL(target.url); } catch (err) {
+        console.warn(`removeCandidate: revoke failed for ${photoId}:`, err);
       }
-      objectURLsRef.current.delete(photoId);
-    } catch {}
+    }
+    if (handlesRef.current.photosDir) {
+      try {
+        const storage = getStorage();
+        await storage.deletePhotoFile(handlesRef.current.photosDir, photoId);
+      } catch (err) {
+        // Best-effort: orphan file is preferable to refusing the UX flow.
+        // Logged so devtools captures the failure (PR #62 review IMP-1).
+        console.warn(`removeCandidate: OPFS delete failed for ${photoId}:`, err);
+      }
+    }
+    objectURLsRef.current.delete(photoId);
     await persistSession(removeCandidatePure(session, photoId));
     await updateStorageEstimate();
   }, [session, persistSession]);
@@ -425,16 +433,25 @@ export function usePhotoSessionOPFS() {
 
   const clearAllCandidates = useCallback(async () => {
     if (!session) return;
-    try {
-      for (const p of session.candidates?.photos ?? []) {
-        if (p.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url);
-        objectURLsRef.current.delete(p.id);
-        if (handlesRef.current.photosDir) {
-          const storage = getStorage();
-          try { await storage.deletePhotoFile(handlesRef.current.photosDir, p.id); } catch {}
+    const storage = handlesRef.current.photosDir ? getStorage() : null;
+    for (const p of session.candidates?.photos ?? []) {
+      if (p.url?.startsWith?.('blob:')) {
+        try { URL.revokeObjectURL(p.url); } catch (err) {
+          console.warn(`clearAllCandidates: revoke failed for ${p.id}:`, err);
         }
       }
-    } catch {}
+      objectURLsRef.current.delete(p.id);
+      if (storage && handlesRef.current.photosDir) {
+        try {
+          await storage.deletePhotoFile(handlesRef.current.photosDir, p.id);
+        } catch (err) {
+          // Logged but not rethrown — this hook is the legacy backup path;
+          // production runs the useCompetitionSystem variant which surfaces
+          // partial failures through `deleteCandidates` (PR #62 review IMP-1).
+          console.warn(`clearAllCandidates: OPFS delete failed for ${p.id}:`, err);
+        }
+      }
+    }
     await persistSession(clearAllCandidatesPure(session));
     await updateStorageEstimate();
   }, [session, persistSession]);

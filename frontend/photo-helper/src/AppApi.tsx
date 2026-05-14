@@ -103,7 +103,7 @@ function AppApi() {
     demoteSlotToCandidate,
     setCandidateFlag,
     updateCandidatePhotoState,
-    clearAllCandidates,
+    deleteCandidates,
   } = sessionHookResult;
 
   // Candidate photos — derived from session for stable rendering. The pool
@@ -158,9 +158,10 @@ function AppApi() {
   const [renameText, setRenameText] = useState('');
 
   // Post-export cleanup dialog (offers to delete unused candidates after a
-  // successful PDF generation). State holds the count snapshot at export
-  // time so the user sees the same figure on the dialog as in the toast.
-  const [cleanupCandidatesDialog, setCleanupCandidatesDialog] = useState<{ count: number; sizeMB: number } | null>(null);
+  // successful PDF generation). Snapshots BOTH the count AND the specific
+  // candidate ids at export time so adding more candidates between dialog
+  // open and confirm doesn't sweep them away (PR #62 review IMP-4).
+  const [cleanupCandidatesDialog, setCleanupCandidatesDialog] = useState<{ count: number; sizeMB: number; ids: string[] } | null>(null);
 
   // Snackbar shown when smart-drop routes a slot-targeted batch into the
   // candidate tray (because the batch exceeded remaining slot capacity).
@@ -172,16 +173,20 @@ function AppApi() {
   // docs/CANDIDATE_PHOTOS.md). Previously a silent no-op (PR #62 review I4).
   const [crossSetHintOpen, setCrossSetHintOpen] = useState(false);
 
+  // Error snackbar for cleanup-dialog failures (PR #62 review IMP-5). The
+  // hook's `deleteCandidates` rethrows on OPFS partial failure (CRIT-3); the
+  // snackbar replaces the previous blocking `alert()` and is i18n-friendly.
+  const [cleanupErrorToast, setCleanupErrorToast] = useState<string | null>(null);
+
   // Wrapper around the hook's `addPhotosToSet` that surfaces the smart-drop
   // routing result. Calling sites stay simple — they just pass files + set.
+  // The hook owns error reporting via `setError` → global Alert (PR #62
+  // review IMP-8: dropped dead AppApi try/catch); we just react to the
+  // 'ok'-arm tray-routing for the toast.
   const handleAddToSet = async (files: File[], setKey: 'set1' | 'set2') => {
-    try {
-      const result = await addPhotosToSet(files, setKey);
-      if (result && result.routedTo === 'tray' && result.count > 0) {
-        setDropToast({ count: result.count });
-      }
-    } catch (err) {
-      console.error('handleAddToSet failed:', err);
+    const result = await addPhotosToSet(files, setKey);
+    if (result?.kind === 'ok' && result.routedTo === 'tray' && result.count > 0) {
+      setDropToast({ count: result.count });
     }
   };
 
@@ -189,13 +194,9 @@ function AppApi() {
   // overflow the hook routes everything to the candidate tray. Surface the toast
   // the same way `handleAddToSet` does (PR #62 review I1).
   const handleInitialTurningPointDrop = async (files: File[]) => {
-    try {
-      const result = await addPhotosToTurningPoint(files);
-      if (result && result.routedTo === 'tray' && result.count > 0) {
-        setDropToast({ count: result.count });
-      }
-    } catch (err) {
-      console.error('handleInitialTurningPointDrop failed:', err);
+    const result = await addPhotosToTurningPoint(files);
+    if (result?.kind === 'ok' && result.routedTo === 'tray' && result.count > 0) {
+      setDropToast({ count: result.count });
     }
   };
 
@@ -290,24 +291,18 @@ function AppApi() {
   };
 
   // Tray → slot promotion. The hook handles swap-on-occupied semantics and the
-  // capacity clamp for out-of-range indices (PR #62 review C1).
+  // capacity clamp for out-of-range indices (PR #62 review C1). Errors are
+  // routed through the hook's internal try/catch → global error banner; no
+  // local try/catch needed (PR #62 review IMP-8 — dead catch was misleading).
   const handleCandidateDropped = (setKey: 'set1' | 'set2') => async (candidateId: string, slotIndex: number) => {
     if (!promoteCandidateToSlot) return;
-    try {
-      await promoteCandidateToSlot(candidateId, setKey, slotIndex);
-    } catch (err) {
-      console.error('promoteCandidateToSlot failed:', err);
-    }
+    await promoteCandidateToSlot(candidateId, setKey, slotIndex);
   };
 
   // Slot → tray demotion when a slot photo is dragged onto the tray drop zone.
   const handleSlotDroppedToTray = async (payload: { setKey: 'set1' | 'set2'; photoId: string }) => {
     if (!demoteSlotToCandidate) return;
-    try {
-      await demoteSlotToCandidate(payload.setKey, payload.photoId);
-    } catch (err) {
-      console.error('demoteSlotToCandidate failed:', err);
-    }
+    await demoteSlotToCandidate(payload.setKey, payload.photoId);
   };
 
   // "Send to Set X" from the tray toolbar. If the target set is full, we ask
@@ -319,20 +314,20 @@ function AppApi() {
     const capacity = getGridCapacity(session as any);
     const slotCount = session.sets[setKey].photos.length;
     const slotIndex = slotCount < capacity ? slotCount : Math.max(0, capacity - 1);
-    try {
-      await promoteCandidateToSlot(photoId, setKey, slotIndex);
-    } catch (err) {
-      console.error('handleSendCandidateToSet failed:', err);
-    }
+    await promoteCandidateToSlot(photoId, setKey, slotIndex);
   };
 
-  const handlePhotoUpdate = (setKey: 'set1' | 'set2' | 'candidates', photoId: string, canvasState: any) => {
+  const handlePhotoUpdate = (setKey: 'set1' | 'set2' | 'candidates', photoId: string, canvasState: Partial<ApiPhoto['canvasState']>) => {
     // Dispatch to the right backend method — slot photos go through
-    // updatePhotoState, candidates through updateCandidatePhotoState.
+    // updatePhotoState, candidates through updateCandidatePhotoState. The
+    // explicit `void` prefix marks fire-and-forget intent (PR #62 review
+    // IMP-8) — hook owns its error reporting via `setError`, and we want the
+    // optimistic local state update below to happen synchronously rather
+    // than waiting on persistence.
     if (setKey === 'candidates') {
-      if (updateCandidatePhotoState) updateCandidatePhotoState(photoId, canvasState);
+      if (updateCandidatePhotoState) void updateCandidatePhotoState(photoId, canvasState);
     } else {
-      updatePhotoState(setKey, photoId, canvasState);
+      void updatePhotoState(setKey, photoId, canvasState);
     }
 
     // Optimistically update selected photo immediately for instant UI feedback
@@ -348,15 +343,16 @@ function AppApi() {
   };
 
   const handlePhotoRemove = (setKey: 'set1' | 'set2' | 'candidates', photoId: string) => {
-    if (setKey === 'candidates') {
-      if (removeCandidate) removeCandidate(photoId);
-    } else {
-      removePhoto(setKey, photoId);
-    }
-
-    // Close detailed editor if this photo was selected
+    // Close editor optimistically; persistence is fire-and-forget (errors
+    // surface via the global Alert from `setError`). Explicit `void`
+    // documents the intent (PR #62 review IMP-8).
     if (selectedPhoto?.photo.id === photoId) {
       setSelectedPhoto(null);
+    }
+    if (setKey === 'candidates') {
+      if (removeCandidate) void removeCandidate(photoId);
+    } else {
+      void removePhoto(setKey, photoId);
     }
   };
 
@@ -462,10 +458,13 @@ function AppApi() {
       // Post-export prompt: offer to clean up unused candidate photos so the
       // user doesn't accumulate them across competitions. ~3 MB per photo
       // matches the heuristic in `competitionService.estimateCompetitionSize`.
+      // Snapshot the specific candidate ids so adding more candidates between
+      // dialog open and confirm doesn't sweep them away (PR #62 review IMP-4).
       if (candidatePhotos.length > 0) {
         setCleanupCandidatesDialog({
           count: candidatePhotos.length,
           sizeMB: Math.round(candidatePhotos.length * 3),
+          ids: candidatePhotos.map((p) => p.id),
         });
       }
     } catch (error) {
@@ -482,16 +481,24 @@ function AppApi() {
   };
 
   const handleCleanupCandidatesConfirm = async () => {
-    if (!clearAllCandidates) return;
+    const dialog = cleanupCandidatesDialog;
+    if (!dialog || !deleteCandidates) return;
     try {
-      await clearAllCandidates();
+      // Targeted delete using the snapshot ids (PR #62 review IMP-4). The
+      // hook rethrows on OPFS partial failure so the dialog stays open and
+      // the user knows it didn't complete (PR #62 review CRIT-3 — previously
+      // `clearAllCandidates` swallowed failures internally, making the
+      // outer try/catch unreachable dead code).
+      await deleteCandidates(dialog.ids);
       setCleanupCandidatesDialog(null);
     } catch (err) {
-      // PR #62 review I6: previously dismissed even on failure. Keep the
-      // dialog open and surface the error so the user knows the action
-      // didn't complete.
+      // PR #62 review IMP-5: replaced blocking `alert()` with a Snackbar
+      // consistent with the rest of the candidate-flow UX, and routed
+      // through `t()` so the message picks up the active locale rather than
+      // shipping an English exception message in the Czech UI.
       console.error('handleCleanupCandidatesConfirm failed:', err);
-      alert(err instanceof Error ? err.message : 'Failed to delete candidates');
+      const message = err instanceof Error ? err.message : t('candidates.cleanup.error');
+      setCleanupErrorToast(message);
     }
   };
   const handleCleanupCandidatesDecline = () => setCleanupCandidatesDialog(null);
@@ -751,10 +758,10 @@ function AppApi() {
         {(candidatePhotos.length > 0 || stats.totalPhotos > 0) && (
           <CandidateTray
             photos={candidatePhotos}
-            onAddFiles={(files) => { if (addPhotosToCandidates) addPhotosToCandidates(files); }}
+            onAddFiles={(files) => { if (addPhotosToCandidates) void addPhotosToCandidates(files); }}
             onPhotoClick={handleCandidateClick}
-            onSetFlag={(photoId, flag) => { if (setCandidateFlag) setCandidateFlag(photoId, flag); }}
-            onDelete={(photoId) => { if (removeCandidate) removeCandidate(photoId); }}
+            onSetFlag={(photoId, flag) => { if (setCandidateFlag) void setCandidateFlag(photoId, flag); }}
+            onDelete={(photoId) => { if (removeCandidate) void removeCandidate(photoId); }}
             onSendToSet={handleSendCandidateToSet}
             onSlotDroppedIn={handleSlotDroppedToTray}
             hideSet2={isPrecision && session?.mode === 'track'}
@@ -1308,6 +1315,17 @@ function AppApi() {
         onClose={() => setCrossSetHintOpen(false)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={t('candidates.crossSetHint')}
+      />
+
+      {/* Cleanup-dialog failure surface (PR #62 review IMP-5). Replaces a
+          blocking `alert()`; consistent with `dropToast`/`crossSetHint`
+          snackbars elsewhere in this view. */}
+      <Snackbar
+        open={Boolean(cleanupErrorToast)}
+        autoHideDuration={8000}
+        onClose={() => setCleanupErrorToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={cleanupErrorToast ?? ''}
       />
 
       {/* Post-export candidate cleanup dialog */}

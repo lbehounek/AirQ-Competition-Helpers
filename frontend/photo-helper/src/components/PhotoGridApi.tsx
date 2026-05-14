@@ -11,6 +11,7 @@ import { useLabeling } from '../contexts/LabelingContext';
 import { useI18n } from '../contexts/I18nContext';
 import { useLayoutMode } from '../contexts/LayoutModeContext';
 import { getImageCache } from '../utils/imageCache';
+import { parseDragPayload, serializeDragPayload, DRAG_PAYLOAD_MIME } from '../utils/dragPayload';
 import type { ApiPhoto, ApiPhotoSet } from '../types/api';
 
 interface PhotoGridApiProps {
@@ -143,7 +144,10 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   // Two payload channels:
   //   text/plain                 — legacy in-grid reorder: just the slot index
   //   application/x-airq-photo   — structured payload for tray↔slot transfers.
-  //                                 Shape: { kind: 'slot' | 'tray', ... }.
+  //                                 See `utils/dragPayload.ts` for the parser
+  //                                 and the strict literal-union check on
+  //                                 setKey (PR #62 review G3 — formerly
+  //                                 duplicated inline in two components).
   // Slot drags emit both so the tray can recognise the source. The grid only
   // needs the structured payload on drops that *could* be from the tray.
   const handleDragStart = (e: React.DragEvent, index: number, photoId: string | undefined) => {
@@ -152,8 +156,8 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
     e.dataTransfer.setData('text/plain', index.toString());
     if (photoId) {
       e.dataTransfer.setData(
-        'application/x-airq-photo',
-        JSON.stringify({ kind: 'slot', setKey, index, photoId }),
+        DRAG_PAYLOAD_MIME,
+        serializeDragPayload({ kind: 'slot', setKey, index, photoId }),
       );
     }
 
@@ -182,38 +186,22 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
     // Check structured payload first — a tray photo dropping in promotes;
     // a slot photo dropping in is the existing reorder flow.
-    const raw = e.dataTransfer.getData('application/x-airq-photo');
-    if (raw) {
-      let payload: unknown;
-      try {
-        payload = JSON.parse(raw);
-      } catch (err) {
-        // PR #62 review I5: log instead of `catch {}` so a malformed payload
-        // is debuggable in devtools.
-        console.warn('PhotoGridApi: malformed drag payload', raw, err);
-        payload = null;
+    const payload = parseDragPayload(e.dataTransfer.getData(DRAG_PAYLOAD_MIME));
+    if (payload) {
+      if (payload.kind === 'tray' && onCandidateDropped) {
+        onCandidateDropped(payload.photoId, dropIndex);
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+        return;
       }
-      if (payload && typeof payload === 'object') {
-        const p = payload as { kind?: unknown; photoId?: unknown; setKey?: unknown };
-        if (p.kind === 'tray' && typeof p.photoId === 'string' && onCandidateDropped) {
-          onCandidateDropped(p.photoId, dropIndex);
-          setDraggedIndex(null);
-          setDragOverIndex(null);
-          return;
-        }
-        // Strict literal-union check (PR #62 review I5): never index `sets[
-        // payload.setKey]` with an arbitrary string — `__proto__` would crash
-        // downstream consumers.
-        const isValidSet = p.setKey === 'set1' || p.setKey === 'set2';
-        if (p.kind === 'slot' && isValidSet && p.setKey !== setKey) {
-          // Cross-set drops aren't supported in v1 (two-step via tray works).
-          // Surface the rejection so the user knows what happened (PR #62
-          // review I4 — previously silently ignored).
-          if (onCrossSetDropRejected) onCrossSetDropRejected();
-          setDraggedIndex(null);
-          setDragOverIndex(null);
-          return;
-        }
+      if (payload.kind === 'slot' && payload.setKey !== setKey) {
+        // Cross-set drops aren't supported in v1 (two-step via tray works).
+        // Surface the rejection so the user knows what happened (PR #62
+        // review I4 — previously silently ignored).
+        if (onCrossSetDropRejected) onCrossSetDropRejected();
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+        return;
       }
     }
 
