@@ -58,6 +58,7 @@ import { CompetitionSelector } from './components/CompetitionSelector';
 import { CreateCompetitionButton } from './components/CreateCompetitionButton';
 import { CleanupModal } from './components/CleanupModal';
 import { CandidateTray } from './components/CandidateTray';
+import { ImportPhotosControl } from './components/ImportPhotosControl';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
@@ -746,12 +747,22 @@ function AppApi() {
                   </Box>
                 )}
 
-                {/* Shuffle Photos - Only show in track mode */}
-                {session?.mode === 'track' && (
-                  <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
-                      {t('actions.title')}
-                    </Typography>
+                {/* Actions cluster — Import + Shuffle. Import is always
+                    visible (mirrors map-corridors' "Select KML" button)
+                    so the user has a click-or-drop entry point regardless
+                    of grid state (feedback M., 2026-05-15). Shuffle stays
+                    track-only since it's mode-specific. */}
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                    {t('actions.title')}
+                  </Typography>
+                  <ImportPhotosControl
+                    onFilesPicked={(files) => {
+                      if (addPhotosToCandidates) void addPhotosToCandidates(files);
+                    }}
+                    disabled={!session || !addPhotosToCandidates}
+                  />
+                  {session?.mode === 'track' && (
                     <Button
                       onClick={handleShuffle}
                       disabled={
@@ -763,7 +774,7 @@ function AppApi() {
                       variant="outlined"
                       size="small"
                       startIcon={<Shuffle />}
-                      sx={{ 
+                      sx={{
                         fontSize: '0.75rem',
                         px: 1.5,
                         py: 0.5,
@@ -772,8 +783,8 @@ function AppApi() {
                     >
                       {t('actions.shuffle.name')}
                     </Button>
-                  </Box>
-                )}
+                  )}
+                </Box>
               </Box>
             </Box>
 

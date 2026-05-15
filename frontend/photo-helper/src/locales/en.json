@@ -152,6 +152,10 @@
     "clipboardAllFailed": "None of the {{count}} pasted items could be read (wrong format, too large, or not JPEG/PNG).",
     "clipboardPartial": "Pasted {{success}} of {{total}} photos. {{failed}} could not be read (wrong format, too large, or not JPEG/PNG)."
   },
+  "importControl": {
+    "label": "Add photos",
+    "tooltip": "Click to pick photos, drag-drop here, or press Ctrl+V to paste"
+  },
   "photo": {
     "clickToEdit": "Click to Edit",
     "position": "Position {{position}}",

@@ -152,6 +152,10 @@
     "clipboardAllFailed": "Žádnou z {{count}} vložených položek se nepodařilo načíst (špatný formát, příliš velké nebo nejde o JPEG/PNG).",
     "clipboardPartial": "Vloženo {{success}} z {{total}} fotek. {{failed}} se nepodařilo přečíst (špatný formát, příliš velké nebo nejde o JPEG/PNG)."
   },
+  "importControl": {
+    "label": "Načíst fotky",
+    "tooltip": "Klikněte pro výběr fotek, přetáhněte sem, nebo vložte přes Ctrl+V"
+  },
   "photo": {
     "clickToEdit": "Klikněte pro úpravu",
     "position": "Pozice {{position}}",
