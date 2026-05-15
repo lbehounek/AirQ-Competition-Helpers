@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "Photo Placement",
-    "selectKml": "Select KML",
+    "selectKml": "Select KML or photos",
     "exportKml": "Export KML",
     "printMap": "Print Map",
     "toggleBase": {

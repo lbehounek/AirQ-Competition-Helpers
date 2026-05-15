@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "Umístění fotek",
-    "selectKml": "Načíst KML",
+    "selectKml": "Načíst KML nebo fotky",
     "exportKml": "Exportovat KML",
     "printMap": "Tisk mapy",
     "toggleBase": {
