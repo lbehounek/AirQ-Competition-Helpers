@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Typography, CircularProgress } from '@mui/material';
+import { Box, Typography, CircularProgress, Snackbar } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { isValidImageFile } from '../utils/imageProcessing';
@@ -97,37 +97,52 @@ export const ImportPhotosControl: React.FC<ImportPhotosControlProps> = ({
     : 'transparent';
 
   return (
-    <Box
-      {...getRootProps({ onClick: useElectronDialog ? handleClick : undefined })}
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 1,
-        px: 1.5,
-        py: 0.75,
-        border: '2px dashed',
-        borderColor,
-        borderRadius: 1.5,
-        bgcolor: bgColor,
-        cursor: isDisabled ? 'not-allowed' : 'pointer',
-        opacity: isDisabled ? 0.55 : 1,
-        transition: 'background-color 0.15s ease, border-color 0.15s ease',
-        '&:hover': isDisabled
-          ? undefined
-          : { borderColor: 'primary.main', bgcolor: 'primary.light' },
-        userSelect: 'none',
-      }}
-      title={t('importControl.tooltip')}
-    >
-      <input {...getInputProps()} />
-      {busy ? (
-        <CircularProgress size={18} />
-      ) : (
-        <CloudUpload sx={{ fontSize: 20, color: 'primary.main' }} />
-      )}
-      <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
-        {label}
-      </Typography>
-    </Box>
+    <>
+      <Box
+        {...getRootProps({ onClick: useElectronDialog ? handleClick : undefined })}
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 1,
+          px: 1.5,
+          py: 0.75,
+          border: '2px dashed',
+          borderColor,
+          borderRadius: 1.5,
+          bgcolor: bgColor,
+          cursor: isDisabled ? 'not-allowed' : 'pointer',
+          opacity: isDisabled ? 0.55 : 1,
+          transition: 'background-color 0.15s ease, border-color 0.15s ease',
+          '&:hover': isDisabled
+            ? undefined
+            : { borderColor: 'primary.main', bgcolor: 'primary.light' },
+          userSelect: 'none',
+        }}
+        title={t('importControl.tooltip')}
+      >
+        <input {...getInputProps()} />
+        {busy ? (
+          <CircularProgress size={18} />
+        ) : (
+          <CloudUpload sx={{ fontSize: 20, color: 'primary.main' }} />
+        )}
+        <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
+          {label}
+        </Typography>
+      </Box>
+      {/* `useElectronPhotoImport.pickPhotos` already traps its own throws
+          and calls `setImportError`; the chip just renders that surface.
+          Without this Snackbar, a failed native dialog opens nothing,
+          shows nothing, and the user keeps clicking. Matches the Alert
+          pattern used by the hero DropZone and GridSizedDropZone, but
+          rendered as a transient toast so the chip stays compact. */}
+      <Snackbar
+        open={Boolean(electronImport.importError)}
+        autoHideDuration={8000}
+        onClose={electronImport.clearImportError}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={electronImport.importError ?? ''}
+      />
+    </>
   );
 };

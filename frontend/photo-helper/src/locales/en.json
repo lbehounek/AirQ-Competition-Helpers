@@ -150,7 +150,8 @@
     "clipboardEmpty": "Nothing to paste — the clipboard has no JPEG/PNG photos or file references.",
     "clipboardReadFailed": "Could not read the clipboard. Try copying the photos again, or drag them from File Explorer.",
     "clipboardAllFailed": "None of the {{count}} pasted items could be read (wrong format, too large, or not JPEG/PNG).",
-    "clipboardPartial": "Pasted {{success}} of {{total}} photos. {{failed}} could not be read (wrong format, too large, or not JPEG/PNG)."
+    "clipboardPartial": "Pasted {{success}} of {{total}} photos. {{failed}} could not be read (wrong format, too large, or not JPEG/PNG).",
+    "addFilesFailed": "Photos were read, but could not be stored. Try again, or check available disk space."
   },
   "importControl": {
     "label": "Add photos",

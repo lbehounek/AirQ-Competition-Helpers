@@ -76,43 +76,66 @@ export function useClipboardPaste(options: UseClipboardPasteOptions): UseClipboa
       // and any other handlers from racing us.
       e.preventDefault();
 
-      try {
-        const inlineFiles = inlineItems
-          .map(item => item.getAsFile())
-          .filter((f): f is File => !!f && isValidImageFile(f));
+      // Phase 1 — resolve the clipboard. Failures here are infrastructure
+      // (IPC dead, decode of a malformed inline bitmap, unexpected throw).
+      // Keep this `try` narrow so addFiles failures below get a distinct
+      // toast — conflating storage failures with clipboard-read failures
+      // would have the user retrying paste fruitlessly for an OPFS quota.
+      const inlineFiles = inlineItems
+        .map(item => item.getAsFile())
+        .filter((f): f is File => !!f && isValidImageFile(f));
 
-        let viaElectron: File[] = [];
-        let failures: ClipboardPhotoFailure[] = [];
-        let rejected: Array<{ path: string; reason: string }> = [];
-        if (electronAvailable) {
+      let viaElectron: File[] = [];
+      let failures: ClipboardPhotoFailure[] = [];
+      let rejected: Array<{ path: string; reason: string }> = [];
+      let ipcError: unknown = undefined;
+      if (electronAvailable) {
+        try {
           const result = await readPhotosFromClipboard(opts.maxFiles);
           viaElectron = result.files.filter(isValidImageFile);
           failures = result.failures;
           rejected = result.rejected;
+          ipcError = result.ipcError;
+        } catch (err) {
+          console.error('[clipboard paste] read failed:', err);
+          ipcError = err;
         }
+      }
 
-        // De-dup: when the user pastes a screenshot, BOTH branches return
-        // the same bitmap (Electron via `readImage()`, browser via
-        // `clipboardData.items`). Prefer Electron's version (correct name
-        // + deterministic mime) and only fall back to the browser one if
-        // Electron returned nothing.
-        const files = viaElectron.length > 0 ? viaElectron : inlineFiles;
-
-        if (files.length > 0) {
-          await opts.addFiles(files);
-        }
-
-        if (failures.length > 0 || rejected.length > 0) {
-          setPasteError(formatPasteFailure(t, files.length, failures, rejected));
-        } else if (files.length === 0) {
-          // We committed to handling this paste (preventDefault'd) but
-          // had nothing usable — tell the user instead of silently
-          // dropping the event.
-          setPasteError(t('upload.clipboardEmpty'));
-        }
-      } catch (err) {
-        console.error('[clipboard paste] failed:', err);
+      // IPC-level failure short-circuits — there's nothing meaningful to
+      // pass to addFiles. Surface as infrastructure failure, not "0 of N".
+      if (ipcError !== undefined) {
         setPasteError(t('upload.clipboardReadFailed'));
+        return;
+      }
+
+      // De-dup: when the user pastes a screenshot, BOTH branches return
+      // the same bitmap (Electron via `readImage()`, browser via
+      // `clipboardData.items`). Prefer Electron's version (correct name
+      // + deterministic mime) and only fall back to the browser one if
+      // Electron returned nothing.
+      const files = viaElectron.length > 0 ? viaElectron : inlineFiles;
+
+      // Phase 2 — hand off to caller. `addFiles` failures (OPFS quota,
+      // IndexedDB closed, session not ready) are routed to their own
+      // string so the user understands the photos were READ correctly
+      // and the failure is on the storage side.
+      if (files.length > 0) {
+        try {
+          await opts.addFiles(files);
+        } catch (err) {
+          console.error('[clipboard paste] addFiles failed:', err);
+          setPasteError(t('upload.addFilesFailed'));
+          return;
+        }
+      }
+
+      if (failures.length > 0 || rejected.length > 0) {
+        setPasteError(formatPasteFailure(t, files.length, failures, rejected));
+      } else if (files.length === 0) {
+        // We committed to handling this paste (preventDefault'd) but had
+        // nothing usable — tell the user instead of silently dropping it.
+        setPasteError(t('upload.clipboardEmpty'));
       }
     };
 

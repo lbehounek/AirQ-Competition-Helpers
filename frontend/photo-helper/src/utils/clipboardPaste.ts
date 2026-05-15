@@ -45,6 +45,14 @@ export interface ClipboardPhotoResult {
   rejected: Array<{ path: string; reason: string }>;
   /** True when the clipboard had no images and no usable file paths. */
   empty: boolean;
+  /**
+   * The IPC itself rejected before returning a structured result (channel
+   * closed, untrusted sender, main crashed). Distinct from `failures` —
+   * which is per-file content failure — so the hook can render an
+   * infrastructure-level "couldn't read the clipboard" message instead
+   * of the misleading "None of the 1 pasted items could be read".
+   */
+  ipcError?: unknown;
 }
 
 export function isClipboardPasteAvailable(): boolean {
@@ -77,9 +85,9 @@ export async function readPhotosFromClipboard(maxFiles?: number): Promise<Clipbo
     payload = await api.readClipboardPhotos(maxFiles);
   } catch (err) {
     // IPC threw before producing a structured result (untrusted sender,
-    // channel closed) — surface as a single failure so the caller can
-    // distinguish from an empty clipboard.
-    return { files: [], failures: [{ path: '<clipboard>', error: err }], rejected: [], empty: false };
+    // channel closed, main crashed). Route via `ipcError` so the hook
+    // surfaces an infrastructure message, not a misleading "0-of-1" toast.
+    return { files: [], failures: [], rejected: [], empty: false, ipcError: err };
   }
   if (!payload || payload.kind === 'empty') return EMPTY;
 

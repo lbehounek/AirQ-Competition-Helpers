@@ -978,6 +978,13 @@ safeHandle('read-photo-file', async (event, filePath) => {
   }
   let abs;
   try { abs = path.resolve(filePath); } catch { throw new Error('Invalid file path'); }
+  // Defence-in-depth UNC / device-namespace gate. The allowlist is the
+  // primary barrier, but a future seeding path that forgets `isSafeStartDir`
+  // would re-open the NTLM-hash-leak vector — keep the check here so the
+  // single load-bearing line lives at the actual read sink.
+  if (!isSafeStartDir(abs)) {
+    throw new Error('Invalid file path');
+  }
   if (!photoOpenAllowlist.has(normalizePathKey(abs))) {
     throw new Error('File not in allowlist');
   }
@@ -1006,56 +1013,12 @@ safeHandle('read-photo-file', async (event, filePath) => {
   };
 });
 
-// Parse a Windows CF_HDROP buffer (DROPFILES struct) into an array of file
-// paths. Layout: 20-byte header (DWORD pFiles, POINT pt, BOOL fNC, BOOL fWide),
-// then a flat array of NUL-terminated paths terminated by an extra NUL/00 00.
-// Total Commander, Explorer and 7-Zip all populate CF_HDROP on Ctrl+C.
-function parseDropfiles(buf) {
-  if (!buf || buf.length < 20) return [];
-  const offset = buf.readUInt32LE(0);
-  const wide = buf.readUInt32LE(16) !== 0;
-  if (offset < 20 || offset >= buf.length) return [];
-  const tail = buf.subarray(offset);
-  const paths = [];
-  if (wide) {
-    let start = 0;
-    for (let i = 0; i + 1 < tail.length; i += 2) {
-      if (tail[i] === 0 && tail[i + 1] === 0) {
-        if (i === start) break;
-        const str = tail.subarray(start, i).toString('utf16le');
-        if (str) paths.push(str);
-        start = i + 2;
-      }
-    }
-  } else {
-    let start = 0;
-    for (let i = 0; i < tail.length; i++) {
-      if (tail[i] === 0) {
-        if (i === start) break;
-        const str = tail.subarray(start, i).toString('latin1');
-        if (str) paths.push(str);
-        start = i + 1;
-      }
-    }
-  }
-  return paths;
-}
-
-// Decode a file:// URI (RFC 8089) into a local path. Used for macOS
-// `public.file-url` and the cross-platform `text/uri-list` clipboard formats.
-function fileUriToPath(uri) {
-  try {
-    if (typeof uri !== 'string' || !uri.startsWith('file://')) return null;
-    let p = decodeURI(uri.slice('file://'.length));
-    if (process.platform === 'win32') {
-      if (p.startsWith('/')) p = p.slice(1);
-      p = p.replace(/\//g, '\\');
-    }
-    return p;
-  } catch {
-    return null;
-  }
-}
+// Clipboard binary-payload parsers (`parseDropfiles` for Windows CF_HDROP,
+// `fileUriToPath` for RFC 8089 file:// URIs) live in `lib/clipboardParse.js`
+// so the binary-format edge cases can be unit-tested without spinning up
+// Electron. The orchestrator `readClipboardFilePaths` below stays in main
+// because it talks to Electron's `clipboard` module.
+const { parseDropfiles, fileUriToPath } = require('./lib/clipboardParse');
 
 // Collect file paths from the OS clipboard across the three formats that
 // matter for our users:
@@ -1085,7 +1048,13 @@ function readClipboardFilePaths() {
       console.debug('[clipboard] CF_HDROP read failed:', err);
     }
   }
-  if (out.length === 0 && formats.some(f => f === 'public.file-url' || f === 'NSFilenamesPboardType')) {
+  // macOS single-file Finder copy populates `public.file-url`. Multi-file
+  // Finder copies use the legacy `NSFilenamesPboardType` (a property-list
+  // array of strings) which we deliberately do NOT parse here — the desktop
+  // app currently ships Windows-only, so the plist-parser dependency isn't
+  // worth pulling in. Tracked as tech debt; see docs/TECH_DEBT.md for the
+  // single-file → multi-file upgrade path when we add macOS distribution.
+  if (out.length === 0 && formats.includes('public.file-url')) {
     try {
       const uri = clipboard.read('public.file-url');
       const p = fileUriToPath(uri);
@@ -1141,6 +1110,13 @@ safeHandle('read-clipboard-photos', async (event, maxFiles) => {
       }
       let abs;
       try { abs = path.resolve(raw); } catch { rejected.push({ path: raw, reason: 'invalid' }); continue; }
+      // UNC / device-namespace gate. Must run BEFORE lstat — on Windows,
+      // `fs.lstatSync('\\\\attacker\\share\\x.jpg')` triggers the SMB
+      // redirector, leaking the user's NTLMv2 hash to the attacker
+      // regardless of whether the eventual read succeeds. A clipboard
+      // payload from a hostile app (RDP clipboard sync, malicious browser
+      // ext, Total Commander plugin) is an entirely realistic source.
+      if (!isSafeStartDir(abs)) { rejected.push({ path: raw, reason: 'invalid' }); continue; }
       const ext = path.extname(abs).toLowerCase();
       if (!ALLOWED_PHOTO_EXTS.has(ext)) {
         rejected.push({ path: raw, reason: 'unsupported-type' });
@@ -1150,17 +1126,33 @@ safeHandle('read-clipboard-photos', async (event, maxFiles) => {
       try { lst = fs.lstatSync(abs); } catch { rejected.push({ path: raw, reason: 'not-found' }); continue; }
       if (lst.isSymbolicLink()) { rejected.push({ path: raw, reason: 'symlink' }); continue; }
       if (!lst.isFile()) { rejected.push({ path: raw, reason: 'not-file' }); continue; }
-      if (lst.size > 30 * 1024 * 1024) { rejected.push({ path: raw, reason: 'too-large' }); continue; }
+      // 20 MB matches the renderer's `isValidImageFile` filter and the OPFS
+      // session ceiling. The 30 MB headroom on `read-photo-file` exists for
+      // older import paths; here, accepting a 25 MB file would just have it
+      // silently filtered out by the renderer's filter with no user
+      // feedback. Aligning at 20 MB keeps the count in the toast honest.
+      if (lst.size > 20 * 1024 * 1024) { rejected.push({ path: raw, reason: 'too-large' }); continue; }
       accepted.push(abs);
     }
-    // Replace the allowlist with this batch — same model as `open-photos`.
-    // The renderer's pattern is "read all then move on", so we don't need
-    // to merge with the prior batch's contents.
-    photoOpenAllowlist.clear();
+    // Merge into the allowlist — do NOT clear first. `open-photos` clears
+    // because its dialog gesture is implicitly serial (the renderer awaits
+    // the dialog before starting reads), but a document-level Ctrl+V can
+    // fire while a previous batch's `read-photo-file` calls are still in
+    // flight. Clearing here would invalidate those in-flight reads and
+    // surface as a spurious "File not in allowlist" partial failure. The
+    // set is bounded by PHOTO_OPEN_HARD_CAP per batch and entries are
+    // cheap; drop normalize-failures into `rejected` instead of silently
+    // mismatching the returned `accepted` array with what's reachable.
+    const finalAccepted = [];
     for (const p of accepted) {
-      try { photoOpenAllowlist.add(normalizePathKey(p)); } catch { /* ignore */ }
+      try {
+        photoOpenAllowlist.add(normalizePathKey(p));
+        finalAccepted.push(p);
+      } catch (err) {
+        rejected.push({ path: p, reason: 'normalize-failed' });
+      }
     }
-    return { kind: 'paths', paths: accepted, rejected };
+    return { kind: 'paths', paths: finalAccepted, rejected };
   }
 
   // Fallback: in-memory bitmap (screenshot, "Copy image" from a browser).
@@ -1169,10 +1161,10 @@ safeHandle('read-clipboard-photos', async (event, maxFiles) => {
     const img = clipboard.readImage();
     if (img && !img.isEmpty()) {
       const png = img.toPNG();
-      // Same 30 MB ceiling as on-disk paths — keeps the renderer's File
-      // construction predictable and stops a screenshot of a 30k-monitor
-      // wall from spiking memory.
-      if (png && png.length > 0 && png.length <= 30 * 1024 * 1024) {
+      // 20 MB ceiling matches the renderer's `isValidImageFile` so a paste
+      // accepted here never silently disappears from the user's count, and
+      // a screenshot of a 30k-monitor wall can't spike main's memory.
+      if (png && png.length > 0 && png.length <= 20 * 1024 * 1024) {
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
         return {
           kind: 'image',

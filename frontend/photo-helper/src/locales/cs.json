@@ -150,7 +150,8 @@
     "clipboardEmpty": "Není co vložit — ve schránce nejsou žádné fotky JPEG/PNG ani odkazy na soubory.",
     "clipboardReadFailed": "Schránku se nepodařilo přečíst. Zkuste fotky znovu zkopírovat, nebo je přetáhněte z Průzkumníka.",
     "clipboardAllFailed": "Žádnou z {{count}} vložených položek se nepodařilo načíst (špatný formát, příliš velké nebo nejde o JPEG/PNG).",
-    "clipboardPartial": "Vloženo {{success}} z {{total}} fotek. {{failed}} se nepodařilo přečíst (špatný formát, příliš velké nebo nejde o JPEG/PNG)."
+    "clipboardPartial": "Vloženo {{success}} z {{total}} fotek. {{failed}} se nepodařilo přečíst (špatný formát, příliš velké nebo nejde o JPEG/PNG).",
+    "addFilesFailed": "Fotky byly načteny, ale nepodařilo se je uložit. Zkuste to znovu nebo zkontrolujte volné místo."
   },
   "importControl": {
     "label": "Načíst fotky",
