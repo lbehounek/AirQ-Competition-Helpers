@@ -68,6 +68,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('open-photos', defaultDir, maxFiles),
   readPhotoFile: (filePath) => ipcRenderer.invoke('read-photo-file', filePath),
 
+  // Read photos pasted from the OS clipboard. Returns one of:
+  //   { kind: 'paths', paths: string[], rejected: {path,reason}[] }
+  //     — file paths copied from Total Commander/Explorer/Finder. Each
+  //       path is allowlisted for the follow-up `readPhotoFile` calls,
+  //       same as `openPhotos`.
+  //   { kind: 'image', name, mimeType, base64 }
+  //     — raw bitmap from a screenshot or browser "Copy image". The
+  //       renderer constructs a File directly; no follow-up IPC needed.
+  //   { kind: 'empty' } — clipboard has nothing we can use.
+  readClipboardPhotos: (maxFiles) => ipcRenderer.invoke('read-clipboard-photos', maxFiles),
+
   // Save KML text via native save dialog. The renderer passes the directory
   // the source KML was imported from (see `getPathForFile`) so the export
   // dialog lands in the user's own project folder (feedback 2026-04-23).

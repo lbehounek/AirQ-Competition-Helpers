@@ -129,7 +129,7 @@
     "dragDrop": "Přetáhněte fotografie sem",
     "browse": "nebo klikněte pro procházení souborů",
     "supported": "Podporované: JPEG, PNG (max {{maxSize}}MB každý)",
-    "clickOrDrop": "Klikněte nebo přetáhněte obrázky",
+    "clickOrDrop": "Klikněte, přetáhněte nebo vložte (Ctrl+V) obrázky",
     "dropImages": "Přetáhněte obrázky sem",
     "maxFiles": "Maximálně {{count}} fotografií na sadu",
     "currentCount": "{{current}}/{{max}} fotografií",
@@ -146,13 +146,18 @@
     "electronDialogFailed": "Výběr fotek se nepodařilo otevřít. Zkuste to znovu, nebo přetáhněte soubory z Průzkumníka.",
     "allFilesFailed": "Žádnou z {{count}} vybraných fotek se nepodařilo načíst. Ověřte, že soubory existují a jsou ve formátu JPEG/PNG do 30 MB.",
     "partialImport": "Načteno {{success}} z {{total}} fotek. {{failed}} se nepodařilo přečíst (poškozené, příliš velké nebo nejde o JPEG/PNG).",
-    "workingDirPersistFailed": "Fotky byly načteny, ale pracovní složku se nepodařilo uložit pro příští použití."
+    "workingDirPersistFailed": "Fotky byly načteny, ale pracovní složku se nepodařilo uložit pro příští použití.",
+    "clipboardEmpty": "Není co vložit — ve schránce nejsou žádné fotky JPEG/PNG ani odkazy na soubory.",
+    "clipboardReadFailed": "Schránku se nepodařilo přečíst. Zkuste fotky znovu zkopírovat, nebo je přetáhněte z Průzkumníka.",
+    "clipboardAllFailed": "Žádnou z {{count}} vložených položek se nepodařilo načíst (špatný formát, příliš velké nebo nejde o JPEG/PNG).",
+    "clipboardPartial": "Vloženo {{success}} z {{total}} fotek. {{failed}} se nepodařilo přečíst (špatný formát, příliš velké nebo nejde o JPEG/PNG)."
   },
   "photo": {
     "clickToEdit": "Klikněte pro úpravu",
     "position": "Pozice {{position}}",
     "loadingFailed": "Nepodařilo se načíst obrázek.",
-    "tryAgain": "Zkuste to znovu nebo nahrajte jiný soubor."
+    "tryAgain": "Zkuste to znovu nebo nahrajte jiný soubor.",
+    "deleteTooltip": "Smazat fotografii"
   },
   "controls": {
     "imageAdjustments": "Úpravy obrázku",

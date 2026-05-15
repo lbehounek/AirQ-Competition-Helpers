@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, ipcMain, shell, globalShortcut, Menu, dialog, net } = require('electron');
+const { app, BrowserWindow, protocol, ipcMain, shell, globalShortcut, Menu, dialog, net, clipboard, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -1004,6 +1004,188 @@ safeHandle('read-photo-file', async (event, filePath) => {
     mimeType,
     base64: buffer.toString('base64'),
   };
+});
+
+// Parse a Windows CF_HDROP buffer (DROPFILES struct) into an array of file
+// paths. Layout: 20-byte header (DWORD pFiles, POINT pt, BOOL fNC, BOOL fWide),
+// then a flat array of NUL-terminated paths terminated by an extra NUL/00 00.
+// Total Commander, Explorer and 7-Zip all populate CF_HDROP on Ctrl+C.
+function parseDropfiles(buf) {
+  if (!buf || buf.length < 20) return [];
+  const offset = buf.readUInt32LE(0);
+  const wide = buf.readUInt32LE(16) !== 0;
+  if (offset < 20 || offset >= buf.length) return [];
+  const tail = buf.subarray(offset);
+  const paths = [];
+  if (wide) {
+    let start = 0;
+    for (let i = 0; i + 1 < tail.length; i += 2) {
+      if (tail[i] === 0 && tail[i + 1] === 0) {
+        if (i === start) break;
+        const str = tail.subarray(start, i).toString('utf16le');
+        if (str) paths.push(str);
+        start = i + 2;
+      }
+    }
+  } else {
+    let start = 0;
+    for (let i = 0; i < tail.length; i++) {
+      if (tail[i] === 0) {
+        if (i === start) break;
+        const str = tail.subarray(start, i).toString('latin1');
+        if (str) paths.push(str);
+        start = i + 1;
+      }
+    }
+  }
+  return paths;
+}
+
+// Decode a file:// URI (RFC 8089) into a local path. Used for macOS
+// `public.file-url` and the cross-platform `text/uri-list` clipboard formats.
+function fileUriToPath(uri) {
+  try {
+    if (typeof uri !== 'string' || !uri.startsWith('file://')) return null;
+    let p = decodeURI(uri.slice('file://'.length));
+    if (process.platform === 'win32') {
+      if (p.startsWith('/')) p = p.slice(1);
+      p = p.replace(/\//g, '\\');
+    }
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+// Collect file paths from the OS clipboard across the three formats that
+// matter for our users:
+//   • Windows CF_HDROP (Total Commander, Explorer, 7-Zip) — multi-file
+//   • macOS public.file-url (Finder) — single file
+//   • text/uri-list (cross-platform fallback, KDE/GNOME)
+// Returns absolute paths, deduplicated, in the order they appeared. Caller
+// must still validate each path for ext/size/symlinks before reading.
+function readClipboardFilePaths() {
+  const formats = (() => {
+    try { return clipboard.availableFormats(); } catch { return []; }
+  })();
+  const out = [];
+  const seen = new Set();
+  const push = (p) => {
+    if (typeof p === 'string' && p && !seen.has(p)) {
+      seen.add(p);
+      out.push(p);
+    }
+  };
+
+  if (formats.includes('CF_HDROP')) {
+    try {
+      const buf = clipboard.readBuffer('CF_HDROP');
+      parseDropfiles(buf).forEach(push);
+    } catch (err) {
+      console.debug('[clipboard] CF_HDROP read failed:', err);
+    }
+  }
+  if (out.length === 0 && formats.some(f => f === 'public.file-url' || f === 'NSFilenamesPboardType')) {
+    try {
+      const uri = clipboard.read('public.file-url');
+      const p = fileUriToPath(uri);
+      if (p) push(p);
+    } catch (err) {
+      console.debug('[clipboard] public.file-url read failed:', err);
+    }
+  }
+  if (out.length === 0 && formats.includes('text/uri-list')) {
+    try {
+      const list = clipboard.read('text/uri-list') || '';
+      list.split(/\r?\n/).forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+        const p = fileUriToPath(trimmed);
+        if (p) push(p);
+      });
+    } catch (err) {
+      console.debug('[clipboard] text/uri-list read failed:', err);
+    }
+  }
+  return out;
+}
+
+// Read photos from the OS clipboard. Two-shot contract — either:
+//   • `paths`: file paths the user copied from Total Commander/Explorer/Finder.
+//              Paths are added to the same `photoOpenAllowlist` that gates
+//              `read-photo-file`, so the renderer reuses the existing
+//              import pipeline (parallel base64 reads, partial-failure shape).
+//   • `image`: raw bitmap from a screenshot or browser "Copy image" — the
+//              renderer constructs a File directly without another IPC hop.
+//
+// Path validation mirrors `read-photo-file` (ext allowlist, no symlinks,
+// 30 MB cap, real on-disk file) — done up front so we don't seed the
+// allowlist with anything we wouldn't read anyway.
+//
+// `maxFiles` mirrors `open-photos` so the renderer can cap by available
+// slot capacity. The hard cap (PHOTO_OPEN_HARD_CAP) still applies as a
+// floor of last resort against a renderer that sends `Infinity`.
+safeHandle('read-clipboard-photos', async (event, maxFiles) => {
+  const rawPaths = readClipboardFilePaths();
+  if (rawPaths.length > 0) {
+    const requested = (typeof maxFiles === 'number' && maxFiles > 0)
+      ? Math.min(maxFiles, PHOTO_OPEN_HARD_CAP)
+      : PHOTO_OPEN_HARD_CAP;
+    const accepted = [];
+    const rejected = [];
+    for (const raw of rawPaths) {
+      if (accepted.length >= requested) break;
+      if (typeof raw !== 'string' || !raw || raw.length > MAX_USER_PATH_LEN) {
+        rejected.push({ path: raw, reason: 'invalid' });
+        continue;
+      }
+      let abs;
+      try { abs = path.resolve(raw); } catch { rejected.push({ path: raw, reason: 'invalid' }); continue; }
+      const ext = path.extname(abs).toLowerCase();
+      if (!ALLOWED_PHOTO_EXTS.has(ext)) {
+        rejected.push({ path: raw, reason: 'unsupported-type' });
+        continue;
+      }
+      let lst;
+      try { lst = fs.lstatSync(abs); } catch { rejected.push({ path: raw, reason: 'not-found' }); continue; }
+      if (lst.isSymbolicLink()) { rejected.push({ path: raw, reason: 'symlink' }); continue; }
+      if (!lst.isFile()) { rejected.push({ path: raw, reason: 'not-file' }); continue; }
+      if (lst.size > 30 * 1024 * 1024) { rejected.push({ path: raw, reason: 'too-large' }); continue; }
+      accepted.push(abs);
+    }
+    // Replace the allowlist with this batch — same model as `open-photos`.
+    // The renderer's pattern is "read all then move on", so we don't need
+    // to merge with the prior batch's contents.
+    photoOpenAllowlist.clear();
+    for (const p of accepted) {
+      try { photoOpenAllowlist.add(normalizePathKey(p)); } catch { /* ignore */ }
+    }
+    return { kind: 'paths', paths: accepted, rejected };
+  }
+
+  // Fallback: in-memory bitmap (screenshot, "Copy image" from a browser).
+  // PNG is the universal interchange format for clipboard images.
+  try {
+    const img = clipboard.readImage();
+    if (img && !img.isEmpty()) {
+      const png = img.toPNG();
+      // Same 30 MB ceiling as on-disk paths — keeps the renderer's File
+      // construction predictable and stops a screenshot of a 30k-monitor
+      // wall from spiking memory.
+      if (png && png.length > 0 && png.length <= 30 * 1024 * 1024) {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        return {
+          kind: 'image',
+          name: `pasted-${stamp}.png`,
+          mimeType: 'image/png',
+          base64: png.toString('base64'),
+        };
+      }
+    }
+  } catch (err) {
+    console.debug('[clipboard] readImage failed:', err);
+  }
+  return { kind: 'empty' };
 });
 
 // Save a PDF (base64) via native save dialog. Defaults to the

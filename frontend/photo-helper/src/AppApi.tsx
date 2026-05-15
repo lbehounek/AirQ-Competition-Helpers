@@ -36,6 +36,7 @@ import {
   Map,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
+import { useClipboardPaste } from './hooks/useClipboardPaste';
 import { useMapPicksSync } from './hooks/useMapPicksSync';
 import {
   buildEditorPicks,
@@ -278,6 +279,19 @@ function AppApi() {
       setDropToast({ count: result.count });
     }
   };
+
+  // Ctrl+V from Total Commander / Explorer / Finder, or from a screenshot
+  // tool, lands here. Pasted photos go into the candidate tray (slotless
+  // pool) because the user hasn't specified a slot — they can then drag to
+  // the right grid position. Same destination the GridSizedDropZone uses
+  // when initial drops overflow capacity. Disabled until a competition is
+  // loaded so a pre-mount paste can't race the session bootstrap.
+  const { pasteError, clearPasteError } = useClipboardPaste({
+    addFiles: (files) => {
+      if (addPhotosToCandidates) void addPhotosToCandidates(files);
+    },
+    disabled: !session || !addPhotosToCandidates,
+  });
 
   // selectedPhoto.setKey === 'candidates' for tray-source photos. Label is
   // empty in that case (tray photos have no slot index). The modal reuses
@@ -1422,6 +1436,18 @@ function AppApi() {
         onClose={() => setCleanupErrorToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={cleanupErrorToast ?? ''}
+      />
+
+      {/* Clipboard-paste failure surface — partial reads (some files rejected
+          server-side for ext/size/symlinks), empty clipboards, IPC failures.
+          Same Snackbar vocabulary as the other toasts so the user gets a
+          consistent dismissible affordance. */}
+      <Snackbar
+        open={Boolean(pasteError)}
+        autoHideDuration={8000}
+        onClose={clearPasteError}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={pasteError ?? ''}
       />
 
       {/* Post-export candidate cleanup dialog */}
