@@ -36,6 +36,7 @@ import {
   Map,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
+import { useClipboardPaste } from './hooks/useClipboardPaste';
 import { useMapPicksSync } from './hooks/useMapPicksSync';
 import {
   buildEditorPicks,
@@ -57,6 +58,7 @@ import { CompetitionSelector } from './components/CompetitionSelector';
 import { CreateCompetitionButton } from './components/CreateCompetitionButton';
 import { CleanupModal } from './components/CleanupModal';
 import { CandidateTray } from './components/CandidateTray';
+import { ImportPhotosControl } from './components/ImportPhotosControl';
 import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
@@ -278,6 +280,19 @@ function AppApi() {
       setDropToast({ count: result.count });
     }
   };
+
+  // Ctrl+V from Total Commander / Explorer / Finder, or from a screenshot
+  // tool, lands here. Pasted photos go into the candidate tray (slotless
+  // pool) because the user hasn't specified a slot — they can then drag to
+  // the right grid position. Same destination the GridSizedDropZone uses
+  // when initial drops overflow capacity. Disabled until a competition is
+  // loaded so a pre-mount paste can't race the session bootstrap.
+  const { pasteError, clearPasteError } = useClipboardPaste({
+    addFiles: (files) => {
+      if (addPhotosToCandidates) void addPhotosToCandidates(files);
+    },
+    disabled: !session || !addPhotosToCandidates,
+  });
 
   // selectedPhoto.setKey === 'candidates' for tray-source photos. Label is
   // empty in that case (tray photos have no slot index). The modal reuses
@@ -732,12 +747,22 @@ function AppApi() {
                   </Box>
                 )}
 
-                {/* Shuffle Photos - Only show in track mode */}
-                {session?.mode === 'track' && (
-                  <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
-                      {t('actions.title')}
-                    </Typography>
+                {/* Actions cluster — Import + Shuffle. Import is always
+                    visible (mirrors map-corridors' "Select KML" button)
+                    so the user has a click-or-drop entry point regardless
+                    of grid state (feedback M., 2026-05-15). Shuffle stays
+                    track-only since it's mode-specific. */}
+                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
+                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                    {t('actions.title')}
+                  </Typography>
+                  <ImportPhotosControl
+                    onFilesPicked={(files) => {
+                      if (addPhotosToCandidates) void addPhotosToCandidates(files);
+                    }}
+                    disabled={!session || !addPhotosToCandidates}
+                  />
+                  {session?.mode === 'track' && (
                     <Button
                       onClick={handleShuffle}
                       disabled={
@@ -749,7 +774,7 @@ function AppApi() {
                       variant="outlined"
                       size="small"
                       startIcon={<Shuffle />}
-                      sx={{ 
+                      sx={{
                         fontSize: '0.75rem',
                         px: 1.5,
                         py: 0.5,
@@ -758,8 +783,8 @@ function AppApi() {
                     >
                       {t('actions.shuffle.name')}
                     </Button>
-                  </Box>
-                )}
+                  )}
+                </Box>
               </Box>
             </Box>
 
@@ -1422,6 +1447,18 @@ function AppApi() {
         onClose={() => setCleanupErrorToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={cleanupErrorToast ?? ''}
+      />
+
+      {/* Clipboard-paste failure surface — partial reads (some files rejected
+          server-side for ext/size/symlinks), empty clipboards, IPC failures.
+          Same Snackbar vocabulary as the other toasts so the user gets a
+          consistent dismissible affordance. */}
+      <Snackbar
+        open={Boolean(pasteError)}
+        autoHideDuration={8000}
+        onClose={clearPasteError}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={pasteError ?? ''}
       />
 
       {/* Post-export candidate cleanup dialog */}

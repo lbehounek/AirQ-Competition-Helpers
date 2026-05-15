@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Paper, CircularProgress, IconButton } from '@mui/material';
+import { Box, Typography, Paper, CircularProgress, IconButton, Tooltip } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import { Image as ImageIcon, CloudUpload, Close } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
@@ -299,13 +299,17 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
             {slot.photo ? (
               <Box
                 onClick={() => onPhotoClick && onPhotoClick(slot.photo!)}
-                sx={{ 
-                  cursor: 'pointer', 
-                  width: '100%', 
+                sx={{
+                  cursor: 'pointer',
+                  width: '100%',
                   height: '100%',
                   position: 'relative',
                   '&:hover .hover-overlay': {
                     opacity: 1
+                  },
+                  '&:hover .delete-button': {
+                    opacity: 1,
+                    boxShadow: '0 0 12px rgba(0, 0, 0, 0.6)'
                   }
                 }}
               >
@@ -318,8 +322,48 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                   size="grid" // Small size for grid view
                   setKey={setKey} // Pass setKey for PDF generation
                 />
-                
-                {/* Hover overlay */}
+
+                {/* Delete button — kept OUTSIDE the dark hover-overlay so it
+                    has its own visibility. Previously embedded inside the
+                    overlay at `opacity:0`, which only revealed it on hover —
+                    user feedback (M., 2026-05-15) reported it was undiscoverable.
+                    Now visible always at 0.6 opacity, full opacity on tile
+                    hover, with a Czech-aware tooltip. */}
+                <Tooltip title={t('photo.deleteTooltip')} placement="left" enterDelay={400}>
+                  <IconButton
+                    className="delete-button"
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent triggering photo click
+                      onPhotoRemove(slot.photo!.id);
+                    }}
+                    aria-label={t('photo.deleteTooltip')}
+                    sx={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      width: 36,
+                      height: 36,
+                      bgcolor: 'rgba(220, 53, 69, 0.92)', // Red so the destructive action reads at a glance
+                      color: 'white',
+                      borderRadius: '6px',
+                      opacity: 0.6, // Visible at rest — the whole point of this change
+                      transition: 'opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease',
+                      zIndex: 2, // Above the dark hover overlay so the red badge stays legible
+                      '&:hover': {
+                        bgcolor: 'rgba(200, 35, 51, 1)',
+                        transform: 'scale(1.08)',
+                        opacity: 1,
+                      }
+                    }}
+                    size="medium"
+                  >
+                    <Close sx={{ fontSize: 22 }} />
+                  </IconButton>
+                </Tooltip>
+
+                {/* Hover overlay — dim + "click to edit" hint. Delete button
+                    is now a sibling above, not a child, so its visibility no
+                    longer depends on the overlay opacity. */}
                 <Box
                   className="hover-overlay"
                   sx={{
@@ -337,38 +381,10 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                     pointerEvents: 'none'
                   }}
                 >
-                  {/* Delete button - top right corner, visible only on hover */}
-                  <IconButton
-                    onClick={(e) => {
-                      e.stopPropagation(); // Prevent triggering photo click
-                      onPhotoRemove(slot.photo!.id);
-                    }}
+                  <Typography
+                    variant="body1"
                     sx={{
-                      position: 'absolute',
-                      top: 8,
-                      right: 8,
-                      width: 36,
-                      height: 36,
-                      bgcolor: 'rgba(128, 128, 128, 0.9)', // Grayscale background
                       color: 'white',
-                      borderRadius: '6px', // Square with slight rounding
-                      pointerEvents: 'auto', // Enable clicking
-                      transition: 'all 0.2s ease-in-out',
-                      '&:hover': {
-                        bgcolor: 'rgba(128, 128, 128, 1)',
-                        boxShadow: '0 0 12px rgba(255, 255, 255, 0.8)', // White glow effect
-                        transform: 'scale(1.1)'
-                      }
-                    }}
-                    size="medium"
-                  >
-                    <Close sx={{ fontSize: 22 }} />
-                  </IconButton>
-                  
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      color: 'white', 
                       fontWeight: 600,
                       textShadow: '0 2px 4px rgba(0,0,0,0.8)'
                     }}

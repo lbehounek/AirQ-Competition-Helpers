@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, ipcMain, shell, globalShortcut, Menu, dialog, net } = require('electron');
+const { app, BrowserWindow, protocol, ipcMain, shell, globalShortcut, Menu, dialog, net, clipboard, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -978,6 +978,13 @@ safeHandle('read-photo-file', async (event, filePath) => {
   }
   let abs;
   try { abs = path.resolve(filePath); } catch { throw new Error('Invalid file path'); }
+  // Defence-in-depth UNC / device-namespace gate. The allowlist is the
+  // primary barrier, but a future seeding path that forgets `isSafeStartDir`
+  // would re-open the NTLM-hash-leak vector — keep the check here so the
+  // single load-bearing line lives at the actual read sink.
+  if (!isSafeStartDir(abs)) {
+    throw new Error('Invalid file path');
+  }
   if (!photoOpenAllowlist.has(normalizePathKey(abs))) {
     throw new Error('File not in allowlist');
   }
@@ -1004,6 +1011,173 @@ safeHandle('read-photo-file', async (event, filePath) => {
     mimeType,
     base64: buffer.toString('base64'),
   };
+});
+
+// Clipboard binary-payload parsers (`parseDropfiles` for Windows CF_HDROP,
+// `fileUriToPath` for RFC 8089 file:// URIs) live in `lib/clipboardParse.js`
+// so the binary-format edge cases can be unit-tested without spinning up
+// Electron. The orchestrator `readClipboardFilePaths` below stays in main
+// because it talks to Electron's `clipboard` module.
+const { parseDropfiles, fileUriToPath } = require('./lib/clipboardParse');
+
+// Collect file paths from the OS clipboard across the three formats that
+// matter for our users:
+//   • Windows CF_HDROP (Total Commander, Explorer, 7-Zip) — multi-file
+//   • macOS public.file-url (Finder) — single file
+//   • text/uri-list (cross-platform fallback, KDE/GNOME)
+// Returns absolute paths, deduplicated, in the order they appeared. Caller
+// must still validate each path for ext/size/symlinks before reading.
+function readClipboardFilePaths() {
+  const formats = (() => {
+    try { return clipboard.availableFormats(); } catch { return []; }
+  })();
+  const out = [];
+  const seen = new Set();
+  const push = (p) => {
+    if (typeof p === 'string' && p && !seen.has(p)) {
+      seen.add(p);
+      out.push(p);
+    }
+  };
+
+  if (formats.includes('CF_HDROP')) {
+    try {
+      const buf = clipboard.readBuffer('CF_HDROP');
+      parseDropfiles(buf).forEach(push);
+    } catch (err) {
+      console.debug('[clipboard] CF_HDROP read failed:', err);
+    }
+  }
+  // macOS single-file Finder copy populates `public.file-url`. Multi-file
+  // Finder copies use the legacy `NSFilenamesPboardType` (a property-list
+  // array of strings) which we deliberately do NOT parse here — the desktop
+  // app currently ships Windows-only, so the plist-parser dependency isn't
+  // worth pulling in. Tracked as tech debt; see docs/TECH_DEBT.md for the
+  // single-file → multi-file upgrade path when we add macOS distribution.
+  if (out.length === 0 && formats.includes('public.file-url')) {
+    try {
+      const uri = clipboard.read('public.file-url');
+      const p = fileUriToPath(uri);
+      if (p) push(p);
+    } catch (err) {
+      console.debug('[clipboard] public.file-url read failed:', err);
+    }
+  }
+  if (out.length === 0 && formats.includes('text/uri-list')) {
+    try {
+      const list = clipboard.read('text/uri-list') || '';
+      list.split(/\r?\n/).forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+        const p = fileUriToPath(trimmed);
+        if (p) push(p);
+      });
+    } catch (err) {
+      console.debug('[clipboard] text/uri-list read failed:', err);
+    }
+  }
+  return out;
+}
+
+// Read photos from the OS clipboard. Two-shot contract — either:
+//   • `paths`: file paths the user copied from Total Commander/Explorer/Finder.
+//              Paths are added to the same `photoOpenAllowlist` that gates
+//              `read-photo-file`, so the renderer reuses the existing
+//              import pipeline (parallel base64 reads, partial-failure shape).
+//   • `image`: raw bitmap from a screenshot or browser "Copy image" — the
+//              renderer constructs a File directly without another IPC hop.
+//
+// Path validation mirrors `read-photo-file` (ext allowlist, no symlinks,
+// 30 MB cap, real on-disk file) — done up front so we don't seed the
+// allowlist with anything we wouldn't read anyway.
+//
+// `maxFiles` mirrors `open-photos` so the renderer can cap by available
+// slot capacity. The hard cap (PHOTO_OPEN_HARD_CAP) still applies as a
+// floor of last resort against a renderer that sends `Infinity`.
+safeHandle('read-clipboard-photos', async (event, maxFiles) => {
+  const rawPaths = readClipboardFilePaths();
+  if (rawPaths.length > 0) {
+    const requested = (typeof maxFiles === 'number' && maxFiles > 0)
+      ? Math.min(maxFiles, PHOTO_OPEN_HARD_CAP)
+      : PHOTO_OPEN_HARD_CAP;
+    const accepted = [];
+    const rejected = [];
+    for (const raw of rawPaths) {
+      if (accepted.length >= requested) break;
+      if (typeof raw !== 'string' || !raw || raw.length > MAX_USER_PATH_LEN) {
+        rejected.push({ path: raw, reason: 'invalid' });
+        continue;
+      }
+      let abs;
+      try { abs = path.resolve(raw); } catch { rejected.push({ path: raw, reason: 'invalid' }); continue; }
+      // UNC / device-namespace gate. Must run BEFORE lstat — on Windows,
+      // `fs.lstatSync('\\\\attacker\\share\\x.jpg')` triggers the SMB
+      // redirector, leaking the user's NTLMv2 hash to the attacker
+      // regardless of whether the eventual read succeeds. A clipboard
+      // payload from a hostile app (RDP clipboard sync, malicious browser
+      // ext, Total Commander plugin) is an entirely realistic source.
+      if (!isSafeStartDir(abs)) { rejected.push({ path: raw, reason: 'invalid' }); continue; }
+      const ext = path.extname(abs).toLowerCase();
+      if (!ALLOWED_PHOTO_EXTS.has(ext)) {
+        rejected.push({ path: raw, reason: 'unsupported-type' });
+        continue;
+      }
+      let lst;
+      try { lst = fs.lstatSync(abs); } catch { rejected.push({ path: raw, reason: 'not-found' }); continue; }
+      if (lst.isSymbolicLink()) { rejected.push({ path: raw, reason: 'symlink' }); continue; }
+      if (!lst.isFile()) { rejected.push({ path: raw, reason: 'not-file' }); continue; }
+      // 20 MB matches the renderer's `isValidImageFile` filter and the OPFS
+      // session ceiling. The 30 MB headroom on `read-photo-file` exists for
+      // older import paths; here, accepting a 25 MB file would just have it
+      // silently filtered out by the renderer's filter with no user
+      // feedback. Aligning at 20 MB keeps the count in the toast honest.
+      if (lst.size > 20 * 1024 * 1024) { rejected.push({ path: raw, reason: 'too-large' }); continue; }
+      accepted.push(abs);
+    }
+    // Merge into the allowlist — do NOT clear first. `open-photos` clears
+    // because its dialog gesture is implicitly serial (the renderer awaits
+    // the dialog before starting reads), but a document-level Ctrl+V can
+    // fire while a previous batch's `read-photo-file` calls are still in
+    // flight. Clearing here would invalidate those in-flight reads and
+    // surface as a spurious "File not in allowlist" partial failure. The
+    // set is bounded by PHOTO_OPEN_HARD_CAP per batch and entries are
+    // cheap; drop normalize-failures into `rejected` instead of silently
+    // mismatching the returned `accepted` array with what's reachable.
+    const finalAccepted = [];
+    for (const p of accepted) {
+      try {
+        photoOpenAllowlist.add(normalizePathKey(p));
+        finalAccepted.push(p);
+      } catch (err) {
+        rejected.push({ path: p, reason: 'normalize-failed' });
+      }
+    }
+    return { kind: 'paths', paths: finalAccepted, rejected };
+  }
+
+  // Fallback: in-memory bitmap (screenshot, "Copy image" from a browser).
+  // PNG is the universal interchange format for clipboard images.
+  try {
+    const img = clipboard.readImage();
+    if (img && !img.isEmpty()) {
+      const png = img.toPNG();
+      // 20 MB ceiling matches the renderer's `isValidImageFile` so a paste
+      // accepted here never silently disappears from the user's count, and
+      // a screenshot of a 30k-monitor wall can't spike main's memory.
+      if (png && png.length > 0 && png.length <= 20 * 1024 * 1024) {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        return {
+          kind: 'image',
+          name: `pasted-${stamp}.png`,
+          mimeType: 'image/png',
+          base64: png.toString('base64'),
+        };
+      }
+    }
+  } catch (err) {
+    console.debug('[clipboard] readImage failed:', err);
+  }
+  return { kind: 'empty' };
 });
 
 // Save a PDF (base64) via native save dialog. Defaults to the

@@ -97,6 +97,23 @@ surface in code review / release notes.
 - **Effort:** ~5 min.
 - **Tags:** `correctness`, `hygiene`
 
+### 8. macOS multi-file clipboard paste (`NSFilenamesPboardType`)
+- **Why:** `frontend/desktop/main.js` `readClipboardFilePaths` only reads
+  `public.file-url` on macOS, which is a single file. A multi-file Finder
+  copy (⌘-click multi-select → ⌘C) populates `NSFilenamesPboardType` — a
+  binary or XML property-list array of paths — and would currently paste
+  only the first file. Acceptable today because we ship Windows-only (see
+  "Signed Windows .exe" below), but the moment we add a macOS build the
+  paste UX silently regresses for power users.
+- **Action:** When macOS distribution lands, add a plist parser
+  (`simple-plist` or a hand-rolled `<array><string>…</string></array>`
+  XML reader, since the structure is fixed) and a third branch in
+  `readClipboardFilePaths` that calls `clipboard.readBuffer('NSFilenamesPboardType')`
+  before the `public.file-url` fallback. Re-add `NSFilenamesPboardType`
+  to the format-availability check at the same time.
+- **Effort:** ~1–2 hours (parser + tests + a Finder-tested QA pass).
+- **Tags:** `mac`, `ux`, `clipboard`
+
 ---
 
 ## Deferred (documented but not scheduled)

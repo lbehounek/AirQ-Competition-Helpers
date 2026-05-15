@@ -129,7 +129,7 @@
     "dragDrop": "Drag & drop photos here",
     "browse": "or click to browse files", 
     "supported": "Supported: JPEG, PNG (max {{maxSize}}MB each)",
-    "clickOrDrop": "Click or drop images",
+    "clickOrDrop": "Click, drop, or paste (Ctrl+V) images",
     "dropImages": "Drop images here",
     "maxFiles": "Maximum {{count}} photos per set",
     "currentCount": "{{current}}/{{max}} photos",
@@ -146,13 +146,23 @@
     "electronDialogFailed": "Could not open the photo picker. Try again, or drag photos from File Explorer.",
     "allFilesFailed": "None of the {{count}} selected photos could be read. Check the files exist and are JPEG/PNG under 30 MB.",
     "partialImport": "Imported {{success}} of {{total}} photos. {{failed}} could not be read (corrupted, too large, or not JPEG/PNG).",
-    "workingDirPersistFailed": "Photos imported, but the working folder could not be saved for next time."
+    "workingDirPersistFailed": "Photos imported, but the working folder could not be saved for next time.",
+    "clipboardEmpty": "Nothing to paste — the clipboard has no JPEG/PNG photos or file references.",
+    "clipboardReadFailed": "Could not read the clipboard. Try copying the photos again, or drag them from File Explorer.",
+    "clipboardAllFailed": "None of the {{count}} pasted items could be read (wrong format, too large, or not JPEG/PNG).",
+    "clipboardPartial": "Pasted {{success}} of {{total}} photos. {{failed}} could not be read (wrong format, too large, or not JPEG/PNG).",
+    "addFilesFailed": "Photos were read, but could not be stored. Try again, or check available disk space."
+  },
+  "importControl": {
+    "label": "Add photos",
+    "tooltip": "Click to pick photos, drag-drop here, or press Ctrl+V to paste"
   },
   "photo": {
     "clickToEdit": "Click to Edit",
     "position": "Position {{position}}",
     "loadingFailed": "Failed to load image.",
-    "tryAgain": "Please try again or upload a different file."
+    "tryAgain": "Please try again or upload a different file.",
+    "deleteTooltip": "Delete photo"
   },
   "controls": {
     "imageAdjustments": "Image Adjustments",
