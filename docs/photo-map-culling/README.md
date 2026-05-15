@@ -1,0 +1,127 @@
+# Photo Map Culling
+
+A map-driven photo culling tool that sits between photo capture and the
+photo editor. Drop a batch of GPS-tagged photos, see them on a map at the
+location they were taken, decide which ones to use, and place a pin at the
+*subject* location (the actual object in the photo). Selections flow
+automatically into both the photo editor (for printing) and the corridor
+checker (for legality / answer sheet generation).
+
+**Implemented inside the existing `map-corridors` app — not a new app and
+not an extension of `photo-helper`.** That choice (see [ADR-001](./decisions.md#adr-001-extend-map-corridors-rather-than-build-a-new-app))
+reuses the map infrastructure already in place (MapLibre + Mapbox via
+`react-map-gl`, token wiring, marker drag, popup, discipline-aware label
+generation, per-competition OPFS dir) instead of duplicating ~3000 LoC
+of map code in a new workspace.
+
+Corridor (KML/GPX) and photo (EXIF) inputs work **side by side** in the
+same view — no mode toggle, no switching. The dropzone routes by file
+extension; the side panel for photos appears when there are photos to
+show. See [ADR-021](./decisions.md#adr-021--implicit-dropzone-routing-no-mode-toggle).
+
+**Rough workflow time budget (per competition).**
+
+| Step | Today | After |
+|---|---|---|
+| Cull 30–100 photos | ~2 min/photo (Explorer thumbs + open viewer) | ~15–20 s/photo (drop + click Include) |
+| Place markers in corridor app | ~1 min/photo (re-type by clicking map) | ~10 s/photo (drag pin from capture to subject) |
+| **Total for 60 photos** | **≈ 3 hours** | **≈ 30 minutes** |
+
+These are rough numbers, not measured — point being the order-of-magnitude
+win, not the precise minute count. Single biggest workflow improvement in
+the competition-prep pipeline.
+
+---
+
+## Status
+
+| | |
+|---|---|
+| Phase | **Design — no code yet** |
+| Branch | `docs/photo-map-culling` |
+| Target app | `frontend/map-corridors` (extended; not a new app) |
+| Depends on | `feat/candidate-photos` merged to `main` |
+| Implementation owner | TBD |
+| Estimated effort (without AI) | ~5–8 working days |
+| First-PR slice | Phase 0 + Phase 1 (types + EXIF pipeline + tests) |
+
+---
+
+## Problem
+
+Today's flow is two unconnected steps:
+
+1. **Cull blind in Explorer.** Organizer shoots 30–100 candidate photos.
+   Picks survivors by filename + thumbnail viewer. No map context. Easy to
+   confuse photos taken near each other.
+2. **Place markers manually.** In map-corridors, organizer clicks the map at
+   each photo's *subject location* by eye. The EXIF already knows roughly
+   where each photo lives — that information is being re-typed by hand.
+
+Both steps are slow, both are error-prone, and they duplicate latent
+geographic information that the camera already captured.
+
+---
+
+## Solution
+
+One tool, one workflow:
+
+```
+        ┌─────────────────────────────────────────────────────┐
+        │ Camera / phone with GPS                             │
+        │ 30–100 photos with EXIF (latitude, longitude, time) │
+        └────────────────────────┬────────────────────────────┘
+                                 │ drag & drop
+                                 ▼
+┌──────────────────────────────────────────────────────────────────┐
+│ map-corridors — single view, corridors + photos coexist          │
+│                                                                  │
+│   • drop a KML/GPX → corridor renders (today's behaviour)        │
+│   • drop JPEG/PNG → EXIF GPS → dot at capture location           │
+│   • click dot → thumbnail popup + Include / Skip / Reject        │
+│   • for Include: subject pin appears at capture loc, draggable   │
+│   • drag the pin to where the object actually is                 │
+│   • photos without GPS → dropped along lower map edge by time    │
+│   • assign label (A–T Rally / 1–20 Precision)                    │
+└─────────┬───────────────────────────────────────┬────────────────┘
+          │ chosen photos                         │ same dataset
+          ▼                                       ▼
+┌──────────────────────────────┐    ┌─────────────────────────────────┐
+│ photo-helper (candidate pool)│    │ map-corridors (PhotoMarkers     │
+│  Crop, level, label, PDF     │    │  at subject locations) →        │
+│                              │    │  legality check, answer sheet   │
+└──────────────────────────────┘    └─────────────────────────────────┘
+```
+
+Three apps already share the per-competition OPFS/filesystem directory
+(`competitions/{compId}/`). Adding photos to that directory makes them
+visible everywhere; **no new contract between apps is needed**.
+
+The map tool is not a new app — it's an extension of the existing
+map-corridors view (decision recorded in [decisions.md](./decisions.md#adr-001-extend-map-corridors-rather-than-build-a-new-app)).
+Corridor checking and photo culling share the same map, the same marker
+array, and the same session file — no mode toggle ([ADR-021](./decisions.md#adr-021--implicit-dropzone-routing-no-mode-toggle)).
+
+---
+
+## Out of scope for v1
+
+- **HEIC / HEIF support.** iPhone-default format; not supported in v1.
+  Documented as a known limitation. ([ADR-006](./decisions.md#adr-006-no-heic-support-in-v1))
+- **Side-by-side compare modal.** Future enhancement.
+- **Time-clustering** ("you took 5 photos in 30s, you probably only need one").
+- **Keyboard shortcuts.**
+
+---
+
+## Document map
+
+| File | Purpose |
+|---|---|
+| [README.md](./README.md) | This file. Feature overview + status. |
+| [user-stories.md](./user-stories.md) | What the user wants to do, with acceptance criteria per story. |
+| [decisions.md](./decisions.md) | ADR-style log of every locked design choice and the alternatives considered. |
+| [implementation-plan.md](./implementation-plan.md) | Phased plan with file-level scope, exit criteria, and test focus. |
+
+Read in that order if you're new to the feature.
