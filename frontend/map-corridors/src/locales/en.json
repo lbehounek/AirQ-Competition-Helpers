@@ -8,7 +8,7 @@
       "streets": "Streets",
       "satellite": "Satellite"
     },
-    "dropHint": "Drop KML to load",
+    "dropHint": "Drop KML or photos",
     "answerSheet": "Show Answer Sheet",
     "dragToPlace": "Drag to place photo marker",
     "use1NmAfterSp": "Corridor 1 NM after start point",
@@ -19,6 +19,51 @@
     "printMap": "Print Map",
     "dragToPlaceGround": "Drag to place ground marker",
     "backToMenu": "Back to main menu"
+  },
+  "photo": {
+    "import": {
+      "progress": "Importing {{done}} of {{total}} photos…",
+      "success": "Imported {{count}} photos",
+      "successOne": "Imported 1 photo",
+      "partial": "Imported {{ok}} of {{total}} — {{failed}} failed",
+      "failureHeic": "{{count}} HEIC photos skipped (not supported)",
+      "failureHeicOne": "1 HEIC photo skipped (not supported)",
+      "failureCorrupt": "{{count}} photos could not be read",
+      "failureCorruptOne": "1 photo could not be read",
+      "failureStorage": "{{count}} photos could not be saved (storage)",
+      "failureStorageOne": "1 photo could not be saved (storage)",
+      "unsupported": "Unsupported file: {{name}}",
+      "noCompetition": "Open a competition from the launcher before importing photos"
+    },
+    "popup": {
+      "include": "Include",
+      "skip": "Skip",
+      "reject": "Reject",
+      "thumbMissing": "Thumbnail unavailable",
+      "label": "Label",
+      "labelSet": "Set label",
+      "labelUsed": "Already used"
+    },
+    "tray": {
+      "title": "No GPS ({{count}})",
+      "dragHint": "Drag onto the map to place",
+      "expand": "Show no-GPS photos",
+      "collapse": "Hide no-GPS photos"
+    },
+    "list": {
+      "title": "Photos",
+      "picks": "Picks",
+      "neutral": "Neutral",
+      "rejects": "Rejects",
+      "noGps": "No GPS",
+      "expand": "Show photo list",
+      "collapse": "Hide photo list",
+      "sendToEditor": "Send to editor ({{count}})"
+    },
+    "handoff": {
+      "flushFailed": "Couldn't save picks before opening the editor. Check storage and try again.",
+      "editorSyncFailed": "Couldn't apply latest labels from the editor."
+    }
   },
   "groundPopup": {
     "type": "Marker type"

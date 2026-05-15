@@ -9,6 +9,11 @@ import type {
   StorageHandles,
   SessionDirectoryHandles,
 } from './types';
+import {
+  savePhotoThumb as savePhotoThumbImpl,
+  getPhotoThumb as getPhotoThumbImpl,
+  deletePhotoThumb as deletePhotoThumbImpl,
+} from './photoThumbs';
 
 /**
  * Sanitize filename to prevent path traversal and invalid characters
@@ -133,6 +138,18 @@ export class OPFSStorage implements StorageInterface {
       console.warn(`Sanitized photoId for delete: '${photoId}' -> '${safeId}'`);
     }
     await opfsDir.removeEntry(safeId);
+  }
+
+  async savePhotoThumb(photosDir: DirectoryHandle, photoId: string, blob: Blob): Promise<void> {
+    return savePhotoThumbImpl(this, photosDir, photoId, blob);
+  }
+
+  async getPhotoThumb(photosDir: DirectoryHandle, photoId: string): Promise<Blob | null> {
+    return getPhotoThumbImpl(this, photosDir, photoId);
+  }
+
+  async deletePhotoThumb(photosDir: DirectoryHandle, photoId: string): Promise<void> {
+    return deletePhotoThumbImpl(this, photosDir, photoId);
   }
 
   async clearDirectory(dir: DirectoryHandle): Promise<void> {

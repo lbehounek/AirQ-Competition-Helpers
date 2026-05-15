@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 import { buildPreciseCorridorsAndGates, DISCIPLINE_CONFIGS } from './corridors/preciseCorridor'
 import type { Discipline } from './corridors/preciseCorridor'
 
-import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert } from '@mui/material'
+import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert, Snackbar, LinearProgress } from '@mui/material'
 import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -35,6 +35,79 @@ import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
 import { DEFAULT_GROUND_MARKER_TYPE, getLabelsForDiscipline } from './types/markers'
+import { importPhotosToStorage } from './photoImport/importPhotosToStorage'
+import type { ImportFailureReason, ImportFailure } from './photoImport/types'
+import { NoGpsTray } from './components/NoGpsTray'
+import { PhotoListPanel } from './components/PhotoListPanel'
+import {
+  buildMapPicks,
+  flushPendingMapPicks,
+  scheduleWriteMapPicks,
+} from './handoff/mapPicksWriter'
+import { useEditorPicksSync } from './hooks/useEditorPicksSync'
+
+// File-type routing for the dropzone. KML/GPX → existing corridor
+// parser, JPEG/PNG → photo import pipeline (Phase 3 of photo-map-culling,
+// ADR-021 — implicit routing, no mode toggle). Anything else lands in
+// `unsupported` so the caller can surface a name-bearing toast.
+const SUPPORTED_KML_EXT_RX = /\.(kml|gpx)$/i
+const SUPPORTED_IMAGE_EXT_RX = /\.(jpe?g|png)$/i
+
+function classifyDroppedFiles(files: File[]): {
+  kml: File[]
+  image: File[]
+  unsupported: File[]
+} {
+  const kml: File[] = []
+  const image: File[] = []
+  const unsupported: File[] = []
+  for (const f of files) {
+    if (SUPPORTED_KML_EXT_RX.test(f.name)) {
+      kml.push(f)
+    } else if (SUPPORTED_IMAGE_EXT_RX.test(f.name) || f.type === 'image/jpeg' || f.type === 'image/png') {
+      image.push(f)
+    } else {
+      unsupported.push(f)
+    }
+  }
+  return { kml, image, unsupported }
+}
+
+// Pick the dominant failure category for the result snackbar.
+// HEIC complaints come first because that's the only "you need to do
+// something different" failure — corrupt and storage are operational.
+function summarizeFailures(
+  failed: ImportFailure[],
+  t: (key: string, params?: Record<string, string | number>) => string,
+): { severity: 'error'; text: string } {
+  const counts: Record<ImportFailureReason, number> = {
+    heic: 0, corrupt: 0, unsupported: 0, storage: 0,
+  }
+  for (const f of failed) counts[f.reason]++
+
+  if (counts.heic > 0) {
+    return {
+      severity: 'error',
+      text: counts.heic === 1
+        ? t('photo.import.failureHeicOne')
+        : t('photo.import.failureHeic', { count: counts.heic }),
+    }
+  }
+  if (counts.storage > 0) {
+    return {
+      severity: 'error',
+      text: counts.storage === 1
+        ? t('photo.import.failureStorageOne')
+        : t('photo.import.failureStorage', { count: counts.storage }),
+    }
+  }
+  return {
+    severity: 'error',
+    text: counts.corrupt === 1
+      ? t('photo.import.failureCorruptOne')
+      : t('photo.import.failureCorrupt', { count: counts.corrupt }),
+  }
+}
 
 function App() {
   const { t } = useI18n()
@@ -115,9 +188,15 @@ function App() {
   const {
     session,
     backendAvailable,
+    storage,
+    photosDir,
+    competitionDir,
     setMapStyleId,
     setMarkers: persistMarkers,
     setGroundMarkers: persistGroundMarkers,
+    setNoGpsPhotos: persistNoGpsPhotos,
+    setNoGpsTrayOpen: persistNoGpsTrayOpen,
+    placeNoGpsPhoto,
     setUse1NmAfterSp,
     setComputedData,
     saveOriginalKmlText,
@@ -344,6 +423,13 @@ function App() {
   // photo-helper and other apps inherit it on next launch.
   const [importedKmlDir, setImportedKmlDir] = useState<string | null>(null)
 
+  // Photo-import UI state (Phase 3). `importProgress` drives the
+  // LinearProgress bar; null = idle. `snack` is the one user-visible
+  // feedback channel — progress, success/partial summary, unsupported
+  // hints. Severity drives the MUI Alert color.
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
+  const [snack, setSnack] = useState<{ severity: 'success' | 'info' | 'warning' | 'error'; text: string } | null>(null)
+
   // Hydrate from the competition's persisted working dir on mount so that
   // re-opening map-corridors later (without a fresh KML import) still
   // remembers where the user wants files to land.
@@ -440,6 +526,184 @@ function App() {
     }
   }, [session?.geojson, effectiveDiscipline, use1NmAfterSp, effectiveConfig])
 
+  const handlePhotoFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return
+    if (!storage || !photosDir) {
+      setSnack({ severity: 'warning', text: t('photo.import.noCompetition') })
+      return
+    }
+    setImportProgress({ done: 0, total: files.length })
+    try {
+      const result = await importPhotosToStorage(storage, photosDir, files, {
+        onProgress: (done, total) => setImportProgress({ done, total }),
+      })
+      // Phase 4/6: surface imported photos. Photos WITH EXIF GPS become
+      // PhotoMarkers and join the capture-dots layer (Phase 4). Photos
+      // WITHOUT GPS get pushed to noGpsPhotos and surface in the
+      // bottom-left tray (Phase 6, ADR-012); they receive a marker only
+      // once the user drags one onto the map.
+      if (result.ok.length > 0) {
+        const withGps = result.ok.filter(p => p.exif.capturedAt !== undefined)
+        const withoutGps = result.ok.filter(p => p.exif.capturedAt === undefined)
+        if (withGps.length > 0) {
+          await persistMarkers((prev) => {
+            const next = [...prev]
+            for (const p of withGps) {
+              const captured = p.exif.capturedAt!
+              next.push({
+                id: p.photoId,
+                photoId: p.photoId,
+                lng: captured.lng,
+                lat: captured.lat,
+                name: p.file.name,
+                capturedAt: {
+                  lng: captured.lng,
+                  lat: captured.lat,
+                  ...(captured.altitude !== undefined ? { altitude: captured.altitude } : {}),
+                  ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
+                },
+              })
+            }
+            return next
+          })
+        }
+        if (withoutGps.length > 0) {
+          await persistNoGpsPhotos((prev) => {
+            const next = [...prev]
+            for (const p of withoutGps) {
+              next.push({
+                photoId: p.photoId,
+                filename: p.file.name,
+                ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
+              })
+            }
+            return next
+          })
+        }
+      }
+      if (result.failed.length === 0) {
+        setSnack({
+          severity: 'success',
+          text: result.ok.length === 1
+            ? t('photo.import.successOne')
+            : t('photo.import.success', { count: result.ok.length }),
+        })
+      } else if (result.ok.length === 0) {
+        setSnack(summarizeFailures(result.failed, t))
+      } else {
+        setSnack({
+          severity: 'warning',
+          text: t('photo.import.partial', {
+            ok: result.ok.length,
+            total: files.length,
+            failed: result.failed.length,
+          }),
+        })
+      }
+    } catch (err) {
+      // importPhotosToStorage shouldn't throw — per-file failures land in
+      // result.failed. A top-level throw means something foundational broke
+      // (storage init, etc.). Surface it generically.
+      console.error('photo import failed:', err)
+      setSnack({ severity: 'error', text: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setImportProgress(null)
+    }
+  }, [storage, photosDir, t, persistMarkers, persistNoGpsPhotos])
+
+  // Phase 9 — Send-to-editor button handler. Flushes the pending
+  // map-picks write FIRST (ADR-009 navigation-flush requirement) so a
+  // toggle made within the 300ms debounce window before the click still
+  // lands on disk before photo-helper opens. If the flush rejects
+  // (quota / OPFS InvalidStateError) we abort navigation — otherwise
+  // photo-helper would open against a stale handoff file with no UI
+  // signal that the picks didn't make it.
+  const handleSendToEditor = useCallback(async () => {
+    try {
+      await flushPendingMapPicks()
+    } catch (err) {
+      console.error('flushPendingMapPicks failed before nav:', err)
+      setSnack({ severity: 'error', text: t('photo.handoff.flushFailed') })
+      return
+    }
+    if (!competitionId) return
+    const api = (window as { electronAPI?: { navigateToApp?: (app: string, id: string) => void } }).electronAPI
+    if (api?.navigateToApp) {
+      api.navigateToApp('photo-helper', competitionId)
+    } else {
+      window.location.href = `/photo-helper/?competitionId=${competitionId}`
+    }
+  }, [competitionId, t])
+
+  // Phase 8a — mirror the in-memory photo markers into map-picks.json
+  // every time they change. The writer debounces (300ms) so rapid flag
+  // toggles coalesce into one disk write. Pagehide flushes best-effort.
+  useEffect(() => {
+    if (!storage || !competitionDir) return
+    const picks = buildMapPicks(markers)
+    scheduleWriteMapPicks(storage, competitionDir, picks)
+  }, [markers, storage, competitionDir])
+
+  // Pagehide-flush. Fire-and-forget per ADR-009 (async OPFS won't fully
+  // settle before unload, but kicking the timer is strictly better than
+  // letting the debounce drop the latest changes).
+  useEffect(() => {
+    const onPageHide = () => { void flushPendingMapPicks() }
+    window.addEventListener('pagehide', onPageHide)
+    return () => window.removeEventListener('pagehide', onPageHide)
+  }, [])
+
+  // Phase C — read photo-helper-picks.json on competition load and on
+  // visibilitychange. Newer-wins applies remote labels to local markers.
+  // Failures surface via the snack — without this, a sync that rejected
+  // (e.g. quota at persistMarkers) silently diverged from disk.
+  const handleEditorSyncError = useCallback((_err: unknown) => {
+    setSnack({ severity: 'warning', text: t('photo.handoff.editorSyncFailed') })
+  }, [t])
+  useEditorPicksSync(storage, competitionDir, persistMarkers, handleEditorSyncError)
+
+  // Phase 5 photo-popup action handlers. `flag` lives on PhotoMarker as
+  // an intermediate until Phase 8 moves the source of truth to
+  // map-picks.json — see PhotoMarker type docstring.
+  const setPhotoFlag = useCallback(async (markerId: string, flag: 'pick' | 'reject' | null) => {
+    await persistMarkers((prev) =>
+      prev.map(m => {
+        if (m.id !== markerId) return m
+        if (flag === null) {
+          const { flag: _ignored, ...rest } = m
+          return rest as typeof m
+        }
+        return { ...m, flag }
+      }),
+    )
+  }, [persistMarkers])
+
+  const handlePhotoInclude = useCallback((markerId: string) => {
+    void setPhotoFlag(markerId, 'pick')
+  }, [setPhotoFlag])
+
+  const handlePhotoSkip = useCallback((markerId: string) => {
+    // Skip = explicitly leave the photo neutral. If it was previously
+    // rejected (user revisiting from Phase 7's panel), Skip restores it.
+    void setPhotoFlag(markerId, null)
+  }, [setPhotoFlag])
+
+  const handlePhotoReject = useCallback((markerId: string) => {
+    void setPhotoFlag(markerId, 'reject')
+  }, [setPhotoFlag])
+
+  // Phase 6 — drop-from-tray handler. Atomic: a single persistSession
+  // mutates BOTH markers and noGpsPhotos in one write, so a partial
+  // failure can no longer leave the photo duplicated in both lists.
+  const handleNoGpsPhotoPlaced = useCallback(async (photoId: string, lng: number, lat: number) => {
+    try {
+      await placeNoGpsPhoto(photoId, lng, lat)
+    } catch (err) {
+      console.error('placeNoGpsPhoto failed:', err)
+      setSnack({ severity: 'error', text: err instanceof Error ? err.message : String(err) })
+    }
+  }, [placeNoGpsPhoto])
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
     const isMarkerDrag = types.includes('application/x-photo-marker') || types.includes('application/x-ground-marker')
@@ -477,23 +741,43 @@ function App() {
     } else if (dt.files && dt.files.length) {
       for (let i = 0; i < dt.files.length; i++) dropped.push(dt.files[i])
     }
-    const kmlOrGpx = dropped.filter(f => f.name.toLowerCase().endsWith('.kml') || f.name.toLowerCase().endsWith('.gpx'))
-    if (kmlOrGpx.length) {
-      await onFiles(kmlOrGpx)
+    const { kml, image, unsupported } = classifyDroppedFiles(dropped)
+    if (unsupported.length > 0) {
+      setSnack({
+        severity: 'warning',
+        text: t('photo.import.unsupported', { name: unsupported.map(f => f.name).join(', ') }),
+      })
     }
-  }, [onFiles])
+    // Mixed batches: parse the KML and import photos in parallel. Neither
+    // path blocks the other (ADR-021 implicit routing).
+    const tasks: Promise<unknown>[] = []
+    if (kml.length) tasks.push(onFiles(kml))
+    if (image.length) tasks.push(handlePhotoFiles(image))
+    await Promise.all(tasks)
+  }, [onFiles, handlePhotoFiles, t])
 
   const onClickSelectFile = useCallback(() => {
     fileInputRef.current?.click()
   }, [])
 
   const onFileInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-    await onFiles([files[0]])
+    const fileList = e.target.files
+    if (!fileList || fileList.length === 0) return
+    const selected = Array.from(fileList)
+    const { kml, image, unsupported } = classifyDroppedFiles(selected)
+    if (unsupported.length > 0) {
+      setSnack({
+        severity: 'warning',
+        text: t('photo.import.unsupported', { name: unsupported.map(f => f.name).join(', ') }),
+      })
+    }
+    const tasks: Promise<unknown>[] = []
+    if (kml.length) tasks.push(onFiles(kml))
+    if (image.length) tasks.push(handlePhotoFiles(image))
+    await Promise.all(tasks)
     // allow selecting the same file again later
     e.target.value = ''
-  }, [onFiles])
+  }, [onFiles, handlePhotoFiles, t])
 
   const handleExportKML = useCallback(async () => {
     const originalKmlText = await loadOriginalKmlText()
@@ -724,12 +1008,18 @@ function App() {
       if (!current) return prev
       const isUsedElsewhere = prev.some(m => m.id !== id && m.label === label)
       if (isUsedElsewhere) return prev
-      return prev.map(m => m.id === id ? { ...m, label } : m)
+      // Stamp labelUpdatedAt so the editor's sync reads "newer than mine"
+      // and adopts the change. Required for bidirectional label sync
+      // (Phase D of photo-map-culling).
+      return prev.map(m => m.id === id ? { ...m, label, labelUpdatedAt: new Date().toISOString() } : m)
     })
   }, [persistMarkers])
 
   const handleMarkerLabelClear = useCallback((id: string) => {
-    persistMarkers(prev => prev.map(m => m.id === id ? ({ ...m, label: undefined }) : m))
+    persistMarkers(prev => prev.map(m => m.id === id
+      ? ({ ...m, label: undefined, labelUpdatedAt: new Date().toISOString() })
+      : m,
+    ))
   }, [persistMarkers])
 
   // Ground marker callbacks
@@ -799,7 +1089,7 @@ function App() {
           '& .MuiFormControlLabel-label': { color: 'white', fontSize: '0.8rem' },
           '& .MuiCheckbox-root': { color: 'rgba(255,255,255,0.7)', '&.Mui-checked': { color: 'white' } },
         }}>
-          <input type="file" ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,application/vnd.google-earth.kml+xml,application/gpx+xml" style={{ display: 'none' }} />
+          <input type="file" multiple ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,.jpg,.jpeg,.png,application/vnd.google-earth.kml+xml,application/gpx+xml,image/jpeg,image/png" style={{ display: 'none' }} />
           <Button variant="contained" size="small" onClick={onClickSelectFile}>{t('app.selectKml')}</Button>
           {(session?.leftSegments || session?.rightSegments || session?.gates) && (
             <Button variant="outlined" size="small" onClick={handleExportKML} startIcon={<Download sx={{ fontSize: 16 }} />}>{t('app.exportKml')}</Button>
@@ -908,6 +1198,30 @@ function App() {
               onGroundMarkerTypeChange: handleGroundMarkerTypeChange,
               onGroundMarkerDelete: handleGroundMarkerDelete,
             }}
+            photoStorage={storage}
+            photoDir={photosDir}
+            onPhotoInclude={handlePhotoInclude}
+            onPhotoSkip={handlePhotoSkip}
+            onPhotoReject={handlePhotoReject}
+            onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}
+          />
+          {/* Phase 6 — no-GPS tray, pinned to bottom-left of the map. */}
+          <NoGpsTray
+            photos={session?.noGpsPhotos ?? []}
+            open={session?.noGpsTrayOpen ?? true}
+            onToggleOpen={() => { void persistNoGpsTrayOpen(!(session?.noGpsTrayOpen ?? true)) }}
+            storage={storage}
+            photosDir={photosDir}
+          />
+          {/* Phase 7 — right-side photo list panel. Auto-hides when there
+              are no imported photos (KML-only sessions look unchanged). */}
+          <PhotoListPanel
+            markers={markers}
+            noGpsPhotos={session?.noGpsPhotos ?? []}
+            storage={storage}
+            photosDir={photosDir}
+            onMarkerClick={(markerId) => mapRef.current?.flyToPhotoMarker(markerId)}
+            onSendToEditor={competitionId ? handleSendToEditor : undefined}
           />
         </Box>
       </Container>
@@ -978,6 +1292,33 @@ function App() {
         </Box>
       </DialogContent>
     </Dialog>
+    {/* Phase 3 photo-import UX (docs/photo-map-culling).
+        LinearProgress sits below the controls row during a batch import.
+        Snackbar at top-right shows summary on completion + unsupported
+        hints. Both are non-blocking — user can keep working on the map. */}
+    {importProgress && importProgress.total > 0 && (
+      <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30 }}>
+        <LinearProgress
+          variant="determinate"
+          value={Math.round((importProgress.done / importProgress.total) * 100)}
+        />
+        <Box sx={{ bgcolor: 'primary.main', color: 'white', px: 2, py: 0.5, fontSize: 13 }}>
+          {t('photo.import.progress', { done: importProgress.done, total: importProgress.total })}
+        </Box>
+      </Box>
+    )}
+    <Snackbar
+      open={snack !== null}
+      autoHideDuration={snack?.severity === 'error' ? null : 6000}
+      onClose={() => setSnack(null)}
+      anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+    >
+      {snack ? (
+        <Alert severity={snack.severity} onClose={() => setSnack(null)} sx={{ width: '100%' }}>
+          {snack.text}
+        </Alert>
+      ) : undefined}
+    </Snackbar>
     </>
   )
 }

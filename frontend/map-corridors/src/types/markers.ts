@@ -14,12 +14,29 @@ export {
 } from '@airq/shared-discipline'
 export type { PhotoLabel } from '@airq/shared-discipline'
 
+// `lng/lat` is the subject (answer-sheet) location; `capturedAt` is the optional EXIF source. See docs/photo-map-culling/implementation-plan.md Phase 0.
+// `flag` is a Phase-5 intermediate — until Phase 8 (map-picks.json), the
+// flag persists on the marker. Phase 8 makes map-picks.json the source
+// of truth and the marker.flag becomes a render-time projection.
+export type PhotoFlag = 'pick' | 'reject'
 export type PhotoMarker = Readonly<{
   id: string
   lng: number
   lat: number
   name: string
   label?: PhotoLabel
+  capturedAt?: Readonly<{
+    lng: number
+    lat: number
+    altitude?: number
+    timestamp?: string
+  }>
+  photoId?: string
+  flag?: PhotoFlag
+  // Phase D of photo-map-culling — when the label was last set, ISO 8601.
+  // Drives the "newer wins" conflict resolution in `useEditorPicksSync`
+  // and `useMapPicksSync` (label may be set in either app now).
+  labelUpdatedAt?: string
 }>
 
 // Ground marker types — FAI precision flying canvas shapes (12 letters + 14 symbols).
@@ -79,6 +96,18 @@ export function isGroundMarker(value: unknown): value is GroundMarker {
   )
 }
 
+function isValidCapturedAt(value: unknown): boolean {
+  if (value === undefined) return true
+  if (!value || typeof value !== 'object') return false
+  const c = value as Record<string, unknown>
+  if (!isValidLngLat(c.lng, c.lat)) return false
+  if (c.altitude !== undefined && !(typeof c.altitude === 'number' && Number.isFinite(c.altitude))) return false
+  if (c.timestamp !== undefined && typeof c.timestamp !== 'string') return false
+  return true
+}
+
+const PHOTO_FLAG_SET: ReadonlySet<string> = new Set<string>(['pick', 'reject'])
+
 export function isPhotoMarker(value: unknown): value is PhotoMarker {
   if (!value || typeof value !== 'object') return false
   const v = value as Record<string, unknown>
@@ -86,7 +115,11 @@ export function isPhotoMarker(value: unknown): value is PhotoMarker {
     typeof v.id === 'string' && v.id.length > 0 &&
     isValidLngLat(v.lng, v.lat) &&
     typeof v.name === 'string' &&
-    (v.label === undefined || (typeof v.label === 'string' && PHOTO_LABEL_SET.has(v.label)))
+    (v.label === undefined || (typeof v.label === 'string' && PHOTO_LABEL_SET.has(v.label))) &&
+    isValidCapturedAt(v.capturedAt) &&
+    (v.photoId === undefined || (typeof v.photoId === 'string' && v.photoId.length > 0)) &&
+    (v.flag === undefined || (typeof v.flag === 'string' && PHOTO_FLAG_SET.has(v.flag))) &&
+    (v.labelUpdatedAt === undefined || typeof v.labelUpdatedAt === 'string')
   )
 }
 
@@ -98,4 +131,31 @@ export function sanitizeGroundMarkers(input: unknown): GroundMarker[] {
 export function sanitizePhotoMarkers(input: unknown): PhotoMarker[] {
   if (!Array.isArray(input)) return []
   return input.filter(isPhotoMarker)
+}
+
+// Phase 6 of photo-map-culling — no-GPS photo tray entries.
+// These photos live in this list (not in `markers`) until the user drags
+// one onto the map, at which point a `PhotoMarker` is created at the drop
+// coords and the entry leaves this list. ADR-012 — they never receive
+// synthetic coordinates while in the tray.
+export type NoGpsPhoto = Readonly<{
+  photoId: string
+  filename: string
+  /** ISO 8601 EXIF DateTimeOriginal; used for tray sort order. Optional — some cameras don't set it. */
+  timestamp?: string
+}>
+
+export function isNoGpsPhoto(value: unknown): value is NoGpsPhoto {
+  if (!value || typeof value !== 'object') return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.photoId === 'string' && v.photoId.length > 0 &&
+    typeof v.filename === 'string' && v.filename.length > 0 &&
+    (v.timestamp === undefined || typeof v.timestamp === 'string')
+  )
+}
+
+export function sanitizeNoGpsPhotos(input: unknown): NoGpsPhoto[] {
+  if (!Array.isArray(input)) return []
+  return input.filter(isNoGpsPhoto)
 }

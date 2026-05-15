@@ -36,6 +36,13 @@ import {
   Map,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
+import { useMapPicksSync } from './hooks/useMapPicksSync';
+import {
+  buildEditorPicks,
+  flushPendingEditorPicks,
+  scheduleWriteEditorPicks,
+} from './handoff/editorPicksWriter';
+import { getStorage, type DirectoryHandle } from '@airq/shared-storage';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
 import { EditableHeading } from './components/EditableHeading';
@@ -98,10 +105,12 @@ function AppApi() {
     isDesktopManaged,
     // Candidate pool operations (see docs/CANDIDATE_PHOTOS.md)
     addPhotosToCandidates,
+    addExistingCandidate,
     removeCandidate,
     promoteCandidateToSlot,
     demoteSlotToCandidate,
     setCandidateFlag,
+    setCandidateLabel,
     updateCandidatePhotoState,
     deleteCandidates,
   } = sessionHookResult;
@@ -109,6 +118,76 @@ function AppApi() {
   // Candidate photos — derived from session for stable rendering. The pool
   // is optional on older sessions, so default to empty.
   const candidatePhotos: ApiPhoto[] = session?.candidates?.photos ?? [];
+
+  // Phase 8b of photo-map-culling — resolve the per-competition dirs
+  // and mount the map-picks sync hook. The dirs come from the OPFS
+  // layout `competitions/{compId}/{photos,}`; matches map-corridors'
+  // useCorridorSessionOPFS resolution, so the writer + reader agree
+  // on paths.
+  const [pmcCompetitionDir, setPmcCompetitionDir] = useState<DirectoryHandle | null>(null);
+  const [pmcPhotosDir, setPmcPhotosDir] = useState<DirectoryHandle | null>(null);
+  // Sticky banner shown when cross-app dir resolution fails (OPFS unavailable,
+  // permission revoked, transient I/O during init). Without it the editor
+  // looks normal but the map → editor handoff is silently dead for the
+  // session.
+  const [pmcSyncUnavailable, setPmcSyncUnavailable] = useState(false);
+  const pmcCompetitionId = currentCompetition?.id ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    if (!pmcCompetitionId) {
+      setPmcCompetitionDir(null);
+      setPmcPhotosDir(null);
+      setPmcSyncUnavailable(false);
+      return;
+    }
+    void (async () => {
+      try {
+        const storage = getStorage();
+        const handles = await storage.init();
+        const competitionsDir = await storage.getDirectoryHandle(handles.root, 'competitions', { create: true });
+        const compDir = await storage.getDirectoryHandle(competitionsDir, pmcCompetitionId, { create: true });
+        const photosDir = await storage.getDirectoryHandle(compDir, 'photos', { create: true });
+        if (cancelled) return;
+        setPmcCompetitionDir(compDir);
+        setPmcPhotosDir(photosDir);
+        setPmcSyncUnavailable(false);
+      } catch (err) {
+        console.warn('[AppApi] failed to resolve photo-map-culling dirs:', err);
+        if (!cancelled) setPmcSyncUnavailable(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pmcCompetitionId]);
+
+  const pmcSessionApi = useMemo(() => ({
+    candidates: candidatePhotos,
+    addCandidate: addExistingCandidate,
+    removeCandidate,
+    setCandidateFlag,
+    setCandidateLabel,
+  }), [candidatePhotos, addExistingCandidate, removeCandidate, setCandidateFlag, setCandidateLabel]);
+
+  useMapPicksSync(pmcCompetitionDir, pmcPhotosDir, pmcSessionApi);
+
+  // Phase B — write photo-helper-picks.json on every candidate change so
+  // map-corridors picks up label edits made in this app. Debounced 300ms
+  // by the writer; pagehide flushes best-effort.
+  useEffect(() => {
+    if (!pmcCompetitionDir) return;
+    try {
+      const storage = getStorage();
+      const picks = buildEditorPicks(candidatePhotos);
+      scheduleWriteEditorPicks(storage, pmcCompetitionDir, picks);
+    } catch (err) {
+      console.warn('[AppApi] scheduleWriteEditorPicks failed:', err);
+    }
+  }, [candidatePhotos, pmcCompetitionDir]);
+
+  useEffect(() => {
+    const onPageHide = () => { void flushPendingEditorPicks(); };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, []);
 
   // Session identifiers and storage stats come from the OPFS-backed
   // useCompetitionSystem hook — no network round-trip, so availability is
@@ -752,6 +831,15 @@ function AppApi() {
             }
           >
             {error}
+          </Alert>
+        )}
+
+        {/* Photo-map-culling handoff unavailable — surfaces the previously
+            silent dir-resolution failure (cross-app sync would otherwise
+            quietly miss every pick made in map-corridors). */}
+        {pmcSyncUnavailable && (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            {t('candidates.handoff.unavailable')}
           </Alert>
         )}
 

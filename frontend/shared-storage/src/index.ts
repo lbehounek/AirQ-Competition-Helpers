@@ -28,6 +28,13 @@ export type {
 export { dirnameOf } from './pathUtils';
 export { slugifyForFilename } from './slugify';
 
+// Photo-thumb helpers — implementation primitives behind
+// `StorageInterface.savePhotoThumb`/`getPhotoThumb`/`deletePhotoThumb`.
+// App code should prefer the interface methods; these are exported so
+// tests can exercise the wrapper logic with a faked StorageInterface
+// without instantiating an OPFS/Electron backend.
+export { savePhotoThumb, getPhotoThumb, deletePhotoThumb } from './photoThumbs';
+
 import type { StorageInterface, StorageType } from './types';
 import { OPFSStorage, opfsStorage } from './opfsStorage';
 import { ElectronStorage, electronStorage } from './electronStorage';

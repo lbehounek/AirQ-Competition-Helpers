@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { resolveMapStyleIdFromPersisted } from '../hooks/useCorridorSessionOPFS'
+import { resolveMapStyleIdFromPersisted, resolveNoGpsTrayOpen } from '../hooks/useCorridorSessionOPFS'
 
 /**
  * Session migration is the one piece of code in PR #42 that can permanently
@@ -72,5 +72,52 @@ describe('resolveMapStyleIdFromPersisted', () => {
     // via onChange — validating strings here would lose user preference.
     expect(resolveMapStyleIdFromPersisted({ mapStyleId: 'some-future-style' }, DEFAULT_ID))
       .toBe('some-future-style')
+  })
+})
+
+/**
+ * Phase 0 of photo-map-culling adds `noGpsTrayOpen` to CorridorsSession.
+ * Pre-feature sessions don't have the field — they must migrate cleanly to
+ * the default (open) without console warnings (US-9 acceptance: "Reload
+ * after a force-quit recovers cleanly").
+ */
+describe('resolveNoGpsTrayOpen', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
+  it('returns persisted true', () => {
+    expect(resolveNoGpsTrayOpen({ noGpsTrayOpen: true }, true)).toBe(true)
+  })
+
+  it('returns persisted false (user collapsed the tray)', () => {
+    expect(resolveNoGpsTrayOpen({ noGpsTrayOpen: false }, true)).toBe(false)
+  })
+
+  it('v1 migration: missing field → default, no warning', () => {
+    expect(resolveNoGpsTrayOpen({}, true)).toBe(true)
+    expect(resolveNoGpsTrayOpen({ otherField: 'irrelevant' }, true)).toBe(true)
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  it('returns default for null/undefined/non-object record', () => {
+    expect(resolveNoGpsTrayOpen(null, true)).toBe(true)
+    expect(resolveNoGpsTrayOpen(undefined, true)).toBe(true)
+    expect(resolveNoGpsTrayOpen('not an object', true)).toBe(true)
+    expect(resolveNoGpsTrayOpen(42, false)).toBe(false)
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  it('warns and falls back on non-boolean noGpsTrayOpen (corrupted session)', () => {
+    expect(resolveNoGpsTrayOpen({ noGpsTrayOpen: 'yes' }, true)).toBe(true)
+    expect(resolveNoGpsTrayOpen({ noGpsTrayOpen: 1 }, true)).toBe(true)
+    expect(resolveNoGpsTrayOpen({ noGpsTrayOpen: null }, true)).toBe(true)
+    expect(resolveNoGpsTrayOpen({ noGpsTrayOpen: {} }, false)).toBe(false)
+    expect(warnSpy).toHaveBeenCalled()
   })
 })

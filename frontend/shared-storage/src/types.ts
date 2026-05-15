@@ -93,6 +93,30 @@ export interface StorageInterface {
   deletePhotoFile(photosDir: DirectoryHandle, photoId: string): Promise<void>;
 
   /**
+   * Save a thumbnail blob into `photosDir/thumbs/{photoId}.jpg`.
+   * The `thumbs` subdirectory is created on demand. Photo-map-culling
+   * Phase 2 — see docs/photo-map-culling/implementation-plan.md.
+   * @param photosDir - Directory handle for photos (NOT the thumbs dir)
+   * @param photoId - Unique identifier for the source photo
+   * @param blob - The thumbnail bytes (typically image/jpeg, ~200x150)
+   */
+  savePhotoThumb(photosDir: DirectoryHandle, photoId: string, blob: Blob): Promise<void>;
+
+  /**
+   * Read a thumbnail blob from `photosDir/thumbs/{photoId}.jpg`.
+   * Returns null if the thumbs subdirectory or the specific thumb file
+   * is missing — callers regenerate from the original on miss.
+   */
+  getPhotoThumb(photosDir: DirectoryHandle, photoId: string): Promise<Blob | null>;
+
+  /**
+   * Delete a thumbnail. Idempotent — silent if the thumb or the thumbs
+   * subdirectory does not exist (cleanup paths shouldn't fail on
+   * already-deleted state).
+   */
+  deletePhotoThumb(photosDir: DirectoryHandle, photoId: string): Promise<void>;
+
+  /**
    * Clear all contents of a directory
    * @param dir - Directory handle to clear
    */

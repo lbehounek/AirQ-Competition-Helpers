@@ -19,6 +19,13 @@ export type AddPhotosResult =
   | { kind: 'ok'; routedTo: 'slot' | 'tray'; count: number }
   | { kind: 'err'; reason: 'no-competition' | 'over-capacity' | 'unknown'; message: string };
 
+// `capturedAt` is the EXIF source; `subjectAt` is the user-placed marker coord that flows to the answer sheet. See docs/photo-map-culling/implementation-plan.md Phase 0.
+export interface ApiPhotoGps {
+  capturedAt?: { lng: number; lat: number; altitude?: number };
+  subjectAt?: { lng: number; lat: number };
+  timestamp?: string;
+}
+
 export interface ApiPhoto {
   id: string;
   sessionId: string; // Required for image cache and API consistency
@@ -33,6 +40,15 @@ export interface ApiPhoto {
    * from a slot back to the tray. See docs/CANDIDATE_PHOTOS.md.
    */
   flag?: CandidateFlag;
+  gps?: ApiPhotoGps;
+  /**
+   * ISO 8601 stamp of when `label` was last set, in EITHER app
+   * (set by photo-helper directly OR by useMapPicksSync mirroring a
+   * map-corridors edit). Drives the cross-app "newer wins" tie-break
+   * in `useEditorPicksSync` (map side) and `useMapPicksSync` (editor
+   * side). Absent on legacy data.
+   */
+  labelUpdatedAt?: string;
 }
 
 export interface ApiPhotoSet {

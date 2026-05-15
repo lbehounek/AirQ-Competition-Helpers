@@ -8,7 +8,7 @@
       "streets": "Mapa",
       "satellite": "Satelit"
     },
-    "dropHint": "Přetáhni KML pro načtení",
+    "dropHint": "Přetáhni KML nebo fotky",
     "answerSheet": "Zobrazit answer sheet",
     "dragToPlace": "Přetáhni pro umístění fotky",
     "use1NmAfterSp": "Koridor začíná 1 NM po SP",
@@ -19,6 +19,51 @@
     "printMap": "Tisk mapy",
     "dragToPlaceGround": "Přetáhni pro umístění znaku",
     "backToMenu": "Zpět do hlavního menu"
+  },
+  "photo": {
+    "import": {
+      "progress": "Importuji {{done}} z {{total}} fotek…",
+      "success": "Naimportováno {{count}} fotek",
+      "successOne": "Naimportována 1 fotka",
+      "partial": "Naimportováno {{ok}} z {{total}} — {{failed}} selhalo",
+      "failureHeic": "{{count}} fotek HEIC přeskočeno (nepodporováno)",
+      "failureHeicOne": "1 fotka HEIC přeskočena (nepodporováno)",
+      "failureCorrupt": "{{count}} fotek nelze přečíst",
+      "failureCorruptOne": "1 fotku nelze přečíst",
+      "failureStorage": "{{count}} fotek nelze uložit (úložiště)",
+      "failureStorageOne": "1 fotku nelze uložit (úložiště)",
+      "unsupported": "Nepodporovaný soubor: {{name}}",
+      "noCompetition": "Před importem fotek otevři soutěž z hlavního menu"
+    },
+    "popup": {
+      "include": "Vybrat",
+      "skip": "Přeskočit",
+      "reject": "Odmítnout",
+      "thumbMissing": "Náhled není k dispozici",
+      "label": "Štítek",
+      "labelSet": "Přiřadit štítek",
+      "labelUsed": "Již použito"
+    },
+    "tray": {
+      "title": "Bez GPS ({{count}})",
+      "dragHint": "Přetáhni na mapu pro umístění",
+      "expand": "Zobrazit fotky bez GPS",
+      "collapse": "Skrýt fotky bez GPS"
+    },
+    "list": {
+      "title": "Fotky",
+      "picks": "Vybrané",
+      "neutral": "Neutrální",
+      "rejects": "Odmítnuté",
+      "noGps": "Bez GPS",
+      "expand": "Zobrazit seznam fotek",
+      "collapse": "Skrýt seznam fotek",
+      "sendToEditor": "Poslat do editoru ({{count}})"
+    },
+    "handoff": {
+      "flushFailed": "Výběr se nepodařilo uložit před otevřením editoru. Zkontrolujte úložiště a zkuste to znovu.",
+      "editorSyncFailed": "Nepodařilo se použít nejnovější popisky z editoru."
+    }
   },
   "groundPopup": {
     "type": "Typ znaku"

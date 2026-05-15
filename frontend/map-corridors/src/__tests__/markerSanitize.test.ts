@@ -3,8 +3,10 @@ import {
   DEFAULT_GROUND_MARKER_TYPE,
   GROUND_MARKER_TYPES,
   isGroundMarker,
+  isNoGpsPhoto,
   isPhotoMarker,
   sanitizeGroundMarkers,
+  sanitizeNoGpsPhotos,
   sanitizePhotoMarkers,
 } from '../types/markers'
 
@@ -102,5 +104,152 @@ describe('sanitizePhotoMarkers', () => {
     const result = sanitizePhotoMarkers(input)
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('pm-1')
+  })
+})
+
+// EXIF photo-import fields (docs/photo-map-culling/implementation-plan.md Phase 0)
+describe('isPhotoMarker — capturedAt', () => {
+  const base = { id: 'pm-1', lng: 14, lat: 50, name: 'Test' }
+
+  it('accepts a marker with valid capturedAt', () => {
+    expect(isPhotoMarker({ ...base, capturedAt: { lng: 14.1, lat: 50.1 } })).toBe(true)
+  })
+
+  it('accepts capturedAt with optional altitude/timestamp', () => {
+    expect(isPhotoMarker({
+      ...base,
+      capturedAt: { lng: 14.1, lat: 50.1, altitude: 320, timestamp: '2026-05-14T08:00:00Z' },
+    })).toBe(true)
+  })
+
+  it.each([
+    ['non-object capturedAt', { ...base, capturedAt: 'not an object' }],
+    ['null capturedAt', { ...base, capturedAt: null }],
+    ['capturedAt missing coords', { ...base, capturedAt: {} }],
+    ['capturedAt with out-of-range lng', { ...base, capturedAt: { lng: 999, lat: 50 } }],
+    ['capturedAt with NaN lat', { ...base, capturedAt: { lng: 14, lat: NaN } }],
+    ['capturedAt with non-numeric altitude', { ...base, capturedAt: { lng: 14, lat: 50, altitude: 'high' } }],
+    ['capturedAt with non-string timestamp', { ...base, capturedAt: { lng: 14, lat: 50, timestamp: 1234 } }],
+  ])('rejects %s', (_label, input) => {
+    expect(isPhotoMarker(input)).toBe(false)
+  })
+})
+
+describe('isPhotoMarker — photoId', () => {
+  const base = { id: 'pm-1', lng: 14, lat: 50, name: 'Test' }
+
+  it('accepts non-empty photoId', () => {
+    expect(isPhotoMarker({ ...base, photoId: 'photo-abc-123' })).toBe(true)
+  })
+
+  it('accepts absent photoId', () => {
+    expect(isPhotoMarker(base)).toBe(true)
+  })
+
+  it.each([
+    ['empty photoId', { ...base, photoId: '' }],
+    ['non-string photoId', { ...base, photoId: 42 }],
+  ])('rejects %s', (_label, input) => {
+    expect(isPhotoMarker(input)).toBe(false)
+  })
+})
+
+describe('isPhotoMarker — flag', () => {
+  const base = { id: 'pm-1', lng: 14, lat: 50, name: 'Test' }
+
+  it.each(['pick', 'reject'])('accepts flag = %s', (flag) => {
+    expect(isPhotoMarker({ ...base, flag })).toBe(true)
+  })
+
+  it('accepts absent flag (neutral state)', () => {
+    expect(isPhotoMarker(base)).toBe(true)
+  })
+
+  it.each([
+    ['unknown string', { ...base, flag: 'something' }],
+    ['empty string', { ...base, flag: '' }],
+    ['number', { ...base, flag: 1 }],
+    ['null', { ...base, flag: null }],
+  ])('rejects %s', (_label, input) => {
+    expect(isPhotoMarker(input)).toBe(false)
+  })
+})
+
+describe('sanitizePhotoMarkers — round-trip of EXIF fields', () => {
+  it('preserves capturedAt and photoId on valid markers', () => {
+    const input = [{
+      id: 'pm-1',
+      lng: 14.5,
+      lat: 50.1,
+      name: 'IMG_001.JPG',
+      label: 'A',
+      capturedAt: { lng: 14.49, lat: 50.105, altitude: 280, timestamp: '2026-05-14T08:00:00Z' },
+      photoId: 'photo-abc',
+    }]
+    const result = sanitizePhotoMarkers(input)
+    expect(result).toHaveLength(1)
+    const m = result[0]
+    expect(m.capturedAt).toEqual({ lng: 14.49, lat: 50.105, altitude: 280, timestamp: '2026-05-14T08:00:00Z' })
+    expect(m.photoId).toBe('photo-abc')
+  })
+
+  it('drops markers whose EXIF fields are corrupted (fail-loud philosophy)', () => {
+    const input = [
+      { id: 'pm-1', lng: 14, lat: 50, name: 'good' },
+      { id: 'pm-2', lng: 14, lat: 50, name: 'bad-capturedAt', capturedAt: { lng: 999, lat: 50 } },
+      { id: 'pm-3', lng: 14, lat: 50, name: 'bad-photoId', photoId: '' },
+    ]
+    const result = sanitizePhotoMarkers(input)
+    expect(result.map(m => m.id)).toEqual(['pm-1'])
+  })
+
+  it('round-trips a pre-feature marker (v1 → v2 migration: missing fields stay missing)', () => {
+    const v1Marker = { id: 'pm-1', lng: 14, lat: 50, name: 'old-format' }
+    const result = sanitizePhotoMarkers([v1Marker])
+    expect(result).toHaveLength(1)
+    expect(result[0].capturedAt).toBeUndefined()
+    expect(result[0].photoId).toBeUndefined()
+  })
+})
+
+// Phase 6 — no-GPS tray entries (ADR-012)
+describe('isNoGpsPhoto', () => {
+  const valid = { photoId: 'pm-abc', filename: 'IMG_0001.JPG' }
+
+  it('accepts a minimal valid entry', () => {
+    expect(isNoGpsPhoto(valid)).toBe(true)
+  })
+
+  it('accepts an entry with a timestamp', () => {
+    expect(isNoGpsPhoto({ ...valid, timestamp: '2024-01-01T00:00:00Z' })).toBe(true)
+  })
+
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['empty photoId', { ...valid, photoId: '' }],
+    ['non-string photoId', { ...valid, photoId: 42 }],
+    ['missing filename', { photoId: 'pm-abc' }],
+    ['empty filename', { ...valid, filename: '' }],
+    ['non-string timestamp', { ...valid, timestamp: 1234 }],
+  ])('rejects %s', (_label, input) => {
+    expect(isNoGpsPhoto(input)).toBe(false)
+  })
+})
+
+describe('sanitizeNoGpsPhotos', () => {
+  it('returns [] for non-array input', () => {
+    expect(sanitizeNoGpsPhotos(undefined)).toEqual([])
+    expect(sanitizeNoGpsPhotos({})).toEqual([])
+  })
+
+  it('drops invalid entries, keeps valid ones', () => {
+    const result = sanitizeNoGpsPhotos([
+      { photoId: 'a', filename: 'a.jpg' },
+      { photoId: '', filename: 'b.jpg' },   // bad photoId
+      { photoId: 'c', filename: 'c.jpg', timestamp: '2024-01-01T00:00:00Z' },
+      'nope',
+    ])
+    expect(result.map(r => r.photoId)).toEqual(['a', 'c'])
   })
 })

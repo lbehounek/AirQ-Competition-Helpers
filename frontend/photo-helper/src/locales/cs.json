@@ -303,6 +303,9 @@
       "delete": "Smazat {{count}} kandidátů",
       "error": "Smazání kandidátů selhalo. Některé soubory mohou stále zabírat úložiště.",
       "allPromoted": "Žádný z {{count}} kandidátů nebyl smazán — všechny byly před potvrzením přesunuty do sad."
+    },
+    "handoff": {
+      "unavailable": "Synchronizace s mapou není k dispozici — výběry provedené v mapě se zde neobjeví, dokud nebude úložiště obnoveno."
     }
   },
   "pdf": {
