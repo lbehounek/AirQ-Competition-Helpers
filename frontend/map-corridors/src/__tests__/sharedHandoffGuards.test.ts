@@ -90,6 +90,59 @@ describe('isMapPickEntry', () => {
     expect(isMapPickEntry({ ...valid, labelUpdatedAt: 1234567890 })).toBe(false)
   })
 
+  // labelUpdatedAt mirrors the editor-side rule: optional, but if present
+  // must be a non-empty string. Empty timestamp would defeat the
+  // lexicographic newer-wins compare in useMapPicksSync.
+  it('rejects empty-string labelUpdatedAt (symmetric with isEditorPickEntry)', () => {
+    expect(isMapPickEntry({ ...valid, labelUpdatedAt: '' })).toBe(false)
+  })
+
+  it('accepts entry with labelUpdatedAt explicitly undefined (optional, no label history)', () => {
+    expect(isMapPickEntry({ ...valid, labelUpdatedAt: undefined })).toBe(true)
+  })
+
+  // --- GPS branch coverage ---
+
+  it('accepts empty gps object (both nested fields optional)', () => {
+    expect(isMapPickEntry({ ...valid, gps: {} })).toBe(true)
+  })
+
+  it('rejects gps.capturedAt with NaN lat', () => {
+    expect(isMapPickEntry({ ...valid, gps: { capturedAt: { lng: 14, lat: Number.NaN } } })).toBe(false)
+  })
+
+  it('rejects gps.subjectAt with Infinity lng', () => {
+    expect(isMapPickEntry({ ...valid, gps: { subjectAt: { lng: Number.POSITIVE_INFINITY, lat: 50 } } })).toBe(false)
+  })
+
+  it('rejects gps.capturedAt.altitude that is non-finite', () => {
+    expect(isMapPickEntry({ ...valid, gps: { capturedAt: { lng: 14, lat: 50, altitude: Number.NaN } } })).toBe(false)
+  })
+
+  it('rejects gps.capturedAt.altitude of wrong type', () => {
+    expect(isMapPickEntry({ ...valid, gps: { capturedAt: { lng: 14, lat: 50, altitude: 'high' } } })).toBe(false)
+  })
+
+  it('rejects gps.capturedAt.timestamp of wrong type', () => {
+    expect(isMapPickEntry({ ...valid, gps: { capturedAt: { lng: 14, lat: 50, timestamp: 1234 } } })).toBe(false)
+  })
+
+  it('rejects gps as array', () => {
+    expect(isMapPickEntry({ ...valid, gps: [] })).toBe(false)
+  })
+
+  it('rejects gps as null', () => {
+    expect(isMapPickEntry({ ...valid, gps: null })).toBe(false)
+  })
+
+  it('rejects gps.capturedAt as null', () => {
+    expect(isMapPickEntry({ ...valid, gps: { capturedAt: null } })).toBe(false)
+  })
+
+  it('accepts null island (lat=0, lng=0) — finite numbers, not invalid', () => {
+    expect(isMapPickEntry({ ...valid, gps: { subjectAt: { lng: 0, lat: 0 } } })).toBe(true)
+  })
+
   it('rejects arrays and primitives', () => {
     expect(isMapPickEntry(null)).toBe(false)
     expect(isMapPickEntry(undefined)).toBe(false)

@@ -86,8 +86,16 @@ export async function syncMapPicksOnce(
 
   for (const entry of file.picks) {
     // Per-row validation — drop malformed entries individually so a
-    // single bad row doesn't sink the whole sync.
-    if (!isMapPickEntry(entry)) continue;
+    // single bad row doesn't sink the whole sync. Log on drop so
+    // "why did my pick disappear" is debuggable without source diving.
+    if (!isMapPickEntry(entry)) {
+      const id =
+        entry && typeof entry === 'object' && 'photoId' in entry
+          ? (entry as { photoId: unknown }).photoId
+          : '<unknown>';
+      console.warn('[useMapPicksSync] dropped malformed map-picks entry:', { photoId: id, entry });
+      continue;
+    }
     if (!entry.photoId.startsWith(PM_PREFIX)) continue;
     remoteIds.add(entry.photoId);
     const existing = localById.get(entry.photoId);

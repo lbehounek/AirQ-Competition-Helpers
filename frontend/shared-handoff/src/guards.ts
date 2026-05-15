@@ -34,6 +34,14 @@ function isOptionalString(x: unknown): x is string | undefined {
   return x === undefined || typeof x === 'string';
 }
 
+// `labelUpdatedAt` may be absent (no label history) but if present must
+// be a non-empty string — empty timestamp is meaningless and would
+// confuse the lexicographic newer-wins comparison. Mirrors the editor
+// side, where the field is required-and-non-empty.
+function isOptionalNonEmptyString(x: unknown): x is string | undefined {
+  return x === undefined || (typeof x === 'string' && x.length > 0);
+}
+
 function isFiniteNumber(x: unknown): x is number {
   return typeof x === 'number' && Number.isFinite(x);
 }
@@ -66,7 +74,7 @@ export function isMapPickEntry(x: unknown): x is MapPickEntry {
   if (!isWireFlag(x.flag)) return false;
   if (x.gps !== undefined && !isGps(x.gps)) return false;
   if (!isOptionalString(x.label)) return false;
-  if (!isOptionalString(x.labelUpdatedAt)) return false;
+  if (!isOptionalNonEmptyString(x.labelUpdatedAt)) return false;
   return true;
 }
 

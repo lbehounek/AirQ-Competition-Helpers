@@ -419,6 +419,66 @@ describe('syncMapPicksOnce — delete path (ADR-019 cleanup)', () => {
     expect(session.removeCandidate).not.toHaveBeenCalled()
   })
 
+  // ADR-019 cleanup pass interaction with the new guard layer: a pm-
+  // entry that FAILS isMapPickEntry is treated as absent — the photo
+  // is NOT added to remoteIds. If a local copy of that id exists, the
+  // cleanup pass should delete it (the row "disappeared" from the
+  // writer's perspective). Pinning this so a future loosening of the
+  // guard doesn't silently turn malformed rows into "preserve local".
+  it('malformed pm- entry causes existing local copy to be deleted (treated as absent for cleanup)', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [
+        { photoId: 'pm-bad', filename: 42, flag: 'pick' }, // filename wrong type → drop
+        pmEntry('pm-good', 'pick'),
+      ],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
+    const session = fakeSession([
+      existing('pm-bad', 'pick'),  // pre-existing local copy of the now-dropped id
+      existing('pm-good', 'neutral'),
+    ])
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = await syncMapPicksOnce(
+      storage as unknown as StorageInterface,
+      competitionDir, photosDir, session,
+    )
+    expect(result.deletes).toBe(1)
+    expect(session.removeCandidate).toHaveBeenCalledWith('pm-bad')
+    expect(session.setCandidateFlag).toHaveBeenCalledWith('pm-good', 'pick')
+    expect(warn).toHaveBeenCalled() // dropped row was logged
+    warn.mockRestore()
+  })
+
+  it('drops malformed entries individually; valid neighbors still apply', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [
+        pmEntry('pm-1', 'pick'),
+        { photoId: 'pm-2', filename: 'b.jpg', flag: 'archived' }, // bad flag → drop
+        pmEntry('pm-3', 'pick'),
+        { photoId: 'pm-4', flag: 'pick' },                         // missing filename → drop
+      ],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
+    const session = fakeSession([])
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = await syncMapPicksOnce(
+      storage as unknown as StorageInterface,
+      competitionDir, photosDir, session,
+    )
+    expect(result.inserts).toBe(2)
+    expect(session.addCandidate).toHaveBeenCalledTimes(2)
+    const ids = session.addCandidate.mock.calls.map(c => (c[0] as ApiPhoto).id).sort()
+    expect(ids).toEqual(['pm-1', 'pm-3'])
+    expect(warn).toHaveBeenCalledTimes(2) // one warn per dropped row
+    warn.mockRestore()
+  })
+
   it('mixed: insert one, update one, delete one in a single pass', async () => {
     const storage = fakeStorage()
     storage.readJSON.mockResolvedValue({

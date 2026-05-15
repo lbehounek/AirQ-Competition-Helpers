@@ -45,8 +45,16 @@ export async function syncEditorPicksOnce(
   const newer = new Map<string, { photoId: string; label: string; labelUpdatedAt: string }>()
   for (const entry of file.picks) {
     // Per-row validation — drop malformed entries individually so one
-    // corrupt row doesn't sink the whole sync.
-    if (!isEditorPickEntry(entry)) continue
+    // corrupt row doesn't sink the whole sync. Log on drop so the
+    // user can debug "why did my label not propagate" without source diving.
+    if (!isEditorPickEntry(entry)) {
+      const id =
+        entry && typeof entry === 'object' && 'photoId' in entry
+          ? (entry as { photoId: unknown }).photoId
+          : '<unknown>'
+      console.warn('[useEditorPicksSync] dropped malformed editor-picks entry:', { photoId: id, entry })
+      continue
+    }
     if (!entry.photoId.startsWith(PM_PREFIX)) continue
     newer.set(entry.photoId, entry)
   }
