@@ -197,6 +197,7 @@ function App() {
     setNoGpsPhotos: persistNoGpsPhotos,
     setNoGpsTrayOpen: persistNoGpsTrayOpen,
     placeNoGpsPhoto,
+    removePhoto,
     setUse1NmAfterSp,
     setComputedData,
     saveOriginalKmlText,
@@ -1212,6 +1213,7 @@ function App() {
             onToggleOpen={() => { void persistNoGpsTrayOpen(!(session?.noGpsTrayOpen ?? true)) }}
             storage={storage}
             photosDir={photosDir}
+            onPhotoDelete={(photoId) => { void removePhoto(photoId) }}
           />
           {/* Phase 7 — right-side photo list panel. Auto-hides when there
               are no imported photos (KML-only sessions look unchanged). */}
@@ -1222,6 +1224,7 @@ function App() {
             photosDir={photosDir}
             onMarkerClick={(markerId) => mapRef.current?.flyToPhotoMarker(markerId)}
             onSendToEditor={competitionId ? handleSendToEditor : undefined}
+            onPhotoDelete={(photoId) => { void removePhoto(photoId) }}
           />
         </Box>
       </Container>
