@@ -42,6 +42,9 @@ importers:
       '@airq/shared-discipline':
         specifier: workspace:*
         version: link:../shared-discipline
+      '@airq/shared-handoff':
+        specifier: workspace:*
+        version: link:../shared-handoff
       '@airq/shared-storage':
         specifier: workspace:*
         version: link:../shared-storage
@@ -139,6 +142,9 @@ importers:
       '@airq/shared-discipline':
         specifier: workspace:*
         version: link:../shared-discipline
+      '@airq/shared-handoff':
+        specifier: workspace:*
+        version: link:../shared-handoff
       '@airq/shared-storage':
         specifier: workspace:*
         version: link:../shared-storage
@@ -241,6 +247,12 @@ importers:
         version: 4.1.4(@types/node@25.3.3)(jsdom@29.0.2)(vite@7.3.2(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.31.1))
 
   shared-discipline:
+    dependencies:
+      typescript:
+        specifier: ~5.8.3
+        version: 5.8.3
+
+  shared-handoff:
     dependencies:
       typescript:
         specifier: ~5.8.3

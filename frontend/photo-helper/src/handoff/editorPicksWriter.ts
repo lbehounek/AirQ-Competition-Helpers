@@ -6,27 +6,24 @@
 // Single writer, 300 ms debounce, serialized I/O. Tracks label per
 // `pm-`-prefixed candidate so map-corridors' conflict resolution can
 // decide newer-wins.
+//
+// Wire-format types live in @airq/shared-handoff — single source of
+// truth shared with the map-corridors reader.
 
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage';
+import {
+  EDITOR_PICKS_FILENAME,
+  PM_PHOTO_ID_PREFIX,
+  type EditorPickEntry,
+  type EditorPicksFile,
+} from '@airq/shared-handoff';
 import type { ApiPhoto } from '../types/api';
 
-const FILENAME = 'photo-helper-picks.json';
+const FILENAME = EDITOR_PICKS_FILENAME;
 const DEBOUNCE_MS = 300;
-const PM_PREFIX = 'pm-';
+const PM_PREFIX = PM_PHOTO_ID_PREFIX;
 
-export interface EditorPickEntry {
-  photoId: string;
-  /** Empty string = explicit clear. Same idiom as ApiPhoto.label. */
-  label: string;
-  /** ISO 8601 — present when label has ever been set in either app. */
-  labelUpdatedAt: string;
-}
-
-export interface EditorPicksFile {
-  version: 1;
-  updatedAt: string;
-  picks: EditorPickEntry[];
-}
+export type { EditorPickEntry, EditorPicksFile };
 
 /**
  * Project the candidate pool into the cross-app file. Only `pm-`-prefixed

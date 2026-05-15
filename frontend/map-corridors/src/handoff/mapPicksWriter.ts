@@ -3,40 +3,28 @@
 // docs/photo-map-culling/implementation-plan.md Phase 8.
 //
 // Map-corridors writes its full picks snapshot to
-// `competitions/{compId}/map-picks.json`. Photo-helper reads it (Phase 8b,
-// not yet implemented) to project picks into its candidate tray.
+// `competitions/{compId}/map-picks.json`. Photo-helper reads it
+// (useMapPicksSync) to project picks into its candidate tray.
 //
 // Single writer; rapid calls coalesce on a 300ms debounce. Pagehide /
 // pre-nav code paths call flushPendingMapPicks() to skip the wait.
+//
+// Wire-format types live in @airq/shared-handoff — both writer and
+// reader on both apps import from there, so a future field addition
+// can't drift between them.
 
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
-import type { PhotoLabel, PhotoMarker } from '../types/markers'
+import {
+  MAP_PICKS_FILENAME,
+  type MapPickEntry,
+  type MapPicksFile,
+} from '@airq/shared-handoff'
+import type { PhotoMarker } from '../types/markers'
 
-const FILENAME = 'map-picks.json'
+const FILENAME = MAP_PICKS_FILENAME
 const DEBOUNCE_MS = 300
 
-export interface MapPickEntry {
-  photoId: string
-  filename: string
-  // 'neutral' is materialized at write time (PhotoMarker stores flag only
-  // for 'pick'/'reject'; absent flag means neutral). Photo-helper reads
-  // the explicit value, simpler than branching on absence.
-  flag: 'pick' | 'neutral' | 'reject'
-  gps?: {
-    capturedAt?: { lng: number; lat: number; altitude?: number; timestamp?: string }
-    subjectAt?: { lng: number; lat: number }
-  }
-  label?: PhotoLabel
-  // When label was last changed; drives bidirectional sync resolution.
-  // Absent if the marker never had a label set explicitly (legacy data).
-  labelUpdatedAt?: string
-}
-
-export interface MapPicksFile {
-  version: 1
-  updatedAt: string
-  picks: MapPickEntry[]
-}
+export type { MapPickEntry, MapPicksFile }
 
 /**
  * Project a single PhotoMarker into a MapPickEntry. Pure helper —
