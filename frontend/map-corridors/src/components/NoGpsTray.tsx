@@ -6,7 +6,7 @@
 
 import { useMemo } from 'react'
 import { Box, IconButton, Paper, Tooltip, Typography } from '@mui/material'
-import { ExpandLess, ExpandMore } from '@mui/icons-material'
+import { Close, ExpandLess, ExpandMore } from '@mui/icons-material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import type { NoGpsPhoto } from '../types/markers'
 import { useI18n } from '../contexts/I18nContext'
@@ -39,11 +39,16 @@ export interface NoGpsTrayProps {
   onToggleOpen: () => void
   storage: StorageInterface | null
   photosDir: DirectoryHandle | null
+  /**
+   * Hard-delete a photo from the corridor session entirely. Mirrors the
+   * X badge on photo-helper grid tiles.
+   */
+  onPhotoDelete: (photoId: string) => void | Promise<void>
 }
 
 export function NoGpsTray(props: NoGpsTrayProps) {
   const { t } = useI18n()
-  const { photos, open, onToggleOpen, storage, photosDir } = props
+  const { photos, open, onToggleOpen, storage, photosDir, onPhotoDelete } = props
 
   const sorted = useMemo(() => [...photos].sort(compareNoGpsPhotos), [photos])
 
@@ -94,6 +99,8 @@ export function NoGpsTray(props: NoGpsTrayProps) {
               storage={storage}
               photosDir={photosDir}
               dragHint={t('photo.tray.dragHint')}
+              onDelete={onPhotoDelete}
+              deleteTooltip={t('photo.deleteTooltip')}
             />
           ))}
         </Box>
@@ -107,49 +114,96 @@ function NoGpsTrayThumb(props: {
   storage: StorageInterface | null
   photosDir: DirectoryHandle | null
   dragHint: string
+  onDelete: (photoId: string) => void | Promise<void>
+  deleteTooltip: string
 }) {
-  const { photo, storage, photosDir, dragHint } = props
+  const { photo, storage, photosDir, dragHint, onDelete, deleteTooltip } = props
   const { url, state } = usePhotoThumbUrl(storage, photosDir, photo.photoId)
 
   return (
-    <Tooltip title={`${photo.filename} — ${dragHint}`} placement="top" enterDelay={300}>
-      <Box
-        draggable
-        role="img"
-        aria-label={`${photo.filename}. ${dragHint}.`}
-        onDragStart={(e: React.DragEvent) => {
-          e.dataTransfer.setData(NO_GPS_PHOTO_DRAG_TYPE, photo.photoId)
-          e.dataTransfer.effectAllowed = 'move'
-        }}
-        sx={{
-          width: THUMB_WIDTH_PX,
-          height: THUMB_HEIGHT_PX,
-          flexShrink: 0,
-          bgcolor: 'grey.100',
-          borderRadius: 0.5,
-          overflow: 'hidden',
-          cursor: 'grab',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          '&:active': { cursor: 'grabbing' },
-          '&:hover': { boxShadow: 1 },
-        }}
-      >
-        {state === 'ready' && url && (
-          <img
-            src={url}
-            alt={photo.filename}
-            draggable={false}
-            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', pointerEvents: 'none' }}
-          />
-        )}
-        {state !== 'ready' && (
-          <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10, px: 0.5, textAlign: 'center' }}>
-            {photo.filename}
-          </Typography>
-        )}
-      </Box>
-    </Tooltip>
+    // Outer wrapper hosts the absolute-positioned delete badge; the inner
+    // Box owns the drag affordance so dragging onto the map still works.
+    // Reveal full delete-button opacity on hover anywhere on the thumb.
+    <Box
+      sx={{
+        position: 'relative',
+        flexShrink: 0,
+        '&:hover .nogps-thumb-delete': { opacity: 1 },
+      }}
+    >
+      <Tooltip title={`${photo.filename} — ${dragHint}`} placement="top" enterDelay={300}>
+        <Box
+          draggable
+          role="img"
+          aria-label={`${photo.filename}. ${dragHint}.`}
+          onDragStart={(e: React.DragEvent) => {
+            e.dataTransfer.setData(NO_GPS_PHOTO_DRAG_TYPE, photo.photoId)
+            e.dataTransfer.effectAllowed = 'move'
+          }}
+          sx={{
+            width: THUMB_WIDTH_PX,
+            height: THUMB_HEIGHT_PX,
+            bgcolor: 'grey.100',
+            borderRadius: 0.5,
+            overflow: 'hidden',
+            cursor: 'grab',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            '&:active': { cursor: 'grabbing' },
+            '&:hover': { boxShadow: 1 },
+          }}
+        >
+          {state === 'ready' && url && (
+            <img
+              src={url}
+              alt={photo.filename}
+              draggable={false}
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', pointerEvents: 'none' }}
+            />
+          )}
+          {state !== 'ready' && (
+            <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10, px: 0.5, textAlign: 'center' }}>
+              {photo.filename}
+            </Typography>
+          )}
+        </Box>
+      </Tooltip>
+      {/* Delete badge — top-right corner. `draggable={false}` so a
+          mouse-down on the X doesn't initiate the drag flow on the
+          underlying thumb; stopPropagation on the click prevents the
+          surrounding Tooltip / drag handlers from racing. */}
+      <Tooltip title={deleteTooltip} placement="top" enterDelay={400}>
+        <IconButton
+          className="nogps-thumb-delete"
+          draggable={false}
+          onDragStart={(e: React.DragEvent) => e.preventDefault()}
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => {
+            e.stopPropagation()
+            void onDelete(photo.photoId)
+          }}
+          aria-label={deleteTooltip}
+          size="small"
+          sx={{
+            position: 'absolute',
+            top: 2,
+            right: 2,
+            width: 22,
+            height: 22,
+            bgcolor: 'rgba(220, 53, 69, 0.92)',
+            color: 'white',
+            opacity: 0.6,
+            transition: 'opacity 0.15s ease, background-color 0.15s ease',
+            '&:hover': {
+              bgcolor: 'rgba(200, 35, 51, 1)',
+              opacity: 1,
+            },
+          }}
+        >
+          <Close sx={{ fontSize: 14 }} />
+        </IconButton>
+      </Tooltip>
+    </Box>
   )
 }

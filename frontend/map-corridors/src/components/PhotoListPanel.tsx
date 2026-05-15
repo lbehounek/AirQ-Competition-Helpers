@@ -17,7 +17,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import { ChevronLeft, ChevronRight, ExpandLess, ExpandMore, SendOutlined } from '@mui/icons-material'
+import { ChevronLeft, ChevronRight, Close, ExpandLess, ExpandMore, SendOutlined } from '@mui/icons-material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import type { NoGpsPhoto, PhotoMarker } from '../types/markers'
 import { useI18n } from '../contexts/I18nContext'
@@ -41,6 +41,12 @@ export interface PhotoListPanelProps {
    * navigating, per ADR-009.
    */
   onSendToEditor?: () => void | Promise<void>
+  /**
+   * Hard-delete a photo from the corridor session entirely. Mirrors the
+   * X badge on photo-helper grid tiles. Removes from both `markers` and
+   * `noGpsPhotos`, best-effort cleans the file + thumb from storage.
+   */
+  onPhotoDelete: (photoId: string) => void | Promise<void>
 }
 
 type GroupKey = 'picks' | 'neutral' | 'rejects' | 'noGps'
@@ -49,7 +55,7 @@ const GROUP_ORDER: readonly GroupKey[] = ['picks', 'neutral', 'rejects', 'noGps'
 
 export function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
-  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor } = props
+  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     picks: false,
@@ -113,7 +119,7 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
               count={groupCount(groups, key)}
               collapsed={collapsedGroups[key]}
               onToggle={() => toggleGroup(key)}
-              items={renderGroupItems(groups, key, { storage, photosDir, onMarkerClick })}
+              items={renderGroupItems(groups, key, { storage, photosDir, onMarkerClick, onPhotoDelete, deleteTooltip: t('photo.deleteTooltip') })}
             />
           ))}
         </Box>
@@ -176,6 +182,8 @@ function renderGroupItems(
     storage: StorageInterface | null
     photosDir: DirectoryHandle | null
     onMarkerClick: (markerId: string) => void
+    onPhotoDelete: (photoId: string) => void | Promise<void>
+    deleteTooltip: string
   },
 ): React.ReactNode {
   if (key === 'noGps') {
@@ -188,6 +196,8 @@ function renderGroupItems(
         photosDir={ctx.photosDir}
         // No marker yet — clicking is a no-op for v1. User drags from tray.
         onClick={undefined}
+        onDelete={ctx.onPhotoDelete}
+        deleteTooltip={ctx.deleteTooltip}
       />
     ))
   }
@@ -200,6 +210,8 @@ function renderGroupItems(
       storage={ctx.storage}
       photosDir={ctx.photosDir}
       onClick={() => ctx.onMarkerClick(m.id)}
+      onDelete={ctx.onPhotoDelete}
+      deleteTooltip={ctx.deleteTooltip}
     />
   ))
 }
@@ -210,41 +222,86 @@ function PhotoListItem(props: {
   storage: StorageInterface | null
   photosDir: DirectoryHandle | null
   onClick: (() => void) | undefined
+  onDelete: (photoId: string) => void | Promise<void>
+  deleteTooltip: string
 }) {
-  const { photoId, filename, storage, photosDir, onClick } = props
+  const { photoId, filename, storage, photosDir, onClick, onDelete, deleteTooltip } = props
   const { url, state } = usePhotoThumbUrl(storage, photosDir, photoId)
   return (
-    <ListItemButton
-      onClick={onClick}
-      disabled={!onClick}
-      sx={{ py: 0.5, gap: 1 }}
+    <Box
+      sx={{
+        position: 'relative',
+        // Reveal full delete-button opacity on hover anywhere on the row,
+        // matching the photo-helper grid-tile pattern.
+        '&:hover .photo-row-delete': { opacity: 1 },
+      }}
     >
-      <Box
-        sx={{
-          width: THUMB_W_PX,
-          height: THUMB_H_PX,
-          flexShrink: 0,
-          bgcolor: 'grey.100',
-          borderRadius: 0.5,
-          overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
+      <ListItemButton
+        onClick={onClick}
+        disabled={!onClick}
+        sx={{ py: 0.5, gap: 1, pr: 4 /* room for the delete badge */ }}
       >
-        {state === 'ready' && url && (
-          <img
-            src={url}
-            alt={filename}
-            draggable={false}
-            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-          />
-        )}
-      </Box>
-      <ListItemText
-        primary={filename}
-        primaryTypographyProps={{ variant: 'body2', noWrap: true, sx: { fontSize: 12 } }}
-      />
-    </ListItemButton>
+        <Box
+          sx={{
+            width: THUMB_W_PX,
+            height: THUMB_H_PX,
+            flexShrink: 0,
+            bgcolor: 'grey.100',
+            borderRadius: 0.5,
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {state === 'ready' && url && (
+            <img
+              src={url}
+              alt={filename}
+              draggable={false}
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+            />
+          )}
+        </Box>
+        <ListItemText
+          primary={filename}
+          primaryTypographyProps={{ variant: 'body2', noWrap: true, sx: { fontSize: 12 } }}
+        />
+      </ListItemButton>
+      <Tooltip title={deleteTooltip} placement="left" enterDelay={400}>
+        <IconButton
+          className="photo-row-delete"
+          // stopPropagation so the row's `onClick` (fly to marker) doesn't
+          // fire when the user clicks the X. `MouseDown` is also stopped
+          // because ListItemButton has its own ripple-effect handler that
+          // can swallow the click otherwise.
+          onMouseDown={e => e.stopPropagation()}
+          onClick={e => {
+            e.stopPropagation()
+            void onDelete(photoId)
+          }}
+          aria-label={deleteTooltip}
+          size="small"
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            right: 4,
+            transform: 'translateY(-50%)',
+            width: 24,
+            height: 24,
+            bgcolor: 'rgba(220, 53, 69, 0.92)', // Same red as photo-helper grid tiles
+            color: 'white',
+            opacity: 0.6, // Visible at rest — discoverable without hover
+            transition: 'opacity 0.15s ease, background-color 0.15s ease',
+            '&:hover': {
+              bgcolor: 'rgba(200, 35, 51, 1)',
+              opacity: 1,
+            },
+          }}
+        >
+          <Close sx={{ fontSize: 14 }} />
+        </IconButton>
+      </Tooltip>
+    </Box>
   )
 }

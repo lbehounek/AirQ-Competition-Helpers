@@ -60,6 +60,7 @@
       "collapse": "Skrýt seznam fotek",
       "sendToEditor": "Poslat do editoru ({{count}})"
     },
+    "deleteTooltip": "Smazat fotografii",
     "handoff": {
       "flushFailed": "Výběr se nepodařilo uložit před otevřením editoru. Zkontrolujte úložiště a zkuste to znovu.",
       "editorSyncFailed": "Nepodařilo se použít nejnovější popisky z editoru."

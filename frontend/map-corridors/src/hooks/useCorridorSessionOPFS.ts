@@ -4,6 +4,7 @@ import type { Discipline } from '../corridors/preciseCorridor'
 import type { NoGpsPhoto, PhotoMarker, GroundMarker } from '../types/markers'
 import { sanitizeGroundMarkers, sanitizeNoGpsPhotos, sanitizePhotoMarkers } from '../types/markers'
 import {
+  deletePhotoThumb,
   initStorage,
   isStorageAvailable,
   loadOrCreateSessionId,
@@ -151,6 +152,11 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
   // target for imported photo bytes + thumbnails (see ADR-005 storage
   // layout: `competitions/{compId}/photos/`).
   const [photosDir, setPhotosDir] = useState<DirectoryHandle | null>(null)
+  // Ref mirror so `removePhoto` (and any future cleanup action) can do
+  // best-effort storage IO without re-binding the callback on every
+  // photosDir change — same pattern as storageRef / sessionDirRef.
+  const photosDirRef = useRef<DirectoryHandle | null>(null)
+  useEffect(() => { photosDirRef.current = photosDir }, [photosDir])
   // Parent of corridors/ and photos/. Where map-picks.json lands
   // (Phase 8 cross-app handoff). Null in the legacy flat-session path.
   const [competitionDir, setCompetitionDir] = useState<DirectoryHandle | null>(null)
@@ -354,6 +360,47 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     return true
   }, [persistSession])
 
+  // Remove a photo from this corridor session entirely. Mirrors the X
+  // affordance on photo-helper grid tiles — a single click destroys the
+  // selection, no confirmation (speed matters during flying-competition
+  // review). The photo is filtered out of BOTH `markers` and
+  // `noGpsPhotos` in one persistSession call; in practice only one of
+  // the two contains the id, but filtering both costs nothing and
+  // survives transitional states (`placeNoGpsPhoto` window).
+  //
+  // Storage cleanup is best-effort and runs after the state write. A
+  // failed unlink leaves orphaned bytes under `photos/` (or `thumbs/`)
+  // that the next session reload simply doesn't surface — preferable to
+  // keeping the photo visible because of an unrelated quota / FS hiccup.
+  const removePhoto = useCallback(async (photoId: string): Promise<void> => {
+    const current = sessionRef.current
+    if (!current) return
+    const hadMarker = current.markers.some(m => m.photoId === photoId)
+    const hadNoGps = (current.noGpsPhotos || []).some(p => p.photoId === photoId)
+    if (!hadMarker && !hadNoGps) return
+    await persistSession({
+      ...current,
+      markers: hadMarker
+        ? current.markers.filter(m => m.photoId !== photoId)
+        : current.markers,
+      noGpsPhotos: hadNoGps
+        ? (current.noGpsPhotos || []).filter(p => p.photoId !== photoId)
+        : (current.noGpsPhotos || []),
+      version: current.version + 1,
+      updatedAt: new Date().toISOString(),
+    })
+    const storage = storageRef.current
+    const dir = photosDirRef.current
+    if (storage && dir) {
+      storage.deletePhotoFile(dir, photoId).catch((err: unknown) => {
+        console.warn('[corridor session] photo file cleanup failed', photoId, err)
+      })
+      deletePhotoThumb(storage, dir, photoId).catch((err: unknown) => {
+        console.warn('[corridor session] photo thumb cleanup failed', photoId, err)
+      })
+    }
+  }, [persistSession])
+
   const saveOriginalKmlText = useCallback(async (text: string | null) => {
     if (!sessionRef.current) return
     const storage = storageRef.current
@@ -416,6 +463,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setNoGpsPhotos,
     setNoGpsTrayOpen,
     placeNoGpsPhoto,
+    removePhoto,
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,
