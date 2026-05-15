@@ -14,22 +14,17 @@
 
 import { useEffect } from 'react'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
+import {
+  EDITOR_PICKS_FILENAME,
+  PM_PHOTO_ID_PREFIX,
+  isEditorPickEntry,
+  isEditorPicksFile,
+  type EditorPicksFile,
+} from '@airq/shared-handoff'
 import type { PhotoLabel, PhotoMarker } from '../types/markers'
 
-const FILENAME = 'photo-helper-picks.json'
-const PM_PREFIX = 'pm-'
-
-interface EditorPickEntry {
-  photoId: string
-  label: string
-  labelUpdatedAt: string
-}
-
-interface EditorPicksFile {
-  version: 1
-  updatedAt: string
-  picks: EditorPickEntry[]
-}
+const FILENAME = EDITOR_PICKS_FILENAME
+const PM_PREFIX = PM_PHOTO_ID_PREFIX
 
 /**
  * Pure side-effect: read photo-helper-picks.json, apply newer-wins
@@ -43,13 +38,16 @@ export async function syncEditorPicksOnce(
   competitionDir: DirectoryHandle,
   setMarkers: (updater: (prev: readonly PhotoMarker[]) => readonly PhotoMarker[]) => Promise<void> | void,
 ): Promise<{ updates: number }> {
-  const file = await storage.readJSON<EditorPicksFile>(competitionDir, FILENAME)
-  if (!file || !Array.isArray(file.picks)) return { updates: 0 }
+  const raw = await storage.readJSON<unknown>(competitionDir, FILENAME)
+  if (!isEditorPicksFile(raw)) return { updates: 0 }
+  const file: EditorPicksFile = raw
 
-  const newer = new Map<string, EditorPickEntry>()
+  const newer = new Map<string, { photoId: string; label: string; labelUpdatedAt: string }>()
   for (const entry of file.picks) {
-    if (!entry.photoId || !entry.photoId.startsWith(PM_PREFIX)) continue
-    if (!entry.labelUpdatedAt) continue
+    // Per-row validation — drop malformed entries individually so one
+    // corrupt row doesn't sink the whole sync.
+    if (!isEditorPickEntry(entry)) continue
+    if (!entry.photoId.startsWith(PM_PREFIX)) continue
     newer.set(entry.photoId, entry)
   }
   if (newer.size === 0) return { updates: 0 }

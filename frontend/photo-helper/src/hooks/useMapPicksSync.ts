@@ -14,30 +14,19 @@ import {
   type DirectoryHandle,
   type StorageInterface,
 } from '@airq/shared-storage';
+import {
+  MAP_PICKS_FILENAME,
+  PM_PHOTO_ID_PREFIX,
+  isMapPickEntry,
+  isMapPicksFile,
+  type MapPickEntry,
+} from '@airq/shared-handoff';
 import type { ApiPhoto, CandidateFlag } from '../types/api';
 import { createDefaultCanvasState } from './usePhotoSessionOPFS';
 
-const MAP_PICKS_FILENAME = 'map-picks.json';
-
-/** Shape map-corridors writes; mirrored here so we don't depend on map-corridors symbols. */
-export interface MapPickEntry {
-  photoId: string;
-  filename: string;
-  flag: 'pick' | 'neutral' | 'reject';
-  gps?: {
-    capturedAt?: { lng: number; lat: number; altitude?: number; timestamp?: string };
-    subjectAt?: { lng: number; lat: number };
-  };
-  label?: string;
-  /** ISO 8601 — when label was last set in map-corridors. */
-  labelUpdatedAt?: string;
-}
-
-interface MapPicksFile {
-  version: 1;
-  updatedAt: string;
-  picks: MapPickEntry[];
-}
+// Re-export so existing call sites that imported MapPickEntry from
+// this module keep compiling. Single source of truth is shared-handoff.
+export type { MapPickEntry };
 
 /**
  * Minimal session contract this hook needs to mutate the candidate
@@ -61,7 +50,7 @@ export interface MapPicksSyncSessionApi {
   setCandidateLabel: (photoId: string, label: string) => Promise<void> | void;
 }
 
-const PM_PREFIX = 'pm-';
+const PM_PREFIX = PM_PHOTO_ID_PREFIX;
 
 /**
  * Reusable side-effect: read map-picks.json, project entries into the
@@ -80,12 +69,13 @@ export async function syncMapPicksOnce(
   let updates = 0;
   let deletes = 0;
 
-  const file = await storage.readJSON<MapPicksFile>(competitionDir, MAP_PICKS_FILENAME);
-  if (!file || !Array.isArray(file.picks)) {
+  const raw = await storage.readJSON<unknown>(competitionDir, MAP_PICKS_FILENAME);
+  if (!isMapPicksFile(raw)) {
     // Absent or malformed file → nothing to sync. Don't delete pool
     // entries either; an absent file is "no info", not "no picks".
     return { inserts, updates, deletes };
   }
+  const file = raw;
 
   const remoteIds = new Set<string>();
   // Local index of pm-prefixed candidates. Mutated as we insert so a
@@ -95,7 +85,10 @@ export async function syncMapPicksOnce(
   for (const p of session.candidates) localById.set(p.id, p);
 
   for (const entry of file.picks) {
-    if (!entry.photoId || !entry.photoId.startsWith(PM_PREFIX)) continue;
+    // Per-row validation — drop malformed entries individually so a
+    // single bad row doesn't sink the whole sync.
+    if (!isMapPickEntry(entry)) continue;
+    if (!entry.photoId.startsWith(PM_PREFIX)) continue;
     remoteIds.add(entry.photoId);
     const existing = localById.get(entry.photoId);
     if (!existing) {
