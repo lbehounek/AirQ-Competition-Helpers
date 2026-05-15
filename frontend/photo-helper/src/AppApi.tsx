@@ -126,12 +126,18 @@ function AppApi() {
   // on paths.
   const [pmcCompetitionDir, setPmcCompetitionDir] = useState<DirectoryHandle | null>(null);
   const [pmcPhotosDir, setPmcPhotosDir] = useState<DirectoryHandle | null>(null);
+  // Sticky banner shown when cross-app dir resolution fails (OPFS unavailable,
+  // permission revoked, transient I/O during init). Without it the editor
+  // looks normal but the map → editor handoff is silently dead for the
+  // session.
+  const [pmcSyncUnavailable, setPmcSyncUnavailable] = useState(false);
   const pmcCompetitionId = currentCompetition?.id ?? null;
   useEffect(() => {
     let cancelled = false;
     if (!pmcCompetitionId) {
       setPmcCompetitionDir(null);
       setPmcPhotosDir(null);
+      setPmcSyncUnavailable(false);
       return;
     }
     void (async () => {
@@ -144,8 +150,10 @@ function AppApi() {
         if (cancelled) return;
         setPmcCompetitionDir(compDir);
         setPmcPhotosDir(photosDir);
+        setPmcSyncUnavailable(false);
       } catch (err) {
         console.warn('[AppApi] failed to resolve photo-map-culling dirs:', err);
+        if (!cancelled) setPmcSyncUnavailable(true);
       }
     })();
     return () => { cancelled = true; };
@@ -823,6 +831,15 @@ function AppApi() {
             }
           >
             {error}
+          </Alert>
+        )}
+
+        {/* Photo-map-culling handoff unavailable — surfaces the previously
+            silent dir-resolution failure (cross-app sync would otherwise
+            quietly miss every pick made in map-corridors). */}
+        {pmcSyncUnavailable && (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            {t('candidates.handoff.unavailable')}
           </Alert>
         )}
 

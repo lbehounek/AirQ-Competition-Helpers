@@ -31,10 +31,20 @@ export async function savePhotoThumb(
   await storage.savePhotoFile(thumbsDir, filename, file);
 }
 
+// NotFoundError is the only "absence" condition that should silently
+// resolve to null/undefined; anything else (permission revoked, OPFS
+// InvalidStateError, quota issues, type errors) is a real failure and
+// must surface so callers can react.
+function isNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: unknown }).name;
+  return name === 'NotFoundError';
+}
+
 /**
  * Read a thumbnail blob. Returns null when the `thumbs/` subdirectory
  * does not exist OR when the specific thumb file is missing — callers
- * regenerate from the original photo on miss.
+ * regenerate from the original photo on miss. Other errors propagate.
  */
 export async function getPhotoThumb(
   storage: StorageInterface,
@@ -44,15 +54,17 @@ export async function getPhotoThumb(
   try {
     const thumbsDir = await storage.getDirectoryHandle(photosDir, 'thumbs', { create: false });
     return await storage.getPhotoBlob(thumbsDir, thumbFilename(photoId));
-  } catch {
-    return null;
+  } catch (err) {
+    if (isNotFoundError(err)) return null;
+    throw err;
   }
 }
 
 /**
- * Delete a thumbnail. Idempotent — does NOT throw when the thumb or the
- * `thumbs/` subdirectory does not exist. Cleanup paths (failed import,
- * photo rejection) shouldn't fail on already-deleted state.
+ * Delete a thumbnail. Idempotent for "already gone" — does NOT throw
+ * when the thumb or the `thumbs/` subdirectory does not exist. Cleanup
+ * paths (failed import, photo rejection) shouldn't fail on already-
+ * deleted state. Other errors propagate.
  */
 export async function deletePhotoThumb(
   storage: StorageInterface,
@@ -62,7 +74,8 @@ export async function deletePhotoThumb(
   try {
     const thumbsDir = await storage.getDirectoryHandle(photosDir, 'thumbs', { create: false });
     await storage.deletePhotoFile(thumbsDir, thumbFilename(photoId));
-  } catch {
-    // No thumbs dir or thumb missing — silent.
+  } catch (err) {
+    if (isNotFoundError(err)) return;
+    throw err;
   }
 }

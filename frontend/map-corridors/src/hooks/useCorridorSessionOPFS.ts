@@ -138,6 +138,13 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
 
   const storageRef = useRef<StorageInterface | null>(null)
   const sessionDirRef = useRef<DirectoryHandle | null>(null)
+  // Mirror of `session` for stable setters. Closure-over-`session` would
+  // freeze the value seen by `setMarkers` etc. at the render where the
+  // setter was created, so a stale setter captured by a long-lived effect
+  // (e.g. visibilitychange in useEditorPicksSync) would overwrite the live
+  // session with the captured one and silently drop intermediate edits.
+  const sessionRef = useRef<CorridorsSession | null>(null)
+  useEffect(() => { sessionRef.current = session }, [session])
   // Photos directory for the active competition. Resolved alongside the
   // corridors session dir during init when `competitionId` is provided —
   // otherwise null. Phase 3 of photo-map-culling uses it as the write
@@ -169,6 +176,8 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
 
         let corridorsDir: DirectoryHandle
         let id: string
+        let resolvedPhotosDir: DirectoryHandle | null = null
+        let resolvedCompetitionDir: DirectoryHandle | null = null
 
         if (competitionId) {
           // Scope under competitions/{competitionId}/{corridors,photos}/
@@ -177,15 +186,13 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
           const compDir = await storage.getDirectoryHandle(competitionsDir, competitionId, { create: true })
           corridorsDir = await storage.getDirectoryHandle(compDir, 'corridors', { create: true })
           const photos = await storage.getDirectoryHandle(compDir, 'photos', { create: true })
-          setPhotosDir(photos)
-          setCompetitionDir(compDir)
+          resolvedPhotosDir = photos
+          resolvedCompetitionDir = compDir
         } else {
           // Legacy flat session
           id = loadOrCreateSessionId()
           const sessionsDir = await storage.getDirectoryHandle(handles.root, 'sessions', { create: true })
           corridorsDir = await storage.getDirectoryHandle(sessionsDir, id, { create: true })
-          setPhotosDir(null)
-          setCompetitionDir(null)
         }
 
         sessionDirRef.current = corridorsDir
@@ -234,12 +241,21 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
           await storage.writeJSON(corridorsDir, 'session.json', fresh)
           setSession(fresh)
         }
+        // Publish the per-competition dirs ONLY after the session is in
+        // place. Otherwise the App.tsx write effect (which gates on
+        // `competitionDir`) can fire with an empty `markers` array between
+        // dir-resolution and session-load, blanking map-picks.json on disk.
+        setPhotosDir(resolvedPhotosDir)
+        setCompetitionDir(resolvedCompetitionDir)
       } catch (e) {
         console.error('Failed to initialize corridors storage', e)
         setError('Failed to initialize storage')
         const id = competitionId ? `corridors-${competitionId}` : loadOrCreateSessionId()
         setSessionId(id)
         setSession(defaultSession(id))
+        // Leave photosDir/competitionDir at null — without working storage
+        // we don't want the handoff writer firing against partially-resolved
+        // handles. The user sees the error banner instead.
       }
     })()
   }, [competitionId])
@@ -258,55 +274,88 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     }
   }, [])
 
+  // All setters below read the live session from `sessionRef` rather than
+  // closing over `session`. This makes them stable across renders, which
+  // matters for long-lived effects that capture them (the bidirectional
+  // sync hooks fire on visibilitychange far after their mount-time
+  // closure was captured).
   const setMapStyleId = useCallback(async (mapStyleId: string) => {
-    if (!session) return
-    const next: CorridorsSession = { ...session, mapStyleId, version: session.version + 1, updatedAt: new Date().toISOString() }
-    await persistSession(next)
-  }, [session, persistSession])
+    const current = sessionRef.current
+    if (!current) return
+    await persistSession({ ...current, mapStyleId, version: current.version + 1, updatedAt: new Date().toISOString() })
+  }, [persistSession])
 
   const setDiscipline = useCallback(async (discipline: Discipline) => {
-    if (!session) return
-    const next: CorridorsSession = { ...session, discipline, version: session.version + 1, updatedAt: new Date().toISOString() }
-    await persistSession(next)
-  }, [session, persistSession])
+    const current = sessionRef.current
+    if (!current) return
+    await persistSession({ ...current, discipline, version: current.version + 1, updatedAt: new Date().toISOString() })
+  }, [persistSession])
 
   const setUse1NmAfterSp = useCallback(async (use1: boolean) => {
-    if (!session) return
-    const next: CorridorsSession = { ...session, use1NmAfterSp: use1, version: session.version + 1, updatedAt: new Date().toISOString() }
-    await persistSession(next)
-  }, [session, persistSession])
+    const current = sessionRef.current
+    if (!current) return
+    await persistSession({ ...current, use1NmAfterSp: use1, version: current.version + 1, updatedAt: new Date().toISOString() })
+  }, [persistSession])
 
   // Updaters receive a readonly view so callers can't mutate in place (e.g. prev.push).
   // Returning the same reference (e.g. early-return `prev` on no-op) is also allowed.
   const setMarkers = useCallback(async (updater: (prev: readonly PhotoMarker[]) => readonly PhotoMarker[]) => {
-    if (!session) return
-    const next: CorridorsSession = { ...session, markers: updater(session.markers), version: session.version + 1, updatedAt: new Date().toISOString() }
-    await persistSession(next)
-  }, [session, persistSession])
+    const current = sessionRef.current
+    if (!current) return
+    await persistSession({ ...current, markers: updater(current.markers), version: current.version + 1, updatedAt: new Date().toISOString() })
+  }, [persistSession])
 
   const setGroundMarkers = useCallback(async (updater: (prev: readonly GroundMarker[]) => readonly GroundMarker[]) => {
-    if (!session) return
-    const next: CorridorsSession = { ...session, groundMarkers: updater(session.groundMarkers || []), version: session.version + 1, updatedAt: new Date().toISOString() }
-    await persistSession(next)
-  }, [session, persistSession])
+    const current = sessionRef.current
+    if (!current) return
+    await persistSession({ ...current, groundMarkers: updater(current.groundMarkers || []), version: current.version + 1, updatedAt: new Date().toISOString() })
+  }, [persistSession])
 
   const setNoGpsTrayOpen = useCallback(async (open: boolean) => {
-    if (!session) return
-    const next: CorridorsSession = { ...session, noGpsTrayOpen: open, version: session.version + 1, updatedAt: new Date().toISOString() }
-    await persistSession(next)
-  }, [session, persistSession])
+    const current = sessionRef.current
+    if (!current) return
+    await persistSession({ ...current, noGpsTrayOpen: open, version: current.version + 1, updatedAt: new Date().toISOString() })
+  }, [persistSession])
 
   // Setter for the no-GPS tray entries. Caller passes an updater (mirrors
   // setMarkers) so atomic add/remove can read-modify-write in one shot
   // without losing concurrent edits to siblings on the same session.
   const setNoGpsPhotos = useCallback(async (updater: (prev: readonly NoGpsPhoto[]) => readonly NoGpsPhoto[]) => {
-    if (!session) return
-    const next: CorridorsSession = { ...session, noGpsPhotos: updater(session.noGpsPhotos || []), version: session.version + 1, updatedAt: new Date().toISOString() }
-    await persistSession(next)
-  }, [session, persistSession])
+    const current = sessionRef.current
+    if (!current) return
+    await persistSession({ ...current, noGpsPhotos: updater(current.noGpsPhotos || []), version: current.version + 1, updatedAt: new Date().toISOString() })
+  }, [persistSession])
+
+  // Atomic placement of a no-GPS photo onto the map: in one persistSession
+  // call, append the new PhotoMarker AND remove the photo from noGpsPhotos.
+  // Replaces the previous two-await sequence which could leave the photo
+  // duplicated in both lists if the second write failed (quota, transient
+  // I/O). Returns true on success, false when the entry isn't found.
+  const placeNoGpsPhoto = useCallback(async (photoId: string, lng: number, lat: number): Promise<boolean> => {
+    const current = sessionRef.current
+    if (!current) return false
+    const entry = (current.noGpsPhotos || []).find(p => p.photoId === photoId)
+    if (!entry) return false
+    const marker: PhotoMarker = {
+      id: photoId,
+      photoId,
+      lng,
+      lat,
+      name: entry.filename,
+      flag: 'pick',
+    }
+    await persistSession({
+      ...current,
+      markers: [...current.markers, marker],
+      noGpsPhotos: (current.noGpsPhotos || []).filter(p => p.photoId !== photoId),
+      version: current.version + 1,
+      updatedAt: new Date().toISOString(),
+    })
+    return true
+  }, [persistSession])
 
   const saveOriginalKmlText = useCallback(async (text: string | null) => {
-    if (!session) return
+    if (!sessionRef.current) return
     const storage = storageRef.current
     const dir = sessionDirRef.current
     if (storage && dir) {
@@ -317,7 +366,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
         console.error('Failed to save original KML text', e)
       }
     }
-  }, [session])
+  }, [])
 
   const loadOriginalKmlText = useCallback(async (): Promise<string | null> => {
     const storage = storageRef.current
@@ -339,15 +388,15 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     points: GeoJSON | null
     exactPoints: GeoJSON | null
   }) => {
-    if (!session) return
-    const next: CorridorsSession = {
-      ...session,
+    const current = sessionRef.current
+    if (!current) return
+    await persistSession({
+      ...current,
       ...payload,
-      version: session.version + 1,
+      version: current.version + 1,
       updatedAt: new Date().toISOString(),
-    }
-    await persistSession(next)
-  }, [session, persistSession])
+    })
+  }, [persistSession])
 
   return {
     // state
@@ -366,6 +415,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setGroundMarkers,
     setNoGpsPhotos,
     setNoGpsTrayOpen,
+    placeNoGpsPhoto,
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,

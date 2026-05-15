@@ -151,11 +151,34 @@ describe('syncMapPicksOnce — insert path', () => {
       updatedAt: 'x',
       picks: [pmEntry('pm-orphan')],
     })
-    storage.getPhotoBlob.mockRejectedValue(new Error('NotFoundError'))
+    const notFound = Object.assign(new Error('thumb gone'), { name: 'NotFoundError' })
+    storage.getPhotoBlob.mockRejectedValue(notFound)
     const session = fakeSession([])
     const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(result.inserts).toBe(0)
     expect(session.addCandidate).not.toHaveBeenCalled()
+  })
+
+  it('skips insert (no throw) when getPhotoBlob throws a NON-NotFoundError — degraded storage must not crash sync', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [pmEntry('pm-deny'), pmEntry('pm-ok')],
+    })
+    const denied = Object.assign(new Error('permission denied'), { name: 'SecurityError' })
+    const okBlob = new Blob([new Uint8Array(8)], { type: 'image/jpeg' })
+    storage.getPhotoBlob
+      .mockRejectedValueOnce(denied)        // pm-deny
+      .mockResolvedValueOnce(okBlob)        // pm-ok still inserts
+    const session = fakeSession([])
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(result.inserts).toBe(1)
+    expect(session.addCandidate).toHaveBeenCalledTimes(1)
+    expect(session.addCandidate.mock.calls[0][0].id).toBe('pm-ok')
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
   })
 
   it('ignores entries WITHOUT the pm- prefix (photo-helper-originated)', async () => {
@@ -313,6 +336,64 @@ describe('syncMapPicksOnce — label sync (bidirectional)', () => {
     const session = fakeSession([local])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(session.setCandidateLabel).toHaveBeenCalledWith('pm-abc', '')
+  })
+})
+
+describe('syncMapPicksOnce — concurrency & blob URL leak guards (CRITICAL bugs fixed)', () => {
+  it('does NOT double-insert when the same pm-id appears twice in the file (one createObjectURL call only)', async () => {
+    // Defensive: a torn writer could repeat an entry. The local index must
+    // be updated as we insert so the second occurrence sees the existing
+    // photo and skips the createObjectURL path.
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [pmEntry('pm-dup', 'pick'), pmEntry('pm-dup', 'pick')],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
+    let createUrlCount = 0
+    ;(URL as unknown as { createObjectURL: (b: Blob) => string }).createObjectURL = () => {
+      createUrlCount++
+      return `blob:n${createUrlCount}`
+    }
+    const session = fakeSession([])
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(result.inserts).toBe(1)
+    expect(session.addCandidate).toHaveBeenCalledTimes(1)
+    expect(createUrlCount).toBe(1)
+  })
+
+  it('does NOT delete a freshly-inserted entry in the same pass (cleanup iterates LIVE index, not the stale snapshot)', async () => {
+    // The cleanup pass used to iterate `session.candidates` — a snapshot
+    // captured at hook-call time. A pm- entry inserted earlier in the
+    // pass but absent from the snapshot would then be immediately deleted.
+    // Reproducible with a session whose `candidates` array does not
+    // reflect addCandidate calls synchronously.
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [pmEntry('pm-new', 'pick')],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
+    // session.candidates frozen at [] — addCandidate does NOT append to it.
+    // This models the photo-helper React snapshot semantics where the live
+    // `candidates` array passed in is unchanged mid-pass.
+    const session = {
+      candidates: [] as readonly ApiPhoto[],
+      addCandidate: vi.fn(async () => undefined),
+      removeCandidate: vi.fn(async () => undefined),
+      setCandidateFlag: vi.fn(async () => undefined),
+      setCandidateLabel: vi.fn(async () => undefined),
+    }
+    const result = await syncMapPicksOnce(
+      storage as unknown as StorageInterface,
+      competitionDir, photosDir,
+      session as unknown as MapPicksSyncSessionApi,
+    )
+    expect(result.inserts).toBe(1)
+    expect(result.deletes).toBe(0)
+    expect(session.removeCandidate).not.toHaveBeenCalled()
   })
 })
 

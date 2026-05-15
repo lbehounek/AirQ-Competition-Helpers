@@ -177,6 +177,109 @@ describe('scheduleWriteMapPicks — debounce + serialization', () => {
   })
 })
 
+describe('scheduleWriteMapPicks — competition switch (two-dir flush)', () => {
+  let storage: { writeJSON: Mock }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    storage = { writeJSON: vi.fn().mockResolvedValue(undefined) }
+    _resetMapPicksWriterForTests()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    _resetMapPicksWriterForTests()
+  })
+
+  it('flushes pending picks to the OLD dir before scheduling against a NEW dir (no payload swap)', async () => {
+    const dirA: DirectoryHandle = { path: '/competitions/A' }
+    const dirB: DirectoryHandle = { path: '/competitions/B' }
+    scheduleWriteMapPicks(storage as unknown as StorageInterface, dirA, [
+      { photoId: 'pid-A', filename: 'a.jpg', flag: 'pick' },
+    ])
+    // Switch competition before the debounce fires:
+    scheduleWriteMapPicks(storage as unknown as StorageInterface, dirB, [
+      { photoId: 'pid-B', filename: 'b.jpg', flag: 'reject' },
+    ])
+    // Allow the immediately-scheduled flush + the debounced new write.
+    await vi.advanceTimersByTimeAsync(500)
+    expect(storage.writeJSON).toHaveBeenCalledTimes(2)
+    const [firstCall, secondCall] = storage.writeJSON.mock.calls
+    // First call MUST be the OLD dir with OLD picks — the bug was that
+    // the old picks landed in the new dir (or were silently dropped).
+    expect(firstCall[0]).toBe(dirA)
+    expect((firstCall[2] as MapPicksFile).picks[0].photoId).toBe('pid-A')
+    expect(secondCall[0]).toBe(dirB)
+    expect((secondCall[2] as MapPicksFile).picks[0].photoId).toBe('pid-B')
+  })
+
+  it('does NOT flush when only the picks payload changes (same dir, same storage)', async () => {
+    const dir: DirectoryHandle = { path: '/competitions/A' }
+    scheduleWriteMapPicks(storage as unknown as StorageInterface, dir, [
+      { photoId: 'pid', filename: 'x.jpg', flag: 'pick' },
+    ])
+    scheduleWriteMapPicks(storage as unknown as StorageInterface, dir, [
+      { photoId: 'pid', filename: 'x.jpg', flag: 'reject' },
+    ])
+    await vi.advanceTimersByTimeAsync(50)
+    // Still nothing written yet (debounce coalesces; no flush triggered).
+    expect(storage.writeJSON).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(storage.writeJSON).toHaveBeenCalledTimes(1)
+    expect((storage.writeJSON.mock.calls[0][2] as MapPicksFile).picks[0].flag).toBe('reject')
+  })
+})
+
+describe('flushPendingMapPicks — error propagation (was silently swallowed)', () => {
+  let storage: { writeJSON: Mock }
+  let dir: DirectoryHandle
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    storage = { writeJSON: vi.fn() }
+    dir = { path: '/competitions/comp-1' }
+    _resetMapPicksWriterForTests()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    _resetMapPicksWriterForTests()
+  })
+
+  it('REJECTS when the underlying writeJSON rejects (was: silently resolved)', async () => {
+    const quotaErr = Object.assign(new Error('quota'), { name: 'QuotaExceededError' })
+    storage.writeJSON.mockRejectedValue(quotaErr)
+    scheduleWriteMapPicks(storage as unknown as StorageInterface, dir, [
+      { photoId: 'pid', filename: 'x.jpg', flag: 'pick' },
+    ])
+    await expect(flushPendingMapPicks()).rejects.toBe(quotaErr)
+  })
+
+  it("RESOLVES when there's nothing pending (no caller can be misled by a prior failure)", async () => {
+    storage.writeJSON.mockRejectedValue(new Error('boom'))
+    // No schedule → nothing pending → flush is a no-op even if a prior
+    // hypothetical write had failed. Callers asking "did MY flush land?"
+    // get a true answer: there was nothing of mine to land.
+    await expect(flushPendingMapPicks()).resolves.toBeUndefined()
+  })
+
+  it('does not break the queue: a failed write does not poison the next scheduled write', async () => {
+    storage.writeJSON
+      .mockRejectedValueOnce(new Error('first'))
+      .mockResolvedValueOnce(undefined)
+    scheduleWriteMapPicks(storage as unknown as StorageInterface, dir, [
+      { photoId: 'pid', filename: 'x.jpg', flag: 'pick' },
+    ])
+    // Catch the rejection so vitest doesn't flag it as unhandled.
+    await flushPendingMapPicks().catch(() => undefined)
+    scheduleWriteMapPicks(storage as unknown as StorageInterface, dir, [
+      { photoId: 'pid', filename: 'x.jpg', flag: 'reject' },
+    ])
+    await vi.advanceTimersByTimeAsync(300)
+    expect(storage.writeJSON).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('flushPendingMapPicks', () => {
   let storage: { writeJSON: Mock }
   let dir: DirectoryHandle

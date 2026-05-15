@@ -304,6 +304,9 @@
       "delete": "Delete {{count}} candidates",
       "error": "Failed to delete candidates. Some files may still occupy storage.",
       "allPromoted": "None of the {{count}} candidates were deleted — they were moved to slots before confirm."
+    },
+    "handoff": {
+      "unavailable": "Cross-app sync with the map view is unavailable — picks made in the map won't appear here until storage is restored."
     }
   },
   "pdf": {

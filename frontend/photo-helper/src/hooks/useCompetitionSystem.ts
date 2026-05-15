@@ -584,6 +584,20 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     if (!currentCompetition?.session) return;
     await updateCurrentCompetition(session => {
       const existing = session.candidates?.photos ?? [];
+      // Revoke the displaced photo's blob URL before dropping its
+      // reference. Without this, every re-sync of the same id (the
+      // common case in the bidirectional handoff) leaks one URL per
+      // visibility-change. The check guards against same-URL reuse and
+      // non-blob URLs (data: / http: from older session shapes).
+      const previous = existing.find(p => p.id === photo.id);
+      if (
+        previous &&
+        previous.url &&
+        previous.url !== photo.url &&
+        previous.url.startsWith('blob:')
+      ) {
+        try { URL.revokeObjectURL(previous.url); } catch { /* best-effort */ }
+      }
       const filtered = existing.filter(p => p.id !== photo.id);
       // Preserve sessionId so the photo is consistent with the rest of
       // the pool (the caller often doesn't know it).

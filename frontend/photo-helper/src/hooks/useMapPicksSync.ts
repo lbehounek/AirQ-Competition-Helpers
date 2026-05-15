@@ -8,7 +8,7 @@
 // ADR-019 (upsert + delete semantics), ADR-020 (re-import dedup
 // via contentHash — not consumed here, just round-tripped).
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   getStorage,
   type DirectoryHandle,
@@ -88,6 +88,9 @@ export async function syncMapPicksOnce(
   }
 
   const remoteIds = new Set<string>();
+  // Local index of pm-prefixed candidates. Mutated as we insert so a
+  // second pass (or a duplicate entry in the file) sees the just-inserted
+  // photo and doesn't allocate a fresh blob URL for the same id.
   const localById = new Map<string, ApiPhoto>();
   for (const p of session.candidates) localById.set(p.id, p);
 
@@ -96,8 +99,21 @@ export async function syncMapPicksOnce(
     remoteIds.add(entry.photoId);
     const existing = localById.get(entry.photoId);
     if (!existing) {
-      const blob = await storage.getPhotoBlob(photosDir, entry.photoId).catch(() => null);
-      if (!blob) continue; // photo bytes missing; skip silently — re-import in map-corridors would have already failed
+      // Narrow the swallow to NotFoundError — other storage errors
+      // (permission revoked, InvalidStateError) shouldn't silently
+      // collapse into "photo missing".
+      let blob: Blob | null;
+      try {
+        blob = await storage.getPhotoBlob(photosDir, entry.photoId);
+      } catch (err) {
+        if (isNotFoundError(err)) {
+          blob = null;
+        } else {
+          console.warn('[useMapPicksSync] getPhotoBlob failed:', err);
+          continue;
+        }
+      }
+      if (!blob) continue;
       const url = URL.createObjectURL(blob);
       const photo: ApiPhoto = {
         id: entry.photoId,
@@ -110,6 +126,7 @@ export async function syncMapPicksOnce(
         ...(entry.labelUpdatedAt ? { labelUpdatedAt: entry.labelUpdatedAt } : {}),
       };
       await session.addCandidate(photo);
+      localById.set(entry.photoId, photo);
       inserts++;
     } else {
       let touched = false;
@@ -134,8 +151,11 @@ export async function syncMapPicksOnce(
   // Cleanup pass: pool entries with `pm-` prefix that are no longer
   // in the file have been deleted in map-corridors. Photo-helper-
   // originated entries (no prefix) are NEVER touched here — the user
-  // owns those independently.
-  for (const local of session.candidates) {
+  // owns those independently. Iterate the local index (which we've
+  // kept current with inserts) rather than the snapshot we were given,
+  // so a freshly-inserted photo isn't immediately deleted on the same
+  // pass.
+  for (const local of localById.values()) {
     if (!local.id.startsWith(PM_PREFIX)) continue;
     if (remoteIds.has(local.id)) continue;
     await session.removeCandidate(local.id);
@@ -143,6 +163,12 @@ export async function syncMapPicksOnce(
   }
 
   return { inserts, updates, deletes };
+}
+
+function isNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: unknown }).name;
+  return name === 'NotFoundError';
 }
 
 /**
@@ -156,6 +182,15 @@ export function useMapPicksSync(
   photosDir: DirectoryHandle | null,
   session: MapPicksSyncSessionApi,
 ): void {
+  // Mirror `session` into a ref so the visibilitychange-triggered runs
+  // see the LIVE candidates + callbacks. Capturing `session` in the
+  // effect closure would freeze candidates at mount-time, making every
+  // re-sync misidentify already-inserted photos as new (one fresh blob
+  // URL per re-sync, leaking forever) and potentially deleting them in
+  // the cleanup pass.
+  const sessionRef = useRef(session);
+  useEffect(() => { sessionRef.current = session; }, [session]);
+
   useEffect(() => {
     if (!competitionDir || !photosDir) return;
     let cancelled = false;
@@ -163,7 +198,7 @@ export function useMapPicksSync(
       try {
         const storage = getStorage();
         if (cancelled) return;
-        await syncMapPicksOnce(storage, competitionDir, photosDir, session);
+        await syncMapPicksOnce(storage, competitionDir, photosDir, sessionRef.current);
       } catch (err) {
         if (!cancelled) console.warn('[useMapPicksSync] sync failed:', err);
       }
@@ -177,12 +212,5 @@ export function useMapPicksSync(
       cancelled = true;
       document.removeEventListener('visibilitychange', onVis);
     };
-    // `session` is intentionally NOT in the dep list — its members
-    // (candidates array, callbacks) churn every render, which would
-    // re-trigger the effect on every parent state change. The
-    // visibilitychange listener catches catching up on stale data; the
-    // initial run captures the load-time state. ADR-019 acknowledges
-    // last-write-wins reads are safe.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [competitionDir, photosDir]);
 }

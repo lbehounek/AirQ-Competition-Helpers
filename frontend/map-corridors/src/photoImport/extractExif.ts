@@ -3,10 +3,13 @@ import type { ExifData } from './types'
 import { HeicNotSupportedError } from './types'
 
 // ISO base-media-file-format brands that exifr/photo-helper cannot decode.
-// Apple HEIC, HEIF, and a handful of related codecs all share the `ftyp` box
-// layout. The list is kept conservative: only brands known to be HEIC-family.
+// Apple HEIC and its HEVC-derived codec brands all share the `ftyp` box
+// layout. We deliberately do NOT include the generic `mif1`/`msf1` MIAF
+// brands here — many JPEG-encoded HEIF files use those brands and exifr
+// CAN parse them. Treating mif1 as HEIC produced false "HEIC not
+// supported" rejections on otherwise-valid images.
 const HEIC_FTYP_BRANDS: ReadonlySet<string> = new Set([
-  'heic', 'heix', 'mif1', 'msf1', 'heim', 'heis', 'hevc', 'hevx',
+  'heic', 'heix', 'heim', 'heis', 'hevc', 'hevx',
 ])
 
 // HEIC/HEIF detection by content (ADR-006). Filename extension is not

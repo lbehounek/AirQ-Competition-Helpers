@@ -55,6 +55,8 @@ type Pending = {
   picks: EditorPickEntry[];
 };
 let pending: Pending | null = null;
+// See mapPicksWriter for the rationale on per-call promises + dir-change
+// flush; the two writers are symmetric.
 let inFlight: Promise<void> = Promise.resolve();
 
 function executeWrite(
@@ -67,40 +69,54 @@ function executeWrite(
     updatedAt: new Date().toISOString(),
     picks,
   };
-  inFlight = inFlight.then(() =>
-    storage.writeJSON(dir, FILENAME, file).catch(err => {
-      console.error('[editorPicks] writeJSON failed:', err);
-    }),
-  );
-  return inFlight;
+  const currentPromise = inFlight
+    .catch(() => undefined)
+    .then(() => storage.writeJSON(dir, FILENAME, file));
+  inFlight = currentPromise;
+  return currentPromise;
 }
 
 /**
  * Schedule a debounced write. Latest call wins; rapid label edits
  * (e.g., the user tabs through letters) coalesce into one disk write.
+ * On (storage, dir) change the pending write is flushed first so it
+ * lands in the correct competition dir.
  */
 export function scheduleWriteEditorPicks(
   storage: StorageInterface,
   dir: DirectoryHandle,
   picks: EditorPickEntry[],
 ): void {
-  if (pending) clearTimeout(pending.timer);
+  if (pending) {
+    const dirChanged = pending.storage !== storage || pending.dir !== dir;
+    clearTimeout(pending.timer);
+    if (dirChanged) {
+      const stale = pending;
+      pending = null;
+      void executeWrite(stale.storage, stale.dir, stale.picks).catch(err => {
+        console.error('[editorPicks] flush-on-dir-change failed:', err);
+      });
+    }
+  }
   const timer = setTimeout(() => {
     const p = pending;
     pending = null;
     if (!p) return;
-    void executeWrite(p.storage, p.dir, p.picks);
+    void executeWrite(p.storage, p.dir, p.picks).catch(err => {
+      console.error('[editorPicks] debounced writeJSON failed:', err);
+    });
   }, DEBOUNCE_MS);
   pending = { timer, storage, dir, picks };
 }
 
 /**
- * Cancel the debounce and execute the pending write immediately. Used
- * by pagehide listeners and any "switching to map" pre-nav handler so a
- * just-edited label is durable before the focus changes.
+ * Cancel the debounce and execute the pending write immediately. Returns
+ * a Promise resolving/rejecting for THIS write so callers (the symmetric
+ * pre-nav handler in AppApi) can surface a snackbar on failure instead
+ * of navigating away from a never-written file.
  */
 export function flushPendingEditorPicks(): Promise<void> {
-  if (!pending) return inFlight;
+  if (!pending) return Promise.resolve();
   const { timer, storage, dir, picks } = pending;
   clearTimeout(timer);
   pending = null;

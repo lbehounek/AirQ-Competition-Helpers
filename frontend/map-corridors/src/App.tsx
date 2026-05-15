@@ -196,6 +196,7 @@ function App() {
     setGroundMarkers: persistGroundMarkers,
     setNoGpsPhotos: persistNoGpsPhotos,
     setNoGpsTrayOpen: persistNoGpsTrayOpen,
+    placeNoGpsPhoto,
     setUse1NmAfterSp,
     setComputedData,
     saveOriginalKmlText,
@@ -613,10 +614,18 @@ function App() {
   // Phase 9 — Send-to-editor button handler. Flushes the pending
   // map-picks write FIRST (ADR-009 navigation-flush requirement) so a
   // toggle made within the 300ms debounce window before the click still
-  // lands on disk before photo-helper opens. Then navigates via the
-  // existing Electron IPC, or falls back to a URL change in web mode.
+  // lands on disk before photo-helper opens. If the flush rejects
+  // (quota / OPFS InvalidStateError) we abort navigation — otherwise
+  // photo-helper would open against a stale handoff file with no UI
+  // signal that the picks didn't make it.
   const handleSendToEditor = useCallback(async () => {
-    await flushPendingMapPicks()
+    try {
+      await flushPendingMapPicks()
+    } catch (err) {
+      console.error('flushPendingMapPicks failed before nav:', err)
+      setSnack({ severity: 'error', text: t('photo.handoff.flushFailed') })
+      return
+    }
     if (!competitionId) return
     const api = (window as { electronAPI?: { navigateToApp?: (app: string, id: string) => void } }).electronAPI
     if (api?.navigateToApp) {
@@ -624,7 +633,7 @@ function App() {
     } else {
       window.location.href = `/photo-helper/?competitionId=${competitionId}`
     }
-  }, [competitionId])
+  }, [competitionId, t])
 
   // Phase 8a — mirror the in-memory photo markers into map-picks.json
   // every time they change. The writer debounces (300ms) so rapid flag
@@ -646,7 +655,12 @@ function App() {
 
   // Phase C — read photo-helper-picks.json on competition load and on
   // visibilitychange. Newer-wins applies remote labels to local markers.
-  useEditorPicksSync(storage, competitionDir, persistMarkers)
+  // Failures surface via the snack — without this, a sync that rejected
+  // (e.g. quota at persistMarkers) silently diverged from disk.
+  const handleEditorSyncError = useCallback((_err: unknown) => {
+    setSnack({ severity: 'warning', text: t('photo.handoff.editorSyncFailed') })
+  }, [t])
+  useEditorPicksSync(storage, competitionDir, persistMarkers, handleEditorSyncError)
 
   // Phase 5 photo-popup action handlers. `flag` lives on PhotoMarker as
   // an intermediate until Phase 8 moves the source of truth to
@@ -678,28 +692,17 @@ function App() {
     void setPhotoFlag(markerId, 'reject')
   }, [setPhotoFlag])
 
-  // Phase 6 — drop-from-tray handler. Atomic: remove the entry from
-  // noGpsPhotos AND push a PhotoMarker. We do both writes back-to-back
-  // (each await persists session.json) — a crash between them would
-  // leave the photo "duplicated" (in both lists). Acceptable risk: on
-  // reload the marker takes precedence visually (tray entry is just a
-  // stale candidate; user can manually delete from tray if needed).
+  // Phase 6 — drop-from-tray handler. Atomic: a single persistSession
+  // mutates BOTH markers and noGpsPhotos in one write, so a partial
+  // failure can no longer leave the photo duplicated in both lists.
   const handleNoGpsPhotoPlaced = useCallback(async (photoId: string, lng: number, lat: number) => {
-    if (!session) return
-    const entry = session.noGpsPhotos?.find(p => p.photoId === photoId)
-    if (!entry) return
-    // No `capturedAt` on no-GPS-placed markers — these photos never had
-    // EXIF GPS, so there's no "where the camera was" to draw a ghost from.
-    await persistMarkers((prev) => [...prev, {
-      id: photoId,
-      photoId,
-      lng,
-      lat,
-      name: entry.filename,
-      flag: 'pick',
-    }])
-    await persistNoGpsPhotos((prev) => prev.filter(p => p.photoId !== photoId))
-  }, [session, persistMarkers, persistNoGpsPhotos])
+    try {
+      await placeNoGpsPhoto(photoId, lng, lat)
+    } catch (err) {
+      console.error('placeNoGpsPhoto failed:', err)
+      setSnack({ severity: 'error', text: err instanceof Error ? err.message : String(err) })
+    }
+  }, [placeNoGpsPhoto])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []

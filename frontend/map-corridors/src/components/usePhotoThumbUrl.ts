@@ -21,9 +21,12 @@ export function usePhotoThumbUrl(
   const [url, setUrl] = useState<string | null>(null)
   const [state, setState] = useState<ThumbState>('loading')
 
+  // Loader effect: resolves a blob URL and pushes it into React state.
+  // Intentionally does NOT revoke on cleanup — the revocation lives in
+  // the [url]-keyed effect below, so React-state and the live blob URL
+  // can never disagree (StrictMode dev double-invocation included).
   useEffect(() => {
     let cancelled = false
-    let urlToRevoke: string | null = null
     if (!storage || !photosDir) {
       setUrl(null)
       setState('missing')
@@ -40,18 +43,29 @@ export function usePhotoThumbUrl(
           return
         }
         const next = URL.createObjectURL(blob)
-        urlToRevoke = next
         setUrl(next)
         setState('ready')
-      } catch {
-        if (!cancelled) setState('missing')
+      } catch (err) {
+        // Log unexpected failures so a degraded storage state surfaces
+        // somewhere instead of silently rendering "missing" everywhere
+        // (e.g. permission revoked, OPFS InvalidStateError).
+        if (!cancelled) {
+          console.warn('[usePhotoThumbUrl] thumb load failed:', err)
+          setState('missing')
+        }
       }
     })()
-    return () => {
-      cancelled = true
-      if (urlToRevoke) URL.revokeObjectURL(urlToRevoke)
-    }
+    return () => { cancelled = true }
   }, [storage, photosDir, photoId])
+
+  // Revocation effect: revokes the previous URL whenever React state
+  // moves to a new one (or the component unmounts). Tying revocation to
+  // the URL state — not to the loader effect's cleanup — guarantees we
+  // never revoke a URL that is still rendered.
+  useEffect(() => {
+    if (!url) return
+    return () => { URL.revokeObjectURL(url) }
+  }, [url])
 
   return { url, state }
 }

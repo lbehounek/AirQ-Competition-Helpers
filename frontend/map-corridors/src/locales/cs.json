@@ -59,6 +59,10 @@
       "expand": "Zobrazit seznam fotek",
       "collapse": "Skrýt seznam fotek",
       "sendToEditor": "Poslat do editoru ({{count}})"
+    },
+    "handoff": {
+      "flushFailed": "Výběr se nepodařilo uložit před otevřením editoru. Zkontrolujte úložiště a zkuste to znovu.",
+      "editorSyncFailed": "Nepodařilo se použít nejnovější popisky z editoru."
     }
   },
   "groundPopup": {

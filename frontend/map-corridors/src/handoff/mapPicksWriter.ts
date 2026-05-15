@@ -92,8 +92,9 @@ export function buildMapPicks(markers: readonly PhotoMarker[]): MapPickEntry[] {
 }
 
 // Module-level scheduler state. Per spec there's exactly one writer in
-// the app (map-corridors). Different (storage, dir) pairs would be a
-// programming error — guarded with a console.warn if it happens.
+// the app (map-corridors). When the (storage, dir) pair changes mid-debounce
+// (competition switch), the pending write is flushed FIRST so its bytes
+// land in the correct directory before scheduling against the new one.
 type PendingState = {
   timer: ReturnType<typeof setTimeout>
   storage: StorageInterface
@@ -101,12 +102,16 @@ type PendingState = {
   picks: MapPickEntry[]
 }
 let pending: PendingState | null = null
+// Serializes writes so two debounce flushes can't interleave and produce
+// a torn JSON. The chain swallows errors from prior writes (`.catch`)
+// before continuing — each call's caller still sees its OWN write's
+// rejection via the returned `currentPromise` below.
 let inFlight: Promise<void> = Promise.resolve()
 
 /**
- * Run the actual storage write. Serialized — every write waits for the
- * previous one to settle so two debounce flushes can't interleave and
- * produce a torn JSON.
+ * Run the actual storage write. Returns a promise that resolves/rejects
+ * for THIS specific write — callers (`flushPendingMapPicks`) can await
+ * it to know whether THEIR bytes hit disk, independent of prior failures.
  */
 function executeWrite(
   storage: StorageInterface,
@@ -118,18 +123,24 @@ function executeWrite(
     updatedAt: new Date().toISOString(),
     picks,
   }
-  inFlight = inFlight.then(() =>
-    storage.writeJSON(dir, FILENAME, file).catch(err => {
-      console.error('[mapPicks] writeJSON failed:', err)
-    }),
-  )
-  return inFlight
+  // Schedule after any prior write settles (success OR failure — we don't
+  // want one failure to permanently break the queue), then return the
+  // per-call promise so the caller sees ITS own rejection.
+  const currentPromise = inFlight
+    .catch(() => undefined)
+    .then(() => storage.writeJSON(dir, FILENAME, file))
+  inFlight = currentPromise
+  return currentPromise
 }
 
 /**
  * Schedule a debounced write. Subsequent calls within 300ms replace
  * the pending data — the latest call wins. Useful for collapsing rapid
  * flag toggles into a single disk write.
+ *
+ * When the (storage, dir) pair differs from the pending one, the pending
+ * write is flushed immediately so its bytes land in the correct directory
+ * (covers the competition-switch race).
  */
 export function scheduleWriteMapPicks(
   storage: StorageInterface,
@@ -137,27 +148,42 @@ export function scheduleWriteMapPicks(
   picks: MapPickEntry[],
 ): void {
   if (pending) {
+    const dirChanged = pending.storage !== storage || pending.dir !== dir
     clearTimeout(pending.timer)
+    if (dirChanged) {
+      // Flush the pending write to its ORIGINAL dir before re-scheduling.
+      // Errors are swallowed here — there's no caller to surface them to
+      // and we must not block the new schedule.
+      const stale = pending
+      pending = null
+      void executeWrite(stale.storage, stale.dir, stale.picks).catch(err => {
+        console.error('[mapPicks] flush-on-dir-change failed:', err)
+      })
+    }
   }
   const timer = setTimeout(() => {
     const p = pending
     pending = null
     if (!p) return
-    void executeWrite(p.storage, p.dir, p.picks)
+    void executeWrite(p.storage, p.dir, p.picks).catch(err => {
+      console.error('[mapPicks] debounced writeJSON failed:', err)
+    })
   }, DEBOUNCE_MS)
   pending = { timer, storage, dir, picks }
 }
 
 /**
  * Cancel the debounce timer and execute the pending write immediately.
- * Returns a Promise resolving when the write has settled. Callers can
- * await it during explicit pre-nav flushes (Phase 9's "Send to editor"
- * button) — pagehide listeners fire and forget (best-effort).
+ * Returns a Promise resolving when the write has settled, OR rejecting
+ * if the underlying storage.writeJSON rejected — callers (Phase 9's
+ * "Send to editor" handler) MUST catch this so the user sees a snackbar
+ * before the nav, otherwise a quota/permission failure silently navigates
+ * the user to a stale handoff file.
  *
- * No-op if there's nothing pending.
+ * No-op (resolves) if there's nothing pending.
  */
 export function flushPendingMapPicks(): Promise<void> {
-  if (!pending) return inFlight
+  if (!pending) return Promise.resolve()
   const { timer, storage, dir, picks } = pending
   clearTimeout(timer)
   pending = null

@@ -73,14 +73,22 @@ export async function syncEditorPicksOnce(
 /**
  * React hook wrapper. Runs syncEditorPicksOnce when `competitionDir`
  * becomes available and on every `visibilitychange === 'visible'`.
- * `setMarkers` is intentionally NOT in the effect's dep array — it's a
- * setter from a session hook that re-creates each render, so including
- * it would re-fire the effect on every parent state change.
+ *
+ * `setMarkers` MUST be stable across renders — the session hook hands
+ * out stable setters (see `useCorridorSessionOPFS.setMarkers`, which
+ * reads `session` via a ref). Putting it in the dep array is now safe,
+ * which closes the prior stale-closure window where a visibility-change
+ * could overwrite the live session with a mount-time snapshot.
+ *
+ * `onError` is optional — surface sync failures (file read, JSON parse,
+ * setMarkers reject) to a UI toast instead of swallowing them. Called
+ * with the original error.
  */
 export function useEditorPicksSync(
   storage: StorageInterface | null,
   competitionDir: DirectoryHandle | null,
   setMarkers: (updater: (prev: readonly PhotoMarker[]) => readonly PhotoMarker[]) => Promise<void> | void,
+  onError?: (err: unknown) => void,
 ): void {
   useEffect(() => {
     if (!storage || !competitionDir) return
@@ -90,7 +98,9 @@ export function useEditorPicksSync(
         if (cancelled) return
         await syncEditorPicksOnce(storage, competitionDir, setMarkers)
       } catch (err) {
-        if (!cancelled) console.warn('[useEditorPicksSync] failed:', err)
+        if (cancelled) return
+        console.warn('[useEditorPicksSync] failed:', err)
+        if (onError) onError(err)
       }
     }
     void run()
@@ -102,6 +112,5 @@ export function useEditorPicksSync(
       cancelled = true
       document.removeEventListener('visibilitychange', onVis)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storage, competitionDir])
+  }, [storage, competitionDir, setMarkers, onError])
 }

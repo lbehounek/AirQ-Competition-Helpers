@@ -34,6 +34,32 @@ export interface PhotoMarkerPopupProps {
 const THUMB_WIDTH_PX = 200
 const THUMB_HEIGHT_PX = 150
 
+/**
+ * Derive a label button's UX state from current/used/this-letter inputs.
+ *
+ * Rules (referenced by the picker click handler and the visual style):
+ *  - `disabled`: the letter is already used elsewhere AND this is not
+ *    the marker's current letter. Re-clicking the SAME letter must stay
+ *    enabled so the user can clear it.
+ *  - `intent`: 'clear' when clicking the current letter, 'set' when
+ *    clicking any other enabled letter.
+ *
+ * Exported for unit testing — a regression flipping the comparison
+ * (`isCurrent` vs `!isCurrent`) would otherwise silently disable the
+ * clear path and ship undetected.
+ */
+export function labelButtonState(input: {
+  thisLabel: string
+  currentLabel: string | undefined
+  usedLabels: readonly string[]
+}): { disabled: boolean; isCurrent: boolean; intent: 'set' | 'clear' | 'noop' } {
+  const isCurrent = input.currentLabel === input.thisLabel
+  const used = input.usedLabels.includes(input.thisLabel)
+  const disabled = used && !isCurrent
+  if (disabled) return { disabled: true, isCurrent, intent: 'noop' }
+  return { disabled: false, isCurrent, intent: isCurrent ? 'clear' : 'set' }
+}
+
 export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
   const { t } = useI18n()
   const { photoId, filename, timestamp, storage, photosDir } = props
@@ -94,30 +120,32 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
           </Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 0.5 }}>
             {(props.availableLabels ?? ALL_PHOTO_LABELS).map((L) => {
-              const used = (props.usedLabels ?? []).includes(L)
-              const isCurrent = props.label === L
-              const disabled = used && !isCurrent
+              const state = labelButtonState({
+                thisLabel: L,
+                currentLabel: props.label,
+                usedLabels: props.usedLabels ?? [],
+              })
               return (
                 <button
                   key={L}
                   type="button"
                   onClick={() => {
-                    if (disabled) return
-                    if (isCurrent) {
+                    if (state.intent === 'noop') return
+                    if (state.intent === 'clear') {
                       props.onLabelClear?.()
                     } else {
                       props.onLabelChange?.(L)
                     }
                   }}
-                  disabled={disabled}
-                  title={disabled ? t('photo.popup.labelUsed') : `${t('photo.popup.labelSet')} ${L}`}
+                  disabled={state.disabled}
+                  title={state.disabled ? t('photo.popup.labelUsed') : `${t('photo.popup.labelSet')} ${L}`}
                   style={{
                     padding: '2px 0',
                     borderRadius: 4,
                     border: '1px solid #cbd5e1',
-                    background: isCurrent ? '#facc15' : '#ffffff',
-                    color: isCurrent ? '#111827' : (disabled ? '#9ca3af' : '#111827'),
-                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    background: state.isCurrent ? '#facc15' : '#ffffff',
+                    color: state.isCurrent ? '#111827' : (state.disabled ? '#9ca3af' : '#111827'),
+                    cursor: state.disabled ? 'not-allowed' : 'pointer',
                     fontWeight: 600,
                     fontSize: 12,
                     minWidth: 0,

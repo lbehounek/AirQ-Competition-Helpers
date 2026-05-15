@@ -50,7 +50,7 @@ function ftypBytes(brand: string, size = 32): Uint8Array {
 }
 
 describe('extractExif — HEIC content rejection', () => {
-  it.each(['heic', 'heix', 'mif1', 'msf1'])('rejects HEIC brand %s by content', async (brand) => {
+  it.each(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis'])('rejects HEIC brand %s by content', async (brand) => {
     // Mislabeled — .jpg extension, image/jpeg MIME, but HEIC bytes inside.
     const file = makeFile(ftypBytes(brand), 'photo.jpg', 'image/jpeg')
     await expect(extractExif(file)).rejects.toBeInstanceOf(HeicNotSupportedError)
@@ -61,6 +61,16 @@ describe('extractExif — HEIC content rejection', () => {
   it('includes the original filename in the error message', async () => {
     const file = makeFile(ftypBytes('heic'), 'IMG_0001.jpg')
     await expect(extractExif(file)).rejects.toThrow(/IMG_0001\.jpg/)
+  })
+
+  it.each(['mif1', 'msf1'])('does NOT reject generic MIAF brand %s (exifr can parse these)', async (brand) => {
+    // mif1/msf1 are the generic ISO-BMFF MIAF brands used by many non-HEIC
+    // HEIF profiles. Treating them as HEIC produced false rejections.
+    gpsMock.mockResolvedValue(null)
+    parseMock.mockResolvedValue(null)
+    const file = makeFile(ftypBytes(brand), `photo-${brand}.heif`)
+    await expect(extractExif(file)).resolves.toEqual({})
+    expect(gpsMock).toHaveBeenCalled()
   })
 
   it('does NOT reject non-HEIC `ftyp` brands (e.g. mp4)', async () => {

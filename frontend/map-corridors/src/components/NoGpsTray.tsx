@@ -15,6 +15,19 @@ import { usePhotoThumbUrl } from './usePhotoThumbUrl'
 /** Drag type the map drop handler watches for. Public — MapProviderView imports this. */
 export const NO_GPS_PHOTO_DRAG_TYPE = 'application/x-airq-no-gps-photo'
 
+/**
+ * Sort comparator for no-GPS tray entries. EXIF timestamp ASC; entries
+ * without a timestamp sort to the end via the `'￿'` sentinel, then
+ * tie-break alphabetically by filename. Exported for unit testing — a
+ * typo flipping the order would otherwise ship silently.
+ */
+export function compareNoGpsPhotos(a: NoGpsPhoto, b: NoGpsPhoto): number {
+  const ta = a.timestamp ?? '￿'
+  const tb = b.timestamp ?? '￿'
+  if (ta !== tb) return ta < tb ? -1 : 1
+  return a.filename.localeCompare(b.filename)
+}
+
 const TRAY_HEIGHT_PX = 116        // 80px thumb + chrome, under the 120px ADR-012 cap
 const THUMB_WIDTH_PX = 96         // 4:3 thumbs in horizontal scroll
 const THUMB_HEIGHT_PX = 72
@@ -32,18 +45,7 @@ export function NoGpsTray(props: NoGpsTrayProps) {
   const { t } = useI18n()
   const { photos, open, onToggleOpen, storage, photosDir } = props
 
-  // Sort by EXIF timestamp ASC; entries without a timestamp settle at the
-  // end (assigned a max sort key), tie-broken alphabetically by filename.
-  const sorted = useMemo(() => {
-    const copy = [...photos]
-    copy.sort((a, b) => {
-      const ta = a.timestamp ?? '￿'
-      const tb = b.timestamp ?? '￿'
-      if (ta !== tb) return ta < tb ? -1 : 1
-      return a.filename.localeCompare(b.filename)
-    })
-    return copy
-  }, [photos])
+  const sorted = useMemo(() => [...photos].sort(compareNoGpsPhotos), [photos])
 
   // Auto-hide when nothing to show. Phase 6 acceptance: "Tray empty → collapses".
   // We hide entirely (vs. show empty chrome) — simpler, no chevron-with-nothing.

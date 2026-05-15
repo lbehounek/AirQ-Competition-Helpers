@@ -59,6 +59,10 @@
       "expand": "Show photo list",
       "collapse": "Hide photo list",
       "sendToEditor": "Send to editor ({{count}})"
+    },
+    "handoff": {
+      "flushFailed": "Couldn't save picks before opening the editor. Check storage and try again.",
+      "editorSyncFailed": "Couldn't apply latest labels from the editor."
     }
   },
   "groundPopup": {

@@ -93,13 +93,13 @@ describe('getPhotoThumb', () => {
   })
 
   it('returns null when the thumbs subdirectory does not exist yet', async () => {
-    storage.getDirectoryHandle.mockRejectedValue(new Error('NotFoundError'))
+    storage.getDirectoryHandle.mockRejectedValue(Object.assign(new Error('not found'), { name: 'NotFoundError' }))
     expect(await getPhotoThumb(storage as unknown as StorageInterface, photosDir, 'pm-abc')).toBeNull()
     expect(storage.getPhotoBlob).not.toHaveBeenCalled()
   })
 
   it('returns null when the thumbs subdir exists but the file is missing', async () => {
-    storage.getPhotoBlob.mockRejectedValue(new Error('NotFoundError'))
+    storage.getPhotoBlob.mockRejectedValue(Object.assign(new Error('not found'), { name: 'NotFoundError' }))
     expect(await getPhotoThumb(storage as unknown as StorageInterface, photosDir, 'pm-missing')).toBeNull()
   })
 
@@ -108,6 +108,14 @@ describe('getPhotoThumb', () => {
     await getPhotoThumb(storage as unknown as StorageInterface, photosDir, 'pm-abc')
     const [, , opts] = storage.getDirectoryHandle.mock.calls[0]
     expect(opts).toEqual({ create: false })
+  })
+
+  it('PROPAGATES non-NotFoundError errors (degraded storage must surface, not silently → null)', async () => {
+    const denied = Object.assign(new Error('permission'), { name: 'SecurityError' })
+    storage.getPhotoBlob.mockRejectedValue(denied)
+    await expect(
+      getPhotoThumb(storage as unknown as StorageInterface, photosDir, 'pm-x'),
+    ).rejects.toBe(denied)
   })
 })
 
@@ -123,7 +131,7 @@ describe('deletePhotoThumb', () => {
   })
 
   it('is idempotent: missing thumbs subdir is NOT an error', async () => {
-    storage.getDirectoryHandle.mockRejectedValue(new Error('NotFoundError'))
+    storage.getDirectoryHandle.mockRejectedValue(Object.assign(new Error('not found'), { name: 'NotFoundError' }))
     await expect(
       deletePhotoThumb(storage as unknown as StorageInterface, photosDir, 'pm-abc'),
     ).resolves.toBeUndefined()
@@ -131,7 +139,7 @@ describe('deletePhotoThumb', () => {
   })
 
   it('is idempotent: missing thumb file is NOT an error', async () => {
-    storage.deletePhotoFile.mockRejectedValue(new Error('NotFoundError'))
+    storage.deletePhotoFile.mockRejectedValue(Object.assign(new Error('not found'), { name: 'NotFoundError' }))
     await expect(
       deletePhotoThumb(storage as unknown as StorageInterface, photosDir, 'pm-missing'),
     ).resolves.toBeUndefined()
@@ -141,6 +149,14 @@ describe('deletePhotoThumb', () => {
     await deletePhotoThumb(storage as unknown as StorageInterface, photosDir, 'pm-abc')
     const [, , opts] = storage.getDirectoryHandle.mock.calls[0]
     expect(opts).toEqual({ create: false })
+  })
+
+  it('PROPAGATES non-NotFoundError errors on delete (quota / permission must not look idempotent)', async () => {
+    const quota = Object.assign(new Error('quota'), { name: 'QuotaExceededError' })
+    storage.deletePhotoFile.mockRejectedValue(quota)
+    await expect(
+      deletePhotoThumb(storage as unknown as StorageInterface, photosDir, 'pm-x'),
+    ).rejects.toBe(quota)
   })
 })
 
@@ -157,11 +173,11 @@ describe('round-trip', () => {
       }),
       getPhotoBlob: vi.fn(async (_dir: DirectoryHandle, name: string) => {
         const file = fakeFs.get(name)
-        if (!file) throw new Error('NotFoundError')
+        if (!file) throw Object.assign(new Error('not found'), { name: 'NotFoundError' })
         return file
       }),
       deletePhotoFile: vi.fn(async (_dir: DirectoryHandle, name: string) => {
-        if (!fakeFs.delete(name)) throw new Error('NotFoundError')
+        if (!fakeFs.delete(name)) throw Object.assign(new Error('not found'), { name: 'NotFoundError' })
       }),
     } as unknown as StorageInterface
 
