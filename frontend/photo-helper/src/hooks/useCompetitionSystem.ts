@@ -127,7 +127,27 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   const [error, setError] = useState<string | null>(null);
   const [cleanupCandidates, setCleanupCandidates] = useState<CleanupCandidate[]>([]);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
-  
+
+  // Synchronous mirror of `currentCompetition`. Updated by `applyCurrentCompetition`
+  // (and the effect below for any direct setCurrentCompetition call sites) so that
+  // sequential async setters running within the same render frame each read the
+  // already-applied update from the previous call. Without this, the closure-
+  // captured `currentCompetition` is stale across awaits and last-write-wins on
+  // `setCurrentCompetition` silently drops earlier updates. Repro: map-corridors
+  // → editor handoff with N picks lands only the last one because
+  // `syncMapPicksOnce` awaits N `addExistingCandidate` calls back-to-back without
+  // React rendering between them. See useMapPicksSync.test.ts (sequential).
+  const currentCompetitionRef = useRef<Competition | null>(null);
+  useEffect(() => { currentCompetitionRef.current = currentCompetition; }, [currentCompetition]);
+
+  // Write-through helper: updates the ref synchronously AND queues the React
+  // setState. Every call site that wants the next sequential read to see this
+  // value MUST go through here instead of bare `setCurrentCompetition`.
+  const applyCurrentCompetition = useCallback((next: Competition | null) => {
+    currentCompetitionRef.current = next;
+    setCurrentCompetition(next);
+  }, []);
+
   const migrationPerformed = useRef(false);
 
   // Read external competition ID from URL (set by desktop launcher)
@@ -460,22 +480,35 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   }, [currentCompetition, refreshCompetitions]);
 
   // Session Operations (proxied to current competition)
+  //
+  // Reads the live competition from `currentCompetitionRef` rather than the
+  // closure so sequential calls within the same render frame see each
+  // other's updates. Critical for the handoff path: `syncMapPicksOnce`
+  // awaits N `addExistingCandidate` calls back-to-back; without the ref read
+  // every call would re-derive `updatedCompetition` from the same initial
+  // snapshot and `setCurrentCompetition`'s last-write-wins would land only
+  // the final call's photo on screen.
+  //
+  // We also commit the new value to the ref BEFORE awaiting the disk write
+  // so the next caller in the chain sees this update immediately, not after
+  // the persist has settled.
   const updateCurrentCompetition = useCallback(async (
     updater: (session: ApiPhotoSession) => ApiPhotoSession,
     options?: { updatePhotos?: boolean }
   ) => {
-    if (!currentCompetition) return;
-    
+    const current = currentCompetitionRef.current;
+    if (!current) return;
+
     try {
-      const originalSession = currentCompetition.session;
+      const originalSession = current.session;
       const updatedSession = updater(originalSession);
-      
+
       // Check if competition name changed in session and sync it
       const nameChanged = updatedSession.competition_name !== originalSession.competition_name;
-      const newCompetitionName = nameChanged && updatedSession.competition_name.trim() 
+      const newCompetitionName = nameChanged && updatedSession.competition_name.trim()
         ? updatedSession.competition_name.trim()
-        : currentCompetition.name;
-      
+        : current.name;
+
       // Detect if photos have actually changed (not just metadata). Includes
       // the candidate pool so promoting/demoting/adding to the tray triggers
       // a write — `competitionService.saveSessionPhotos` walks candidates
@@ -489,23 +522,37 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         JSON.stringify(originalSession.sets.set2.photos.map(p => p.id)) !== JSON.stringify(updatedSession.sets.set2.photos.map(p => p.id)) ||
         origCandIds.length !== nextCandIds.length ||
         JSON.stringify(origCandIds) !== JSON.stringify(nextCandIds);
-      
+
       const updatedCompetition: Competition = {
-        ...currentCompetition,
+        ...current,
         name: newCompetitionName,
         session: updatedSession,
         lastModified: new Date().toISOString(),
         photoCount: updatedSession.sets.set1.photos.length + updatedSession.sets.set2.photos.length
       };
-      
-      await competitionService.updateCompetition(updatedCompetition, { updatePhotos: photosChanged });
+
+      // Publish the new value to the ref BEFORE the await so the very next
+      // caller (e.g. syncMapPicksOnce iterating over picks) reads our
+      // update, not the pre-update snapshot. The React state update is
+      // still deferred until after the disk write succeeds, which preserves
+      // the prior "no phantom UI on failed persist" contract.
+      currentCompetitionRef.current = updatedCompetition;
+
+      try {
+        await competitionService.updateCompetition(updatedCompetition, { updatePhotos: photosChanged });
+      } catch (err) {
+        // Persist failed — roll back the ref so the next caller doesn't
+        // build on top of unsaved phantom state.
+        currentCompetitionRef.current = current;
+        throw err;
+      }
       setCurrentCompetition(updatedCompetition);
-      
+
       // Refresh competitions list if name changed
       if (nameChanged) {
         await refreshCompetitions();
       }
-      
+
       // Update storage stats after any photo changes
       if (photosChanged) {
         try {
@@ -515,12 +562,12 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           console.warn('Failed to update storage stats:', err);
         }
       }
-      
+
     } catch (err) {
       console.error('Failed to update competition:', err);
       setError(err instanceof Error ? err.message : 'Failed to update competition');
     }
-  }, [currentCompetition, refreshCompetitions]);
+  }, [refreshCompetitions]);
 
   /**
    * Build a fresh ApiPhoto from a File. Shared by slot-add and candidate-add

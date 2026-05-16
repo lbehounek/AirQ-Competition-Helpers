@@ -10,6 +10,20 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.13.2] - 2026-05-16
+
+### Fixed
+- **Photo Helper:** map → editor handoff now lands all selected photos
+  instead of just the last one. Reported by Martin Hrivna: selecting 3
+  photos in Map Corridors and clicking "Poslat do editoru (3)" delivered
+  only the last one, with the remainder appearing one-per-minimize cycle
+  thereafter. Root cause was a stale-closure read of `currentCompetition`
+  inside `updateCurrentCompetition`; sequential `addExistingCandidate`
+  calls during `syncMapPicksOnce` each rebuilt their update on the same
+  pre-update snapshot, so `setCurrentCompetition`'s last-write-wins
+  dropped the earlier inserts. Fixed by routing the read through a
+  synchronously-updated ref so chained async calls see prior updates.
+
 ## [2.8.3] - 2026-05-06
 
 ### Fixed

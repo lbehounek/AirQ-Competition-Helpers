@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { DirectoryHandle, StorageInterface } from '@airq/shared-storage';
+import type { ApiPhoto } from '../types/api';
 
 // PR #62 review G1 / G2 / G5: the hook layer wraps the pure helpers with
 // capacity clamps, smart-drop routing, mode-bucket mirroring, and the
@@ -567,5 +568,63 @@ describe('useCompetitionSystem — deleteCandidates snapshot-drift result (PR #6
       returnValue = await (result.current as any).deleteCandidates([]);
     });
     expect(returnValue).toEqual({ deleted: 0, skipped: 0 });
+  });
+});
+
+// Regression: handoff bug reported by Martin Hrivna 2026-05-16.
+// `syncMapPicksOnce` (photo-helper side) iterates N entries from
+// map-picks.json and awaits `session.addCandidate(...)` for each,
+// having captured `session` from `sessionRef.current` ONCE at the
+// start of the run. Inside, `addExistingCandidate` calls
+// `updateCurrentCompetition`, which used to read `currentCompetition`
+// from the closure — stale until React re-renders. Across N sequential
+// awaits in the same microtask burst no render happens, so each
+// invocation built its updated session on the same pre-update
+// snapshot and `setCurrentCompetition`'s last-write-wins dropped the
+// earlier inserts. User symptom: "vybral jsem 3 fotky, přenesla se jen
+// jedna poslední", and "po minimalizaci se najednou objeví dvě, po
+// další tři" (each visibility re-sync added exactly one more).
+//
+// The fix moved updateCurrentCompetition to read from a synchronously-
+// updated ref. This test pins that contract by capturing
+// addExistingCandidate ONCE and awaiting 3 calls back-to-back.
+describe('useCompetitionSystem — addExistingCandidate sequential race (handoff regression)', () => {
+  it('adds all 3 photos when called sequentially without intervening renders', async () => {
+    const result = await setup();
+    // Capture ONCE — mirrors useMapPicksSync's sessionRef.current.addCandidate
+    // pattern. Re-reading result.current.addExistingCandidate after each await
+    // would mask the bug because renderHook surfaces the latest closure.
+    const addExistingCandidate = result.current.addExistingCandidate;
+    const sessionId = result.current.session!.id;
+
+    const photos: ApiPhoto[] = [1, 2, 3].map(i => ({
+      id: `pm-photo-${i}`,
+      sessionId,
+      url: `blob:test/pm-${i}`,
+      filename: `pm-${i}.jpg`,
+      canvasState: {
+        position: { x: 0, y: 0 },
+        scale: 1,
+        brightness: 0,
+        contrast: 1,
+        sharpness: 0,
+        whiteBalance: { temperature: 0, tint: 0, auto: false },
+        labelPosition: 'bottom-left' as const,
+      },
+      label: '',
+      flag: 'pick',
+    }));
+
+    await act(async () => {
+      // Sequential awaits against the SAME captured callback. Pre-fix this
+      // would land only photos[2] in candidates.
+      await addExistingCandidate(photos[0]);
+      await addExistingCandidate(photos[1]);
+      await addExistingCandidate(photos[2]);
+    });
+
+    const finalIds = result.current.session!.candidates!.photos.map(p => p.id);
+    expect(finalIds).toEqual(expect.arrayContaining(['pm-photo-1', 'pm-photo-2', 'pm-photo-3']));
+    expect(result.current.session!.candidates!.photos.length).toBe(3);
   });
 });
