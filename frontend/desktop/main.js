@@ -1040,7 +1040,16 @@ function readClipboardFilePaths() {
     }
   };
 
-  if (formats.includes('CF_HDROP')) {
+  // Direct OS-level format probe via `clipboard.has`, NOT `availableFormats`.
+  // `availableFormats()` returns Chromium's MIME-translated names (text/plain,
+  // text/html, text/uri-list, Files, image/png, …) and does NOT surface the
+  // raw Win32 format names — so `formats.includes('CF_HDROP')` is always
+  // false even when Windows Explorer / Total Commander / 7-Zip have populated
+  // CF_HDROP via Ctrl+C. `clipboard.has(format)` bypasses the translation
+  // and asks the underlying OS clipboard directly, which is what we need
+  // for native Win32 formats. Reported by user 2026-05-16: Ctrl-V from
+  // Explorer paste pasted nothing because this gate never opened.
+  if (clipboard.has('CF_HDROP')) {
     try {
       const buf = clipboard.readBuffer('CF_HDROP');
       parseDropfiles(buf).forEach(push);
