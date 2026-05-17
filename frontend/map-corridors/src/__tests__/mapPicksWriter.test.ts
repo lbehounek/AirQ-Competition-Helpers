@@ -91,13 +91,28 @@ describe('buildMapPickEntry', () => {
 })
 
 describe('buildMapPicks', () => {
-  it('skips KML markers and projects photo markers in order', () => {
+  it('skips KML markers and projects ONLY photo markers flagged as pick', () => {
+    // User feedback 2026-05-17: "Poslat do editoru (N)" must match the
+    // number of photos that actually transfer. The button counts picks,
+    // so the writer emits picks only — non-pick (neutral / reject /
+    // un-flagged) markers stay on the corridor side, where their flag
+    // is still tracked on PhotoMarker.flag.
     const result = buildMapPicks([
       pm({ id: 'kml', photoId: undefined }),
       pm({ id: 'p1', photoId: 'pid-1', flag: 'pick' }),
-      pm({ id: 'p2', photoId: 'pid-2' }),
+      pm({ id: 'p2', photoId: 'pid-2' }), // no flag → neutral → excluded
+      pm({ id: 'p3', photoId: 'pid-3', flag: 'reject' }), // excluded
+      pm({ id: 'p4', photoId: 'pid-4', flag: 'pick' }),
     ])
-    expect(result.map(e => e.photoId)).toEqual(['pid-1', 'pid-2'])
+    expect(result.map(e => e.photoId)).toEqual(['pid-1', 'pid-4'])
+  })
+
+  it('excludes a marker whose flag is explicitly absent (neutral default)', () => {
+    expect(buildMapPicks([pm({ id: 'p1', photoId: 'pid-1' })])).toEqual([])
+  })
+
+  it('excludes reject-flagged markers (reject state lives only in corridor session)', () => {
+    expect(buildMapPicks([pm({ id: 'p1', photoId: 'pid-1', flag: 'reject' })])).toEqual([])
   })
 
   it('returns [] for empty input', () => {

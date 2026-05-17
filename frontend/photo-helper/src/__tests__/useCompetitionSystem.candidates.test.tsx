@@ -627,4 +627,102 @@ describe('useCompetitionSystem — addExistingCandidate sequential race (handoff
     expect(finalIds).toEqual(expect.arrayContaining(['pm-photo-1', 'pm-photo-2', 'pm-photo-3']));
     expect(result.current.session!.candidates!.photos.length).toBe(3);
   });
+
+  // Regression: handoff bug part 2, reported by Martin Hrivna 2026-05-17.
+  // After my first fix landed all picks in the editor, the user deleted
+  // them and clicked "Poslat do editoru" again — nothing transferred.
+  // Root cause: photo-helper's `removeCandidate` deletes the OPFS file
+  // via `competitionService.deletePhotosByIds`. For `pm-` prefixed photos
+  // the OPFS file lives in the SHARED `competitions/{compId}/photos/`
+  // directory that map-corridors also reads from. Stranding the file
+  // makes `useMapPicksSync.getPhotoBlob` throw NotFoundError on the next
+  // pass and the entry is silently skipped, so the editor stays empty.
+  // The map-corridors hard-delete path is the canonical pm- delete site;
+  // photo-helper's tray-delete now treats pm- photos as "remove from
+  // my session, keep the bytes" so the next handoff can re-insert.
+  it('removeCandidate KEEPS the OPFS file for pm-prefixed photos (map-corridors owns them)', async () => {
+    const result = await setup();
+    // Seed an on-disk `pm-` photo so addExistingCandidate has bytes to
+    // back the candidate. Maps to the shared OPFS layout that map-corridors
+    // writes into.
+    const compId = result.current.currentCompetition!.id;
+    const photosDirPath = `/competitions/${compId}/photos`;
+    const photosDir = { path: photosDirPath } as DirectoryHandle;
+    const pmId = 'pm-test-photo-1';
+    await storageMock.savePhotoFile(photosDir, pmId, makeFile('pm.jpg'));
+
+    const pmPhoto: ApiPhoto = {
+      id: pmId,
+      sessionId: result.current.session!.id,
+      url: 'blob:test/pm',
+      filename: 'pm.jpg',
+      canvasState: {
+        position: { x: 0, y: 0 },
+        scale: 1,
+        brightness: 0,
+        contrast: 1,
+        sharpness: 0,
+        whiteBalance: { temperature: 0, tint: 0, auto: false },
+        labelPosition: 'bottom-left' as const,
+      },
+      label: '',
+      flag: 'pick',
+    };
+    await act(async () => {
+      await result.current.addExistingCandidate(pmPhoto);
+    });
+    expect(result.current.session!.candidates!.photos.map(p => p.id)).toContain(pmId);
+    expect((await storageMock.listDirectory(photosDir)).map(e => e.name)).toContain(pmId);
+
+    await act(async () => {
+      await result.current.removeCandidate(pmId);
+    });
+
+    // Candidate is gone from the session — that's what the user wanted.
+    expect(result.current.session!.candidates!.photos.map(p => p.id)).not.toContain(pmId);
+    // ...but the OPFS bytes are preserved so map-corridors can still
+    // serve them on the next handoff round.
+    expect((await storageMock.listDirectory(photosDir)).map(e => e.name)).toContain(pmId);
+  });
+
+  it('deleteCandidates KEEPS OPFS files for pm-prefixed photos but deletes non-pm', async () => {
+    const result = await setup();
+    const compId = result.current.currentCompetition!.id;
+    const photosDirPath = `/competitions/${compId}/photos`;
+    const photosDir = { path: photosDirPath } as DirectoryHandle;
+
+    // Mixed batch: one pm- (map-owned) and one regular photo-helper candidate.
+    const pmId = 'pm-bulk-test-1';
+    await storageMock.savePhotoFile(photosDir, pmId, makeFile('pm.jpg'));
+    await act(async () => {
+      await result.current.addExistingCandidate({
+        id: pmId,
+        sessionId: result.current.session!.id,
+        url: 'blob:test/pm-bulk',
+        filename: 'pm.jpg',
+        canvasState: {
+          position: { x: 0, y: 0 },
+          scale: 1,
+          brightness: 0,
+          contrast: 1,
+          sharpness: 0,
+          whiteBalance: { temperature: 0, tint: 0, auto: false },
+          labelPosition: 'bottom-left' as const,
+        },
+        label: '',
+        flag: 'pick',
+      });
+      await result.current.addPhotosToCandidates([makeFile('local.jpg')]);
+    });
+    const localId = result.current.session!.candidates!.photos.find(p => p.id !== pmId)!.id;
+
+    await act(async () => {
+      await (result.current as any).deleteCandidates([pmId, localId]);
+    });
+
+    const remainingFiles = (await storageMock.listDirectory(photosDir)).map(e => e.name);
+    expect(remainingFiles).toContain(pmId);       // pm- preserved for map-corridors
+    expect(remainingFiles).not.toContain(localId); // local fully removed
+    expect(result.current.session!.candidates!.photos.length).toBe(0);
+  });
 });

@@ -813,7 +813,17 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     }, { updatePhotos: true });
     // Free the OPFS file (PR #62 review C3). `saveSessionPhotos` never prunes,
     // so without an explicit delete the file orphans and storage stats lie.
-    if (compId && !referencedElsewhere) {
+    //
+    // EXCEPTION: pm-prefixed photos are owned by map-corridors (shared
+    // `competitions/{compId}/photos/` directory). Deleting the file here
+    // strands map-corridors' marker — `getPhotoBlob` then throws
+    // NotFoundError on the next `useMapPicksSync` pass and the entry is
+    // silently skipped, so a re-Send brings back nothing. The map-corridors
+    // hard-delete path (`removePhoto` in `useCorridorSessionOPFS`) is the
+    // canonical place to delete pm- bytes, and it cleans up both the
+    // marker and the file in one shot. User feedback 2026-05-17.
+    const isMapOwned = photoId.startsWith('pm-');
+    if (compId && !referencedElsewhere && !isMapOwned) {
       try {
         await competitionService.deletePhotosByIds(compId, [photoId]);
       } catch (err) {
@@ -921,7 +931,14 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       }
       // Only delete the OPFS files that no other container references —
       // protects against a promotion racing the delete (PR #62 review IMP-2).
-      safeIds = presentIds.filter(id => !isPhotoReferencedInSession(next, id));
+      // Also exclude `pm-` prefixed photos: those are owned by map-corridors
+      // (shared `competitions/{compId}/photos/`); deleting them here strands
+      // the map marker and silently breaks the next `useMapPicksSync` pass
+      // (`getPhotoBlob` → NotFoundError → entry skipped). See removeCandidate
+      // for the symmetric guard and user feedback 2026-05-17 rationale.
+      safeIds = presentIds.filter(id =>
+        !isPhotoReferencedInSession(next, id) && !id.startsWith('pm-')
+      );
       return next;
     }, { updatePhotos: true });
     if (compId && safeIds.length > 0) {
