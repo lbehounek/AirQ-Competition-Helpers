@@ -140,7 +140,6 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
                 renameTooltip: t('photo.renameTooltip'),
                 renamePlaceholder: t('photo.renamePlaceholder'),
                 renameSaveAria: t('photo.renameSaveAria'),
-                renameCancelAria: t('photo.renameCancelAria'),
               })}
             />
           ))}
@@ -210,7 +209,6 @@ function renderGroupItems(
     renameTooltip: string
     renamePlaceholder: string
     renameSaveAria: string
-    renameCancelAria: string
   },
 ): React.ReactNode {
   const commonRenameCtx = {
@@ -218,7 +216,6 @@ function renderGroupItems(
     renameTooltip: ctx.renameTooltip,
     renamePlaceholder: ctx.renamePlaceholder,
     renameSaveAria: ctx.renameSaveAria,
-    renameCancelAria: ctx.renameCancelAria,
   }
   if (key === 'noGps') {
     return g.noGps.map(p => (
@@ -285,11 +282,10 @@ function PhotoListItem(props: {
   renameTooltip: string
   renamePlaceholder: string
   renameSaveAria: string
-  renameCancelAria: string
 }) {
   const {
     photoId, filename, storage, photosDir, onClick, onDelete, deleteTooltip,
-    onRename, renameTooltip, renamePlaceholder, renameSaveAria, renameCancelAria,
+    onRename, renameTooltip, renamePlaceholder, renameSaveAria,
   } = props
   const { url, state } = usePhotoThumbUrl(storage, photosDir, photoId)
   const [editing, setEditing] = useState(false)
@@ -325,9 +321,11 @@ function PhotoListItem(props: {
       <ListItemButton
         onClick={editing ? undefined : onClick}
         disabled={!editing && !onClick}
-        // Edit mode disables ListItemButton's click ripple so the TextField
-        // doesn't swallow keystrokes via focus contention.
-        component={editing ? 'div' : undefined}
+        // Edit mode renders as a div so the inner TextField isn't nested
+        // inside a <button> (a11y violation + focus contention). Spread
+        // `component` conditionally — MUI's overload typing rejects
+        // `component={undefined}`.
+        {...(editing ? { component: 'div' as const } : {})}
         // Two icon-buttons live in the right pad (rename + delete) when
         // not editing; one (save) when editing. pr: 7 covers the wider case.
         sx={{ py: 0.5, gap: 1, pr: 7 }}
