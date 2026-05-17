@@ -48,6 +48,18 @@ export interface MapPicksSyncSessionApi {
    * `labelUpdatedAt`. Empty string = explicit clear.
    */
   setCandidateLabel: (photoId: string, label: string) => Promise<void> | void;
+  /**
+   * Update the display filename in place. User feedback 2026-05-17
+   * (Martin Hrivna): map-corridors now lets the user rename imported
+   * photos to workflow-friendly names (`TP1` etc.). For freshly-handed-
+   * off photos that lands automatically via the insert path
+   * (`entry.filename` → `ApiPhoto.filename`), but a rename of a photo
+   * ALREADY in the editor's pool would otherwise be ignored — the prior
+   * update branch only diffed `flag` and `label`. Map-corridors is the
+   * authority for `filename` on `pm-` entries; one-way sync, no
+   * timestamp / newer-wins (no editor-side filename edit exists).
+   */
+  setCandidateFilename: (photoId: string, filename: string) => Promise<void> | void;
 }
 
 const PM_PREFIX = PM_PHOTO_ID_PREFIX;
@@ -143,6 +155,16 @@ export async function syncMapPicksOnce(
       const remoteIsNewer = remoteAt && (!localAt || remoteAt > localAt);
       if (remoteIsNewer && existing.label !== remoteLabel) {
         await session.setCandidateLabel(entry.photoId, remoteLabel);
+        touched = true;
+      }
+      // One-way filename sync (map-corridors → editor). No timestamp
+      // because the editor doesn't have a rename UI — every divergence
+      // is the map's authoritative value. Without this branch, a rename
+      // in map-corridors AFTER first Send is silently lost: the insert
+      // branch picks it up on the first sync, but subsequent renames hit
+      // the update branch which used to ignore `filename`.
+      if (existing.filename !== entry.filename) {
+        await session.setCandidateFilename(entry.photoId, entry.filename);
         touched = true;
       }
       if (touched) updates++;

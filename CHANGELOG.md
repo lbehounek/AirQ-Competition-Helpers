@@ -10,6 +10,18 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.13.5] - 2026-05-17
+
+### Fixed
+- **Photo Helper:** filename renames performed in Map Corridors AFTER
+  the first "Poslat do editoru" now propagate to the candidate tile
+  in the editor instead of being silently dropped. `syncMapPicksOnce`'s
+  update branch previously diffed only `flag` and `label`; a renamed
+  photo already in the editor pool kept its old filename forever.
+  Adds `setCandidateFilename` to the session contract and a filename
+  diff in the update branch (one-way: map authoritative for `pm-`
+  filenames). User feedback 2026-05-17.
+
 ## [2.13.4] - 2026-05-17
 
 ### Added
