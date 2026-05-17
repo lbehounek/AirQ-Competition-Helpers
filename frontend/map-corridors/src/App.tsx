@@ -198,6 +198,7 @@ function App() {
     setNoGpsTrayOpen: persistNoGpsTrayOpen,
     placeNoGpsPhoto,
     removePhoto,
+    renamePhoto,
     setUse1NmAfterSp,
     setComputedData,
     saveOriginalKmlText,
@@ -1225,6 +1226,7 @@ function App() {
             onMarkerClick={(markerId) => mapRef.current?.flyToPhotoMarker(markerId)}
             onSendToEditor={competitionId ? handleSendToEditor : undefined}
             onPhotoDelete={(photoId) => { void removePhoto(photoId) }}
+            onPhotoRename={(photoId, newName) => { void renamePhoto(photoId, newName) }}
           />
         </Box>
       </Container>

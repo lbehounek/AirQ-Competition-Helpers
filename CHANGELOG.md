@@ -10,6 +10,17 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.13.4] - 2026-05-17
+
+### Added
+- **Map Corridors:** rename imported photos directly in the right-side
+  photo list. Click the new pencil icon on any row, type a workflow-
+  friendly name (e.g. `TP1`), press Enter to save or Esc to cancel.
+  The new name replaces the camera-assigned filename throughout: KML
+  export, the marker tooltip, and Photo Helper's candidate tile (via
+  the existing `entry.filename` field in `map-picks.json` — no schema
+  change). Reported by Martin Hrivna 2026-05-16.
+
 ## [2.13.3] - 2026-05-17
 
 ### Fixed

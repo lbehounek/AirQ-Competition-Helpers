@@ -401,6 +401,48 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     }
   }, [persistSession])
 
+  /**
+   * Rename a photo's display name in-place. Walks BOTH `markers[]` (GPS path,
+   * where the display name lives on `marker.name`) and `noGpsPhotos[]`
+   * (off-map tray, where it lives on `entry.filename`) so a single call
+   * handles either origin without the caller having to disambiguate.
+   *
+   * The OPFS file under `photos/{photoId}` is untouched — only the
+   * user-facing label changes. The new name flows downstream:
+   *  - KML export uses `marker.name` directly.
+   *  - `buildMapPickEntry` writes `entry.filename = marker.name` so Photo
+   *    Helper's candidate tile picks up the new name on the next sync.
+   *
+   * Caller is expected to pre-trim / validate (see `normalizeRename` in
+   * PhotoListPanel) — this hook trusts its input but still bails on the
+   * empty-string and "no real change" cases as a belt-and-suspenders guard.
+   */
+  const renamePhoto = useCallback(async (photoId: string, newName: string): Promise<void> => {
+    const current = sessionRef.current
+    if (!current) return
+    const trimmed = newName.trim()
+    if (trimmed.length === 0) return
+    const markerIdx = current.markers.findIndex(m => m.photoId === photoId)
+    const noGpsIdx = (current.noGpsPhotos || []).findIndex(p => p.photoId === photoId)
+    if (markerIdx === -1 && noGpsIdx === -1) return
+    const markerUnchanged = markerIdx !== -1 && current.markers[markerIdx].name === trimmed
+    const noGpsUnchanged = noGpsIdx !== -1 && (current.noGpsPhotos || [])[noGpsIdx].filename === trimmed
+    if (markerUnchanged || noGpsUnchanged) return
+    const nextMarkers = markerIdx === -1
+      ? current.markers
+      : current.markers.map((m, i) => (i === markerIdx ? { ...m, name: trimmed } : m))
+    const nextNoGps = noGpsIdx === -1
+      ? (current.noGpsPhotos || [])
+      : (current.noGpsPhotos || []).map((p, i) => (i === noGpsIdx ? { ...p, filename: trimmed } : p))
+    await persistSession({
+      ...current,
+      markers: nextMarkers,
+      noGpsPhotos: nextNoGps,
+      version: current.version + 1,
+      updatedAt: new Date().toISOString(),
+    })
+  }, [persistSession])
+
   const saveOriginalKmlText = useCallback(async (text: string | null) => {
     if (!sessionRef.current) return
     const storage = storageRef.current
@@ -464,6 +506,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setNoGpsTrayOpen,
     placeNoGpsPhoto,
     removePhoto,
+    renamePhoto,
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,
