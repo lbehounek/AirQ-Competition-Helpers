@@ -61,6 +61,12 @@
       "sendToEditor": "Poslat do editoru ({{count}})"
     },
     "deleteTooltip": "Smazat fotografii",
+    "deleteConfirm": {
+      "title": "Smazat fotografii?",
+      "body": "„{{name}}“ bude odebrána z této soutěže. Akci nelze vrátit.",
+      "cancel": "Zrušit",
+      "confirm": "Smazat"
+    },
     "renameTooltip": "Přejmenovat fotografii",
     "renamePlaceholder": "např. TP1",
     "renameSaveAria": "Uložit název",

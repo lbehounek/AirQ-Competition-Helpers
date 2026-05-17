@@ -10,6 +10,17 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.13.6] - 2026-05-17
+
+### Changed
+- **Map Corridors:** clicking the X badge on a photo (either in the
+  right-side list or in the no-GPS tray) now opens a confirmation
+  dialog before removing. The pencil rename icon sits right next to
+  the X and a misclick used to be irreversible; user feedback
+  2026-05-17 asked for the safety net. Cancel restores the prior
+  state; the dialog header is "Smazat fotografii?" and shows the
+  current display name (incl. any rename made before clicking X).
+
 ## [2.13.5] - 2026-05-17
 
 ### Fixed

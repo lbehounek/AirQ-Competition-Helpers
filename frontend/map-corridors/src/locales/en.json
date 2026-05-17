@@ -61,6 +61,12 @@
       "sendToEditor": "Send to editor ({{count}})"
     },
     "deleteTooltip": "Delete photo",
+    "deleteConfirm": {
+      "title": "Delete photo?",
+      "body": "\"{{name}}\" will be removed from this competition. This cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    },
     "renameTooltip": "Rename photo",
     "renamePlaceholder": "e.g. TP1",
     "renameSaveAria": "Save name",
