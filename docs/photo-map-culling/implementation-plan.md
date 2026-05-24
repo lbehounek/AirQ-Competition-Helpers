@@ -921,9 +921,17 @@ untouched and stays visually distinct (left border vs. fill).
 - `frontend/map-corridors/src/components/PhotoListPanel.tsx` — `activePhotoId`
   prop; row tint (`alpha(primary, 0.14)`); `scrollIntoView` on the active row;
   group auto-expand effect; new exported pure helper `groupKeyForPhotoId`.
+- `frontend/map-corridors/src/activePhoto/activePhoto.ts` — pure helpers
+  `shouldClearActivePhoto` (drives the prune-on-delete/reject effect) and
+  `resolveActivePhotoId` (the list highlight's photoId; null for a gone/rejected
+  marker so no one-render tint flash on a reject row).
 
-**Tests.** `__tests__/groupKeyForPhotoId.test.ts` — picks/neutral/rejects
-mapping, unknown id → null, no-GPS photo → null.
+**Tests.**
+- `__tests__/groupKeyForPhotoId.test.ts` — picks/neutral/rejects mapping,
+  unknown id → null, no-GPS photo → null.
+- `__tests__/activePhoto.test.ts` — `shouldClearActivePhoto` (clears on
+  delete/reject, keeps on visible/null) and `resolveActivePhotoId`
+  (visible → photoId; rejected/deleted/no-photoId/null → null).
 
 **Smoke addendum.**
 

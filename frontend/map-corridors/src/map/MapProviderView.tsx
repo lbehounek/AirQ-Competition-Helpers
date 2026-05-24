@@ -5,6 +5,7 @@ import type { GeoJSON, Geometry, Position } from 'geojson'
 import type { LngLatBoundsLike, LngLatLike, StyleSpecification } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useI18n } from '../contexts/I18nContext'
+import { shouldClearActivePhoto } from '../activePhoto/activePhoto'
 import { captureMapForPrint } from '../utils/mapCapture'
 import type { PrintCaptureResult } from '../utils/mapCapture'
 import type { PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
@@ -189,9 +190,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // close on other flag/label transitions — that broke re-opening picks from
   // the side-panel click.
   useEffect(() => {
-    if (!activePhotoMarkerId) return
-    const m = props.markers?.find(mm => mm.id === activePhotoMarkerId)
-    if (!m || m.flag === 'reject') setActivePhotoMarkerId(null)
+    if (shouldClearActivePhoto(props.markers ?? [], activePhotoMarkerId)) {
+      setActivePhotoMarkerId(null)
+    }
   }, [props.markers, activePhotoMarkerId, setActivePhotoMarkerId])
 
   const uploadedGeojson = useMemo(() => {
@@ -324,7 +325,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         setActivePhotoMarkerId(markerId)
       }
     },
-  }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, mapStyle, mapboxAccessToken])
+  }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, mapStyle, mapboxAccessToken, setActivePhotoMarkerId])
 
   if (needsToken) {
     return (

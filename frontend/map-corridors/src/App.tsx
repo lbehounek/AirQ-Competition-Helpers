@@ -41,6 +41,7 @@ import { NoGpsTray } from './components/NoGpsTray'
 import { PhotoListPanel } from './components/PhotoListPanel'
 import { PhotoCompareModal } from './components/PhotoCompareModal'
 import { resolveVariantFlags } from './photoVariants/resolveVariantFlags'
+import { resolveActivePhotoId } from './activePhoto/activePhoto'
 import type { PhotoMarker } from './types/markers'
 import {
   buildMapPicks,
@@ -1260,7 +1261,7 @@ function App() {
             storage={storage}
             photosDir={photosDir}
             onMarkerClick={(markerId) => mapRef.current?.flyToPhotoMarker(markerId)}
-            activePhotoId={markers.find(m => m.id === activePhotoMarkerId)?.photoId ?? null}
+            activePhotoId={resolveActivePhotoId(markers, activePhotoMarkerId)}
             onSendToEditor={competitionId ? handleSendToEditor : undefined}
             onPhotoDelete={(photoId) => { setPendingDeletePhoto(photoId) }}
             onPhotoRename={(photoId, newName) => { void renamePhoto(photoId, newName) }}
