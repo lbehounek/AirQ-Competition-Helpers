@@ -4,32 +4,39 @@
 // mounting React:
 //
 //  - `shouldClearActivePhoto` — when MapProviderView's prune effect must drop
-//    the active state (marker deleted, or rejected → hidden from the map).
-//  - `resolveActivePhotoId` — the photoId the list panel should highlight,
-//    null unless the active marker still exists AND is visible (not rejected).
-//    Excluding rejected here prevents a one-render tint flash on a reject row
-//    before the prune effect fires.
+//    the active state. ONLY on deletion. NOT on reject — see below.
+//  - `resolveActivePhotoId` — the photoId the list panel should highlight.
+//
+// Active = "the marker whose popup is open", regardless of flag. A rejected
+// photo MUST be able to be active: clicking a rejected row in the side panel
+// opens its popup so the user can un-reject it (set it back to pick/neutral).
+// Clearing active on reject is exactly the bug that "broke re-opening
+// picks/rejects from the side-panel click" — rejecting *via the popup* is
+// closed by the explicit onReject handler, which is the only reject path that
+// should dismiss the popup.
 
 import type { PhotoMarker } from '../types/markers'
 
 /**
- * True when the active marker should be cleared: nothing is active is NOT a
- * reason to clear (returns false for a null id), but a set id that no longer
- * resolves to a visible marker (missing, or `flag === 'reject'`) is.
+ * True when the active marker should be cleared: only when the id no longer
+ * resolves to ANY marker (deleted elsewhere). A null id is not a reason to
+ * clear (returns false). Reject does NOT clear — a rejected photo stays
+ * openable so it can be un-rejected from the list.
  */
 export function shouldClearActivePhoto(
   markers: readonly PhotoMarker[],
   activeMarkerId: string | null,
 ): boolean {
   if (!activeMarkerId) return false
-  const m = markers.find(mm => mm.id === activeMarkerId)
-  return !m || m.flag === 'reject'
+  return !markers.some(mm => mm.id === activeMarkerId)
 }
 
 /**
  * The photoId of the active photo for the list-panel highlight, or null when
- * nothing is active or the active marker is gone/rejected (hidden) or lacks a
- * photoId (KML markers are never photo-active).
+ * nothing is active, the active marker is gone, or it lacks a photoId (KML
+ * markers are never photo-active). Rejected photos DO resolve — their row
+ * highlights while the popup is open so the user sees which one they're
+ * un-rejecting.
  */
 export function resolveActivePhotoId(
   markers: readonly PhotoMarker[],
@@ -37,6 +44,5 @@ export function resolveActivePhotoId(
 ): string | null {
   if (!activeMarkerId) return null
   const m = markers.find(mm => mm.id === activeMarkerId)
-  if (!m || m.flag === 'reject') return null
-  return m.photoId ?? null
+  return m?.photoId ?? null
 }

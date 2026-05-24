@@ -182,14 +182,12 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // "every-photo-is-a-Marker" model — clicks land directly on the
   // <Marker> div, not on a GeoJSON layer feature.
 
-  // Close the photo popup (and clear the App-level active highlight) when the
-  // active marker disappears entirely (deleted elsewhere) OR becomes rejected
-  // — rejected markers are hidden from the map (Phase 12), so a lingering
-  // popup/highlight would point at a pin that isn't drawn. The Include/Skip/
-  // Reject handlers below also clear explicitly; this effect covers the paths
-  // that don't (e.g. variant-compare rejecting the active photo). We must NOT
-  // close on other flag/label transitions — that broke re-opening picks from
-  // the side-panel click.
+  // Close the photo popup ONLY when the active marker disappears entirely
+  // (deleted elsewhere). We must NOT close on flag/label transitions —
+  // including reject — because clicking a rejected row in the side panel
+  // re-opens its popup so the user can un-reject it; closing on reject breaks
+  // that. Rejecting *via this popup* is dismissed by the explicit onReject
+  // handler below, not here.
   useEffect(() => {
     if (shouldClearActivePhoto(props.markers ?? [], activePhotoMarkerId)) {
       setActivePhotoMarkerId(null)
