@@ -42,6 +42,7 @@ import { PhotoListPanel } from './components/PhotoListPanel'
 import { PhotoCompareModal } from './components/PhotoCompareModal'
 import { resolveVariantFlags } from './photoVariants/resolveVariantFlags'
 import { resolveActivePhotoId } from './activePhoto/activePhoto'
+import { isProvisionalValid, type ProvisionalPlacement } from './provisionalPlacement/provisionalPlacement'
 import type { PhotoMarker } from './types/markers'
 import {
   buildMapPicks,
@@ -239,6 +240,11 @@ function App() {
   // from MapProviderView so both the map (marker glow) and the right-side
   // PhotoListPanel (row highlight) read one source of truth. `null` = none.
   const [activePhotoMarkerId, setActivePhotoMarkerId] = useState<string | null>(null)
+  // Phase 14 — provisional placement of a no-GPS photo. Clicking a no-GPS row
+  // drops a draggable pin at the map center; the photo stays in "Bez GPS"
+  // until the user commits a category in the popup. `null` = no placement in
+  // progress.
+  const [provisionalPlacement, setProvisionalPlacement] = useState<ProvisionalPlacement | null>(null)
   const [isAnswerSheetOpen, setAnswerSheetOpen] = useState(false)
   // User feedback 2026-05-17: the X badge on every photo row deletes
   // without confirmation. The new rename pencil sits adjacent and a
@@ -743,6 +749,60 @@ function App() {
     }
   }, [placeNoGpsPhoto])
 
+  // Phase 14 — drag-to-recategorize: a row dropped on another group sets its
+  // flag. Reuses the same setter the popup buttons use.
+  const handlePhotoSetFlag = useCallback((markerId: string, flag: 'pick' | 'reject' | null) => {
+    void setPhotoFlag(markerId, flag)
+  }, [setPhotoFlag])
+
+  // Phase 14 — start placing a no-GPS photo: drop a provisional pin at the
+  // current map center. Nothing is committed; the photo stays in the tray /
+  // "Bez GPS" group until the user picks a category in the provisional popup.
+  const handleNoGpsPhotoClick = useCallback((photoId: string) => {
+    const center = mapRef.current?.getCenter()
+    if (!center) return
+    const photo = (session?.noGpsPhotos ?? []).find(p => p.photoId === photoId)
+    if (!photo) return
+    // Re-clicking the row of an already-provisional photo must NOT reset the
+    // pin — that would silently discard the location the user already dragged
+    // it to. Keep the existing placement; only a different photo starts fresh.
+    setProvisionalPlacement(prev => (
+      prev?.photoId === photoId
+        ? prev
+        : { photoId, filename: photo.displayName ?? photo.filename, lng: center.lng, lat: center.lat }
+    ))
+  }, [session?.noGpsPhotos])
+
+  // Cancel a provisional placement if its photo leaves "Bez GPS" by another
+  // path while the pin is still up (placed via the tray, or deleted) — without
+  // this the orphan pin commits against a missing entry and shows a false
+  // "placement failed" error.
+  useEffect(() => {
+    setProvisionalPlacement(prev => (isProvisionalValid(prev, session?.noGpsPhotos ?? []) ? prev : null))
+  }, [session?.noGpsPhotos])
+
+  const handleProvisionalDrag = useCallback((lng: number, lat: number) => {
+    setProvisionalPlacement(prev => (prev ? { ...prev, lng, lat } : prev))
+  }, [])
+
+  const handleProvisionalCancel = useCallback(() => setProvisionalPlacement(null), [])
+
+  // Commit the provisional placement at the dragged location with the chosen
+  // category. Atomic via placeNoGpsPhoto (single persist write); on success the
+  // photo leaves "Bez GPS" and becomes a marker.
+  const handleProvisionalCommit = useCallback(async (flag: 'pick' | 'reject' | null) => {
+    const p = provisionalPlacement
+    if (!p) return
+    setProvisionalPlacement(null)
+    try {
+      const ok = await placeNoGpsPhoto(p.photoId, p.lng, p.lat, flag)
+      if (!ok) setSnack({ severity: 'error', text: t('photo.tray.placeFailed') })
+    } catch (err) {
+      console.error('provisional placeNoGpsPhoto failed:', err)
+      setSnack({ severity: 'error', text: err instanceof Error ? err.message : String(err) })
+    }
+  }, [provisionalPlacement, placeNoGpsPhoto, t])
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types as any) : []
     const isMarkerDrag = types.includes('application/x-photo-marker') || types.includes('application/x-ground-marker')
@@ -1243,6 +1303,10 @@ function App() {
             onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}
             activePhotoMarkerId={activePhotoMarkerId}
             onActivePhotoMarkerChange={setActivePhotoMarkerId}
+            provisionalPlacement={provisionalPlacement}
+            onProvisionalDrag={handleProvisionalDrag}
+            onProvisionalCommit={handleProvisionalCommit}
+            onProvisionalCancel={handleProvisionalCancel}
           />
           {/* Phase 6 — no-GPS tray, pinned to bottom-left of the map. */}
           <NoGpsTray
@@ -1262,6 +1326,8 @@ function App() {
             photosDir={photosDir}
             onMarkerClick={(markerId) => mapRef.current?.flyToPhotoMarker(markerId)}
             activePhotoId={resolveActivePhotoId(markers, activePhotoMarkerId)}
+            onPhotoSetFlag={handlePhotoSetFlag}
+            onNoGpsPhotoClick={handleNoGpsPhotoClick}
             onSendToEditor={competitionId ? handleSendToEditor : undefined}
             onPhotoDelete={(photoId) => { setPendingDeletePhoto(photoId) }}
             onPhotoRename={(photoId, newName) => { void renamePhoto(photoId, newName) }}
