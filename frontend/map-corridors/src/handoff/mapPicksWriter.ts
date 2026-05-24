@@ -37,7 +37,9 @@ export function buildMapPickEntry(marker: PhotoMarker): MapPickEntry | null {
   const flag: MapPickEntry['flag'] = marker.flag ?? 'neutral'
   const entry: MapPickEntry = {
     photoId: marker.photoId,
-    filename: marker.name,
+    // Send the custom name when set so Photo Helper's candidate tile shows
+    // `TP1`, not the camera filename. Falls back to the original filename.
+    filename: marker.displayName ?? marker.name,
     flag,
   }
   if (marker.label) entry.label = marker.label

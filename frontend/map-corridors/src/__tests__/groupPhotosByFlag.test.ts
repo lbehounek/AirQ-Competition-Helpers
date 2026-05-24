@@ -52,11 +52,32 @@ describe('groupPhotosByFlag', () => {
     expect(g.picks).toEqual([])
   })
 
-  it('passes noGpsPhotos through verbatim', () => {
-    const list = [ng('pid-x'), ng('pid-y')]
+  it('sorts noGpsPhotos by filename (numeric-aware) without mutating the input', () => {
+    const list = [ng('pid-y', 'IMG_10.jpg'), ng('pid-x', 'IMG_9.jpg')]
     const g = groupPhotosByFlag([], list)
-    expect(g.noGps).toBe(list) // identity-preserving — safe for memo
+    expect(g.noGps.map(p => p.filename)).toEqual(['IMG_9.jpg', 'IMG_10.jpg']) // 9 < 10 numerically
+    expect(list.map(p => p.filename)).toEqual(['IMG_10.jpg', 'IMG_9.jpg']) // input untouched
     expect(g.total).toBe(2)
+  })
+
+  it('orders each flag group by original filename, numeric-aware', () => {
+    const markers: PhotoMarker[] = [
+      pm({ id: 'p10', photoId: 'a', flag: 'pick', name: 'DSC_0010.JPG' }),
+      pm({ id: 'p9', photoId: 'b', flag: 'pick', name: 'DSC_0009.JPG' }),
+      pm({ id: 'p100', photoId: 'c', flag: 'pick', name: 'DSC_0100.JPG' }),
+    ]
+    const g = groupPhotosByFlag(markers, [])
+    expect(g.picks.map(m => m.name)).toEqual(['DSC_0009.JPG', 'DSC_0010.JPG', 'DSC_0100.JPG'])
+  })
+
+  it('orders by original filename, NOT by a custom displayName', () => {
+    const markers: PhotoMarker[] = [
+      pm({ id: 'z', photoId: 'a', flag: 'pick', name: 'DSC_0002.JPG', displayName: 'AAA' }),
+      pm({ id: 'a', photoId: 'b', flag: 'pick', name: 'DSC_0001.JPG', displayName: 'ZZZ' }),
+    ]
+    const g = groupPhotosByFlag(markers, [])
+    // 0001 before 0002 (filename order) — a rename to ZZZ/AAA must not reorder.
+    expect(g.picks.map(m => m.name)).toEqual(['DSC_0001.JPG', 'DSC_0002.JPG'])
   })
 
   it('total is the sum across all four groups', () => {

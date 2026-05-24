@@ -23,7 +23,21 @@ export type PhotoMarker = Readonly<{
   id: string
   lng: number
   lat: number
+  /**
+   * Original camera filename (e.g. `DSC_0123.JPG`), assigned at import and
+   * NEVER overwritten. It is the stable sort key (list/tray order by filename)
+   * and the secondary part of the exported KML name. Renaming writes
+   * `displayName`, not this. See `computeRenamedPhoto`.
+   */
   name: string
+  /**
+   * Optional user-supplied workflow label (e.g. `TP1`). When set it is shown
+   * as the primary name everywhere (list row, marker popup, KML `<name>`,
+   * Photo Helper tile) while `name` is preserved underneath for ordering and
+   * identification. `undefined` = no custom name, fall back to `name`.
+   * User feedback 2026-05-17 (Martin Hrivna).
+   */
+  displayName?: string
   label?: PhotoLabel
   capturedAt?: Readonly<{
     lng: number
@@ -115,6 +129,7 @@ export function isPhotoMarker(value: unknown): value is PhotoMarker {
     typeof v.id === 'string' && v.id.length > 0 &&
     isValidLngLat(v.lng, v.lat) &&
     typeof v.name === 'string' &&
+    (v.displayName === undefined || typeof v.displayName === 'string') &&
     (v.label === undefined || (typeof v.label === 'string' && PHOTO_LABEL_SET.has(v.label))) &&
     isValidCapturedAt(v.capturedAt) &&
     (v.photoId === undefined || (typeof v.photoId === 'string' && v.photoId.length > 0)) &&
@@ -140,7 +155,18 @@ export function sanitizePhotoMarkers(input: unknown): PhotoMarker[] {
 // synthetic coordinates while in the tray.
 export type NoGpsPhoto = Readonly<{
   photoId: string
+  /**
+   * Original camera filename — the immutable sort key for the tray and the
+   * right-side list's no-GPS group. Renaming writes `displayName`, not this.
+   */
   filename: string
+  /**
+   * Optional user-supplied workflow label (e.g. `TP1`). Mirrors
+   * `PhotoMarker.displayName`: shown as the primary name, `filename` preserved
+   * underneath. Carried onto the created `PhotoMarker.displayName` when the
+   * photo is dragged onto the map (`placeNoGpsPhoto`).
+   */
+  displayName?: string
   /** ISO 8601 EXIF DateTimeOriginal; used for tray sort order. Optional — some cameras don't set it. */
   timestamp?: string
 }>
@@ -151,8 +177,34 @@ export function isNoGpsPhoto(value: unknown): value is NoGpsPhoto {
   return (
     typeof v.photoId === 'string' && v.photoId.length > 0 &&
     typeof v.filename === 'string' && v.filename.length > 0 &&
+    (v.displayName === undefined || typeof v.displayName === 'string') &&
     (v.timestamp === undefined || typeof v.timestamp === 'string')
   )
+}
+
+/**
+ * Effective display name for a photo marker: the user's custom `displayName`
+ * if set, otherwise the original camera filename. Single source of truth so
+ * the list row, marker popup, KML export, and map-picks all agree.
+ */
+export function photoMarkerDisplayName(m: Pick<PhotoMarker, 'name' | 'displayName'>): string {
+  return m.displayName ?? m.name
+}
+
+/** Effective display name for a no-GPS tray entry. See {@link photoMarkerDisplayName}. */
+export function noGpsPhotoDisplayName(p: Pick<NoGpsPhoto, 'filename' | 'displayName'>): string {
+  return p.displayName ?? p.filename
+}
+
+/**
+ * Numeric-aware filename comparator for list/tray ordering. `numeric: true`
+ * makes `DSC_0009 < DSC_0010 < DSC_0100` (a plain lexical sort would put
+ * `DSC_0010` before `DSC_0009`). `sensitivity: 'base'` keeps the order stable
+ * regardless of case. Sorts by the ORIGINAL filename, so a rename
+ * (which only touches `displayName`) never reorders the list.
+ */
+export function compareFilenames(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
 }
 
 export function sanitizeNoGpsPhotos(input: unknown): NoGpsPhoto[] {

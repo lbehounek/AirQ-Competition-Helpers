@@ -12,7 +12,14 @@ import { ALL_PHOTO_LABELS } from '../types/markers'
 
 export interface PhotoMarkerPopupProps {
   photoId: string
+  /** Primary name shown in bold — the custom name if set, else the filename. */
   filename: string
+  /**
+   * Original camera filename, shown as a small secondary line. Pass only when
+   * a custom name is in effect (i.e. differs from `filename`); `undefined`
+   * hides the row so an un-renamed photo isn't printed twice.
+   */
+  originalFilename?: string
   /** ISO 8601 capture timestamp; rendered as-is. Empty/undefined hides the row. */
   timestamp?: string
   storage: StorageInterface
@@ -62,7 +69,7 @@ export function labelButtonState(input: {
 
 export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
   const { t } = useI18n()
-  const { photoId, filename, timestamp, storage, photosDir } = props
+  const { photoId, filename, originalFilename, timestamp, storage, photosDir } = props
   const { url: thumbUrl, state: loadState } = usePhotoThumbUrl(storage, photosDir, photoId)
 
   return (
@@ -97,6 +104,11 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
       <Typography variant="body2" sx={{ fontWeight: 600, wordBreak: 'break-all' }}>
         {filename}
       </Typography>
+      {originalFilename && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', wordBreak: 'break-all' }}>
+          {originalFilename}
+        </Typography>
+      )}
       {timestamp && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
           {timestamp}

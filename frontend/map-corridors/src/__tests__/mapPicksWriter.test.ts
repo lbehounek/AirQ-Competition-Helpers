@@ -38,6 +38,16 @@ describe('buildMapPickEntry', () => {
     expect(buildMapPickEntry(pm({ photoId: 'pid' }))!.label).toBeUndefined()
   })
 
+  it('projects the custom displayName into entry.filename (Photo Helper tile shows TP1)', () => {
+    const e = buildMapPickEntry(pm({ photoId: 'pid', name: 'DSC_0001.JPG', displayName: 'TP1' }))!
+    expect(e.filename).toBe('TP1')
+  })
+
+  it('falls back to the original filename when no custom name is set', () => {
+    const e = buildMapPickEntry(pm({ photoId: 'pid', name: 'DSC_0001.JPG' }))!
+    expect(e.filename).toBe('DSC_0001.JPG')
+  })
+
   it('writes capturedAt to gps when EXIF GPS was present at import', () => {
     const e = buildMapPickEntry(pm({
       photoId: 'pid',
