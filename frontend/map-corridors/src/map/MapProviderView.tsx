@@ -1,10 +1,11 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import MapGL, { Layer, Source, Marker, Popup } from 'react-map-gl/mapbox'
 import type { MapRef, MarkerDragEvent, MarkerEvent } from 'react-map-gl/mapbox'
 import type { GeoJSON, Geometry, Position } from 'geojson'
 import type { LngLatBoundsLike, LngLatLike, StyleSpecification } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useI18n } from '../contexts/I18nContext'
+import { shouldClearActivePhoto } from '../activePhoto/activePhoto'
 import { captureMapForPrint } from '../utils/mapCapture'
 import type { PrintCaptureResult } from '../utils/mapCapture'
 import type { PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
@@ -91,6 +92,12 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // Phase 6 — fires when a no-GPS thumbnail from NoGpsTray is dropped
   // on the map. Receives the photoId and the unprojected drop coords.
   onNoGpsPhotoPlaced?: (photoId: string, lng: number, lat: number) => void
+  // Phase 13 — the active photo (its popup is open) is now lifted to App so
+  // the side panel can highlight the same photo. This component is controlled:
+  // it reads `activePhotoMarkerId` and requests changes via
+  // `onActivePhotoMarkerChange`. `null` = no photo popup / nothing active.
+  activePhotoMarkerId?: string | null
+  onActivePhotoMarkerChange?: (id: string | null) => void
 }>(function MapProviderView(props, ref) {
   const { mapStyle, mapboxAccessToken, geojsonOverlays } = props
 
@@ -99,8 +106,16 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   const mapRef = useRef<MapRef | null>(null)
   const [isMapLoaded, setIsMapLoaded] = useState(false)
   const [confirmDeleteForId, setConfirmDeleteForId] = useState<string | null>(null)
-  // Phase 5: which photo marker has its popup open. Null = no photo popup.
-  const [activePhotoMarkerId, setActivePhotoMarkerId] = useState<string | null>(null)
+  // Phase 5/13: which photo marker has its popup open. Lifted to App (Phase
+  // 13) so the side panel can highlight the same photo — this component is now
+  // controlled. Aliased to the same names the rest of the file already uses so
+  // the read/set call sites below stay unchanged. Null = no photo popup.
+  const activePhotoMarkerId = props.activePhotoMarkerId ?? null
+  const onActivePhotoMarkerChange = props.onActivePhotoMarkerChange
+  const setActivePhotoMarkerId = useCallback(
+    (id: string | null) => { onActivePhotoMarkerChange?.(id) },
+    [onActivePhotoMarkerChange],
+  )
   const dragStartLngLatRef = useRef<Map<string, { lng: number, lat: number }>>(new Map())
   const dragMovedPxRef = useRef<Map<string, number>>(new Map())
   // Attach native DnD listeners on the canvas to support custom marker drops
@@ -166,16 +181,19 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // "every-photo-is-a-Marker" model — clicks land directly on the
   // <Marker> div, not on a GeoJSON layer feature.
 
-  // Close the photo popup only when the marker disappears entirely
-  // (deleted elsewhere). The Include/Skip/Reject handlers below call
-  // setActivePhotoMarkerId(null) explicitly — that path doesn't need
-  // this effect. Previously this also closed on flag/label transitions,
-  // which broke re-opening picks/rejects from the side-panel click.
+  // Close the photo popup (and clear the App-level active highlight) when the
+  // active marker disappears entirely (deleted elsewhere) OR becomes rejected
+  // — rejected markers are hidden from the map (Phase 12), so a lingering
+  // popup/highlight would point at a pin that isn't drawn. The Include/Skip/
+  // Reject handlers below also clear explicitly; this effect covers the paths
+  // that don't (e.g. variant-compare rejecting the active photo). We must NOT
+  // close on other flag/label transitions — that broke re-opening picks from
+  // the side-panel click.
   useEffect(() => {
-    if (!activePhotoMarkerId) return
-    const exists = props.markers?.some(m => m.id === activePhotoMarkerId)
-    if (!exists) setActivePhotoMarkerId(null)
-  }, [props.markers, activePhotoMarkerId])
+    if (shouldClearActivePhoto(props.markers ?? [], activePhotoMarkerId)) {
+      setActivePhotoMarkerId(null)
+    }
+  }, [props.markers, activePhotoMarkerId, setActivePhotoMarkerId])
 
   const uploadedGeojson = useMemo(() => {
     return geojsonOverlays?.find((o) => o.id === 'uploaded-geojson')?.data
@@ -307,7 +325,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         setActivePhotoMarkerId(markerId)
       }
     },
-  }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, mapStyle, mapboxAccessToken])
+  }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, mapStyle, mapboxAccessToken, setActivePhotoMarkerId])
 
   if (needsToken) {
     return (
@@ -638,12 +656,16 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           : m.flag === 'reject' ? '#d32f2f'
           : '#616161'
         const bg = moved ? ringColor : '#ffffff'
+        // Phase 13 — the active photo (popup open / selected in the side
+        // panel) gets a glow + scale-up and is lifted above its neighbours.
+        const isActive = activePhotoMarkerId === m.id
         return (
           <Marker
             key={m.id}
             longitude={m.lng}
             latitude={m.lat}
             draggable
+            style={isActive ? { zIndex: 2 } : undefined}
             onClick={(ev: MarkerEvent<MouseEvent>) => {
               const movedPx = dragMovedPxRef.current.get(m.id) || 0
               dragStartLngLatRef.current.delete(m.id)
@@ -690,7 +712,13 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               borderRadius: '50%',
               background: bg,
               border: `2px solid ${ringColor}`,
-              boxShadow: moved ? '0 1px 2px rgba(0,0,0,0.25)' : 'none',
+              // Active marker: white halo + blue glow so it reads on any
+              // basemap; otherwise the subtle drop shadow for moved photos.
+              boxShadow: isActive
+                ? '0 0 0 3px rgba(255,255,255,0.9), 0 0 10px 4px rgba(25,118,210,0.65)'
+                : moved ? '0 1px 2px rgba(0,0,0,0.25)' : 'none',
+              transform: isActive ? 'scale(1.3)' : undefined,
+              transition: 'transform 120ms ease, box-shadow 120ms ease',
               cursor: 'pointer',
             }} />
             {m.label && (

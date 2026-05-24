@@ -889,3 +889,59 @@ d. Press `2` (or click "Vybrat tuto" on tile 2) → modal closes.
 e. Hard reload → state survives.
 f. Un-reject one loser from the panel → its marker reappears.
 g. Click "Send to editor (1)" → Photo Helper receives only the winner.
+
+---
+
+## Phase 13 — Active-photo highlight (map ↔ list sync)
+
+**Why now.** Users lose track of which map marker maps to which side-panel
+row. We already had `activePhotoMarkerId` (the photo whose popup is open) but
+it was private to `MapProviderView`, so the list couldn't reflect it. See
+[ADR-023](decisions.md#adr-023--active-photo-highlight-map-marker--list-row-sync).
+
+**Scope.** Lift `activePhotoMarkerId` to `App.tsx` as one source of truth.
+Highlight the active photo on both surfaces: glow + scale on the map marker,
+filled tint on the list row (auto-scroll + group auto-expand). Lifecycle is
+popup-tied; clears on close, delete, or reject. Variant `selectedIds` is
+untouched and stays visually distinct (left border vs. fill).
+
+**Out of scope.**
+- A persistent selection separate from the popup (rejected — one concept).
+- Highlighting no-GPS tray photos (they have no marker).
+
+**Files touched.**
+- `frontend/map-corridors/src/App.tsx` — owns `activePhotoMarkerId`; passes it
+  + `onActivePhotoMarkerChange` to `MapProviderView` and a derived `activePhotoId`
+  to `PhotoListPanel`. `onMarkerClick` (→ `flyToPhotoMarker`) sets it via the
+  callback, so list clicks update the highlight for free.
+- `frontend/map-corridors/src/map/MapProviderView.tsx` — now controlled (reads
+  `props.activePhotoMarkerId`, requests via `onActivePhotoMarkerChange`); marker
+  glow + `scale(1.3)` + `zIndex` when active; prune effect extended to clear on
+  `flag === 'reject'` as well as deletion.
+- `frontend/map-corridors/src/components/PhotoListPanel.tsx` — `activePhotoId`
+  prop; row tint (`alpha(primary, 0.14)`); `scrollIntoView` on the active row;
+  group auto-expand effect; new exported pure helper `groupKeyForPhotoId`.
+- `frontend/map-corridors/src/activePhoto/activePhoto.ts` — pure helpers
+  `shouldClearActivePhoto` (drives the prune-on-delete/reject effect) and
+  `resolveActivePhotoId` (the list highlight's photoId; null for a gone/rejected
+  marker so no one-render tint flash on a reject row).
+
+**Tests.**
+- `__tests__/groupKeyForPhotoId.test.ts` — picks/neutral/rejects mapping,
+  unknown id → null, no-GPS photo → null.
+- `__tests__/activePhoto.test.ts` — `shouldClearActivePhoto` (clears on
+  delete/reject, keeps on visible/null) and `resolveActivePhotoId`
+  (visible → photoId; rejected/deleted/no-photoId/null → null).
+
+**Smoke addendum.**
+
+a. Import several GPS photos → markers + list rows appear.
+b. Click a marker on the map → its list row tints and scrolls into view; the
+   row's group expands if it was collapsed.
+c. Click a different list row → camera flies, old highlight clears, the new
+   marker glows + scales above its neighbours.
+d. Close the popup / click empty map → both highlights clear.
+e. Reject the active photo (popup or variant compare) → marker vanishes and the
+   highlight clears (no orphan tint).
+f. Ctrl-click rows for variant compare → left-border accent still reads
+   distinctly from the active fill (a row can show both).

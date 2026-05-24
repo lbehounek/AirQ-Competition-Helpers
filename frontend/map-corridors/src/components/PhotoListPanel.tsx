@@ -18,6 +18,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import { Check, ChevronLeft, ChevronRight, Close, CompareArrows, EditOutlined, ExpandLess, ExpandMore, SendOutlined } from '@mui/icons-material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import type { NoGpsPhoto, PhotoMarker } from '../types/markers'
@@ -71,6 +72,13 @@ export interface PhotoListPanelProps {
    * selection order so the modal can show them in a stable layout.
    */
   onCompareVariants?: (markers: readonly PhotoMarker[]) => void
+  /**
+   * Phase 13 — photoId of the currently active photo (the one whose map popup
+   * is open). Its row gets a filled tint and auto-scrolls into view; its group
+   * auto-expands. Distinct from the variant-compare `selectedIds` (left
+   * border) — a row can be both. `null`/undefined = nothing active.
+   */
+  activePhotoId?: string | null
 }
 
 /**
@@ -88,7 +96,7 @@ const GROUP_ORDER: readonly GroupKey[] = ['picks', 'neutral', 'rejects', 'noGps'
 
 export function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
-  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants } = props
+  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     picks: false,
@@ -131,6 +139,17 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
       return next
     })
   }, [orderedSelectableIds])
+
+  // Phase 13 — when a photo becomes active (e.g. its marker was clicked on
+  // the map), expand its group so the highlighted row is reachable. The row
+  // itself handles scrollIntoView; this only un-collapses. No-op for no-GPS
+  // photos (they have no marker and can't be active).
+  useEffect(() => {
+    if (!activePhotoId) return
+    const key = groupKeyForPhotoId(groups, activePhotoId)
+    if (!key) return
+    setCollapsedGroups(prev => (prev[key] ? { ...prev, [key]: false } : prev))
+  }, [activePhotoId, groups])
 
   const clearSelection = useCallback(() => {
     setSelectedIds([])
@@ -236,6 +255,7 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
                 photosDir,
                 onRowClick: handleRowClick,
                 selectedIds,
+                activePhotoId: activePhotoId ?? null,
                 onPhotoDelete,
                 onPhotoRename,
                 deleteTooltip: t('photo.deleteTooltip'),
@@ -341,6 +361,22 @@ function groupCount(g: ReturnType<typeof groupPhotosByFlag>, key: GroupKey): num
   return g[key].length
 }
 
+/**
+ * Which marker group (picks/neutral/rejects) a photoId lives in, or `null` if
+ * it isn't a GPS marker (unknown id, or a no-GPS tray photo — those have no
+ * marker and can't be the active photo). Exported for unit testing; drives the
+ * Phase-13 auto-expand of the active photo's group.
+ */
+export function groupKeyForPhotoId(
+  g: ReturnType<typeof groupPhotosByFlag>,
+  photoId: string,
+): Exclude<GroupKey, 'noGps'> | null {
+  if (g.picks.some(m => m.photoId === photoId)) return 'picks'
+  if (g.neutral.some(m => m.photoId === photoId)) return 'neutral'
+  if (g.rejects.some(m => m.photoId === photoId)) return 'rejects'
+  return null
+}
+
 function GroupSection(props: {
   groupKey: GroupKey
   title: string
@@ -378,6 +414,7 @@ function renderGroupItems(
     photosDir: DirectoryHandle | null
     onRowClick: (photoId: string, markerId: string, e: React.MouseEvent) => void
     selectedIds: readonly string[]
+    activePhotoId: string | null
     onPhotoDelete: (photoId: string) => void | Promise<void>
     onPhotoRename: (photoId: string, newName: string) => void | Promise<void>
     deleteTooltip: string
@@ -407,6 +444,7 @@ function renderGroupItems(
         // need GPS markers to associate the loser's hidden position with.
         onClick={undefined}
         selected={false}
+        active={false}
         onDelete={ctx.onPhotoDelete}
         deleteTooltip={ctx.deleteTooltip}
         {...commonRenameCtx}
@@ -424,6 +462,7 @@ function renderGroupItems(
       photosDir={ctx.photosDir}
       onClick={(e) => ctx.onRowClick(m.photoId!, m.id, e)}
       selected={selectedSet.has(m.photoId!)}
+      active={m.photoId === ctx.activePhotoId}
       onDelete={ctx.onPhotoDelete}
       deleteTooltip={ctx.deleteTooltip}
       {...commonRenameCtx}
@@ -470,6 +509,11 @@ function PhotoListItem(props: {
   onClick: ((e: React.MouseEvent) => void) | undefined
   /** Whether this row is part of the variant-compare selection. */
   selected: boolean
+  /**
+   * Whether this is the active photo (its map popup is open). Renders a
+   * filled tint and scrolls the row into view. Independent of `selected`.
+   */
+  active: boolean
   onDelete: (photoId: string) => void | Promise<void>
   deleteTooltip: string
   onRename: (photoId: string, newName: string) => void | Promise<void>
@@ -478,10 +522,17 @@ function PhotoListItem(props: {
   renameSaveAria: string
 }) {
   const {
-    photoId, displayName, originalFilename, storage, photosDir, onClick, selected, onDelete, deleteTooltip,
+    photoId, displayName, originalFilename, storage, photosDir, onClick, selected, active, onDelete, deleteTooltip,
     onRename, renameTooltip, renamePlaceholder, renameSaveAria,
   } = props
   const { url, state } = usePhotoThumbUrl(storage, photosDir, photoId)
+  const rowRef = useRef<HTMLDivElement | null>(null)
+  // Bring the active row into view when it becomes active (e.g. the user
+  // clicked its marker on the map). `block: 'nearest'` avoids yanking the
+  // scroll when the row is already visible.
+  useEffect(() => {
+    if (active) rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [active])
   const [editing, setEditing] = useState(false)
   // `draft` is the in-progress text. Seeded with the current display value on
   // every entry into edit mode so a previous cancel doesn't leak into the
@@ -506,6 +557,7 @@ function PhotoListItem(props: {
 
   return (
     <Box
+      ref={rowRef}
       sx={{
         position: 'relative',
         // Reveal full delete-button opacity on hover anywhere on the row,
@@ -537,6 +589,12 @@ function PhotoListItem(props: {
             borderLeft: '3px solid',
             borderLeftColor: 'secondary.main',
             pl: 0.625, // standard ListItemButton pl is 16px; offset by border so text doesn't shift
+          }),
+          // Active photo (map popup open): filled primary tint. Distinct from
+          // the variant `selected` left-border accent so a row can show both.
+          ...(active && {
+            backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.14),
+            '&:hover': { backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.2) },
           }),
         }}
       >
