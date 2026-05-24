@@ -39,6 +39,8 @@ import { importPhotosToStorage } from './photoImport/importPhotosToStorage'
 import type { ImportFailureReason, ImportFailure } from './photoImport/types'
 import { NoGpsTray } from './components/NoGpsTray'
 import { PhotoListPanel } from './components/PhotoListPanel'
+import { PhotoCompareModal } from './components/PhotoCompareModal'
+import type { PhotoMarker } from './types/markers'
 import {
   buildMapPicks,
   flushPendingMapPicks,
@@ -239,6 +241,11 @@ function App() {
   // Lifted to App.tsx so both PhotoListPanel and NoGpsTray share one
   // dialog without each panel growing its own confirmation state.
   const [pendingDeletePhoto, setPendingDeletePhoto] = useState<string | null>(null)
+  // Phase 12 — variant compare modal state. Holds the user's selected
+  // markers (in click order) while the dialog is open. `null` = dialog
+  // closed. Owned at App level so the resolve handler can hit the same
+  // `persistMarkers` setter used by every other flag mutation.
+  const [compareVariants, setCompareVariants] = useState<readonly PhotoMarker[] | null>(null)
   const answerSheetRef = useRef<HTMLDivElement | null>(null)
   const usedLabels = useMemo(() => {
     const set = new Set<PhotoLabel>()
@@ -700,6 +707,29 @@ function App() {
   const handlePhotoReject = useCallback((markerId: string) => {
     void setPhotoFlag(markerId, 'reject')
   }, [setPhotoFlag])
+
+  // Phase 12 — atomic variant resolution. Promotes the winner to 'pick' and
+  // demotes every loser to 'reject' in a single OPFS write so the user
+  // can't observe a half-resolved session if they hard-reload mid-write.
+  // The losers stay in OPFS (files + thumbs) — the rejected state alone
+  // hides their markers from the map, and the user can undo by un-rejecting
+  // from the list panel.
+  const handleCompareResolve = useCallback(async (winnerId: string, loserIds: readonly string[]) => {
+    const loserSet = new Set(loserIds)
+    const now = new Date().toISOString()
+    await persistMarkers((prev) =>
+      prev.map(m => {
+        if (m.id === winnerId) return { ...m, flag: 'pick', labelUpdatedAt: now }
+        if (loserSet.has(m.id)) return { ...m, flag: 'reject', labelUpdatedAt: now }
+        return m
+      }),
+    )
+  }, [persistMarkers])
+
+  const handleCompareVariants = useCallback((selected: readonly PhotoMarker[]) => {
+    if (selected.length < 2) return
+    setCompareVariants(selected)
+  }, [])
 
   // Phase 6 — drop-from-tray handler. Atomic: a single persistSession
   // mutates BOTH markers and noGpsPhotos in one write, so a partial
@@ -1232,10 +1262,19 @@ function App() {
             onSendToEditor={competitionId ? handleSendToEditor : undefined}
             onPhotoDelete={(photoId) => { setPendingDeletePhoto(photoId) }}
             onPhotoRename={(photoId, newName) => { void renamePhoto(photoId, newName) }}
+            onCompareVariants={handleCompareVariants}
           />
         </Box>
       </Container>
     </Box>
+    <PhotoCompareModal
+      open={compareVariants !== null}
+      markers={compareVariants ?? []}
+      storage={storage}
+      photosDir={photosDir}
+      onClose={() => setCompareVariants(null)}
+      onResolve={handleCompareResolve}
+    />
     <Dialog open={isAnswerSheetOpen} onClose={() => setAnswerSheetOpen(false)} maxWidth="sm" fullWidth>
       <DialogContent dividers sx={{ p: 1 }}>
         <Box sx={{ position: 'relative' }}>

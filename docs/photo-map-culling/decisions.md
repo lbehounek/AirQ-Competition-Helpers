@@ -821,8 +821,8 @@ UI specification and the Phase 4/5 test plans aligned.
 
 | GPS | Flag = `pick`   | Flag = `neutral`     | Flag = `reject`        |
 |---|---|---|---|
-| **With GPS** | Subject pin at `lng/lat`; ghost capture marker + dashed line iff drag has occurred | Small grey capture dot | Red `×` at capture, 40% opacity, hidden when "Hide rejects" is on |
-| **No GPS** | Subject pin at user-dropped `lng/lat`; no capture ghost or dashed line | Thumbnail in the off-map tray ([ADR-012](#adr-012-no-gps-photo-placement-off-map-tray-pinned-to-map-corner)) | Thumbnail in the off-map tray with a red overlay; same "Hide rejects" filter applies |
+| **With GPS** | Subject pin at `lng/lat`; ghost capture marker + dashed line iff drag has occurred | Small grey capture dot | **Hidden from the map entirely** (per [ADR-022](#adr-022--variant-compare-side-by-side-modal--reject-hides-marker)). Row remains in the "Odmítnuté" list group as the undo path |
+| **No GPS** | Subject pin at user-dropped `lng/lat`; no capture ghost or dashed line | Thumbnail in the off-map tray ([ADR-012](#adr-012-no-gps-photo-placement-off-map-tray-pinned-to-map-corner)) | Same hide rule once the photo has a marker; the off-map tray entry itself is unaffected |
 
 The `neutral`-with-GPS state is the on-import default for every photo
 that has GPS. The `neutral`-no-GPS state is "still in the tray, awaiting
@@ -842,11 +842,65 @@ Click semantics per state:
 
 ---
 
+## ADR-022 — Variant compare: side-by-side modal + reject-hides-marker
+
+**Context.** Field feedback (2026-05-24): organisers shoot the same turn
+point 2–3 times for insurance. The per-photo Include/Skip/Reject popup
+forces a serial judgement; users want an "eyes side-by-side, then pick the
+best" affordance. Originally listed below as deferred-to-v2 — promoted
+because the workflow is now common.
+
+**Decision.**
+
+1. **Selection is manual + ephemeral.** No persistent "variant group"
+   record. Multi-select lives in `PhotoListPanel` local state
+   (`selectedIds: readonly string[]`); Ctrl/Cmd+click toggles, Shift+click
+   extends a range over the visible row order. Hard-capped at
+   `MAX_COMPARE_VARIANTS = 3`.
+
+2. **Reject hides the marker.** Render filter in `MapProviderView` (and
+   in `buildGhostFeatures` / `buildDashedLineFeatures` so the ghost +
+   dashed line disappear with the pin). Rejected photos remain in the
+   "Odmítnuté" list group — that is the undo path. Files are *not*
+   deleted from OPFS. This supersedes the previous "Red × at capture,
+   40% opacity, hidden when 'Hide rejects' is on" entry in the visual
+   state matrix below — there is no "Hide rejects" toggle anymore; reject
+   simply hides.
+
+3. **Winner promotion is auto.** The picked tile in the compare modal
+   becomes `flag='pick'`, losers become `flag='reject'`. The mutation
+   happens in a single `persistMarkers` write so a hard-reload mid-resolve
+   cannot observe a half-applied state.
+
+4. **Cross-app contract unchanged.** [ADR-005](#adr-005--cross-app-handoff-via-a-one-way-map-picksjson-file) and
+   [ADR-017](#adr-017--flag-lives-in-map-picksjson-only-denormalized-to-geojson-properties-at-render-time)
+   already say "only `pick` reaches Photo Helper." Variants change which
+   photos earn the pick, not the wire format.
+
+**Why not auto-clustering.** GPS + timestamp clustering is on the v2
+list; we could land it as a *suggestion* layer over the manual selection
+later without rewriting Phase 12.
+
+**Why not a persistent variant-group record.** Selection state is what the
+user is doing *right now*. Persisting the group adds a join table to OPFS
+and a UI surface for "ungroup this variant set" — both are scope creep for
+zero workflow gain, because rejecting is reversible from the list panel
+already.
+
+**Why 3 max.** Two columns reads at any laptop width; three is workable.
+Four side-by-side photos are too cramped to make a "best of" call at
+typical screen widths, and field reports cap at 2–3 shots per point.
+
+**Files implementing this ADR.** See Phase 12 in `implementation-plan.md`.
+
+---
+
 ## Decisions explicitly deferred to v2
 
 These are recorded so they're not re-debated during v1 review.
 
-- **Side-by-side compare modal.** Out of scope.
+- ~~**Side-by-side compare modal.** Out of scope.~~ Shipped in Phase 12,
+  see [ADR-022](#adr-022--variant-compare-side-by-side-modal--reject-hides-marker).
 - **Time-cluster suggestion** ("photos taken within 30 s — pick best").
 - **Keyboard shortcuts** (I/S/R, ←/→).
 - **Manual EXIF correction** (overriding GPS for individual photos).

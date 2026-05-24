@@ -623,8 +623,11 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           when still at the capture point (= awaiting placement).
           Click → photo popup (Phase 5). Drag → onMarkerDragEnd updates
           subject coords. The ghost dot + dashed line in
-          PhotoOverlayLayers render only for moved photos. */}
-      {props.markers?.filter(m => !!m.photoId).map(m => {
+          PhotoOverlayLayers render only for moved photos.
+          Rejected photos (flag='reject') are hidden from the map
+          entirely — they remain in the list's "Odmítnuté" group as the
+          undo path. Variant resolution (Phase 12) reuses this. */}
+      {props.markers?.filter(m => !!m.photoId && m.flag !== 'reject').map(m => {
         const moved = !!m.capturedAt && (m.lng !== m.capturedAt.lng || m.lat !== m.capturedAt.lat)
         // Yellow = "labelled, answer-sheet ready" — matches the KML
         // marker color so a user scanning the map sees one consistent

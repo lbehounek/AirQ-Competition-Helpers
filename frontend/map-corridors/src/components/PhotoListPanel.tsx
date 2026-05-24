@@ -2,7 +2,7 @@
 // Lists all imported photos grouped by flag. Click an item to fly the
 // map to its marker. Auto-hides when there are no photos.
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Badge,
   Box,
@@ -18,7 +18,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import { Check, ChevronLeft, ChevronRight, Close, EditOutlined, ExpandLess, ExpandMore, SendOutlined } from '@mui/icons-material'
+import { Check, ChevronLeft, ChevronRight, Close, CompareArrows, EditOutlined, ExpandLess, ExpandMore, SendOutlined } from '@mui/icons-material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import type { NoGpsPhoto, PhotoMarker } from '../types/markers'
 import { noGpsPhotoDisplayName, photoMarkerDisplayName } from '../types/markers'
@@ -60,7 +60,27 @@ export interface PhotoListPanelProps {
    * wire-schema change.
    */
   onPhotoRename: (photoId: string, newName: string) => void | Promise<void>
+  /**
+   * Phase 12 (variants) — open the compare modal with the user-selected
+   * markers. Called when the user clicks the "Srovnat varianty (N)" footer
+   * button. Undefined disables the variant workflow entirely (e.g., no
+   * active competition / parent didn't opt in).
+   *
+   * Selection happens in this panel (Ctrl/Cmd+click toggles, Shift+click
+   * ranges), then this prop is invoked with the chosen `PhotoMarker[]` in
+   * selection order so the modal can show them in a stable layout.
+   */
+  onCompareVariants?: (markers: readonly PhotoMarker[]) => void
 }
+
+/**
+ * Hard cap on how many photos can be compared at once. The user's workflow
+ * is "2–3 variants of the same turn point"; the modal layout (side-by-side)
+ * stops being legible past 3 columns at typical screen widths. Enforced both
+ * by disabling the trigger button when |selection| > MAX and by an early
+ * return in `triggerCompare`.
+ */
+export const MAX_COMPARE_VARIANTS = 3
 
 type GroupKey = 'picks' | 'neutral' | 'rejects' | 'noGps'
 
@@ -68,7 +88,7 @@ const GROUP_ORDER: readonly GroupKey[] = ['picks', 'neutral', 'rejects', 'noGps'
 
 export function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
-  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename } = props
+  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     picks: false,
@@ -77,12 +97,91 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
     noGps: false,
   })
 
+  // Phase 12 — multi-select for variant compare. Selection holds photoIds
+  // in click order so the compare modal can render them in the order the
+  // user picked. Anchor ref drives Shift+click range selection. We hold
+  // an array (not a Set) so iteration is stable and order survives toggle.
+  const [selectedIds, setSelectedIds] = useState<readonly string[]>([])
+  const lastAnchorRef = useRef<string | null>(null)
+
   const groups = useMemo(() => groupPhotosByFlag(markers, noGpsPhotos), [markers, noGpsPhotos])
+
+  // Visible-order index of every selectable row (GPS markers only — noGps
+  // rows have no marker to compare). Drives Shift+click range expansion.
+  const orderedSelectableIds = useMemo(() => {
+    const ids: string[] = []
+    for (const m of groups.picks) if (m.photoId) ids.push(m.photoId)
+    for (const m of groups.neutral) if (m.photoId) ids.push(m.photoId)
+    for (const m of groups.rejects) if (m.photoId) ids.push(m.photoId)
+    return ids
+  }, [groups])
+
+  // Prune selection if a selected photo disappears (deleted, or its marker
+  // demoted). Without this, a stale photoId could leak into the compare
+  // modal and crash on lookup.
+  useEffect(() => {
+    setSelectedIds(prev => {
+      if (prev.length === 0) return prev
+      const valid = new Set(orderedSelectableIds)
+      const next = prev.filter(id => valid.has(id))
+      if (next.length === prev.length) return prev
+      if (lastAnchorRef.current && !valid.has(lastAnchorRef.current)) {
+        lastAnchorRef.current = next.length > 0 ? next[next.length - 1] : null
+      }
+      return next
+    })
+  }, [orderedSelectableIds])
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds([])
+    lastAnchorRef.current = null
+  }, [])
+
+  const handleRowClick = useCallback((photoId: string, markerId: string, e: React.MouseEvent) => {
+    if (e.shiftKey && lastAnchorRef.current) {
+      const anchor = lastAnchorRef.current
+      setSelectedIds(prev => computeRangeSelection(orderedSelectableIds, anchor, photoId, prev))
+      return
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedIds(prev => toggleSelection(prev, photoId))
+      lastAnchorRef.current = photoId
+      return
+    }
+    // Plain click: fly to marker and clear any selection so the user
+    // doesn't stay in selection mode without an obvious cue.
+    clearSelection()
+    onMarkerClick(markerId)
+  }, [orderedSelectableIds, clearSelection, onMarkerClick])
+
+  const selectedMarkers = useMemo(() => {
+    const byPhotoId = new Map<string, PhotoMarker>()
+    for (const m of markers) if (m.photoId) byPhotoId.set(m.photoId, m)
+    const out: PhotoMarker[] = []
+    for (const pid of selectedIds) {
+      const m = byPhotoId.get(pid)
+      if (m) out.push(m)
+    }
+    return out
+  }, [selectedIds, markers])
+
+  const triggerCompare = useCallback(() => {
+    if (!onCompareVariants) return
+    if (selectedMarkers.length < 2 || selectedMarkers.length > MAX_COMPARE_VARIANTS) return
+    onCompareVariants(selectedMarkers)
+    clearSelection()
+  }, [onCompareVariants, selectedMarkers, clearSelection])
+
   if (groups.total === 0) return null
 
   const toggleGroup = (key: GroupKey) => {
     setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }))
   }
+
+  const compareDisabled = selectedMarkers.length < 2 || selectedMarkers.length > MAX_COMPARE_VARIANTS
+  const compareTooltip = selectedMarkers.length > MAX_COMPARE_VARIANTS
+    ? t('photo.list.compareLimitTip', { max: MAX_COMPARE_VARIANTS })
+    : ''
 
   return (
     <Paper
@@ -135,7 +234,8 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
               items={renderGroupItems(groups, key, {
                 storage,
                 photosDir,
-                onMarkerClick,
+                onRowClick: handleRowClick,
+                selectedIds,
                 onPhotoDelete,
                 onPhotoRename,
                 deleteTooltip: t('photo.deleteTooltip'),
@@ -145,6 +245,32 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
               })}
             />
           ))}
+        </Box>
+      )}
+      {!collapsedPanel && onCompareVariants && selectedMarkers.length >= 1 && (
+        <Box sx={{ p: 1, borderTop: '1px solid', borderColor: 'divider', display: 'flex', gap: 1 }}>
+          <Tooltip title={compareTooltip} placement="top" disableHoverListener={!compareTooltip}>
+            {/* Tooltip needs a non-disabled wrapper to fire on a disabled
+                Button — span gets the hover, Button gets the disable. */}
+            <span style={{ flex: 1 }}>
+              <Button
+                fullWidth
+                variant="contained"
+                size="small"
+                color="secondary"
+                startIcon={<CompareArrows fontSize="small" />}
+                disabled={compareDisabled}
+                onClick={triggerCompare}
+              >
+                {t('photo.list.compareSelected', { count: selectedMarkers.length })}
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={t('photo.list.clearSelection')} placement="top">
+            <IconButton size="small" onClick={clearSelection} aria-label={t('photo.list.clearSelection')}>
+              <Close fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
       )}
       {!collapsedPanel && onSendToEditor && (
@@ -163,6 +289,52 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
       )}
     </Paper>
   )
+}
+
+/**
+ * Toggle a photoId in the selection list. Append on first click, remove on
+ * second. Exported for unit testing — keeps the multi-select event handler
+ * pure and lets a single test pin the ordering rules:
+ *
+ *  - First click on a new id → append to the end (preserves click order).
+ *  - Click on an already-selected id → remove (no shuffle of other ids).
+ */
+export function toggleSelection(
+  prev: readonly string[],
+  id: string,
+): readonly string[] {
+  return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+}
+
+/**
+ * Shift+click range selection. Builds the union of the previous selection
+ * with every id between `anchor` and `target` in the visible row order, so
+ * a user can extend an existing selection without losing prior picks.
+ * Returns `prev` unchanged when either id isn't in the ordered list (a
+ * defensive no-op against stale anchors from photos that were just deleted).
+ *
+ * Exported for unit testing — drives the variant-compare workflow.
+ */
+export function computeRangeSelection(
+  orderedIds: readonly string[],
+  anchor: string,
+  target: string,
+  prev: readonly string[],
+): readonly string[] {
+  const a = orderedIds.indexOf(anchor)
+  const b = orderedIds.indexOf(target)
+  if (a < 0 || b < 0) return prev
+  const [lo, hi] = a <= b ? [a, b] : [b, a]
+  const range = orderedIds.slice(lo, hi + 1)
+  const seen = new Set(prev)
+  const next = [...prev]
+  for (const id of range) {
+    if (!seen.has(id)) {
+      next.push(id)
+      seen.add(id)
+    }
+  }
+  return next
 }
 
 function groupCount(g: ReturnType<typeof groupPhotosByFlag>, key: GroupKey): number {
@@ -204,7 +376,8 @@ function renderGroupItems(
   ctx: {
     storage: StorageInterface | null
     photosDir: DirectoryHandle | null
-    onMarkerClick: (markerId: string) => void
+    onRowClick: (photoId: string, markerId: string, e: React.MouseEvent) => void
+    selectedIds: readonly string[]
     onPhotoDelete: (photoId: string) => void | Promise<void>
     onPhotoRename: (photoId: string, newName: string) => void | Promise<void>
     deleteTooltip: string
@@ -219,6 +392,7 @@ function renderGroupItems(
     renamePlaceholder: ctx.renamePlaceholder,
     renameSaveAria: ctx.renameSaveAria,
   }
+  const selectedSet = new Set(ctx.selectedIds)
   if (key === 'noGps') {
     return g.noGps.map(p => (
       <PhotoListItem
@@ -229,7 +403,10 @@ function renderGroupItems(
         storage={ctx.storage}
         photosDir={ctx.photosDir}
         // No marker yet — clicking is a no-op for v1. User drags from tray.
+        // Also intentionally not selectable for variant-compare: variants
+        // need GPS markers to associate the loser's hidden position with.
         onClick={undefined}
+        selected={false}
         onDelete={ctx.onPhotoDelete}
         deleteTooltip={ctx.deleteTooltip}
         {...commonRenameCtx}
@@ -245,7 +422,8 @@ function renderGroupItems(
       originalFilename={m.name}
       storage={ctx.storage}
       photosDir={ctx.photosDir}
-      onClick={() => ctx.onMarkerClick(m.id)}
+      onClick={(e) => ctx.onRowClick(m.photoId!, m.id, e)}
+      selected={selectedSet.has(m.photoId!)}
       onDelete={ctx.onPhotoDelete}
       deleteTooltip={ctx.deleteTooltip}
       {...commonRenameCtx}
@@ -284,7 +462,14 @@ function PhotoListItem(props: {
   originalFilename: string
   storage: StorageInterface | null
   photosDir: DirectoryHandle | null
-  onClick: (() => void) | undefined
+  /**
+   * Row click receives the raw event so the caller can branch on modifier
+   * keys (Ctrl/Cmd → toggle in variant selection, Shift → range select,
+   * plain click → fly to marker). `undefined` disables the row entirely.
+   */
+  onClick: ((e: React.MouseEvent) => void) | undefined
+  /** Whether this row is part of the variant-compare selection. */
+  selected: boolean
   onDelete: (photoId: string) => void | Promise<void>
   deleteTooltip: string
   onRename: (photoId: string, newName: string) => void | Promise<void>
@@ -293,7 +478,7 @@ function PhotoListItem(props: {
   renameSaveAria: string
 }) {
   const {
-    photoId, displayName, originalFilename, storage, photosDir, onClick, onDelete, deleteTooltip,
+    photoId, displayName, originalFilename, storage, photosDir, onClick, selected, onDelete, deleteTooltip,
     onRename, renameTooltip, renamePlaceholder, renameSaveAria,
   } = props
   const { url, state } = usePhotoThumbUrl(storage, photosDir, photoId)
@@ -333,6 +518,7 @@ function PhotoListItem(props: {
       <ListItemButton
         onClick={editing ? undefined : onClick}
         disabled={!editing && !onClick}
+        selected={selected}
         // Edit mode renders as a div so the inner TextField isn't nested
         // inside a <button> (a11y violation + focus contention). Spread
         // `component` conditionally — MUI's overload typing rejects
@@ -340,7 +526,19 @@ function PhotoListItem(props: {
         {...(editing ? { component: 'div' as const } : {})}
         // Two icon-buttons live in the right pad (rename + delete) when
         // not editing; one (save) when editing. pr: 7 covers the wider case.
-        sx={{ py: 0.5, gap: 1, pr: 7 }}
+        // Left border accent on selected rows so the variant selection is
+        // obvious even on rejected rows (which would otherwise have only
+        // the subtle MUI `selected` highlight to lean on).
+        sx={{
+          py: 0.5,
+          gap: 1,
+          pr: 7,
+          ...(selected && {
+            borderLeft: '3px solid',
+            borderLeftColor: 'secondary.main',
+            pl: 0.625, // standard ListItemButton pl is 16px; offset by border so text doesn't shift
+          }),
+        }}
       >
         <Box
           sx={{

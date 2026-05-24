@@ -58,7 +58,19 @@
       "noGps": "No GPS",
       "expand": "Show photo list",
       "collapse": "Hide photo list",
-      "sendToEditor": "Send to editor ({{count}})"
+      "sendToEditor": "Send to editor ({{count}})",
+      "compareSelected": "Compare variants ({{count}})",
+      "compareLimitTip": "At most {{max}} variants can be compared at once",
+      "clearSelection": "Clear selection"
+    },
+    "compare": {
+      "title": "Compare variants",
+      "shortcut": "Press 1/2/3 to pick a variant",
+      "pick": "Pick this one",
+      "pickAria": "Pick variant {{index}}: {{name}}",
+      "cancel": "Cancel",
+      "loading": "Loading photo…",
+      "missing": "Couldn't load photo"
     },
     "deleteTooltip": "Delete photo",
     "deleteConfirm": {

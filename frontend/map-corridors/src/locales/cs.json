@@ -58,7 +58,19 @@
       "noGps": "Bez GPS",
       "expand": "Zobrazit seznam fotek",
       "collapse": "Skrýt seznam fotek",
-      "sendToEditor": "Poslat do editoru ({{count}})"
+      "sendToEditor": "Poslat do editoru ({{count}})",
+      "compareSelected": "Srovnat varianty ({{count}})",
+      "compareLimitTip": "Najednou lze srovnávat nejvýše {{max}} varianty",
+      "clearSelection": "Zrušit výběr"
+    },
+    "compare": {
+      "title": "Srovnání variant",
+      "shortcut": "Klávesy 1/2/3 vyberou variantu",
+      "pick": "Vybrat tuto",
+      "pickAria": "Vybrat variantu {{index}}: {{name}}",
+      "cancel": "Zrušit",
+      "loading": "Načítám fotku…",
+      "missing": "Fotku nelze načíst"
     },
     "deleteTooltip": "Smazat fotografii",
     "deleteConfirm": {
