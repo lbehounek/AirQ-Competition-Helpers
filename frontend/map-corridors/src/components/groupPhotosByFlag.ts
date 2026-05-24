@@ -3,7 +3,7 @@
 // is testable without mounting React.
 
 import type { NoGpsPhoto, PhotoMarker } from '../types/markers'
-import { compareFilenames } from '../types/markers'
+import { compareFilenames, compareNoGpsPhotos } from '../types/markers'
 
 export interface GroupedPhotos {
   /** Photo markers with `flag === 'pick'`. Includes label-less picks. */
@@ -42,7 +42,10 @@ export function groupPhotosByFlag(
   picks.sort((a, b) => compareFilenames(a.name, b.name))
   neutral.sort((a, b) => compareFilenames(a.name, b.name))
   rejects.sort((a, b) => compareFilenames(a.name, b.name))
-  const noGps = [...noGpsPhotos].sort((a, b) => compareFilenames(a.filename, b.filename))
+  // Reuse the tray's comparator so the no-GPS group and the NoGpsTray agree on
+  // tie-break order (filename primary, EXIF timestamp tie-break) for identical
+  // filenames — not just on the primary filename sort.
+  const noGps = [...noGpsPhotos].sort(compareNoGpsPhotos)
   return {
     picks,
     neutral,

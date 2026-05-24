@@ -207,6 +207,26 @@ export function compareFilenames(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
 }
 
+/**
+ * Sort comparator for no-GPS tray entries. Ordered by ORIGINAL camera filename
+ * (numeric-aware via {@link compareFilenames}, so `IMG_9` < `IMG_10`), with EXIF
+ * timestamp as the tie-break for identical filenames. Sorting by the immutable
+ * filename — not the user's `displayName` — keeps a renamed photo from jumping
+ * position (user feedback 2026-05-17).
+ *
+ * Single source of truth: both the off-map tray ({@link NoGpsPhoto} thumbnails)
+ * and the right-side list's no-GPS group order through this, so the two surfaces
+ * can never disagree on tie-break order. A typo flipping it would otherwise ship
+ * silently — see `componentLogic.test.ts`.
+ */
+export function compareNoGpsPhotos(a: NoGpsPhoto, b: NoGpsPhoto): number {
+  const byName = compareFilenames(a.filename, b.filename)
+  if (byName !== 0) return byName
+  const ta = a.timestamp ?? '￿'
+  const tb = b.timestamp ?? '￿'
+  return ta < tb ? -1 : ta > tb ? 1 : 0
+}
+
 export function sanitizeNoGpsPhotos(input: unknown): NoGpsPhoto[] {
   if (!Array.isArray(input)) return []
   return input.filter(isNoGpsPhoto)

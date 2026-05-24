@@ -9,28 +9,17 @@ import { Box, IconButton, Paper, Tooltip, Typography } from '@mui/material'
 import { Close, ExpandLess, ExpandMore } from '@mui/icons-material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import type { NoGpsPhoto } from '../types/markers'
-import { compareFilenames, noGpsPhotoDisplayName } from '../types/markers'
+import { compareNoGpsPhotos, noGpsPhotoDisplayName } from '../types/markers'
 import { useI18n } from '../contexts/I18nContext'
 import { usePhotoThumbUrl } from './usePhotoThumbUrl'
 
 /** Drag type the map drop handler watches for. Public — MapProviderView imports this. */
 export const NO_GPS_PHOTO_DRAG_TYPE = 'application/x-airq-no-gps-photo'
 
-/**
- * Sort comparator for no-GPS tray entries. Ordered by ORIGINAL camera
- * filename (numeric-aware, so `IMG_9` < `IMG_10`), with EXIF timestamp as the
- * tie-break for identical filenames. Sorting by the immutable filename — not
- * the user's `displayName` — keeps a renamed photo from jumping position
- * (user feedback 2026-05-17). Exported for unit testing — a typo flipping the
- * order would otherwise ship silently.
- */
-export function compareNoGpsPhotos(a: NoGpsPhoto, b: NoGpsPhoto): number {
-  const byName = compareFilenames(a.filename, b.filename)
-  if (byName !== 0) return byName
-  const ta = a.timestamp ?? '￿'
-  const tb = b.timestamp ?? '￿'
-  return ta < tb ? -1 : ta > tb ? 1 : 0
-}
+// The tray sort comparator now lives in `types/markers.ts` so the right-side
+// list (`groupPhotosByFlag`) shares the exact same tie-break order. Re-exported
+// here to keep existing importers (and `componentLogic.test.ts`) stable.
+export { compareNoGpsPhotos } from '../types/markers'
 
 const TRAY_HEIGHT_PX = 116        // 80px thumb + chrome, under the 120px ADR-012 cap
 const THUMB_WIDTH_PX = 96         // 4:3 thumbs in horizontal scroll
