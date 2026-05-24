@@ -41,7 +41,11 @@ overrides:
   'yaml@<1.10.3': '^1.10.3'
   'brace-expansion@<1.1.13': '^1.1.13'
   'brace-expansion@>=2.0.0 <2.0.3': '^2.0.3'
-  'brace-expansion@>=4.0.0 <5.0.5': '^5.0.5'
+  # CVE-2026-45149 / GHSA-jxxr-4gwj-5jf2 — a large numeric range defeats
+  # brace-expansion's documented `max` ReDoS protection. Vulnerable range
+  # >=5.0.0 <5.0.6, so the previous <5.0.5 pin no longer covered 5.0.5.
+  # Widened to <5.0.6 / ^5.0.6.
+  'brace-expansion@>=4.0.0 <5.0.6': '^5.0.6'
   'protocol-buffers-schema@<3.6.1': '3.6.1'
   # CVE-2026-42338 / GHSA-v2v4-37r5-5v8g — XSS in ip-address Address6
   # HTML-emitting methods. Patched in 10.1.1. We only pull this in
