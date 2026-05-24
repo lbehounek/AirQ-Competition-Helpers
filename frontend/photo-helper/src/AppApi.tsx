@@ -113,6 +113,7 @@ function AppApi() {
     demoteSlotToCandidate,
     setCandidateFlag,
     setCandidateLabel,
+    setCandidateFilename,
     updateCandidatePhotoState,
     deleteCandidates,
   } = sessionHookResult;
@@ -167,7 +168,8 @@ function AppApi() {
     removeCandidate,
     setCandidateFlag,
     setCandidateLabel,
-  }), [candidatePhotos, addExistingCandidate, removeCandidate, setCandidateFlag, setCandidateLabel]);
+    setCandidateFilename,
+  }), [candidatePhotos, addExistingCandidate, removeCandidate, setCandidateFlag, setCandidateLabel, setCandidateFilename]);
 
   useMapPicksSync(pmcCompetitionDir, pmcPhotosDir, pmcSessionApi);
 

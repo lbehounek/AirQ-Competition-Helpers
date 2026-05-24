@@ -9,7 +9,7 @@ import type { GeoJSON } from 'geojson'
 import { buildPreciseCorridorsAndGates, DISCIPLINE_CONFIGS } from './corridors/preciseCorridor'
 import type { Discipline } from './corridors/preciseCorridor'
 
-import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogContent, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert, Snackbar, LinearProgress } from '@mui/material'
+import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert, Snackbar, LinearProgress } from '@mui/material'
 import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-material'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -198,6 +198,7 @@ function App() {
     setNoGpsTrayOpen: persistNoGpsTrayOpen,
     placeNoGpsPhoto,
     removePhoto,
+    renamePhoto,
     setUse1NmAfterSp,
     setComputedData,
     saveOriginalKmlText,
@@ -231,6 +232,13 @@ function App() {
   const markers = session?.markers ?? []
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
   const [isAnswerSheetOpen, setAnswerSheetOpen] = useState(false)
+  // User feedback 2026-05-17: the X badge on every photo row deletes
+  // without confirmation. The new rename pencil sits adjacent and a
+  // misclick used to be irreversible. Track the photoId pending deletion
+  // here; clicking X stashes the id, the dialog completes the removal.
+  // Lifted to App.tsx so both PhotoListPanel and NoGpsTray share one
+  // dialog without each panel growing its own confirmation state.
+  const [pendingDeletePhoto, setPendingDeletePhoto] = useState<string | null>(null)
   const answerSheetRef = useRef<HTMLDivElement | null>(null)
   const usedLabels = useMemo(() => {
     const set = new Set<PhotoLabel>()
@@ -1213,7 +1221,7 @@ function App() {
             onToggleOpen={() => { void persistNoGpsTrayOpen(!(session?.noGpsTrayOpen ?? true)) }}
             storage={storage}
             photosDir={photosDir}
-            onPhotoDelete={(photoId) => { void removePhoto(photoId) }}
+            onPhotoDelete={(photoId) => { setPendingDeletePhoto(photoId) }}
           />
           {/* Phase 7 — right-side photo list panel. Auto-hides when there
               are no imported photos (KML-only sessions look unchanged). */}
@@ -1224,7 +1232,8 @@ function App() {
             photosDir={photosDir}
             onMarkerClick={(markerId) => mapRef.current?.flyToPhotoMarker(markerId)}
             onSendToEditor={competitionId ? handleSendToEditor : undefined}
-            onPhotoDelete={(photoId) => { void removePhoto(photoId) }}
+            onPhotoDelete={(photoId) => { setPendingDeletePhoto(photoId) }}
+            onPhotoRename={(photoId, newName) => { void renamePhoto(photoId, newName) }}
           />
         </Box>
       </Container>
@@ -1322,6 +1331,47 @@ function App() {
         </Alert>
       ) : undefined}
     </Snackbar>
+    {/* Delete-photo confirmation. Built lazily off `pendingDeletePhoto`:
+        clicking X on a row (either the photo list panel or the no-GPS tray)
+        stores the photoId; `Smazat` calls removePhoto, `Zrušit` clears the
+        state. The display name is resolved at render time from the current
+        marker / tray entry so a rename made between X-click and confirm
+        still surfaces the right label. */}
+    <Dialog
+      open={pendingDeletePhoto !== null}
+      onClose={() => setPendingDeletePhoto(null)}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle>{t('photo.deleteConfirm.title')}</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          {t('photo.deleteConfirm.body', {
+            name: pendingDeletePhoto
+              ? (markers.find(m => m.photoId === pendingDeletePhoto)?.name
+                  ?? (session?.noGpsPhotos ?? []).find(p => p.photoId === pendingDeletePhoto)?.filename
+                  ?? pendingDeletePhoto)
+              : '',
+          })}
+        </DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setPendingDeletePhoto(null)}>
+          {t('photo.deleteConfirm.cancel')}
+        </Button>
+        <Button
+          onClick={() => {
+            if (pendingDeletePhoto) void removePhoto(pendingDeletePhoto)
+            setPendingDeletePhoto(null)
+          }}
+          color="error"
+          variant="contained"
+          autoFocus
+        >
+          {t('photo.deleteConfirm.confirm')}
+        </Button>
+      </DialogActions>
+    </Dialog>
     </>
   )
 }

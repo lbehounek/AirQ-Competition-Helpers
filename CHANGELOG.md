@@ -10,6 +10,40 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.13.6] - 2026-05-17
+
+### Changed
+- **Map Corridors:** clicking the X badge on a photo (either in the
+  right-side list or in the no-GPS tray) now opens a confirmation
+  dialog before removing. The pencil rename icon sits right next to
+  the X and a misclick used to be irreversible; user feedback
+  2026-05-17 asked for the safety net. Cancel restores the prior
+  state; the dialog header is "Smazat fotografii?" and shows the
+  current display name (incl. any rename made before clicking X).
+
+## [2.13.5] - 2026-05-17
+
+### Fixed
+- **Photo Helper:** filename renames performed in Map Corridors AFTER
+  the first "Poslat do editoru" now propagate to the candidate tile
+  in the editor instead of being silently dropped. `syncMapPicksOnce`'s
+  update branch previously diffed only `flag` and `label`; a renamed
+  photo already in the editor pool kept its old filename forever.
+  Adds `setCandidateFilename` to the session contract and a filename
+  diff in the update branch (one-way: map authoritative for `pm-`
+  filenames). User feedback 2026-05-17.
+
+## [2.13.4] - 2026-05-17
+
+### Added
+- **Map Corridors:** rename imported photos directly in the right-side
+  photo list. Click the new pencil icon on any row, type a workflow-
+  friendly name (e.g. `TP1`), press Enter to save or Esc to cancel.
+  The new name replaces the camera-assigned filename throughout: KML
+  export, the marker tooltip, and Photo Helper's candidate tile (via
+  the existing `entry.filename` field in `map-picks.json` — no schema
+  change). Reported by Martin Hrivna 2026-05-16.
+
 ## [2.13.3] - 2026-05-17
 
 ### Fixed

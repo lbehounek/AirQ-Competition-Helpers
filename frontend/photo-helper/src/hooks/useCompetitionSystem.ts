@@ -88,6 +88,12 @@ export interface UseCompetitionSystemResult {
    * to keep `ApiPhoto.label: string` non-nullable).
    */
   setCandidateLabel: (photoId: string, label: string) => Promise<void>;
+  /**
+   * Set the display filename in place. Called by `useMapPicksSync` when
+   * map-corridors renames a `pm-` photo after it's already been handed
+   * off. One-way; map is authoritative for pm- filenames.
+   */
+  setCandidateFilename: (photoId: string, filename: string) => Promise<void>;
   updateCandidatePhotoState: (photoId: string, canvasState: Partial<ApiPhoto['canvasState']>) => Promise<void>;
   /**
    * Delete a specific subset of candidate ids — session entries removed AND
@@ -888,6 +894,20 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     });
   }, [updateCurrentCompetition]);
 
+  // One-way filename sync — map-corridors is authoritative for the
+  // display name on `pm-` candidates. `useMapPicksSync` calls this when
+  // it observes `existing.filename !== entry.filename` on an
+  // already-inserted entry. No timestamp pairing because there's no
+  // editor-side rename UI; if one is added later, mirror the
+  // labelUpdatedAt newer-wins pattern.
+  const setCandidateFilename = useCallback(async (photoId: string, filename: string) => {
+    await updateCurrentCompetition(session => {
+      const existing = session.candidates?.photos ?? [];
+      const next = existing.map(p => p.id === photoId ? { ...p, filename } : p);
+      return { ...session, candidates: { photos: next } };
+    }, { updatePhotos: true });
+  }, [updateCurrentCompetition]);
+
   const updateCandidatePhotoState = useCallback(async (photoId: string, canvasState: Partial<ApiPhoto['canvasState']>) => {
     await updateCurrentCompetition(session => updateCandidateCanvasStatePure(session, photoId, canvasState));
   }, [updateCurrentCompetition]);
@@ -1422,6 +1442,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     demoteSlotToCandidate,
     setCandidateFlag,
     setCandidateLabel,
+    setCandidateFilename,
     updateCandidatePhotoState,
     deleteCandidates,
     clearAllCandidates,

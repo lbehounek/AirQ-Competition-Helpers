@@ -61,6 +61,15 @@
       "sendToEditor": "Poslat do editoru ({{count}})"
     },
     "deleteTooltip": "Smazat fotografii",
+    "deleteConfirm": {
+      "title": "Smazat fotografii?",
+      "body": "„{{name}}“ bude odebrána z této soutěže. Akci nelze vrátit.",
+      "cancel": "Zrušit",
+      "confirm": "Smazat"
+    },
+    "renameTooltip": "Přejmenovat fotografii",
+    "renamePlaceholder": "např. TP1",
+    "renameSaveAria": "Uložit název",
     "handoff": {
       "flushFailed": "Výběr se nepodařilo uložit před otevřením editoru. Zkontrolujte úložiště a zkuste to znovu.",
       "editorSyncFailed": "Nepodařilo se použít nejnovější popisky z editoru."

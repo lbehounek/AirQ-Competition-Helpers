@@ -38,6 +38,7 @@ function fakeSession(initialCandidates: ApiPhoto[] = []): MapPicksSyncSessionApi
   removeCandidate: Mock
   setCandidateFlag: Mock
   setCandidateLabel: Mock
+  setCandidateFilename: Mock
 } {
   const candidates = [...initialCandidates]
   const api = {
@@ -58,12 +59,17 @@ function fakeSession(initialCandidates: ApiPhoto[] = []): MapPicksSyncSessionApi
         found.labelUpdatedAt = new Date().toISOString()
       }
     }),
+    setCandidateFilename: vi.fn(async (id: string, filename: string) => {
+      const found = candidates.find(p => p.id === id)
+      if (found) found.filename = filename
+    }),
   }
   return api as MapPicksSyncSessionApi & {
     addCandidate: Mock
     removeCandidate: Mock
     setCandidateFlag: Mock
     setCandidateLabel: Mock
+    setCandidateFilename: Mock
   }
 }
 
@@ -339,6 +345,62 @@ describe('syncMapPicksOnce — label sync (bidirectional)', () => {
   })
 })
 
+// Regression: rename in map-corridors after the first Send must
+// propagate to an ALREADY-existing candidate in the editor pool.
+// User feedback 2026-05-17 (Martin Hrivna): renaming `DSC_0123.JPG`
+// → `TP1` in map-corridors after Send had no effect — the insert
+// branch picked up `entry.filename` correctly on first sync, but
+// subsequent renames hit the update branch which used to diff only
+// `flag` and `label`. The fix adds a filename diff + setCandidateFilename.
+describe('syncMapPicksOnce — filename one-way sync (rename of existing pm- candidate)', () => {
+  it('calls setCandidateFilename when remote filename differs from local', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{ photoId: 'pm-abc', filename: 'TP1', flag: 'pick' }],
+    })
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick') } // filename = 'pm-abc.jpg' from existing()
+    const session = fakeSession([local])
+    const result = await syncMapPicksOnce(
+      storage as unknown as StorageInterface, competitionDir, photosDir, session,
+    )
+    expect(session.setCandidateFilename).toHaveBeenCalledWith('pm-abc', 'TP1')
+    expect(result.updates).toBe(1)
+  })
+
+  it('does NOT call setCandidateFilename when filename matches', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{ photoId: 'pm-abc', filename: 'pm-abc.jpg', flag: 'pick' }],
+    })
+    const session = fakeSession([existing('pm-abc', 'pick')])
+    await syncMapPicksOnce(
+      storage as unknown as StorageInterface, competitionDir, photosDir, session,
+    )
+    expect(session.setCandidateFilename).not.toHaveBeenCalled()
+  })
+
+  it('updates filename AND flag together if both diverge (touched once)', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{ photoId: 'pm-abc', filename: 'TP2', flag: 'pick' }],
+    })
+    const session = fakeSession([existing('pm-abc', 'neutral')])
+    const result = await syncMapPicksOnce(
+      storage as unknown as StorageInterface, competitionDir, photosDir, session,
+    )
+    expect(session.setCandidateFlag).toHaveBeenCalledWith('pm-abc', 'pick')
+    expect(session.setCandidateFilename).toHaveBeenCalledWith('pm-abc', 'TP2')
+    // Both writes count toward a single "touched" tally (one update event).
+    expect(result.updates).toBe(1)
+  })
+})
+
 describe('syncMapPicksOnce — concurrency & blob URL leak guards (CRITICAL bugs fixed)', () => {
   it('does NOT double-insert when the same pm-id appears twice in the file (one createObjectURL call only)', async () => {
     // Defensive: a torn writer could repeat an entry. The local index must
@@ -385,6 +447,7 @@ describe('syncMapPicksOnce — concurrency & blob URL leak guards (CRITICAL bugs
       removeCandidate: vi.fn(async () => undefined),
       setCandidateFlag: vi.fn(async () => undefined),
       setCandidateLabel: vi.fn(async () => undefined),
+      setCandidateFilename: vi.fn(async () => undefined),
     }
     const result = await syncMapPicksOnce(
       storage as unknown as StorageInterface,

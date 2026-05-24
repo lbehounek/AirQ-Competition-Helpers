@@ -111,6 +111,46 @@ export type CorridorsSession = {
   noGpsTrayOpen: boolean
 }
 
+/**
+ * Pure transform behind the `renamePhoto` action. Extracted (like
+ * `normalizeRename` in PhotoListPanel) so the find/no-op/branch rules can be
+ * pinned without rendering the hook or mocking OPFS.
+ *
+ * Walks BOTH `markers[]` (GPS path — display name on `marker.name`) and
+ * `noGpsPhotos[]` (off-map tray — name on `entry.filename`) so a single call
+ * handles either origin. Returns the next `{ markers, noGpsPhotos }` arrays,
+ * or `null` for a no-op (caller then skips the persist + version bump):
+ *  - empty after trim,
+ *  - photoId in neither collection,
+ *  - the trimmed name already matches the current value.
+ *
+ * Trusts the caller to have done UI-level validation (`normalizeRename`) but
+ * re-applies trim + the no-op guards as a belt-and-suspenders layer.
+ */
+export function computeRenamedPhoto(
+  session: Pick<CorridorsSession, 'markers' | 'noGpsPhotos'>,
+  photoId: string,
+  newName: string,
+): { markers: readonly PhotoMarker[]; noGpsPhotos: readonly NoGpsPhoto[] } | null {
+  const trimmed = newName.trim()
+  if (trimmed.length === 0) return null
+  const markers = session.markers
+  const noGpsPhotos = session.noGpsPhotos || []
+  const markerIdx = markers.findIndex(m => m.photoId === photoId)
+  const noGpsIdx = noGpsPhotos.findIndex(p => p.photoId === photoId)
+  if (markerIdx === -1 && noGpsIdx === -1) return null
+  const markerUnchanged = markerIdx !== -1 && markers[markerIdx].name === trimmed
+  const noGpsUnchanged = noGpsIdx !== -1 && noGpsPhotos[noGpsIdx].filename === trimmed
+  if (markerUnchanged || noGpsUnchanged) return null
+  const nextMarkers = markerIdx === -1
+    ? markers
+    : markers.map((m, i) => (i === markerIdx ? { ...m, name: trimmed } : m))
+  const nextNoGps = noGpsIdx === -1
+    ? noGpsPhotos
+    : noGpsPhotos.map((p, i) => (i === noGpsIdx ? { ...p, filename: trimmed } : p))
+  return { markers: nextMarkers, noGpsPhotos: nextNoGps }
+}
+
 const defaultSession = (id: string): CorridorsSession => ({
   id,
   version: 1,
@@ -401,6 +441,36 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     }
   }, [persistSession])
 
+  /**
+   * Rename a photo's display name in-place. Walks BOTH `markers[]` (GPS path,
+   * where the display name lives on `marker.name`) and `noGpsPhotos[]`
+   * (off-map tray, where it lives on `entry.filename`) so a single call
+   * handles either origin without the caller having to disambiguate.
+   *
+   * The OPFS file under `photos/{photoId}` is untouched — only the
+   * user-facing label changes. The new name flows downstream:
+   *  - KML export uses `marker.name` directly.
+   *  - `buildMapPickEntry` writes `entry.filename = marker.name` so Photo
+   *    Helper's candidate tile picks up the new name on the next sync.
+   *
+   * Caller is expected to pre-trim / validate (see `normalizeRename` in
+   * PhotoListPanel) — this hook trusts its input but still bails on the
+   * empty-string and "no real change" cases as a belt-and-suspenders guard.
+   */
+  const renamePhoto = useCallback(async (photoId: string, newName: string): Promise<void> => {
+    const current = sessionRef.current
+    if (!current) return
+    const patch = computeRenamedPhoto(current, photoId, newName)
+    if (!patch) return
+    await persistSession({
+      ...current,
+      markers: patch.markers,
+      noGpsPhotos: patch.noGpsPhotos,
+      version: current.version + 1,
+      updatedAt: new Date().toISOString(),
+    })
+  }, [persistSession])
+
   const saveOriginalKmlText = useCallback(async (text: string | null) => {
     if (!sessionRef.current) return
     const storage = storageRef.current
@@ -464,6 +534,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setNoGpsTrayOpen,
     placeNoGpsPhoto,
     removePhoto,
+    renamePhoto,
     setComputedData,
     saveOriginalKmlText,
     loadOriginalKmlText,
