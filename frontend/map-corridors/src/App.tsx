@@ -42,6 +42,7 @@ import { PhotoListPanel } from './components/PhotoListPanel'
 import { PhotoCompareModal } from './components/PhotoCompareModal'
 import { resolveVariantFlags } from './photoVariants/resolveVariantFlags'
 import { resolveActivePhotoId } from './activePhoto/activePhoto'
+import { isProvisionalValid, type ProvisionalPlacement } from './provisionalPlacement/provisionalPlacement'
 import type { PhotoMarker } from './types/markers'
 import {
   buildMapPicks,
@@ -243,7 +244,7 @@ function App() {
   // drops a draggable pin at the map center; the photo stays in "Bez GPS"
   // until the user commits a category in the popup. `null` = no placement in
   // progress.
-  const [provisionalPlacement, setProvisionalPlacement] = useState<{ photoId: string; filename: string; lng: number; lat: number } | null>(null)
+  const [provisionalPlacement, setProvisionalPlacement] = useState<ProvisionalPlacement | null>(null)
   const [isAnswerSheetOpen, setAnswerSheetOpen] = useState(false)
   // User feedback 2026-05-17: the X badge on every photo row deletes
   // without confirmation. The new rename pencil sits adjacent and a
@@ -762,12 +763,22 @@ function App() {
     if (!center) return
     const photo = (session?.noGpsPhotos ?? []).find(p => p.photoId === photoId)
     if (!photo) return
-    setProvisionalPlacement({
-      photoId,
-      filename: photo.displayName ?? photo.filename,
-      lng: center.lng,
-      lat: center.lat,
-    })
+    // Re-clicking the row of an already-provisional photo must NOT reset the
+    // pin — that would silently discard the location the user already dragged
+    // it to. Keep the existing placement; only a different photo starts fresh.
+    setProvisionalPlacement(prev => (
+      prev?.photoId === photoId
+        ? prev
+        : { photoId, filename: photo.displayName ?? photo.filename, lng: center.lng, lat: center.lat }
+    ))
+  }, [session?.noGpsPhotos])
+
+  // Cancel a provisional placement if its photo leaves "Bez GPS" by another
+  // path while the pin is still up (placed via the tray, or deleted) — without
+  // this the orphan pin commits against a missing entry and shows a false
+  // "placement failed" error.
+  useEffect(() => {
+    setProvisionalPlacement(prev => (isProvisionalValid(prev, session?.noGpsPhotos ?? []) ? prev : null))
   }, [session?.noGpsPhotos])
 
   const handleProvisionalDrag = useCallback((lng: number, lat: number) => {
