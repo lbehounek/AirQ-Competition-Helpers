@@ -107,6 +107,57 @@ describe('sanitizePhotoMarkers', () => {
   })
 })
 
+describe('isPhotoMarker — displayName', () => {
+  const base = { id: 'pm-1', lng: 14, lat: 50, name: 'DSC_0001.JPG' }
+
+  it('accepts a string displayName', () => {
+    expect(isPhotoMarker({ ...base, displayName: 'TP1' })).toBe(true)
+  })
+  it('accepts an absent displayName', () => {
+    expect(isPhotoMarker(base)).toBe(true)
+  })
+  it('rejects a non-string displayName', () => {
+    expect(isPhotoMarker({ ...base, displayName: 42 })).toBe(false)
+  })
+})
+
+// The write path (computeRenamedPhoto) can never produce an empty or
+// redundant (=== name) displayName, but a hand-edited / format-drifted
+// session file could. sanitize* must strip those illegal values so the read
+// paths (?? name vs the KML truthy check) don't disagree — without evicting
+// the otherwise-valid photo.
+describe('sanitizePhotoMarkers — displayName normalisation', () => {
+  const base = { id: 'pm-1', lng: 14, lat: 50, name: 'DSC_0001.JPG' }
+
+  it('keeps a meaningful displayName', () => {
+    expect(sanitizePhotoMarkers([{ ...base, displayName: 'TP1' }])[0].displayName).toBe('TP1')
+  })
+  it('strips an empty / whitespace-only displayName but keeps the marker', () => {
+    const [m] = sanitizePhotoMarkers([{ ...base, displayName: '' }])
+    expect(m.id).toBe('pm-1')
+    expect(m.displayName).toBeUndefined()
+  })
+  it('strips a redundant displayName equal to the filename', () => {
+    const [m] = sanitizePhotoMarkers([{ ...base, displayName: 'DSC_0001.JPG' }])
+    expect(m.displayName).toBeUndefined()
+  })
+})
+
+describe('sanitizeNoGpsPhotos — displayName normalisation', () => {
+  const base = { photoId: 'a', filename: 'DSC_0001.JPG' }
+
+  it('keeps a meaningful displayName', () => {
+    expect(sanitizeNoGpsPhotos([{ ...base, displayName: 'TP1' }])[0].displayName).toBe('TP1')
+  })
+  it('strips an empty / redundant displayName but keeps the photo', () => {
+    const empty = sanitizeNoGpsPhotos([{ ...base, displayName: '' }])[0]
+    expect(empty.photoId).toBe('a')
+    expect(empty.displayName).toBeUndefined()
+    const redundant = sanitizeNoGpsPhotos([{ ...base, displayName: 'DSC_0001.JPG' }])[0]
+    expect(redundant.displayName).toBeUndefined()
+  })
+})
+
 // EXIF photo-import fields (docs/photo-map-culling/implementation-plan.md Phase 0)
 describe('isPhotoMarker — capturedAt', () => {
   const base = { id: 'pm-1', lng: 14, lat: 50, name: 'Test' }
