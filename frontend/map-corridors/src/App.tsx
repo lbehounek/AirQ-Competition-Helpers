@@ -234,6 +234,10 @@ function App() {
   const mapRef = useRef<MapProviderViewHandle | null>(null)
   const markers = session?.markers ?? []
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
+  // Phase 13 — the active photo marker (its map popup is open). Lifted here
+  // from MapProviderView so both the map (marker glow) and the right-side
+  // PhotoListPanel (row highlight) read one source of truth. `null` = none.
+  const [activePhotoMarkerId, setActivePhotoMarkerId] = useState<string | null>(null)
   const [isAnswerSheetOpen, setAnswerSheetOpen] = useState(false)
   // User feedback 2026-05-17: the X badge on every photo row deletes
   // without confirmation. The new rename pencil sits adjacent and a
@@ -1236,6 +1240,8 @@ function App() {
             onPhotoSkip={handlePhotoSkip}
             onPhotoReject={handlePhotoReject}
             onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}
+            activePhotoMarkerId={activePhotoMarkerId}
+            onActivePhotoMarkerChange={setActivePhotoMarkerId}
           />
           {/* Phase 6 — no-GPS tray, pinned to bottom-left of the map. */}
           <NoGpsTray
@@ -1254,6 +1260,7 @@ function App() {
             storage={storage}
             photosDir={photosDir}
             onMarkerClick={(markerId) => mapRef.current?.flyToPhotoMarker(markerId)}
+            activePhotoId={markers.find(m => m.id === activePhotoMarkerId)?.photoId ?? null}
             onSendToEditor={competitionId ? handleSendToEditor : undefined}
             onPhotoDelete={(photoId) => { setPendingDeletePhoto(photoId) }}
             onPhotoRename={(photoId, newName) => { void renamePhoto(photoId, newName) }}

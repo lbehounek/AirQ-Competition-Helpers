@@ -895,6 +895,50 @@ typical screen widths, and field reports cap at 2–3 shots per point.
 
 ---
 
+## ADR-023 — Active-photo highlight (map marker + list row sync)
+
+**Context.** Field feedback: when scanning many photos, users lose track of
+which photo on the map corresponds to which row in the side panel (and vice
+versa). Clicking a marker opened its popup but gave the list no signal; clicking
+a list row flew the camera but left the row visually unchanged.
+
+**Decision.**
+
+1. **One "active photo", lifted to App.** The active photo = the one whose
+   map popup is open. The `activePhotoMarkerId` state, previously private to
+   `MapProviderView`, is lifted to `App.tsx` as the single source of truth.
+   `MapProviderView` becomes **controlled** (`activePhotoMarkerId` prop +
+   `onActivePhotoMarkerChange` callback). The side panel reads the same state
+   (as a photoId), so map↔list highlight sync is bidirectional by construction.
+
+2. **Visual split, kept distinct from variant selection.** Map marker: white
+   halo + blue glow + ~1.3× scale, raised above neighbours (`zIndex`). List
+   row: filled primary tint (`alpha(primary, 0.14)`). This is deliberately
+   *different* from the variant-compare `selectedIds` accent (secondary-colour
+   left border, [ADR-022](#adr-022--variant-compare-side-by-side-modal--reject-hides-marker))
+   so a row can be both active and in a compare selection without ambiguity.
+
+3. **Lifecycle is popup-tied.** Closing the popup (or clicking empty map)
+   clears both highlights. The existing prune effect in `MapProviderView` is
+   extended to also clear when the active photo is **deleted** or becomes
+   **rejected** (rejected markers are hidden from the map per
+   [ADR-022](#adr-022--variant-compare-side-by-side-modal--reject-hides-marker),
+   so a lingering highlight would point at nothing).
+
+4. **List affordances.** Clicking a marker on the map auto-expands the active
+   photo's group (`groupKeyForPhotoId`) and scrolls its row into view
+   (`scrollIntoView({ block: 'nearest' })`). No-GPS tray photos have no marker
+   and can never be active.
+
+**Why not a separate "selected" concept distinct from the popup.** A second
+selection state would need its own clear/sync rules and could disagree with the
+popup. Reusing "popup open = active" keeps one intuitive concept and zero new
+lifecycle surface.
+
+**Files implementing this ADR.** See Phase 13 in `implementation-plan.md`.
+
+---
+
 ## Decisions explicitly deferred to v2
 
 These are recorded so they're not re-debated during v1 review.
