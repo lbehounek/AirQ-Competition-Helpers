@@ -3,11 +3,11 @@ import { shouldClearActivePhoto, resolveActivePhotoId } from '../activePhoto/act
 import type { PhotoMarker } from '../types/markers'
 
 // Phase 13 (active-photo highlight). Two load-bearing rules:
-//  - the active photo is dropped when its marker is deleted or rejected
-//    (rejected markers are hidden from the map — a lingering highlight would
-//    point at nothing);
-//  - the list-panel highlight resolves to the active photoId only while the
-//    marker is still visible, so a reject can't leave a one-render tint flash.
+//  - the active photo is dropped ONLY when its marker is deleted — NOT on
+//    reject, so a rejected photo's popup stays openable from the list and can
+//    be un-rejected (regression guard: clearing on reject broke re-opening);
+//  - the list-panel highlight resolves to the active photoId whenever the
+//    marker exists (rejected included, so the un-reject row highlights).
 
 function pm(over: Partial<PhotoMarker>): PhotoMarker {
   return { id: 'pm', lng: 14, lat: 50, name: 'x.jpg', photoId: 'pm', ...over } as PhotoMarker
@@ -33,8 +33,8 @@ describe('shouldClearActivePhoto', () => {
     expect(shouldClearActivePhoto(markers, 'gone')).toBe(true)
   })
 
-  it('true when the active marker became rejected (hidden from the map)', () => {
-    expect(shouldClearActivePhoto(markers, 'c')).toBe(true)
+  it('false when the active marker is rejected — popup must stay open to un-reject (regression guard)', () => {
+    expect(shouldClearActivePhoto(markers, 'c')).toBe(false)
   })
 })
 
@@ -48,8 +48,8 @@ describe('resolveActivePhotoId', () => {
     expect(resolveActivePhotoId(markers, 'b')).toBe('pb')
   })
 
-  it('null when the active marker is rejected (prevents tint flash on the reject row)', () => {
-    expect(resolveActivePhotoId(markers, 'c')).toBeNull()
+  it('returns the photoId of a rejected active marker (the un-reject row highlights)', () => {
+    expect(resolveActivePhotoId(markers, 'c')).toBe('pc')
   })
 
   it('null when the active marker was deleted', () => {
