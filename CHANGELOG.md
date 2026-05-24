@@ -10,6 +10,15 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.17.1] - 2026-05-24
+
+### Changed
+- **Map Corridors:** the marker popup's action buttons now use the same names as
+  the photo-list groups — *Vybrané / Neutrální / Odmítnuté* (was *Vybrat /
+  Přeskočit / Odmítnout*; English *Picked / Neutral / Rejected*). Behaviour is
+  unchanged; rejecting a photo still moves it to the "Odmítnuté" group and
+  removes its pin from the map.
+
 ## [2.17.0] - 2026-05-24
 
 ### Added
