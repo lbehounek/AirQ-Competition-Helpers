@@ -145,7 +145,12 @@ export function sanitizeGroundMarkers(input: unknown): GroundMarker[] {
 
 export function sanitizePhotoMarkers(input: unknown): PhotoMarker[] {
   if (!Array.isArray(input)) return []
-  return input.filter(isPhotoMarker)
+  // Keep the photo even if its label is illegal — just strip the bad
+  // displayName rather than .filter()-evicting the whole marker.
+  return input.filter(isPhotoMarker).map(m => {
+    const displayName = normalizeDisplayName(m.displayName, m.name)
+    return displayName === m.displayName ? m : { ...m, displayName }
+  })
 }
 
 // Phase 6 of photo-map-culling — no-GPS photo tray entries.
@@ -197,6 +202,53 @@ export function noGpsPhotoDisplayName(p: Pick<NoGpsPhoto, 'filename' | 'displayN
 }
 
 /**
+ * Normalise a deserialized `displayName` against its original filename. A
+ * `displayName` is only meaningful when non-empty (after trim) and distinct
+ * from the original — `computeRenamedPhoto` guarantees that on write, but a
+ * hand-edited / format-drifted session file could carry an empty or redundant
+ * value. Those are dangerous because the read paths DISAGREE on them: the
+ * `?? name` helpers yield `''` for an empty string, while the truthy checks in
+ * the KML/popup composition fall back to `name` — so the same record renders
+ * blank in the list but as the filename in the export. Stripping the illegal
+ * value here (on the deserialization boundary) keeps every surface consistent.
+ *
+ * Uses exact (case-sensitive) equality, matching the clear-on-original rule in
+ * `computeRenamedPhoto`: a case-only difference is a deliberate custom name.
+ * Returns the TRIMMED value to keep (so the stored form matches what the write
+ * path produces — `computeRenamedPhoto` always stores `newName.trim()`), or
+ * `undefined` to drop the field.
+ */
+export function normalizeDisplayName(displayName: string | undefined, original: string): string | undefined {
+  if (displayName === undefined) return undefined
+  const trimmed = displayName.trim()
+  return trimmed.length > 0 && trimmed !== original ? trimmed : undefined
+}
+
+/**
+ * Compose the KML `<name>` for a photo marker. Single source of truth for the
+ * export label so the parenthesised-original and label-prefix rules can be unit
+ * tested instead of living inline in the export callback:
+ *  - custom name set      → `TP1 (DSC_0123.JPG)` (original kept identifiable)
+ *  - no custom name       → `DSC_0123.JPG`
+ *  - competition label    → prefixed: `A - TP1 (DSC_0123.JPG)` / `A - DSC_0123.JPG`
+ *
+ * A blank or redundant (`=== name`) `displayName` is treated as absent — the
+ * "is this a real custom name" rule routes through {@link normalizeDisplayName}
+ * so the list row, KML export and loader can never drift — so we never emit
+ * `DSC_0123.JPG (DSC_0123.JPG)`. Returns the raw text; XML escaping happens
+ * downstream at the serializer (`textContent`).
+ */
+export function buildPhotoMarkerKmlName(
+  m: Pick<PhotoMarker, 'name' | 'displayName' | 'label'>,
+): string {
+  const custom = normalizeDisplayName(m.displayName, m.name)
+  const namePart = custom ? `${custom} (${m.name})` : m.name
+  return m.label && namePart
+    ? `${m.label} - ${namePart}`
+    : (m.label || namePart || '')
+}
+
+/**
  * Numeric-aware filename comparator for list/tray ordering. `numeric: true`
  * makes `DSC_0009 < DSC_0010 < DSC_0100` (a plain lexical sort would put
  * `DSC_0010` before `DSC_0009`). `sensitivity: 'base'` keeps the order stable
@@ -229,5 +281,9 @@ export function compareNoGpsPhotos(a: NoGpsPhoto, b: NoGpsPhoto): number {
 
 export function sanitizeNoGpsPhotos(input: unknown): NoGpsPhoto[] {
   if (!Array.isArray(input)) return []
-  return input.filter(isNoGpsPhoto)
+  // Strip an empty/redundant displayName rather than dropping the photo.
+  return input.filter(isNoGpsPhoto).map(p => {
+    const displayName = normalizeDisplayName(p.displayName, p.filename)
+    return displayName === p.displayName ? p : { ...p, displayName }
+  })
 }

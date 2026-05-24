@@ -10,6 +10,17 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.15.1] - 2026-05-24
+
+### Fixed
+- **Map Corridors:** hardened the photo `displayName` invariants introduced in
+  2.15.0 (neither shipped in a Windows build yet, so no user impact). The
+  KML `<name>` composition is now a single unit-tested helper
+  (`buildPhotoMarkerKmlName`), and loading a session strips an empty or
+  redundant custom name so the photo list and the KML export can't disagree
+  about what a corrupt label means. The no-GPS list and tray also share one
+  sort comparator, so identical filenames tie-break the same way everywhere.
+
 ## [2.15.0] - 2026-05-24
 
 ### Changed
