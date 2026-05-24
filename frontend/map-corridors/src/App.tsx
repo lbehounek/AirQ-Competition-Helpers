@@ -40,6 +40,7 @@ import type { ImportFailureReason, ImportFailure } from './photoImport/types'
 import { NoGpsTray } from './components/NoGpsTray'
 import { PhotoListPanel } from './components/PhotoListPanel'
 import { PhotoCompareModal } from './components/PhotoCompareModal'
+import { resolveVariantFlags } from './photoVariants/resolveVariantFlags'
 import type { PhotoMarker } from './types/markers'
 import {
   buildMapPicks,
@@ -713,17 +714,11 @@ function App() {
   // can't observe a half-resolved session if they hard-reload mid-write.
   // The losers stay in OPFS (files + thumbs) — the rejected state alone
   // hides their markers from the map, and the user can undo by un-rejecting
-  // from the list panel.
+  // from the list panel. This is a flag-only mutation — `resolveVariantFlags`
+  // deliberately leaves `labelUpdatedAt` untouched (see its docstring) so it
+  // can't masquerade as a newer label edit in the cross-app sync.
   const handleCompareResolve = useCallback(async (winnerId: string, loserIds: readonly string[]) => {
-    const loserSet = new Set(loserIds)
-    const now = new Date().toISOString()
-    await persistMarkers((prev) =>
-      prev.map(m => {
-        if (m.id === winnerId) return { ...m, flag: 'pick', labelUpdatedAt: now }
-        if (loserSet.has(m.id)) return { ...m, flag: 'reject', labelUpdatedAt: now }
-        return m
-      }),
-    )
+    await persistMarkers((prev) => resolveVariantFlags(prev, winnerId, loserIds))
   }, [persistMarkers])
 
   const handleCompareVariants = useCallback((selected: readonly PhotoMarker[]) => {
