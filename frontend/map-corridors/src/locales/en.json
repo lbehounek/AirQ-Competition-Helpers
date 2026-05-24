@@ -70,7 +70,6 @@
     "renameTooltip": "Rename photo",
     "renamePlaceholder": "e.g. TP1",
     "renameSaveAria": "Save name",
-    "renameCancelAria": "Cancel rename",
     "handoff": {
       "flushFailed": "Couldn't save picks before opening the editor. Check storage and try again.",
       "editorSyncFailed": "Couldn't apply latest labels from the editor."

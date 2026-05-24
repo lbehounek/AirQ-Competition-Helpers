@@ -70,7 +70,6 @@
     "renameTooltip": "Přejmenovat fotografii",
     "renamePlaceholder": "např. TP1",
     "renameSaveAria": "Uložit název",
-    "renameCancelAria": "Zrušit přejmenování",
     "handoff": {
       "flushFailed": "Výběr se nepodařilo uložit před otevřením editoru. Zkontrolujte úložiště a zkuste to znovu.",
       "editorSyncFailed": "Nepodařilo se použít nejnovější popisky z editoru."
