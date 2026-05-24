@@ -10,6 +10,15 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.17.0] - 2026-05-24
+
+### Added
+- **Map Corridors:** the currently active photo is now highlighted on both the
+  map and the right-side list, kept in sync. Clicking a photo's marker (or its
+  list row) gives the marker a glow + slight zoom and tints its row; the list
+  scrolls to that row and expands its group if collapsed. Closing the popup
+  clears the highlight. Rejecting or deleting the active photo clears it too.
+
 ## [2.16.0] - 2026-05-24
 
 ### Added
