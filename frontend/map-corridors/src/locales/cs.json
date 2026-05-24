@@ -36,9 +36,9 @@
       "noCompetition": "Před importem fotek otevři soutěž z hlavního menu"
     },
     "popup": {
-      "include": "Vybrat",
-      "skip": "Přeskočit",
-      "reject": "Odmítnout",
+      "include": "Vybrané",
+      "skip": "Neutrální",
+      "reject": "Odmítnuté",
       "thumbMissing": "Náhled není k dispozici",
       "label": "Štítek",
       "labelSet": "Přiřadit štítek",
