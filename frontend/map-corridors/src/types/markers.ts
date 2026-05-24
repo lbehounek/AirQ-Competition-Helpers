@@ -214,11 +214,14 @@ export function noGpsPhotoDisplayName(p: Pick<NoGpsPhoto, 'filename' | 'displayN
  *
  * Uses exact (case-sensitive) equality, matching the clear-on-original rule in
  * `computeRenamedPhoto`: a case-only difference is a deliberate custom name.
- * Returns `undefined` to drop the field, or the original value to keep it.
+ * Returns the TRIMMED value to keep (so the stored form matches what the write
+ * path produces — `computeRenamedPhoto` always stores `newName.trim()`), or
+ * `undefined` to drop the field.
  */
 export function normalizeDisplayName(displayName: string | undefined, original: string): string | undefined {
   if (displayName === undefined) return undefined
-  return displayName.trim().length > 0 && displayName !== original ? displayName : undefined
+  const trimmed = displayName.trim()
+  return trimmed.length > 0 && trimmed !== original ? trimmed : undefined
 }
 
 /**
@@ -229,16 +232,17 @@ export function normalizeDisplayName(displayName: string | undefined, original: 
  *  - no custom name       → `DSC_0123.JPG`
  *  - competition label    → prefixed: `A - TP1 (DSC_0123.JPG)` / `A - DSC_0123.JPG`
  *
- * A blank or redundant (`=== name`) `displayName` is treated as absent — same
- * semantics as {@link photoMarkerDisplayName} / {@link normalizeDisplayName} —
- * so we never emit `DSC_0123.JPG (DSC_0123.JPG)`. Returns the raw text; XML
- * escaping happens downstream at the serializer (`textContent`).
+ * A blank or redundant (`=== name`) `displayName` is treated as absent — the
+ * "is this a real custom name" rule routes through {@link normalizeDisplayName}
+ * so the list row, KML export and loader can never drift — so we never emit
+ * `DSC_0123.JPG (DSC_0123.JPG)`. Returns the raw text; XML escaping happens
+ * downstream at the serializer (`textContent`).
  */
 export function buildPhotoMarkerKmlName(
   m: Pick<PhotoMarker, 'name' | 'displayName' | 'label'>,
 ): string {
-  const custom = m.displayName?.trim()
-  const namePart = custom && custom !== m.name ? `${custom} (${m.name})` : m.name
+  const custom = normalizeDisplayName(m.displayName, m.name)
+  const namePart = custom ? `${custom} (${m.name})` : m.name
   return m.label && namePart
     ? `${m.label} - ${namePart}`
     : (m.label || namePart || '')

@@ -141,6 +141,10 @@ describe('sanitizePhotoMarkers — displayName normalisation', () => {
     const [m] = sanitizePhotoMarkers([{ ...base, displayName: 'DSC_0001.JPG' }])
     expect(m.displayName).toBeUndefined()
   })
+  it('preserves object identity when the displayName is already clean (memo/dirty-check friendly)', () => {
+    const clean = { ...base, displayName: 'TP1' }
+    expect(sanitizePhotoMarkers([clean])[0]).toBe(clean)
+  })
 })
 
 describe('sanitizeNoGpsPhotos — displayName normalisation', () => {
@@ -155,6 +159,10 @@ describe('sanitizeNoGpsPhotos — displayName normalisation', () => {
     expect(empty.displayName).toBeUndefined()
     const redundant = sanitizeNoGpsPhotos([{ ...base, displayName: 'DSC_0001.JPG' }])[0]
     expect(redundant.displayName).toBeUndefined()
+  })
+  it('preserves object identity when the displayName is already clean', () => {
+    const clean = { ...base, displayName: 'TP1' }
+    expect(sanitizeNoGpsPhotos([clean])[0]).toBe(clean)
   })
 })
 

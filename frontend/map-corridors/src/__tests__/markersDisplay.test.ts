@@ -62,6 +62,12 @@ describe('normalizeDisplayName', () => {
   it('keeps a case-only difference (matches clear-on-original being case-sensitive)', () => {
     expect(normalizeDisplayName('dsc_0001.jpg', 'DSC_0001.JPG')).toBe('dsc_0001.jpg')
   })
+  it('trims a padded-but-meaningful value (stored form matches the write path)', () => {
+    expect(normalizeDisplayName('  TP1  ', 'DSC_0001.JPG')).toBe('TP1')
+  })
+  it('strips a padded copy of the filename (trimmed value equals the original)', () => {
+    expect(normalizeDisplayName('  DSC_0001.JPG  ', 'DSC_0001.JPG')).toBeUndefined()
+  })
 })
 
 describe('buildPhotoMarkerKmlName', () => {
@@ -88,6 +94,18 @@ describe('buildPhotoMarkerKmlName', () => {
   it('treats a blank displayName as absent (matches photoMarkerDisplayName)', () => {
     expect(buildPhotoMarkerKmlName({ name: 'DSC_0123.JPG', displayName: '  ' }))
       .toBe('DSC_0123.JPG')
+  })
+  it('label + blank displayName → label prefix on the bare filename', () => {
+    expect(buildPhotoMarkerKmlName({ name: 'DSC_0123.JPG', displayName: '  ', label: 'A' }))
+      .toBe('A - DSC_0123.JPG')
+  })
+  it('empty name (click-placed marker) with a label → just the label, no trailing " - "', () => {
+    // handleMarkerAdd creates markers with name: '' — namePart is falsy, so the
+    // fallback returns the label alone (behaviour preserved from the old inline code).
+    expect(buildPhotoMarkerKmlName({ name: '', label: 'A' })).toBe('A')
+  })
+  it('empty name and no label → empty string', () => {
+    expect(buildPhotoMarkerKmlName({ name: '' })).toBe('')
   })
   it('returns raw text — XML special chars are NOT escaped here (serializer does that)', () => {
     // The builder is the composition layer; escaping happens downstream at the
