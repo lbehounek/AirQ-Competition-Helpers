@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GeoJSON } from 'geojson'
 import type { Discipline } from '../corridors/preciseCorridor'
-import type { NoGpsPhoto, PhotoMarker, GroundMarker } from '../types/markers'
+import type { NoGpsPhoto, PhotoMarker, GroundMarker, PhotoFlag } from '../types/markers'
 import { sanitizeGroundMarkers, sanitizeNoGpsPhotos, sanitizePhotoMarkers } from '../types/markers'
 import {
   deletePhotoThumb,
@@ -391,7 +391,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
   // Replaces the previous two-await sequence which could leave the photo
   // duplicated in both lists if the second write failed (quota, transient
   // I/O). Returns true on success, false when the entry isn't found.
-  const placeNoGpsPhoto = useCallback(async (photoId: string, lng: number, lat: number): Promise<boolean> => {
+  const placeNoGpsPhoto = useCallback(async (photoId: string, lng: number, lat: number, flag: PhotoFlag | null = 'pick'): Promise<boolean> => {
     const current = sessionRef.current
     if (!current) return false
     const entry = (current.noGpsPhotos || []).find(p => p.photoId === photoId)
@@ -405,7 +405,10 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
       // Carry the custom name across so dragging a renamed tray photo onto
       // the map keeps its label (and still preserves the original filename).
       ...(entry.displayName ? { displayName: entry.displayName } : {}),
-      flag: 'pick',
+      // Phase 14 — caller may commit straight to a chosen category (provisional
+      // placement). `null` = neutral, so omit the flag field. Tray drag-drop
+      // keeps the historical default of 'pick'.
+      ...(flag ? { flag } : {}),
     }
     await persistSession({
       ...current,

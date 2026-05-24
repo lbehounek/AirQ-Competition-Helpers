@@ -939,6 +939,42 @@ lifecycle surface.
 
 ---
 
+## ADR-024 — Panel interactions: no-GPS provisional placement + drag-to-recategorize
+
+**Context.** Field feedback (2026-05-24): (1) no-GPS photos render greyed/inert
+in the list and the only way to place them was dragging from the tray, which
+users found unobvious; (2) changing a photo's category required opening the map
+popup. Users wanted to click a no-GPS row to place it, and to drag a row between
+groups to recategorize.
+
+**Decision.**
+
+1. **No-GPS placement is provisional, committed by category choice.** Clicking a
+   no-GPS row drops a **draggable provisional pin** at the current map center
+   (`MapProviderViewHandle.getCenter`) and opens a popup. The photo **stays in
+   "Bez GPS"** until the user picks a category (Vybrané/Neutrální/Odmítnuté) in
+   that popup — only then is it committed (`placeNoGpsPhoto(photoId, lng, lat,
+   flag)`, extended to take an initial flag; default `pick` keeps the tray
+   drag-drop path unchanged). Closing the popup cancels with no change. One
+   provisional placement at a time.
+
+2. **Drag-to-recategorize drops onto a group section.** GPS rows are
+   HTML5-draggable; each group section (Vybrané/Neutrální/Odmítnuté) is a drop
+   target that sets the dropped photo's flag via `flagForGroup`. Validity is
+   `canRecategorize` (same-group and any no-GPS source/target are no-ops). The
+   no-GPS group is not a recategorize target — no-GPS photos use placement (1).
+   Dragging recategorizes only the dragged row, even within a variant
+   multi-selection. Plain click (fly) and Ctrl/Shift (variant select) are
+   unaffected — HTML5 drag fires only on real motion.
+
+**Why provisional (not place-immediately).** Honors "keep in no-GPS until the
+user explicitly chooses a category" — the placement is a preview the user can
+drag and cancel before committing.
+
+**Files implementing this ADR.** See Phase 14 in `implementation-plan.md`.
+
+---
+
 ## Decisions explicitly deferred to v2
 
 These are recorded so they're not re-debated during v1 review.

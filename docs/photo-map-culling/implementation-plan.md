@@ -916,15 +916,16 @@ untouched and stays visually distinct (left border vs. fill).
   callback, so list clicks update the highlight for free.
 - `frontend/map-corridors/src/map/MapProviderView.tsx` — now controlled (reads
   `props.activePhotoMarkerId`, requests via `onActivePhotoMarkerChange`); marker
-  glow + `scale(1.3)` + `zIndex` when active; prune effect extended to clear on
-  `flag === 'reject'` as well as deletion.
+  glow + `scale(1.3)` + `zIndex` when active; prune effect clears the active
+  photo only on deletion (a follow-up fix removed reject-clearing — see Phase 14
+  note — so a rejected photo can be re-opened from the list to un-reject it).
 - `frontend/map-corridors/src/components/PhotoListPanel.tsx` — `activePhotoId`
   prop; row tint (`alpha(primary, 0.14)`); `scrollIntoView` on the active row;
   group auto-expand effect; new exported pure helper `groupKeyForPhotoId`.
 - `frontend/map-corridors/src/activePhoto/activePhoto.ts` — pure helpers
-  `shouldClearActivePhoto` (drives the prune-on-delete/reject effect) and
-  `resolveActivePhotoId` (the list highlight's photoId; null for a gone/rejected
-  marker so no one-render tint flash on a reject row).
+  `shouldClearActivePhoto` (clears only on deletion — see Phase 14 note) and
+  `resolveActivePhotoId` (the list highlight's photoId; resolves rejected
+  markers too so the row highlights while its popup is open during un-reject).
 
 **Tests.**
 - `__tests__/groupKeyForPhotoId.test.ts` — picks/neutral/rejects mapping,
@@ -945,3 +946,55 @@ e. Reject the active photo (popup or variant compare) → marker vanishes and th
    highlight clears (no orphan tint).
 f. Ctrl-click rows for variant compare → left-border accent still reads
    distinctly from the active fill (a row can show both).
+
+---
+
+## Phase 14 — Panel interactions (no-GPS placement + drag-to-recategorize)
+
+**Why now.** Field feedback: no-GPS photos looked inert (greyed) and the only
+placement path (drag from tray) was unobvious; and recategorizing required the
+map popup. See [ADR-024](decisions.md#adr-024--panel-interactions-no-gps-provisional-placement--drag-to-recategorize).
+
+**Reject-reopen fix (prerequisite, shipped separately as `desktop-v2.17.2`).**
+Phase 13's prune effect cleared the active photo on `flag === 'reject'`, which
+closed the popup the instant a rejected row was clicked — making un-reject
+impossible. `shouldClearActivePhoto` now clears ONLY on deletion;
+`resolveActivePhotoId` resolves rejected markers so the un-reject row
+highlights. Rejecting *via the popup* is still closed by the explicit onReject
+handler.
+
+**Feature A — no-GPS provisional placement.**
+- Click a no-GPS list row → drop a draggable provisional pin at the map center
+  (`MapProviderViewHandle.getCenter`) + open a popup; photo stays in "Bez GPS".
+- Drag the pin to the right spot; pick a category in the popup → commit via
+  `placeNoGpsPhoto(photoId, lng, lat, flag)` (extended to take an initial flag,
+  default `pick` for the tray path). Close/Esc → cancel, no change.
+- Files: `App.tsx` (`provisionalPlacement` state + commit/cancel/drag handlers,
+  `onNoGpsPhotoClick`), `MapProviderView.tsx` (`getCenter`, provisional
+  `<Marker>` + commit popup), `PhotoListPanel.tsx` (no-GPS rows clickable →
+  un-greyed), `useCorridorSessionOPFS.ts` (`placeNoGpsPhoto` flag param),
+  `locales/{cs,en}.json` (`photo.tray.placeFailed`).
+
+**Feature B — drag-to-recategorize.**
+- GPS rows HTML5-draggable; group sections are drop targets that set the flag
+  via `flagForGroup`; `canRecategorize` rejects same-group / no-GPS drops.
+- Files: `PhotoListPanel.tsx` (`GroupSection` drop target + highlight, draggable
+  `PhotoListItem`, `onPhotoSetFlag`/`onNoGpsPhotoClick` props), `App.tsx`
+  (`handlePhotoSetFlag` → `setPhotoFlag`), new
+  `recategorize/recategorize.ts` (`flagForGroup` / `canRecategorize`).
+
+**Tests.**
+- `__tests__/recategorize.test.ts` — `flagForGroup` (pick/neutral=null/reject/
+  noGps=undefined) and `canRecategorize` (same-group, no-GPS source/target).
+- `__tests__/activePhoto.test.ts` updated: reject no longer clears / now resolves.
+
+**Smoke addendum.**
+
+a. No-GPS row is no longer greyed → click it → provisional dashed pin appears at
+   map center + popup; the photo is still listed under "Bez GPS".
+b. Drag the pin to a location → press Vybrané → photo commits to Vybrané at the
+   dragged spot and leaves "Bez GPS". Close without choosing → stays in Bez GPS.
+c. Drag a Vybrané row onto the Odmítnuté section → it recategorizes (leaves the
+   map). Dropping onto its own group or onto "Bez GPS" does nothing.
+d. Reject a photo via popup → re-open it from the Odmítnuté list → Vybrané/
+   Neutrální restores it (reject-reopen fix).

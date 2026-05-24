@@ -48,7 +48,8 @@
       "title": "No GPS ({{count}})",
       "dragHint": "Drag onto the map to place",
       "expand": "Show no-GPS photos",
-      "collapse": "Hide no-GPS photos"
+      "collapse": "Hide no-GPS photos",
+      "placeFailed": "Failed to place photo"
     },
     "list": {
       "title": "Photos",

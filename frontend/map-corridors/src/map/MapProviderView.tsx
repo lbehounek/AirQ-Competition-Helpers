@@ -42,6 +42,11 @@ export type MapProviderViewHandle = {
    * markers without coordinates we can land on.
    */
   flyToPhotoMarker: (markerId: string) => void
+  /**
+   * Phase 14 — current map center in lng/lat, or null if the map isn't ready.
+   * Used to drop a provisional no-GPS placement pin at the view center.
+   */
+  getCenter: () => { lng: number; lat: number } | null
 }
 
 export const MapProviderView = forwardRef<MapProviderViewHandle, {
@@ -99,6 +104,13 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // `onActivePhotoMarkerChange`. `null` = no photo popup / nothing active.
   activePhotoMarkerId?: string | null
   onActivePhotoMarkerChange?: (id: string | null) => void
+  // Phase 14 — provisional placement of a no-GPS photo: a draggable pin at the
+  // map center whose popup commits the photo to a chosen category. `null` =
+  // no placement in progress.
+  provisionalPlacement?: { photoId: string; filename: string; lng: number; lat: number } | null
+  onProvisionalDrag?: (lng: number, lat: number) => void
+  onProvisionalCommit?: (flag: 'pick' | 'reject' | null) => void
+  onProvisionalCancel?: () => void
 }>(function MapProviderView(props, ref) {
   const { mapStyle, mapboxAccessToken, geojsonOverlays } = props
 
@@ -323,6 +335,12 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       if (marker.photoId && marker.capturedAt) {
         setActivePhotoMarkerId(markerId)
       }
+    },
+    getCenter() {
+      const map = mapRef.current?.getMap()
+      if (!map) return null
+      const c = map.getCenter()
+      return { lng: c.lng, lat: c.lat }
     },
   }), [geojsonOverlays, props.markers, props.groundMarkerProps?.groundMarkers, mapStyle, mapboxAccessToken, setActivePhotoMarkerId])
 
@@ -923,6 +941,57 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               }}
             />
           </Popup>
+        )
+      })()}
+      {/* Phase 14 — provisional no-GPS placement: a draggable pin at the map
+          center whose popup commits the photo to a chosen category. The photo
+          stays in "Bez GPS" until a category button is pressed; closing the
+          popup cancels. Distinct dashed ring marks it as not-yet-placed. */}
+      {(() => {
+        const prov = props.provisionalPlacement
+        if (!prov) return null
+        if (!props.photoStorage || !props.photoDir) return null
+        return (
+          <React.Fragment key="provisional-placement">
+            <Marker
+              longitude={prov.lng}
+              latitude={prov.lat}
+              draggable
+              onDragEnd={(ev: MarkerDragEvent) => {
+                props.onProvisionalDrag?.(ev.lngLat.lng, ev.lngLat.lat)
+              }}
+            >
+              <div style={{
+                width: 16,
+                height: 16,
+                borderRadius: '50%',
+                background: 'rgba(25,118,210,0.25)',
+                border: '2px dashed #1976d2',
+                boxShadow: '0 0 0 3px rgba(255,255,255,0.9)',
+                cursor: 'grab',
+              }} />
+            </Marker>
+            <Popup
+              longitude={prov.lng}
+              latitude={prov.lat}
+              anchor="top"
+              closeButton
+              closeOnMove={false}
+              closeOnClick={false}
+              onClose={() => props.onProvisionalCancel?.()}
+              maxWidth="240px"
+            >
+              <PhotoMarkerPopup
+                photoId={prov.photoId}
+                filename={prov.filename}
+                storage={props.photoStorage}
+                photosDir={props.photoDir}
+                onInclude={() => props.onProvisionalCommit?.('pick')}
+                onSkip={() => props.onProvisionalCommit?.(null)}
+                onReject={() => props.onProvisionalCommit?.('reject')}
+              />
+            </Popup>
+          </React.Fragment>
         )
       })()}
     </MapGL>

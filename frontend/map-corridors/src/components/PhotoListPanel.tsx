@@ -26,6 +26,11 @@ import { noGpsPhotoDisplayName, photoMarkerDisplayName } from '../types/markers'
 import { useI18n } from '../contexts/I18nContext'
 import { usePhotoThumbUrl } from './usePhotoThumbUrl'
 import { groupPhotosByFlag } from './groupPhotosByFlag'
+import { flagForGroup, canRecategorize } from '../recategorize/recategorize'
+import type { PhotoFlag } from '../types/markers'
+
+/** Drag MIME for recategorizing a photo row by dropping it on another group. */
+const RECAT_MIME = 'application/x-airq-photo-recat'
 
 const THUMB_W_PX = 40
 const THUMB_H_PX = 30
@@ -79,6 +84,17 @@ export interface PhotoListPanelProps {
    * border) — a row can be both. `null`/undefined = nothing active.
    */
   activePhotoId?: string | null
+  /**
+   * Phase 14 — drag-to-recategorize. Set a GPS photo's flag when its row is
+   * dropped onto another group section. `null` = neutral (flag cleared).
+   */
+  onPhotoSetFlag?: (markerId: string, flag: PhotoFlag | null) => void
+  /**
+   * Phase 14 — click a no-GPS row to start placing it on the map (provisional
+   * pin at map center; the photo stays in "Bez GPS" until the user commits a
+   * category in the popup). Undefined leaves no-GPS rows non-interactive.
+   */
+  onNoGpsPhotoClick?: (photoId: string) => void
 }
 
 /**
@@ -96,7 +112,7 @@ const GROUP_ORDER: readonly GroupKey[] = ['picks', 'neutral', 'rejects', 'noGps'
 
 export function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
-  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId } = props
+  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     picks: false,
@@ -111,6 +127,9 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
   // an array (not a Set) so iteration is stable and order survives toggle.
   const [selectedIds, setSelectedIds] = useState<readonly string[]>([])
   const lastAnchorRef = useRef<string | null>(null)
+  // Phase 14 — which group the row currently being dragged belongs to. Drives
+  // both drop validation (canRecategorize) and the drop-target highlight.
+  const [dragSourceGroup, setDragSourceGroup] = useState<GroupKey | null>(null)
 
   const groups = useMemo(() => groupPhotosByFlag(markers, noGpsPhotos), [markers, noGpsPhotos])
 
@@ -250,6 +269,14 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
               count={groupCount(groups, key)}
               collapsed={collapsedGroups[key]}
               onToggle={() => toggleGroup(key)}
+              // Phase 14 — drop target for drag-to-recategorize. Highlight only
+              // when a drag is in progress from a different, valid group.
+              isDropTarget={!!onPhotoSetFlag && dragSourceGroup !== null && canRecategorize(dragSourceGroup, key)}
+              onDropPhoto={(markerId) => {
+                const flag = flagForGroup(key)
+                if (flag !== undefined) onPhotoSetFlag?.(markerId, flag)
+              }}
+              recatMime={RECAT_MIME}
               items={renderGroupItems(groups, key, {
                 storage,
                 photosDir,
@@ -262,6 +289,12 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
                 renameTooltip: t('photo.renameTooltip'),
                 renamePlaceholder: t('photo.renamePlaceholder'),
                 renameSaveAria: t('photo.renameSaveAria'),
+                // Phase 14 — recat drag (GPS rows) + no-GPS click-to-place.
+                recatMime: RECAT_MIME,
+                recatEnabled: !!onPhotoSetFlag,
+                onRowDragStart: (g) => setDragSourceGroup(g),
+                onRowDragEnd: () => setDragSourceGroup(null),
+                onNoGpsPhotoClick,
               })}
             />
           ))}
@@ -384,10 +417,40 @@ function GroupSection(props: {
   collapsed: boolean
   onToggle: () => void
   items: React.ReactNode
+  // Phase 14 — drag-to-recategorize drop target.
+  isDropTarget: boolean
+  onDropPhoto: (markerId: string) => void
+  recatMime: string
 }) {
-  const { title, count, collapsed, onToggle, items } = props
+  const { title, count, collapsed, onToggle, items, isDropTarget, onDropPhoto, recatMime } = props
+  const [dragOver, setDragOver] = useState(false)
+
+  // Drop handlers live on the whole section (header + body) so an empty or
+  // collapsed group still accepts a dropped row. preventDefault on dragOver is
+  // what makes the element a valid drop target.
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!isDropTarget) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (!dragOver) setDragOver(true)
+  }
+  const handleDrop = (e: React.DragEvent) => {
+    setDragOver(false)
+    if (!isDropTarget) return
+    const markerId = e.dataTransfer.getData(recatMime)
+    if (markerId) {
+      e.preventDefault()
+      onDropPhoto(markerId)
+    }
+  }
+
   return (
-    <Box>
+    <Box
+      onDragOver={handleDragOver}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+      sx={dragOver ? { outline: '2px dashed', outlineColor: 'primary.main', outlineOffset: '-2px', bgcolor: 'action.hover' } : undefined}
+    >
       <ListItemButton
         onClick={onToggle}
         sx={{ py: 0.5, bgcolor: 'grey.50' }}
@@ -421,6 +484,11 @@ function renderGroupItems(
     renameTooltip: string
     renamePlaceholder: string
     renameSaveAria: string
+    recatMime: string
+    recatEnabled: boolean
+    onRowDragStart: (group: GroupKey) => void
+    onRowDragEnd: () => void
+    onNoGpsPhotoClick?: (photoId: string) => void
   },
 ): React.ReactNode {
   const commonRenameCtx = {
@@ -439,12 +507,12 @@ function renderGroupItems(
         originalFilename={p.filename}
         storage={ctx.storage}
         photosDir={ctx.photosDir}
-        // No marker yet — clicking is a no-op for v1. User drags from tray.
-        // Also intentionally not selectable for variant-compare: variants
-        // need GPS markers to associate the loser's hidden position with.
-        onClick={undefined}
+        // Phase 14 — clicking a no-GPS row starts placing it on the map
+        // (provisional pin at map center). Not draggable-for-recat (no flag).
+        onClick={ctx.onNoGpsPhotoClick ? () => ctx.onNoGpsPhotoClick!(p.photoId) : undefined}
         selected={false}
         active={false}
+        recatDraggable={false}
         onDelete={ctx.onPhotoDelete}
         deleteTooltip={ctx.deleteTooltip}
         {...commonRenameCtx}
@@ -463,6 +531,13 @@ function renderGroupItems(
       onClick={(e) => ctx.onRowClick(m.photoId!, m.id, e)}
       selected={selectedSet.has(m.photoId!)}
       active={m.photoId === ctx.activePhotoId}
+      recatDraggable={ctx.recatEnabled}
+      onRecatDragStart={(e) => {
+        e.dataTransfer.setData(ctx.recatMime, m.id)
+        e.dataTransfer.effectAllowed = 'move'
+        ctx.onRowDragStart(key)
+      }}
+      onRecatDragEnd={ctx.onRowDragEnd}
       onDelete={ctx.onPhotoDelete}
       deleteTooltip={ctx.deleteTooltip}
       {...commonRenameCtx}
@@ -514,6 +589,14 @@ function PhotoListItem(props: {
    * filled tint and scrolls the row into view. Independent of `selected`.
    */
   active: boolean
+  /**
+   * Phase 14 — whether this row can be dragged onto another group to
+   * recategorize it (GPS rows only; no-GPS rows have no flag). When true and
+   * not editing, the row root is HTML5-draggable.
+   */
+  recatDraggable?: boolean
+  onRecatDragStart?: (e: React.DragEvent) => void
+  onRecatDragEnd?: () => void
   onDelete: (photoId: string) => void | Promise<void>
   deleteTooltip: string
   onRename: (photoId: string, newName: string) => void | Promise<void>
@@ -524,6 +607,7 @@ function PhotoListItem(props: {
   const {
     photoId, displayName, originalFilename, storage, photosDir, onClick, selected, active, onDelete, deleteTooltip,
     onRename, renameTooltip, renamePlaceholder, renameSaveAria,
+    recatDraggable, onRecatDragStart, onRecatDragEnd,
   } = props
   const { url, state } = usePhotoThumbUrl(storage, photosDir, photoId)
   const rowRef = useRef<HTMLDivElement | null>(null)
@@ -558,6 +642,13 @@ function PhotoListItem(props: {
   return (
     <Box
       ref={rowRef}
+      // Phase 14 — recat drag. Disabled while editing so the rename field
+      // stays text-selectable. Click/selection still work (drag only fires on
+      // real motion). The thumbnail <img> sets draggable={false} so the photo
+      // itself isn't what gets dragged.
+      draggable={!!recatDraggable && !editing}
+      onDragStart={recatDraggable && !editing ? onRecatDragStart : undefined}
+      onDragEnd={recatDraggable && !editing ? onRecatDragEnd : undefined}
       sx={{
         position: 'relative',
         // Reveal full delete-button opacity on hover anywhere on the row,
