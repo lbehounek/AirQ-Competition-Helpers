@@ -10,6 +10,25 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.18.0] - 2026-05-24
+
+### Added
+- **Map Corridors:** no-GPS photos can now be placed by clicking. A no-GPS row
+  (no longer greyed out) drops a draggable pin at the centre of the current map
+  view; the photo stays under "Bez GPS" until you pick a category in the popup
+  (Vybrané/Neutrální/Odmítnuté), which places it at the dragged spot. Closing
+  the popup cancels.
+- **Map Corridors:** drag a photo row from one group onto another to
+  recategorise it — drag a row onto Vybrané, Neutrální or Odmítnuté to change
+  its flag. (Dropping onto its own group or onto "Bez GPS" does nothing.)
+
+## [2.17.2] - 2026-05-24
+
+### Fixed
+- **Map Corridors:** rejecting a photo and then trying to re-allow it no longer
+  fails — clicking a rejected photo's row now re-opens its popup (it had closed
+  instantly), so you can set it back to Vybrané/Neutrální. Regression from 2.17.0.
+
 ## [2.17.1] - 2026-05-24
 
 ### Changed
