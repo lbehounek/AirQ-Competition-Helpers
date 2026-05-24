@@ -831,3 +831,61 @@ implementation by the implementer:
    need confirming.
 7. **`extractExif` HEIC-by-content detection** — verify `exifr` accepts a
    magic-byte sniff or whether we need a separate prefix check.
+
+---
+
+## Phase 12 — Photo variants (side-by-side compare)
+
+**Why now.** Organisers commonly shoot the same turn point 2–3× (insurance
+against motion blur, framing, or a passing aircraft in front of the
+subject). The per-photo Include/Skip/Reject flow forces a row-by-row
+judgement; users wanted an "eyes side-by-side, then pick" affordance.
+Originally deferred to v2 ([decisions.md → Deferred](decisions.md#decisions-explicitly-deferred-to-v2));
+promoted because the workflow is now hot.
+
+**Scope.** Manual selection (Ctrl/Cmd+click + Shift+click range) of 2–3
+variants in `PhotoListPanel`, then a side-by-side `Dialog` to pick the
+winner. Winner is auto-promoted to `flag='pick'`; losers move to
+`flag='reject'`, which (Step 2 of this phase) hides them from the map
+entirely. The rejected losers remain in the "Odmítnuté" list group as the
+undo path — files stay in OPFS.
+
+**Out of scope.**
+- Auto-clustering by GPS proximity + timestamp. Manual only for v1.
+- Persistent variant-group records. Selection is ephemeral.
+- Bidirectional sync with Photo Helper. Cross-app contract unchanged
+  ([ADR-005](decisions.md#adr-005--cross-app-handoff-via-a-one-way-map-picksjson-file)) —
+  only picks reach the editor.
+
+**Files touched.**
+- `frontend/map-corridors/src/map/MapProviderView.tsx` — render filter
+  rejects markers (`flag !== 'reject'`).
+- `frontend/map-corridors/src/map/photoLayers/captureFeatures.ts` —
+  matching filter on the ghost-dot + dashed-line projections so the
+  capture marker disappears with its pin.
+- `frontend/map-corridors/src/components/PhotoListPanel.tsx` — selection
+  state, Ctrl/Cmd/Shift handling, "Srovnat varianty (N)" footer button.
+  New pure helpers `toggleSelection` / `computeRangeSelection`.
+- `frontend/map-corridors/src/components/PhotoCompareModal.tsx` — new MUI
+  Dialog rendering N tiles side-by-side. Loads full-res via
+  `usePhotoFullUrl`.
+- `frontend/map-corridors/src/components/usePhotoFullUrl.ts` — new sibling
+  hook of `usePhotoThumbUrl`.
+- `frontend/map-corridors/src/App.tsx` — owns modal state +
+  `handleCompareResolve` (single `persistMarkers` write so a reload
+  mid-resolve can never observe a half-applied state).
+- `frontend/map-corridors/src/locales/{cs,en}.json` — `photo.list.compareSelected`,
+  `photo.list.compareLimitTip`, `photo.list.clearSelection`,
+  `photo.compare.*`.
+
+**Smoke addendum (extends Phase 11 script).**
+
+a. Drop 3 JPGs whose GPS sits within ~50 m of the same turn point.
+b. Ctrl-click 3 rows in the panel → "Srovnat varianty (3)" appears.
+c. Click → modal opens, full-res images side-by-side.
+d. Press `2` (or click "Vybrat tuto" on tile 2) → modal closes.
+   Map shows 1 pin (blue, pick); the other 2 variants' pins are gone;
+   "Odmítnuté" group shows the 2 losers.
+e. Hard reload → state survives.
+f. Un-reject one loser from the panel → its marker reappears.
+g. Click "Send to editor (1)" → Photo Helper receives only the winner.

@@ -36,6 +36,7 @@ export function buildGhostFeatures(
   const features: FeatureCollection<Point, GhostProperties>['features'] = []
   for (const m of markers) {
     if (!m.capturedAt || !m.photoId) continue
+    if (m.flag === 'reject') continue
     if (!isPhotoMoved(m)) continue
     features.push({
       type: 'Feature',
@@ -62,6 +63,7 @@ export function buildDashedLineFeatures(
   const features: FeatureCollection<LineString, DashedLineProperties>['features'] = []
   for (const m of markers) {
     if (!m.capturedAt || !m.photoId) continue
+    if (m.flag === 'reject') continue
     if (!isPhotoMoved(m)) continue
     features.push({
       type: 'Feature',

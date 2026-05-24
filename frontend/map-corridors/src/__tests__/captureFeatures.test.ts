@@ -74,6 +74,16 @@ describe('buildGhostFeatures', () => {
     expect(fc.features).toEqual([])
   })
 
+  it("skips rejected photos so the ghost dot disappears with the marker", () => {
+    // Rejecting hides the live <Marker> in MapProviderView; the ghost dot is the
+    // visual echo of "where the camera was" and must vanish with it, otherwise
+    // a stray grey dot would remain on the map with no pin to explain it.
+    const fc = buildGhostFeatures([
+      pm({ photoId: 'pid-1', lng: 14.5, lat: 50.5, capturedAt: { lng: 14, lat: 50 }, flag: 'reject' }),
+    ])
+    expect(fc.features).toEqual([])
+  })
+
   it('mixed batch — only moved photo markers leave a ghost', () => {
     const fc = buildGhostFeatures([
       pm({ id: 'kml', photoId: undefined, lng: 14, lat: 50 }),
@@ -113,5 +123,12 @@ describe('buildDashedLineFeatures', () => {
       pm({ photoId: 'pid-abc', lng: 14.5, lat: 50.5, capturedAt: { lng: 14, lat: 50 } }),
     ])
     expect(fc.features[0].properties.photoId).toBe('pid-abc')
+  })
+
+  it('skips rejected photos so the dashed line disappears with the marker', () => {
+    const fc = buildDashedLineFeatures([
+      pm({ photoId: 'pid-1', lng: 14.5, lat: 50.5, capturedAt: { lng: 14, lat: 50 }, flag: 'reject' }),
+    ])
+    expect(fc.features).toEqual([])
   })
 })

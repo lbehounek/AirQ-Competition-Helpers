@@ -10,6 +10,22 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [Unreleased]
+
+### Added
+- **Map Corridors:** side-by-side variant compare. When organisers shoot the
+  same turn point 2–3× for insurance, Ctrl/Cmd+click (Shift+click for a range)
+  the rows in the photo list to select the variants, then "Srovnat varianty (N)"
+  opens a modal showing them full-res next to each other. Picking a winner
+  (click or keys `1`/`2`/`3`) promotes it to a pick and rejects the others in a
+  single atomic write. Rejected losers stay in the "Odmítnuté" list group as the
+  undo path — files are never deleted.
+
+### Changed
+- **Map Corridors:** rejected photos are now hidden from the map entirely
+  (pin, ghost capture dot and dashed line all disappear) instead of rendering as
+  a faded red `×`. The row remains under "Odmítnuté" so the reject is reversible.
+
 ## [2.15.1] - 2026-05-24
 
 ### Fixed
