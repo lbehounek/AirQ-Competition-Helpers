@@ -3,6 +3,7 @@
 // is testable without mounting React.
 
 import type { NoGpsPhoto, PhotoMarker } from '../types/markers'
+import { compareFilenames, compareNoGpsPhotos } from '../types/markers'
 
 export interface GroupedPhotos {
   /** Photo markers with `flag === 'pick'`. Includes label-less picks. */
@@ -35,11 +36,21 @@ export function groupPhotosByFlag(
     else if (m.flag === 'reject') rejects.push(m)
     else neutral.push(m)
   }
+  // Order every group by the ORIGINAL camera filename (numeric-aware), so the
+  // list mirrors the shooting sequence regardless of any custom `displayName`.
+  // Sorting by the immutable `name` means renaming a photo never moves it.
+  picks.sort((a, b) => compareFilenames(a.name, b.name))
+  neutral.sort((a, b) => compareFilenames(a.name, b.name))
+  rejects.sort((a, b) => compareFilenames(a.name, b.name))
+  // Reuse the tray's comparator so the no-GPS group and the NoGpsTray agree on
+  // tie-break order (filename primary, EXIF timestamp tie-break) for identical
+  // filenames — not just on the primary filename sort.
+  const noGps = [...noGpsPhotos].sort(compareNoGpsPhotos)
   return {
     picks,
     neutral,
     rejects,
-    noGps: noGpsPhotos,
-    total: picks.length + neutral.length + rejects.length + noGpsPhotos.length,
+    noGps,
+    total: picks.length + neutral.length + rejects.length + noGps.length,
   }
 }

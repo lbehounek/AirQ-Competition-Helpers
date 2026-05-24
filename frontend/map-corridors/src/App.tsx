@@ -34,7 +34,7 @@ import { buildRouteWaypoints } from './corridors/buildRouteWaypoints'
 import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
-import { DEFAULT_GROUND_MARKER_TYPE, getLabelsForDiscipline } from './types/markers'
+import { DEFAULT_GROUND_MARKER_TYPE, getLabelsForDiscipline, noGpsPhotoDisplayName, photoMarkerDisplayName } from './types/markers'
 import { importPhotosToStorage } from './photoImport/importPhotosToStorage'
 import type { ImportFailureReason, ImportFailure } from './photoImport/types'
 import { NoGpsTray } from './components/NoGpsTray'
@@ -798,15 +798,19 @@ function App() {
     const features: any[] = []
     if (markers.length) {
       const markerFeatures = markers.map(m => {
+        // Name part: the custom name (displayName) when set, with the original
+        // camera filename in parentheses so the photo stays identifiable —
+        // e.g. "TP1 (DSC_0123.JPG)". No custom name → just the filename.
+        const namePart = m.displayName ? `${m.displayName} (${m.name})` : m.name
         // Feedback 2026-04-18: drop the " - photo" fallback suffix — readers asked
-        // for clean label-only names. Keep the filename only when the user supplied one.
-        const displayName = m.label && m.name
-          ? `${m.label} - ${m.name}`
-          : (m.label || m.name || '')
+        // for clean label-only names. Prefix the competition label when present.
+        const placeName = m.label && namePart
+          ? `${m.label} - ${namePart}`
+          : (m.label || namePart || '')
         return {
           type: 'Feature',
           properties: {
-            name: displayName,
+            name: placeName,
             role: 'track_photos',
             label: m.label || undefined
           },
@@ -1348,9 +1352,15 @@ function App() {
         <DialogContentText>
           {t('photo.deleteConfirm.body', {
             name: pendingDeletePhoto
-              ? (markers.find(m => m.photoId === pendingDeletePhoto)?.name
-                  ?? (session?.noGpsPhotos ?? []).find(p => p.photoId === pendingDeletePhoto)?.filename
-                  ?? pendingDeletePhoto)
+              ? (() => {
+                  // Resolve the display name at render time so a rename made
+                  // between X-click and confirm surfaces the right label.
+                  const m = markers.find(m => m.photoId === pendingDeletePhoto)
+                  if (m) return photoMarkerDisplayName(m)
+                  const p = (session?.noGpsPhotos ?? []).find(p => p.photoId === pendingDeletePhoto)
+                  if (p) return noGpsPhotoDisplayName(p)
+                  return pendingDeletePhoto
+                })()
               : '',
           })}
         </DialogContentText>

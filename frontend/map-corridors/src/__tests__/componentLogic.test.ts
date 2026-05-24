@@ -21,33 +21,36 @@ describe('NoGpsTray — drag contract', () => {
   })
 })
 
-describe('compareNoGpsPhotos — sort order', () => {
-  it('orders timestamped entries ASC by timestamp', () => {
+describe('compareNoGpsPhotos — sort order (filename primary, timestamp tie-break)', () => {
+  // User feedback 2026-05-17: order by ORIGINAL filename so a rename (which
+  // only sets displayName) never moves a photo. Timestamp is now only a
+  // tie-break for identical filenames.
+  it('orders by filename ASC even when the timestamp order disagrees', () => {
+    // a.jpg was captured LATER than b.jpg — filename must still win.
     const sorted = [
-      ngp({ photoId: 'b', filename: 'b.jpg', timestamp: '2024-02-01T00:00:00Z' }),
-      ngp({ photoId: 'a', filename: 'a.jpg', timestamp: '2024-01-01T00:00:00Z' }),
+      ngp({ photoId: 'b', filename: 'b.jpg', timestamp: '2024-01-01T00:00:00Z' }),
+      ngp({ photoId: 'a', filename: 'a.jpg', timestamp: '2024-02-01T00:00:00Z' }),
     ].sort(compareNoGpsPhotos).map(p => p.photoId)
     expect(sorted).toEqual(['a', 'b'])
   })
 
-  it('places entries without timestamp at the end', () => {
+  it('is numeric-aware: IMG_9 sorts before IMG_10', () => {
     const sorted = [
-      ngp({ photoId: 'noTs', filename: 'no.jpg' }),
-      ngp({ photoId: 'withTs', filename: 'with.jpg', timestamp: '2024-01-01T00:00:00Z' }),
+      ngp({ photoId: 'ten', filename: 'IMG_10.jpg' }),
+      ngp({ photoId: 'nine', filename: 'IMG_9.jpg' }),
     ].sort(compareNoGpsPhotos).map(p => p.photoId)
-    expect(sorted).toEqual(['withTs', 'noTs'])
+    expect(sorted).toEqual(['nine', 'ten'])
   })
 
-  it('tie-breaks alphabetically by filename when timestamps are equal', () => {
-    const t = '2024-01-01T00:00:00Z'
+  it('tie-breaks by timestamp when filenames are identical', () => {
     const sorted = [
-      ngp({ photoId: 'z', filename: 'z.jpg', timestamp: t }),
-      ngp({ photoId: 'a', filename: 'a.jpg', timestamp: t }),
+      ngp({ photoId: 'late', filename: 'same.jpg', timestamp: '2024-02-01T00:00:00Z' }),
+      ngp({ photoId: 'early', filename: 'same.jpg', timestamp: '2024-01-01T00:00:00Z' }),
     ].sort(compareNoGpsPhotos).map(p => p.photoId)
-    expect(sorted).toEqual(['a', 'z'])
+    expect(sorted).toEqual(['early', 'late'])
   })
 
-  it('tie-breaks alphabetically when BOTH lack a timestamp', () => {
+  it('orders by filename even when entries lack a timestamp', () => {
     const sorted = [
       ngp({ photoId: 'z', filename: 'z.jpg' }),
       ngp({ photoId: 'a', filename: 'a.jpg' }),

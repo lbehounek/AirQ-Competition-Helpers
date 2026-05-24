@@ -868,7 +868,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           >
             <PhotoMarkerPopup
               photoId={marker.photoId}
-              filename={marker.name}
+              filename={marker.displayName ?? marker.name}
+              originalFilename={marker.displayName ? marker.name : undefined}
               timestamp={marker.capturedAt.timestamp}
               storage={props.photoStorage}
               photosDir={props.photoDir}

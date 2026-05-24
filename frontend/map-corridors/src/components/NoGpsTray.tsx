@@ -9,24 +9,17 @@ import { Box, IconButton, Paper, Tooltip, Typography } from '@mui/material'
 import { Close, ExpandLess, ExpandMore } from '@mui/icons-material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import type { NoGpsPhoto } from '../types/markers'
+import { compareNoGpsPhotos, noGpsPhotoDisplayName } from '../types/markers'
 import { useI18n } from '../contexts/I18nContext'
 import { usePhotoThumbUrl } from './usePhotoThumbUrl'
 
 /** Drag type the map drop handler watches for. Public — MapProviderView imports this. */
 export const NO_GPS_PHOTO_DRAG_TYPE = 'application/x-airq-no-gps-photo'
 
-/**
- * Sort comparator for no-GPS tray entries. EXIF timestamp ASC; entries
- * without a timestamp sort to the end via the `'￿'` sentinel, then
- * tie-break alphabetically by filename. Exported for unit testing — a
- * typo flipping the order would otherwise ship silently.
- */
-export function compareNoGpsPhotos(a: NoGpsPhoto, b: NoGpsPhoto): number {
-  const ta = a.timestamp ?? '￿'
-  const tb = b.timestamp ?? '￿'
-  if (ta !== tb) return ta < tb ? -1 : 1
-  return a.filename.localeCompare(b.filename)
-}
+// The tray sort comparator now lives in `types/markers.ts` so the right-side
+// list (`groupPhotosByFlag`) shares the exact same tie-break order. Re-exported
+// here to keep existing importers (and `componentLogic.test.ts`) stable.
+export { compareNoGpsPhotos } from '../types/markers'
 
 const TRAY_HEIGHT_PX = 116        // 80px thumb + chrome, under the 120px ADR-012 cap
 const THUMB_WIDTH_PX = 96         // 4:3 thumbs in horizontal scroll
@@ -119,6 +112,9 @@ function NoGpsTrayThumb(props: {
 }) {
   const { photo, storage, photosDir, dragHint, onDelete, deleteTooltip } = props
   const { url, state } = usePhotoThumbUrl(storage, photosDir, photo.photoId)
+  // Custom name when set, else the camera filename — shown in the tooltip,
+  // a11y labels, and the no-thumb placeholder.
+  const label = noGpsPhotoDisplayName(photo)
 
   return (
     // Outer wrapper hosts the absolute-positioned delete badge; the inner
@@ -131,11 +127,11 @@ function NoGpsTrayThumb(props: {
         '&:hover .nogps-thumb-delete': { opacity: 1 },
       }}
     >
-      <Tooltip title={`${photo.filename} — ${dragHint}`} placement="top" enterDelay={300}>
+      <Tooltip title={`${label} — ${dragHint}`} placement="top" enterDelay={300}>
         <Box
           draggable
           role="img"
-          aria-label={`${photo.filename}. ${dragHint}.`}
+          aria-label={`${label}. ${dragHint}.`}
           onDragStart={(e: React.DragEvent) => {
             e.dataTransfer.setData(NO_GPS_PHOTO_DRAG_TYPE, photo.photoId)
             e.dataTransfer.effectAllowed = 'move'
@@ -157,14 +153,14 @@ function NoGpsTrayThumb(props: {
           {state === 'ready' && url && (
             <img
               src={url}
-              alt={photo.filename}
+              alt={label}
               draggable={false}
               style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', pointerEvents: 'none' }}
             />
           )}
           {state !== 'ready' && (
             <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10, px: 0.5, textAlign: 'center' }}>
-              {photo.filename}
+              {label}
             </Typography>
           )}
         </Box>

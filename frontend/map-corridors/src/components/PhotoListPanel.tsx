@@ -21,6 +21,7 @@ import {
 import { Check, ChevronLeft, ChevronRight, Close, EditOutlined, ExpandLess, ExpandMore, SendOutlined } from '@mui/icons-material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import type { NoGpsPhoto, PhotoMarker } from '../types/markers'
+import { noGpsPhotoDisplayName, photoMarkerDisplayName } from '../types/markers'
 import { useI18n } from '../contexts/I18nContext'
 import { usePhotoThumbUrl } from './usePhotoThumbUrl'
 import { groupPhotosByFlag } from './groupPhotosByFlag'
@@ -51,11 +52,12 @@ export interface PhotoListPanelProps {
   /**
    * User feedback 2026-05-17: organisers want to rename camera-assigned
    * filenames (e.g. `DSC_0123.JPG`) to something workflow-meaningful
-   * (e.g. `TP1`). Persists to `marker.name` (GPS path) or
-   * `noGpsPhoto.filename` (no-GPS path). The new name flows downstream to
-   * KML export and to `map-picks.json` (via `entry.filename`), so
-   * Photo Helper sees the same custom name on its candidate tile without
-   * any wire-schema change.
+   * (e.g. `TP1`). Persists to the `displayName` field (on `marker` or
+   * `noGpsPhoto`) WITHOUT overwriting the original filename — that stays as
+   * the list/tray sort key. The custom name flows downstream to KML export
+   * and to `map-picks.json` (via `entry.filename = displayName ?? name`), so
+   * Photo Helper sees the custom name on its candidate tile without any
+   * wire-schema change.
    */
   onPhotoRename: (photoId: string, newName: string) => void | Promise<void>
 }
@@ -222,7 +224,8 @@ function renderGroupItems(
       <PhotoListItem
         key={p.photoId}
         photoId={p.photoId}
-        filename={p.filename}
+        displayName={noGpsPhotoDisplayName(p)}
+        originalFilename={p.filename}
         storage={ctx.storage}
         photosDir={ctx.photosDir}
         // No marker yet — clicking is a no-op for v1. User drags from tray.
@@ -238,7 +241,8 @@ function renderGroupItems(
     <PhotoListItem
       key={m.id}
       photoId={m.photoId!}
-      filename={m.name}
+      displayName={photoMarkerDisplayName(m)}
+      originalFilename={m.name}
       storage={ctx.storage}
       photosDir={ctx.photosDir}
       onClick={() => ctx.onMarkerClick(m.id)}
@@ -256,9 +260,11 @@ function renderGroupItems(
  *
  *  - Trim leading/trailing whitespace.
  *  - Empty (after trim) → reject (return null). Caller treats null as
- *    "cancel without saving" so the previous filename is kept.
- *  - Identical to current filename → return null (no-op, don't write).
- *  - Otherwise return the normalised string.
+ *    "cancel without saving" so the previous name is kept.
+ *  - Identical to the current display value → return null (no-op, don't write).
+ *  - Otherwise return the normalised string. (Reverting to the original
+ *    filename is handled downstream in `computeRenamedPhoto`, which clears the
+ *    custom name; here it's just another non-empty value to pass through.)
  *
  * The cap (`MAX_LEN`) guards against the user pasting a 100 KB blob into
  * the inline field — OPFS handles long strings but the UI doesn't.
@@ -272,7 +278,10 @@ export function normalizeRename(draft: string, current: string, maxLen = 200): s
 
 function PhotoListItem(props: {
   photoId: string
-  filename: string
+  /** Custom name if set, else the original filename — the primary label + edit seed. */
+  displayName: string
+  /** Original camera filename. Shown as a secondary line only when renamed. */
+  originalFilename: string
   storage: StorageInterface | null
   photosDir: DirectoryHandle | null
   onClick: (() => void) | undefined
@@ -284,22 +293,25 @@ function PhotoListItem(props: {
   renameSaveAria: string
 }) {
   const {
-    photoId, filename, storage, photosDir, onClick, onDelete, deleteTooltip,
+    photoId, displayName, originalFilename, storage, photosDir, onClick, onDelete, deleteTooltip,
     onRename, renameTooltip, renamePlaceholder, renameSaveAria,
   } = props
   const { url, state } = usePhotoThumbUrl(storage, photosDir, photoId)
   const [editing, setEditing] = useState(false)
-  // `draft` is the in-progress text. Seeded with the current filename on
+  // `draft` is the in-progress text. Seeded with the current display value on
   // every entry into edit mode so a previous cancel doesn't leak into the
   // next session.
-  const [draft, setDraft] = useState(filename)
+  const [draft, setDraft] = useState(displayName)
+  // Show the camera filename underneath only when a custom name is in effect —
+  // otherwise the row would print the same string twice.
+  const showOriginal = displayName !== originalFilename
 
   const beginEdit = () => {
-    setDraft(filename)
+    setDraft(displayName)
     setEditing(true)
   }
   const commit = () => {
-    const next = normalizeRename(draft, filename)
+    const next = normalizeRename(draft, displayName)
     setEditing(false)
     if (next !== null) void onRename(photoId, next)
   }
@@ -346,7 +358,7 @@ function PhotoListItem(props: {
           {state === 'ready' && url && (
             <img
               src={url}
-              alt={filename}
+              alt={displayName}
               draggable={false}
               style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
             />
@@ -384,8 +396,12 @@ function PhotoListItem(props: {
           />
         ) : (
           <ListItemText
-            primary={filename}
+            primary={displayName}
+            // Original camera filename underneath, but only when renamed —
+            // gives the user the workflow name (TP1) AND the camera reference.
+            secondary={showOriginal ? originalFilename : undefined}
             primaryTypographyProps={{ variant: 'body2', noWrap: true, sx: { fontSize: 12 } }}
+            secondaryTypographyProps={{ variant: 'caption', noWrap: true, sx: { fontSize: 10 } }}
           />
         )}
       </ListItemButton>

@@ -10,6 +10,21 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.15.0] - 2026-05-24
+
+### Changed
+- **Map Corridors:** renaming an imported photo now keeps the original camera
+  filename instead of overwriting it. The custom name (e.g. `TP1`) shows as the
+  primary label in the photo list, marker popup, KML export and the Photo
+  Helper tile, while the original filename (`DSC_0123.JPG`) is preserved
+  underneath. KML `<name>` becomes `TP1 (DSC_0123.JPG)`. Reported by Martin
+  Hrivna 2026-05-17.
+- **Map Corridors:** the right-side photo list and the no-GPS tray are now
+  ordered by the original camera filename (numeric-aware, so `IMG_9` precedes
+  `IMG_10`). Because ordering keys on the immutable filename, renaming a photo
+  no longer moves it — previously the no-GPS tray re-sorted on the new name.
+  Capture time becomes the tie-break for identical filenames.
+
 ## [2.13.6] - 2026-05-17
 
 ### Changed
