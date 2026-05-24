@@ -10,6 +10,38 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.13.3] - 2026-05-17
+
+### Fixed
+- **Map Corridors → Photo Helper handoff (round 2):** "Poslat do editoru
+  (N)" now actually transfers only the N picks shown in the button
+  count, not the entire marker set. Reported by Martin Hrivna after
+  2.13.2 testing: with 4 photos and 2 flagged, all 4 were arriving in
+  the editor. Fix filters `buildMapPicks` to `flag === 'pick'`; the
+  cleanup pass in `useMapPicksSync` then drops a photo from the editor
+  whenever it's un-picked on the corridor side.
+- **Photo Helper:** deleting a `pm-`-prefixed candidate (i.e., one
+  pushed in from Map Corridors) no longer destroys the underlying OPFS
+  file. The bytes live under the shared `competitions/{compId}/photos/`
+  directory and Map Corridors needs them to re-serve the photo on the
+  next handoff. Symptom pre-fix: delete in editor + re-Send → silent
+  skip → "nepropíše se žádná". Map Corridors' photo-list X button
+  remains the canonical place for permanent pm- deletion.
+
+## [2.13.2] - 2026-05-16
+
+### Fixed
+- **Photo Helper:** map → editor handoff now lands all selected photos
+  instead of just the last one. Reported by Martin Hrivna: selecting 3
+  photos in Map Corridors and clicking "Poslat do editoru (3)" delivered
+  only the last one, with the remainder appearing one-per-minimize cycle
+  thereafter. Root cause was a stale-closure read of `currentCompetition`
+  inside `updateCurrentCompetition`; sequential `addExistingCandidate`
+  calls during `syncMapPicksOnce` each rebuilt their update on the same
+  pre-update snapshot, so `setCurrentCompetition`'s last-write-wins
+  dropped the earlier inserts. Fixed by routing the read through a
+  synchronously-updated ref so chained async calls see prior updates.
+
 ## [2.8.3] - 2026-05-06
 
 ### Fixed

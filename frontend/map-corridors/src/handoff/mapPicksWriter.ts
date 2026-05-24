@@ -67,12 +67,29 @@ export function buildMapPickEntry(marker: PhotoMarker): MapPickEntry | null {
 }
 
 /**
- * Project an array of PhotoMarkers, skipping non-photo entries. Used by
- * both App.tsx (scheduling writes) and tests.
+ * Project an array of PhotoMarkers, skipping non-photo entries AND
+ * non-pick flags. User feedback 2026-05-17 (Martin Hrivna) flagged the
+ * UX mismatch: the footer button reads "Poslat do editoru (N)" with
+ * N = picks.length, but the writer used to emit every marker regardless
+ * of flag, so the editor received all photos. The fix aligns wire
+ * behavior with the visible count — only photos the user has flagged
+ * as `pick` are crossed over to photo-helper.
+ *
+ * Consequences:
+ *  - Unpicking in map-corridors removes the entry from the file; the
+ *    photo-helper `syncMapPicksOnce` cleanup pass then removes the
+ *    candidate from the editor pool. "Unpick" becomes the natural
+ *    "remove from editor" verb without needing an extra UI.
+ *  - Reject / neutral flag state is preserved purely on the corridor
+ *    side (PhotoMarker.flag) — the wire file is now a transport for
+ *    PICKS only, not a general flag-state mirror.
+ *
+ * Used by both App.tsx (scheduling writes) and tests.
  */
 export function buildMapPicks(markers: readonly PhotoMarker[]): MapPickEntry[] {
   const out: MapPickEntry[] = []
   for (const m of markers) {
+    if (m.flag !== 'pick') continue
     const entry = buildMapPickEntry(m)
     if (entry) out.push(entry)
   }
