@@ -36,9 +36,9 @@
       "noCompetition": "Open a competition from the launcher before importing photos"
     },
     "popup": {
-      "include": "Include",
-      "skip": "Skip",
-      "reject": "Reject",
+      "include": "Picked",
+      "skip": "Neutral",
+      "reject": "Rejected",
       "thumbMissing": "Thumbnail unavailable",
       "label": "Label",
       "labelSet": "Set label",

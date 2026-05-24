@@ -6,6 +6,7 @@ import type { LngLatBoundsLike, LngLatLike, StyleSpecification } from 'mapbox-gl
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useI18n } from '../contexts/I18nContext'
 import { shouldClearActivePhoto } from '../activePhoto/activePhoto'
+import { isPhotoMarkerVisible } from './photoLayers/markerVisibility'
 import { captureMapForPrint } from '../utils/mapCapture'
 import type { PrintCaptureResult } from '../utils/mapCapture'
 import type { PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
@@ -645,7 +646,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           Rejected photos (flag='reject') are hidden from the map
           entirely — they remain in the list's "Odmítnuté" group as the
           undo path. Variant resolution (Phase 12) reuses this. */}
-      {props.markers?.filter(m => !!m.photoId && m.flag !== 'reject').map(m => {
+      {props.markers?.filter(isPhotoMarkerVisible).map(m => {
         const moved = !!m.capturedAt && (m.lng !== m.capturedAt.lng || m.lat !== m.capturedAt.lat)
         // Yellow = "labelled, answer-sheet ready" — matches the KML
         // marker color so a user scanning the map sees one consistent
