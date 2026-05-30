@@ -54,3 +54,11 @@ overrides:
   # spanAll/parseMessage), so real-world exposure here is zero — the
   # override is defense-in-depth + cleans the Dependabot alert.
   'ip-address@<10.1.1': '^10.1.1'
+  # CVE-2026-44705 / GHSA-ph9p-34f9-6g65 — path traversal in `tmp` via
+  # unsanitized prefix/postfix/dir options (directory escape). Patched in
+  # 0.2.6. Pulled in transitively (dev only) via electron-builder →
+  # app-builder-lib → @malept/flatpak-bundler → tmp-promise; it runs at
+  # package-build time with internal static values, never user input, so
+  # real-world exposure is nil — the override is defense-in-depth + clears
+  # the Dependabot alert.
+  'tmp@<0.2.6': '^0.2.6'
