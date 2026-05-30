@@ -127,6 +127,16 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
 
   const mapRef = useRef<MapRef | null>(null)
   const [isMapLoaded, setIsMapLoaded] = useState(false)
+  // Live map bearing (degrees). Kept in sync via onMove so the reset-to-north
+  // compass can rotate its needle and hide itself once the map is north-up.
+  const [bearing, setBearing] = useState(0)
+  const isRotated = Math.abs(((bearing % 360) + 360) % 360) > 0.5
+  // Google-Earth-style "reset to north": animate bearing back to 0. easeTo
+  // picks the shortest rotation path automatically. Shared by the compass
+  // button and the `N` shortcut below.
+  const resetNorth = useCallback(() => {
+    mapRef.current?.getMap()?.easeTo({ bearing: 0, duration: 400 })
+  }, [])
   const [confirmDeleteForId, setConfirmDeleteForId] = useState<string | null>(null)
   // Phase 5/13: which photo marker has its popup open. Lifted to App (Phase
   // 13) so the side panel can highlight the same photo — this component is now
@@ -150,6 +160,23 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     markers: props.markers,
     draggingMarkerId: draggingPhotoMarkerId,
   })
+  // `N` resets the map to north (Google-Earth style). Suppressed while typing
+  // in a field (marker-name inputs live in popups) and for modifier combos
+  // (e.g. Ctrl/Cmd+N "new window").
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const el = e.target as HTMLElement | null
+      const tag = el?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || el?.isContentEditable) return
+      e.preventDefault()
+      resetNorth()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [resetNorth])
+
   // Attach native DnD listeners on the canvas to support custom marker drops
   useEffect(() => {
     if (!isMapLoaded || !mapRef.current) return
@@ -421,6 +448,13 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}
       onLoad={() => setIsMapLoaded(true)}
+      // Keep the local bearing in sync so the reset-to-north compass can rotate
+      // its needle and show/hide itself. Bail when the rounded value is
+      // unchanged to avoid a re-render on every drag-rotate frame.
+      onMove={(e) => {
+        const b = e.viewState.bearing ?? 0
+        setBearing(prev => (Math.round(prev) === Math.round(b) ? prev : b))
+      }}
       ref={mapRef}
     >
       {geojsonOverlays?.map((ov) => (
@@ -1071,6 +1105,34 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           </React.Fragment>
         )
       })()}
+      {/* Reset-to-north compass — appears only when the map is rotated. The
+          needle rotates by -bearing so "N" keeps pointing at true north as the
+          map turns; clicking eases the bearing back to 0 (so does the N key). */}
+      {isRotated && (
+        <button
+          type="button"
+          onClick={resetNorth}
+          aria-label={t('photo.map.resetNorth')}
+          title={t('photo.map.resetNorthTooltip')}
+          style={{
+            position: 'absolute', top: 12, left: 12, zIndex: 25,
+            width: 40, height: 40, borderRadius: '50%', border: 'none',
+            background: 'rgba(33,33,33,0.94)', color: '#fff', cursor: 'pointer',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 0,
+          }}
+        >
+          <span style={{
+            display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
+            transform: `rotate(${-bearing}deg)`, transition: 'transform 120ms linear',
+            lineHeight: 1,
+          }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#ff5252' }}>N</span>
+            <span style={{ fontSize: 14, marginTop: -2 }}>▲</span>
+          </span>
+        </button>
+      )}
     </MapGL>
   )
 })

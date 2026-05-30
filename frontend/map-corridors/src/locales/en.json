@@ -47,6 +47,10 @@
       "labelSet": "Set label",
       "labelUsed": "Already used"
     },
+    "map": {
+      "resetNorth": "Reset map to north",
+      "resetNorthTooltip": "Reset map to north (N)"
+    },
     "preview": {
       "title": "Photo",
       "close": "Close",
