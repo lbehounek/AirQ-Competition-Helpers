@@ -448,6 +448,41 @@ function AppApi() {
     await promoteCandidateToSlot(photoId, setKey, slotIndex);
   };
 
+  // "Send to TP photos": route a tray candidate into the turning-point set.
+  // There is no always-on TP container — turning-point photos ARE set1/set2
+  // while the editor is in turning-point mode. So: if already in TP mode, place
+  // directly; otherwise switch mode first and let the effect below finish the
+  // placement once `session.mode` has actually flipped (updateSessionMode is
+  // async and persistAndSet-based, so promoteCandidateToSlot can't be chained
+  // synchronously without a stale-session closure). Reuses the existing tested
+  // promote path — no new session-mutation logic.
+  const [pendingTPSend, setPendingTPSend] = useState<string | null>(null);
+
+  const handleSendCandidateToTP = async (photoId: string) => {
+    if (!session) return;
+    if (session.mode === 'turningpoint') {
+      await handleSendCandidateToSet(photoId, 'set1');
+      return;
+    }
+    setPendingTPSend(photoId);
+    if (updateSessionMode) await updateSessionMode('turningpoint');
+  };
+
+  useEffect(() => {
+    if (!pendingTPSend) return;
+    if (session?.mode !== 'turningpoint') return;
+    const photoId = pendingTPSend;
+    setPendingTPSend(null);
+    // Only place if the candidate is still in the pool (it may have been moved
+    // or deleted between the mode switch and this effect firing).
+    if (session.candidates?.photos?.some(p => p.id === photoId)) {
+      void handleSendCandidateToSet(photoId, 'set1');
+    }
+  // handleSendCandidateToSet closes over the fresh post-switch session; keying
+  // on session.mode + pendingTPSend is the intended trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.mode, pendingTPSend]);
+
   const handlePhotoUpdate = (setKey: 'set1' | 'set2' | 'candidates', photoId: string, canvasState: Partial<ApiPhoto['canvasState']>) => {
     // Dispatch to the right backend method — slot photos go through
     // updatePhotoState, candidates through updateCandidatePhotoState. The

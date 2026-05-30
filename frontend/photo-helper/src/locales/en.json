@@ -21,7 +21,7 @@
         "description": "Standard"
       },
       "4:3": {
-        "name": "4:3", 
+        "name": "4:3",
         "description": "Classic"
       },
       "16:9": {
@@ -39,7 +39,7 @@
       "tooltip": "Landscape layout with 9 photos per page"
     },
     "portrait": {
-      "name": "Portrait", 
+      "name": "Portrait",
       "short": "2×5",
       "description": "10 photos (2×5 grid)",
       "tooltip": "Portrait layout with 10 photos per page"
@@ -60,7 +60,7 @@
         "description": "A, B, C..."
       },
       "numbers": {
-        "name": "Numbers", 
+        "name": "Numbers",
         "description": "1, 2, 3..."
       }
     }
@@ -72,7 +72,7 @@
       "description": "Standard navigation flight photos with randomizable order"
     },
     "turningpoint": {
-      "name": "Turning Point Photos", 
+      "name": "Turning Point Photos",
       "description": "Sequential turning point photos (SP, TP1-TPx, FP)"
     }
   },
@@ -105,8 +105,7 @@
       "message": "Are you sure you want to delete \"{{name}}\"?",
       "warning": "This action cannot be undone. All photos and settings will be permanently deleted.",
       "confirm": "Delete Competition"
-    }
-    ,
+    },
     "helper": {
       "leaveEmptyForDefault": "Leave empty to use default naming"
     },
@@ -132,7 +131,7 @@
   },
   "upload": {
     "dragDrop": "Drag & drop photos here",
-    "browse": "or click to browse files", 
+    "browse": "or click to browse files",
     "supported": "Supported: JPEG, PNG (max {{maxSize}}MB each)",
     "clickOrDrop": "Click, drop, or paste (Ctrl+V) images",
     "dropImages": "Drop images here",
@@ -172,7 +171,7 @@
   "controls": {
     "imageAdjustments": "Image Adjustments",
     "brightness": "Brightness",
-    "contrast": "Contrast", 
+    "contrast": "Contrast",
     "sharpness": "Sharpness",
     "whiteBalance": "White Balance",
     "temperature": "Blue ↔ Yellow",
@@ -184,7 +183,7 @@
     "resetAll": "Reset All",
     "preview": "Preview",
     "resetBrightness": "Reset brightness",
-    "resetContrast": "Reset contrast", 
+    "resetContrast": "Reset contrast",
     "resetSharpness": "Reset sharpness",
     "zoom": "Zoom",
     "basicColor": "Basic Color",
@@ -206,7 +205,7 @@
       "radius": "Radius",
       "color": "Color",
       "white": "White",
-      "red": "Red", 
+      "red": "Red",
       "yellow": "Yellow",
       "removeCircle": "Remove Circle"
     }
@@ -240,8 +239,7 @@
   },
   "storage": {
     "warning": "Storage free: {{percent}}% · Used {{used}} / Quota {{quota}}",
-    "recheck": "Recheck"
-    ,
+    "recheck": "Recheck",
     "status": {
       "critical": "Critical storage usage: {{percent}}%. Consider cleaning up old competitions.",
       "high": "High storage usage: {{percent}}%. You may want to clean up old competitions soon.",
@@ -312,6 +310,7 @@
     },
     "sendToSet1": "Send to Set 1",
     "sendToSet2": "Send to Set 2",
+    "sendToTP": "Send to TP photos",
     "cleanup": {
       "title": "Delete unused candidates?",
       "message": "You have {{count}} candidate photos that aren't in the final set. Delete them to free ~{{size}} MB of storage?",

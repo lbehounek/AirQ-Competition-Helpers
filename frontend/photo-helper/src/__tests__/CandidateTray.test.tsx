@@ -190,6 +190,21 @@ describe('CandidateTray — populated state', () => {
     expect(onSendToSet).toHaveBeenCalledWith('photo-X', 'set1');
   });
 
+  // "Send to TP photos" — only rendered when onSendToTP is provided (AppApi
+  // passes it in track mode; in turning-point mode set1/set2 are already TP).
+  it('does not render the "Send to TP" button when onSendToTP is absent', () => {
+    renderTray({ photos: [p('photo-X')] });
+    expect(screen.queryByLabelText('candidates.sendToTP')).not.toBeInTheDocument();
+  });
+
+  it('fires onSendToTP when the "Send to TP" toolbar button is clicked', () => {
+    const onSendToTP = vi.fn();
+    renderTray({ photos: [p('photo-X')], onSendToTP });
+    const tpButtons = screen.getAllByLabelText('candidates.sendToTP');
+    fireEvent.click(tpButtons[tpButtons.length - 1]);
+    expect(onSendToTP).toHaveBeenCalledWith('photo-X');
+  });
+
   // Per-thumb star (pick) / block (reject) buttons are intentionally hidden
   // (SHOW_CANDIDATE_FLAG_UI = false) — that selection workflow moved to the Map
   // Corridors app (feedback 2026-05-30). onSetFlag remains on the props so the

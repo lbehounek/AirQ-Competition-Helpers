@@ -21,7 +21,7 @@
         "description": "Standardní"
       },
       "4:3": {
-        "name": "4:3", 
+        "name": "4:3",
         "description": "Klasický"
       },
       "16:9": {
@@ -39,7 +39,7 @@
       "tooltip": "Rozložení na šířku s 9 fotkami na stránku"
     },
     "portrait": {
-      "name": "Na výšku", 
+      "name": "Na výšku",
       "short": "2×5",
       "description": "10 fotek (mřížka 2×5)",
       "tooltip": "Rozložení na výšku s 10 fotkami na stránku"
@@ -60,7 +60,7 @@
         "description": "A, B, C..."
       },
       "numbers": {
-        "name": "Čísla", 
+        "name": "Čísla",
         "description": "1, 2, 3..."
       }
     }
@@ -72,7 +72,7 @@
       "description": "Standardní fotky navigačního letu s možností náhodného pořadí"
     },
     "turningpoint": {
-      "name": "Fotky otočných bodů", 
+      "name": "Fotky otočných bodů",
       "description": "Sekvenční fotky otočných bodů (SP, TP1-TPx, FP)"
     }
   },
@@ -105,8 +105,7 @@
       "message": "Opravdu chcete smazat \"{{name}}\"?",
       "warning": "Tuto akci nelze vrátit zpět. Všechny fotografie a nastavení budou trvale smazány.",
       "confirm": "Smazat soutěž"
-    }
-    ,
+    },
     "helper": {
       "leaveEmptyForDefault": "Ponechte prázdné pro výchozí pojmenování"
     },
@@ -125,7 +124,7 @@
   },
   "sets": {
     "set1": "Sada 1",
-    "set2": "Sada 2", 
+    "set2": "Sada 2",
     "title": {
       "placeholder": "Zadejte název pro {{setName}}..."
     }
@@ -172,7 +171,7 @@
   "controls": {
     "imageAdjustments": "Úpravy obrázku",
     "brightness": "Jas",
-    "contrast": "Kontrast", 
+    "contrast": "Kontrast",
     "sharpness": "Ostrost",
     "whiteBalance": "Vyvážení bílé",
     "temperature": "Modrá ↔ Žlutá",
@@ -184,7 +183,7 @@
     "resetAll": "Obnovit vše",
     "preview": "Náhled",
     "resetBrightness": "Obnovit jas",
-    "resetContrast": "Obnovit kontrast", 
+    "resetContrast": "Obnovit kontrast",
     "resetSharpness": "Obnovit ostrost",
     "zoom": "Přiblížení",
     "basicColor": "Základní barvy",
@@ -239,8 +238,7 @@
   },
   "storage": {
     "warning": "Volné místo: {{percent}}% · Využito {{used}} / Kvóta {{quota}}",
-    "recheck": "Znovu zkontrolovat"
-    ,
+    "recheck": "Znovu zkontrolovat",
     "status": {
       "critical": "Kritické využití úložiště: {{percent}}%. Zvažte vyčištění starých soutěží.",
       "high": "Vysoké využití úložiště: {{percent}}%. Zvažte brzké vyčištění starých soutěží.",
@@ -311,6 +309,7 @@
     },
     "sendToSet1": "Přesunout do sady 1",
     "sendToSet2": "Přesunout do sady 2",
+    "sendToTP": "Poslat do TP fotek",
     "cleanup": {
       "title": "Smazat nepoužité kandidáty?",
       "message": "Máte {{count}} kandidátských fotografií, které nejsou v žádné sadě. Smazat je a uvolnit přibližně {{size}} MB úložiště?",

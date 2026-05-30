@@ -52,6 +52,14 @@ export interface CandidateTrayProps {
   onDelete: (photoId: string) => void;
   onSendToSet: (photoId: string, setKey: 'set1' | 'set2') => void;
   /**
+   * Send a candidate to the turning-point ("TP photos") set. When provided, a
+   * dedicated TP button shows on each thumb. AppApi switches the editor to
+   * turning-point mode and places the photo there. Omitted (undefined) when
+   * already in turning-point mode — set1/set2 are the TP photos then, so the
+   * extra button would be redundant.
+   */
+  onSendToTP?: (photoId: string) => void;
+  /**
    * Called when a slot photo is dropped into the tray. Receives the parsed
    * dataTransfer payload. If the payload is a slot drop, AppApi demotes it.
    */
@@ -70,6 +78,7 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
   onSetFlag,
   onDelete,
   onSendToSet,
+  onSendToTP,
   onSlotDroppedIn,
   hideSet2,
 }) => {
@@ -311,6 +320,7 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
               onSetFlag={(flag) => onSetFlag(photo.id, flag)}
               onDelete={() => onDelete(photo.id)}
               onSendToSet={(setKey) => onSendToSet(photo.id, setKey)}
+              onSendToTP={onSendToTP ? () => onSendToTP(photo.id) : undefined}
             />
           ))}
           {visiblePhotos.length === 0 && (
@@ -359,6 +369,7 @@ interface CandidateThumbProps {
   onSetFlag: (flag: CandidateFlag) => void;
   onDelete: () => void;
   onSendToSet: (setKey: 'set1' | 'set2') => void;
+  onSendToTP?: () => void;
 }
 const CandidateThumb: React.FC<CandidateThumbProps> = ({
   photo,
@@ -368,6 +379,7 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
   onSetFlag,
   onDelete,
   onSendToSet,
+  onSendToTP,
 }) => {
   const theme = useTheme();
   const { t } = useI18n();
@@ -518,6 +530,15 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
               <KeyboardDoubleArrowRight sx={{ fontSize: 14 }} />2
             </Box>,
             () => onSendToSet('set2'),
+          )}
+          {onSendToTP && tbBtn(
+            t('candidates.sendToTP'),
+            false,
+            'primary',
+            <Box sx={{ display: 'flex', alignItems: 'center', fontSize: 11, fontWeight: 700 }}>
+              <KeyboardDoubleArrowRight sx={{ fontSize: 14 }} />TP
+            </Box>,
+            () => onSendToTP(),
           )}
           {tbBtn(
             t('common.delete'),
