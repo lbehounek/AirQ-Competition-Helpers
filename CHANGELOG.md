@@ -10,6 +10,23 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.19.0] - 2026-05-30
+
+### Added
+- **Map Corridors:** double-click a photo to open a full-resolution preview
+  (single-photo lightbox). Works on the thumbnail inside a map dot's popup and
+  on a photo row in the right-side panel — press Esc or click outside to close.
+- **Map Corridors:** photos taken at the same or a nearby point no longer stack
+  into one unclickable blob. Overlapping dots now automatically fan out into a
+  small circle around their shared location, with thin leader lines tying each
+  one back to the spot, so every photo stays individually clickable. The fan
+  recomputes as you zoom and pan, and collapses once the dots are far enough
+  apart on their own.
+
+### Changed
+- **Desktop launcher:** the app now opens maximised (filling the screen) on
+  every launch instead of a fixed-size window.
+
 ## [2.18.0] - 2026-05-24
 
 ### Added

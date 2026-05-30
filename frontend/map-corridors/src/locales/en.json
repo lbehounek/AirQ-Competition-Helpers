@@ -44,6 +44,12 @@
       "labelSet": "Set label",
       "labelUsed": "Already used"
     },
+    "preview": {
+      "title": "Photo",
+      "close": "Close",
+      "loading": "Loading photo…",
+      "missing": "Couldn't load photo"
+    },
     "tray": {
       "title": "No GPS ({{count}})",
       "dragHint": "Drag onto the map to place",

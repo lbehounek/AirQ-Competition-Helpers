@@ -12,6 +12,7 @@ import type { PrintCaptureResult } from '../utils/mapCapture'
 import type { PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
+import { useMarkerFan } from './photoLayers/useMarkerFan'
 import { PhotoMarkerPopup } from '../components/PhotoMarkerPopup'
 import { NO_GPS_PHOTO_DRAG_TYPE } from '../components/NoGpsTray'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
@@ -104,6 +105,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // `onActivePhotoMarkerChange`. `null` = no photo popup / nothing active.
   activePhotoMarkerId?: string | null
   onActivePhotoMarkerChange?: (id: string | null) => void
+  // Double-clicking the popup thumbnail opens the full-res single-photo
+  // preview. Receives the photoId (keyed the same as the panel rows).
+  onPhotoPreview?: (photoId: string) => void
   // Phase 14 — provisional placement of a no-GPS photo: a draggable pin at the
   // map center whose popup commits the photo to a chosen category. `null` =
   // no placement in progress.
@@ -131,6 +135,16 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   )
   const dragStartLngLatRef = useRef<Map<string, { lng: number, lat: number }>>(new Map())
   const dragMovedPxRef = useRef<Map<string, number>>(new Map())
+  // Auto-fan: which photo marker is mid-drag (excluded from fanning so its
+  // dot snaps to the cursor instead of sitting at its fan offset). `null` =
+  // none dragging. State (not a ref) so dropping its offset re-renders.
+  const [draggingPhotoMarkerId, setDraggingPhotoMarkerId] = useState<string | null>(null)
+  const photoFan = useMarkerFan({
+    mapRef,
+    isMapLoaded,
+    markers: props.markers,
+    draggingMarkerId: draggingPhotoMarkerId,
+  })
   // Attach native DnD listeners on the canvas to support custom marker drops
   useEffect(() => {
     if (!isMapLoaded || !mapRef.current) return
@@ -443,6 +457,23 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           photos the user has dragged (capturedAt ≠ lng/lat). Unmoved
           photos see only their live <Marker> pin. */}
       {props.markers && <CaptureDotsLayer markers={props.markers} />}
+      {/* Auto-fan leader lines: thin spokes from each overlapping cluster's
+          centroid out to the fanned dots, so a stack of photos at one point
+          reads as "these N belong here". Sits below the DOM markers (GL is
+          always under react-map-gl <Marker> elements), so no z-fighting. */}
+      {photoFan.leaders.features.length > 0 && (
+        <Source id="photo-fan-leaders" type="geojson" data={photoFan.leaders}>
+          <Layer
+            id="photo-fan-leaders"
+            type="line"
+            paint={{
+              'line-color': '#888888',
+              'line-width': 1,
+              'line-opacity': 0.7,
+            }}
+          />
+        </Source>
+      )}
       {/* KML / click-placed markers — existing render path. Photo
           markers (m.photoId !== undefined) are handled in the photo-
           pin block below to keep the click + popup semantics distinct
@@ -682,6 +713,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
             longitude={m.lng}
             latitude={m.lat}
             draggable
+            // Auto-fan: nudge overlapping markers apart by a pixel offset
+            // (anchor stays at the true lng/lat). Suppressed while THIS marker
+            // is being dragged so its dot tracks the cursor without a jump.
+            offset={draggingPhotoMarkerId === m.id ? undefined : photoFan.offsets.get(m.id)}
             style={isActive ? { zIndex: 2 } : undefined}
             onClick={(ev: MarkerEvent<MouseEvent>) => {
               const movedPx = dragMovedPxRef.current.get(m.id) || 0
@@ -696,6 +731,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               const ll = ev.lngLat
               dragStartLngLatRef.current.set(m.id, { lng: ll.lng, lat: ll.lat })
               dragMovedPxRef.current.set(m.id, 0)
+              setDraggingPhotoMarkerId(m.id)
             }}
             onDrag={(ev: MarkerDragEvent) => {
               const start = dragStartLngLatRef.current.get(m.id)
@@ -711,6 +747,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               const movedPx = dragMovedPxRef.current.get(m.id) || 0
               dragStartLngLatRef.current.delete(m.id)
               dragMovedPxRef.current.delete(m.id)
+              // Clear the drag exclusion; the fan recomputes for the new
+              // position (a marker drag fires no map `moveend`, so the hook's
+              // dependency on `draggingMarkerId` is what triggers the recompute).
+              setDraggingPhotoMarkerId(null)
               if (movedPx < 8) {
                 // Treated as click — open photo popup without moving.
                 setActivePhotoMarkerId(m.id)
@@ -898,11 +938,16 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         const marker = props.markers?.find(m => m.id === activePhotoMarkerId)
         if (!marker || !marker.capturedAt || !marker.photoId) return null
         const popupId = activePhotoMarkerId
+        // When the active marker is fanned, shift the popup by the same pixel
+        // offset so its tail points at the fanned dot the user clicked rather
+        // than the (now-empty) true GPS point under the cluster.
+        const fanOffset = photoFan.offsets.get(popupId)
         return (
           <Popup
             longitude={marker.lng}
             latitude={marker.lat}
             anchor="top"
+            offset={fanOffset}
             closeButton
             closeOnMove={false}
             // Default Mapbox Popup auto-closes on any map click, which
@@ -939,6 +984,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 props.onPhotoReject?.(popupId)
                 setActivePhotoMarkerId(null)
               }}
+              onPreview={props.onPhotoPreview ? () => props.onPhotoPreview?.(marker.photoId!) : undefined}
             />
           </Popup>
         )

@@ -44,6 +44,12 @@
       "labelSet": "Přiřadit štítek",
       "labelUsed": "Již použito"
     },
+    "preview": {
+      "title": "Fotka",
+      "close": "Zavřít",
+      "loading": "Načítání fotky…",
+      "missing": "Fotku se nepodařilo načíst"
+    },
     "tray": {
       "title": "Bez GPS ({{count}})",
       "dragHint": "Přetáhni na mapu pro umístění",

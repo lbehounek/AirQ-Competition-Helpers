@@ -36,6 +36,13 @@ export interface PhotoMarkerPopupProps {
   onInclude: () => void
   onSkip: () => void
   onReject: () => void
+  /**
+   * Double-clicking the thumbnail opens the full-resolution single-photo
+   * preview (lightbox). Undefined leaves the thumbnail non-interactive on
+   * double-click. The thumbnail here is only 200x150 — too small to judge a
+   * sign or read a label — so this is the path to "show me this one big".
+   */
+  onPreview?: () => void
 }
 
 const THUMB_WIDTH_PX = 200
@@ -75,6 +82,8 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
   return (
     <Box sx={{ minWidth: THUMB_WIDTH_PX + 16 }}>
       <Box
+        onDoubleClick={props.onPreview}
+        title={props.onPreview ? t('photo.preview.title') : undefined}
         sx={{
           width: THUMB_WIDTH_PX,
           height: THUMB_HEIGHT_PX,
@@ -85,6 +94,7 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
           overflow: 'hidden',
           borderRadius: 1,
           mb: 1,
+          cursor: props.onPreview ? 'zoom-in' : undefined,
         }}
       >
         {loadState === 'loading' && <CircularProgress size={24} />}

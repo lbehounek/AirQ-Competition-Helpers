@@ -197,7 +197,19 @@ function createWindow() {
     },
     icon: path.join(__dirname, 'icons', 'icon.png'),
     title: 'AirQ Competition Helpers',
-    autoHideMenuBar: false
+    autoHideMenuBar: false,
+    // Start hidden so we can maximize before first paint — avoids the brief
+    // 1400x900 flash before the window snaps to full screen. The width/height
+    // above remain the restore size when the user un-maximizes.
+    show: false
+  });
+
+  // Maximize on first show (flash-free pattern). `ready-to-show` fires once the
+  // renderer has painted, so the window appears already maximized rather than
+  // resizing visibly after load.
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.maximize();
+    mainWindow.show();
   });
 
   // Load the landing page
