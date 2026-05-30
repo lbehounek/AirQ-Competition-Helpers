@@ -40,6 +40,7 @@ import type { ImportFailureReason, ImportFailure } from './photoImport/types'
 import { NoGpsTray } from './components/NoGpsTray'
 import { PhotoListPanel } from './components/PhotoListPanel'
 import { PhotoCompareModal } from './components/PhotoCompareModal'
+import { PhotoPreviewModal } from './components/PhotoPreviewModal'
 import { resolveVariantFlags } from './photoVariants/resolveVariantFlags'
 import { resolveActivePhotoId } from './activePhoto/activePhoto'
 import { isProvisionalValid, type ProvisionalPlacement } from './provisionalPlacement/provisionalPlacement'
@@ -258,6 +259,12 @@ function App() {
   // closed. Owned at App level so the resolve handler can hit the same
   // `persistMarkers` setter used by every other flag mutation.
   const [compareVariants, setCompareVariants] = useState<readonly PhotoMarker[] | null>(null)
+  // Single-photo full-res preview (lightbox). Holds the photoId being viewed
+  // large; `null` = closed. Opened by double-clicking the map popup thumbnail
+  // or a photo-panel row. Keyed on photoId (not markerId) so it works for
+  // no-GPS photos too — those have no marker and aren't in `markers`. View-
+  // only — no marker mutation.
+  const [previewPhotoId, setPreviewPhotoId] = useState<string | null>(null)
   const answerSheetRef = useRef<HTMLDivElement | null>(null)
   const usedLabels = useMemo(() => {
     const set = new Set<PhotoLabel>()
@@ -737,6 +744,38 @@ function App() {
     setCompareVariants(selected)
   }, [])
 
+  // Open the single-photo preview for a given photoId. The map popup, GPS
+  // panel rows and no-GPS panel rows all pass a photoId; the metadata is
+  // derived from the live `markers` / `noGpsPhotos` lists so a rename
+  // reflects without re-opening.
+  const handleOpenPhotoPreview = useCallback((photoId: string) => {
+    setPreviewPhotoId(photoId)
+  }, [])
+  // Resolve preview metadata from either a GPS marker or a no-GPS photo.
+  // `null` = nothing to preview (closed, or the photo vanished).
+  const previewPhoto = useMemo(() => {
+    if (!previewPhotoId) return null
+    const m = markers.find(mm => mm.photoId === previewPhotoId)
+    if (m) {
+      return {
+        photoId: previewPhotoId,
+        filename: photoMarkerDisplayName(m),
+        originalFilename: m.name,
+        timestamp: m.capturedAt?.timestamp,
+      }
+    }
+    const ng = (session?.noGpsPhotos ?? []).find(p => p.photoId === previewPhotoId)
+    if (ng) {
+      return {
+        photoId: previewPhotoId,
+        filename: noGpsPhotoDisplayName(ng),
+        originalFilename: ng.filename,
+        timestamp: undefined,
+      }
+    }
+    return null
+  }, [previewPhotoId, markers, session?.noGpsPhotos])
+
   // Phase 6 — drop-from-tray handler. Atomic: a single persistSession
   // mutates BOTH markers and noGpsPhotos in one write, so a partial
   // failure can no longer leave the photo duplicated in both lists.
@@ -1162,17 +1201,22 @@ function App() {
                 <Home />
               </IconButton>
             )}
-            <Place sx={{ fontSize: 28 }} />
+            {competitionId && window.electronAPI && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => window.electronAPI?.navigateToApp?.('photo-helper', competitionId)}
+                startIcon={<PhotoCamera sx={{ fontSize: 18 }} />}
+                sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 0.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
+              >
+                {t('app.openEditor')}
+              </Button>
+            )}
             <Typography variant="h6" sx={{ fontWeight: 600, color: 'white' }}>{t('app.title')}</Typography>
             {competitionName && (
               <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
             )}
           </Box>
-          {competitionId && window.electronAPI && (
-            <IconButton size="small" onClick={() => window.electronAPI?.navigateToApp?.('photo-helper', competitionId)} sx={{ color: 'white' }} title="Photo Editor">
-              <PhotoCamera />
-            </IconButton>
-          )}
         </Box>
         {/* Controls row */}
         <Box sx={{
@@ -1303,6 +1347,7 @@ function App() {
             onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}
             activePhotoMarkerId={activePhotoMarkerId}
             onActivePhotoMarkerChange={setActivePhotoMarkerId}
+            onPhotoPreview={handleOpenPhotoPreview}
             provisionalPlacement={provisionalPlacement}
             onProvisionalDrag={handleProvisionalDrag}
             onProvisionalCommit={handleProvisionalCommit}
@@ -1316,6 +1361,7 @@ function App() {
             storage={storage}
             photosDir={photosDir}
             onPhotoDelete={(photoId) => { setPendingDeletePhoto(photoId) }}
+            onPreview={handleOpenPhotoPreview}
           />
           {/* Phase 7 — right-side photo list panel. Auto-hides when there
               are no imported photos (KML-only sessions look unchanged). */}
@@ -1332,6 +1378,7 @@ function App() {
             onPhotoDelete={(photoId) => { setPendingDeletePhoto(photoId) }}
             onPhotoRename={(photoId, newName) => { void renamePhoto(photoId, newName) }}
             onCompareVariants={handleCompareVariants}
+            onPreviewPhoto={handleOpenPhotoPreview}
           />
         </Box>
       </Container>
@@ -1343,6 +1390,16 @@ function App() {
       photosDir={photosDir}
       onClose={() => setCompareVariants(null)}
       onResolve={handleCompareResolve}
+    />
+    <PhotoPreviewModal
+      open={previewPhoto !== null}
+      photoId={previewPhoto?.photoId ?? null}
+      filename={previewPhoto?.filename}
+      originalFilename={previewPhoto?.originalFilename}
+      timestamp={previewPhoto?.timestamp}
+      storage={storage}
+      photosDir={photosDir}
+      onClose={() => setPreviewPhotoId(null)}
     />
     <Dialog open={isAnswerSheetOpen} onClose={() => setAnswerSheetOpen(false)} maxWidth="sm" fullWidth>
       <DialogContent dividers sx={{ p: 1 }}>

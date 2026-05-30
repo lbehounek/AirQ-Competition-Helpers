@@ -95,6 +95,14 @@ export interface PhotoListPanelProps {
    * category in the popup). Undefined leaves no-GPS rows non-interactive.
    */
   onNoGpsPhotoClick?: (photoId: string) => void
+  /**
+   * Double-clicking a photo row opens the full-resolution single-photo
+   * preview (lightbox). Receives the photoId. Works for both GPS rows and
+   * no-GPS rows. The plain single-clicks that precede the double-click still
+   * fire (GPS: select + fly-to + popup; no-GPS: start place-on-map) — that's
+   * harmless. Undefined disables the preview path.
+   */
+  onPreviewPhoto?: (photoId: string) => void
 }
 
 /**
@@ -112,7 +120,7 @@ const GROUP_ORDER: readonly GroupKey[] = ['picks', 'neutral', 'rejects', 'noGps'
 
 export function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
-  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick } = props
+  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick, onPreviewPhoto } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     picks: false,
@@ -191,6 +199,13 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
     clearSelection()
     onMarkerClick(markerId)
   }, [orderedSelectableIds, clearSelection, onMarkerClick])
+
+  // Double-click a row → open the full-res single-photo preview. Keyed on
+  // photoId so it works for GPS and no-GPS rows alike. The single-clicks that
+  // precede it are harmless.
+  const handleRowDoubleClick = useCallback((photoId: string) => {
+    onPreviewPhoto?.(photoId)
+  }, [onPreviewPhoto])
 
   const selectedMarkers = useMemo(() => {
     const byPhotoId = new Map<string, PhotoMarker>()
@@ -281,6 +296,7 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
                 storage,
                 photosDir,
                 onRowClick: handleRowClick,
+                onRowDoubleClick: onPreviewPhoto ? handleRowDoubleClick : undefined,
                 selectedIds,
                 activePhotoId: activePhotoId ?? null,
                 onPhotoDelete,
@@ -476,6 +492,7 @@ function renderGroupItems(
     storage: StorageInterface | null
     photosDir: DirectoryHandle | null
     onRowClick: (photoId: string, markerId: string, e: React.MouseEvent) => void
+    onRowDoubleClick?: (photoId: string) => void
     selectedIds: readonly string[]
     activePhotoId: string | null
     onPhotoDelete: (photoId: string) => void | Promise<void>
@@ -510,6 +527,8 @@ function renderGroupItems(
         // Phase 14 — clicking a no-GPS row starts placing it on the map
         // (provisional pin at map center). Not draggable-for-recat (no flag).
         onClick={ctx.onNoGpsPhotoClick ? () => ctx.onNoGpsPhotoClick!(p.photoId) : undefined}
+        // Double-click opens the full-res preview (same as GPS rows).
+        onDoubleClick={ctx.onRowDoubleClick ? () => ctx.onRowDoubleClick!(p.photoId) : undefined}
         selected={false}
         active={false}
         recatDraggable={false}
@@ -529,6 +548,7 @@ function renderGroupItems(
       storage={ctx.storage}
       photosDir={ctx.photosDir}
       onClick={(e) => ctx.onRowClick(m.photoId!, m.id, e)}
+      onDoubleClick={ctx.onRowDoubleClick ? () => ctx.onRowDoubleClick!(m.photoId!) : undefined}
       selected={selectedSet.has(m.photoId!)}
       active={m.photoId === ctx.activePhotoId}
       recatDraggable={ctx.recatEnabled}
@@ -582,6 +602,11 @@ function PhotoListItem(props: {
    * plain click → fly to marker). `undefined` disables the row entirely.
    */
   onClick: ((e: React.MouseEvent) => void) | undefined
+  /**
+   * Double-click opens the full-res preview. Independent of `onClick`; the
+   * preceding single-clicks still fire. `undefined` disables it.
+   */
+  onDoubleClick?: (e: React.MouseEvent) => void
   /** Whether this row is part of the variant-compare selection. */
   selected: boolean
   /**
@@ -605,7 +630,7 @@ function PhotoListItem(props: {
   renameSaveAria: string
 }) {
   const {
-    photoId, displayName, originalFilename, storage, photosDir, onClick, selected, active, onDelete, deleteTooltip,
+    photoId, displayName, originalFilename, storage, photosDir, onClick, onDoubleClick, selected, active, onDelete, deleteTooltip,
     onRename, renameTooltip, renamePlaceholder, renameSaveAria,
     recatDraggable, onRecatDragStart, onRecatDragEnd,
   } = props
@@ -660,7 +685,10 @@ function PhotoListItem(props: {
     >
       <ListItemButton
         onClick={editing ? undefined : onClick}
-        disabled={!editing && !onClick}
+        onDoubleClick={editing ? undefined : onDoubleClick}
+        // A disabled button swallows dblclick too, so only disable when the
+        // row has neither a click nor a double-click action.
+        disabled={!editing && !onClick && !onDoubleClick}
         selected={selected}
         // Edit mode renders as a div so the inner TextField isn't nested
         // inside a <button> (a11y violation + focus contention). Spread

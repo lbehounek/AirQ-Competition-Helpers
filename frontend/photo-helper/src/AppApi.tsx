@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -8,12 +8,9 @@ import {
   Alert,
   Button,
   IconButton,
-  Divider,
   Modal,
   Backdrop,
   Fade,
-  Card,
-  CardContent,
   useMediaQuery,
   useTheme,
   Link,
@@ -34,6 +31,8 @@ import {
   Warning,
   Home,
   Map,
+  ChevronLeft,
+  ChevronRight,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { useClipboardPaste } from './hooks/useClipboardPaste';
@@ -344,12 +343,10 @@ function AppApi() {
   // just grid columns within landscape — but can be re-evaluated if it also
   // feels confusing.)
 
-  const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
-    const setPhotos = session?.sets[setKey].photos || [];
-    const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
-
-    // Calculate label based on mode
-    let label: string;
+  // Label for a slotted photo at a given index in set1/set2, mirroring the grid
+  // labels (mode-aware). Extracted so photo-click AND modal prev/next nav share
+  // one source of truth. Candidate (tray) photos have no slot index → ''.
+  const computeLabelForSlot = (setKey: 'set1' | 'set2', photoIndex: number): string => {
     if (session?.mode === 'turningpoint') {
       // Turning point mode: SP, TP1, TP2, ..., FP
       const set1Count = session.sets.set1.photos.length;
@@ -357,27 +354,20 @@ function AppApi() {
       // (keeps SP/TP/FP sequence anchored to the single visible grid).
       const set2Count = isPrecision ? 0 : session.sets.set2.photos.length;
       const turningPointLabels = generateTurningPointLabels(set1Count, set2Count, session.layoutMode || 'landscape');
-      
-      if (setKey === 'set1') {
-        label = turningPointLabels.set1[photoIndex] || 'X';
-      } else {
-        label = turningPointLabels.set2[photoIndex] || 'X';
-      }
-    } else {
-      // Track mode: use labeling context (letters or numbers) with offset
-      if (setKey === 'set1') {
-        label = generateLabel(photoIndex);
-      } else {
-        const set1Count = session?.sets.set1?.photos?.length || 0;
-        label = generateLabel(photoIndex, set1Count); // Continue sequence from Set 1
-      }
+      return (setKey === 'set1' ? turningPointLabels.set1[photoIndex] : turningPointLabels.set2[photoIndex]) || 'X';
     }
+    // Track mode: use labeling context (letters or numbers) with offset
+    if (setKey === 'set1') {
+      return generateLabel(photoIndex);
+    }
+    const set1Count = session?.sets.set1?.photos?.length || 0;
+    return generateLabel(photoIndex, set1Count); // Continue sequence from Set 1
+  };
 
-    setSelectedPhoto({
-      photo,
-      setKey,
-      label
-    });
+  const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
+    const setPhotos = session?.sets[setKey].photos || [];
+    const photoIndex = setPhotos.findIndex((p: ApiPhoto) => p.id === photo.id);
+    setSelectedPhoto({ photo, setKey, label: computeLabelForSlot(setKey, photoIndex) });
   };
 
   // Click handler for tray thumbs — opens the same editor modal, label is
@@ -385,6 +375,50 @@ function AppApi() {
   const handleCandidateClick = (photo: ApiPhoto) => {
     setSelectedPhoto({ photo, setKey: 'candidates', label: '' });
   };
+
+  // The ordered photo list the modal navigates within — the set/pool the
+  // currently-open photo came from. Used by prev/next arrows + arrow keys.
+  const modalPhotoList: ApiPhoto[] = selectedPhoto
+    ? (selectedPhoto.setKey === 'candidates'
+        ? (session?.candidates?.photos || [])
+        : (session?.sets[selectedPhoto.setKey]?.photos || []))
+    : [];
+
+  // Step to the previous/next photo within the same set/pool. Clamps at the
+  // ends (no wrap), regenerating the label for slotted photos.
+  const navigateModalPhoto = useCallback((dir: -1 | 1) => {
+    setSelectedPhoto(prev => {
+      if (!prev) return prev;
+      const list = prev.setKey === 'candidates'
+        ? (session?.candidates?.photos || [])
+        : (session?.sets[prev.setKey]?.photos || []);
+      const idx = list.findIndex((p: ApiPhoto) => p.id === prev.photo.id);
+      if (idx === -1) return prev;
+      const nextIdx = idx + dir;
+      if (nextIdx < 0 || nextIdx >= list.length) return prev;
+      const nextPhoto = list[nextIdx];
+      const label = prev.setKey === 'candidates' ? '' : computeLabelForSlot(prev.setKey, nextIdx);
+      return { photo: nextPhoto, setKey: prev.setKey, label };
+    });
+  // computeLabelForSlot closes over session/isPrecision/generateLabel; session
+  // is the meaningful dependency for the list + label recompute.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, isPrecision, generateLabel]);
+
+  const modalIndex = selectedPhoto ? modalPhotoList.findIndex((p: ApiPhoto) => p.id === selectedPhoto.photo.id) : -1;
+  const canPrev = modalIndex > 0;
+  const canNext = modalIndex >= 0 && modalIndex < modalPhotoList.length - 1;
+
+  // Arrow-key navigation while the modal is open.
+  useEffect(() => {
+    if (!selectedPhoto) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); navigateModalPhoto(-1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); navigateModalPhoto(1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedPhoto, navigateModalPhoto]);
 
   // Tray → slot promotion. The hook handles swap-on-occupied semantics and the
   // capacity clamp for out-of-range indices (PR #62 review C1). Errors are
@@ -412,6 +446,41 @@ function AppApi() {
     const slotIndex = slotCount < capacity ? slotCount : Math.max(0, capacity - 1);
     await promoteCandidateToSlot(photoId, setKey, slotIndex);
   };
+
+  // "Send to TP photos": route a tray candidate into the turning-point set.
+  // There is no always-on TP container — turning-point photos ARE set1/set2
+  // while the editor is in turning-point mode. So: if already in TP mode, place
+  // directly; otherwise switch mode first and let the effect below finish the
+  // placement once `session.mode` has actually flipped (updateSessionMode is
+  // async and persistAndSet-based, so promoteCandidateToSlot can't be chained
+  // synchronously without a stale-session closure). Reuses the existing tested
+  // promote path — no new session-mutation logic.
+  const [pendingTPSend, setPendingTPSend] = useState<string | null>(null);
+
+  const handleSendCandidateToTP = async (photoId: string) => {
+    if (!session) return;
+    if (session.mode === 'turningpoint') {
+      await handleSendCandidateToSet(photoId, 'set1');
+      return;
+    }
+    setPendingTPSend(photoId);
+    if (updateSessionMode) await updateSessionMode('turningpoint');
+  };
+
+  useEffect(() => {
+    if (!pendingTPSend) return;
+    if (session?.mode !== 'turningpoint') return;
+    const photoId = pendingTPSend;
+    setPendingTPSend(null);
+    // Only place if the candidate is still in the pool (it may have been moved
+    // or deleted between the mode switch and this effect firing).
+    if (session.candidates?.photos?.some((p: ApiPhoto) => p.id === photoId)) {
+      void handleSendCandidateToSet(photoId, 'set1');
+    }
+  // handleSendCandidateToSet closes over the fresh post-switch session; keying
+  // on session.mode + pendingTPSend is the intended trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.mode, pendingTPSend]);
 
   const handlePhotoUpdate = (setKey: 'set1' | 'set2' | 'candidates', photoId: string, canvasState: Partial<ApiPhoto['canvasState']>) => {
     // Dispatch to the right backend method — slot photos go through
@@ -630,7 +699,7 @@ function AppApi() {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
+      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
         {/* Unified Header and Controls */}
         <Paper elevation={2} sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
           {/* Blue Header Section */}
@@ -652,6 +721,21 @@ function AppApi() {
                   <Home />
                 </IconButton>
               )}
+              {isDesktopManaged && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    const params = new URLSearchParams(window.location.search);
+                    const compId = params.get('competitionId');
+                    (window as any).electronAPI?.navigateToApp('map-corridors', compId);
+                  }}
+                  startIcon={<Map sx={{ fontSize: 18 }} />}
+                  sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 1.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
+                >
+                  {t('app.switchToPlacement')}
+                </Button>
+              )}
               <FlightTakeoff sx={{ fontSize: 32, color: 'white', mr: 1.5 }} />
               <Typography variant="h5" component="h1" sx={{ color: 'white', fontWeight: 600 }}>
                 {t('app.title')}
@@ -660,20 +744,6 @@ function AppApi() {
                 <Chip label={currentCompetition.name} size="small" sx={{ ml: 2, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
               )}
             </Box>
-            {isDesktopManaged && (
-              <IconButton
-                size="small"
-                onClick={() => {
-                  const params = new URLSearchParams(window.location.search);
-                  const compId = params.get('competitionId');
-                  (window as any).electronAPI?.navigateToApp('map-corridors', compId);
-                }}
-                sx={{ color: 'white' }}
-                title={t('app.switchToPlacement') || 'Photo Placement'}
-              >
-                <Map />
-              </IconButton>
-            )}
           </Box>
 
           {/* White Content Section */}
@@ -886,6 +956,10 @@ function AppApi() {
             onSetFlag={(photoId, flag) => { if (setCandidateFlag) void setCandidateFlag(photoId, flag); }}
             onDelete={(photoId) => { if (removeCandidate) void removeCandidate(photoId); }}
             onSendToSet={handleSendCandidateToSet}
+            // Track mode only — in turning-point mode set1/set2 ARE the TP photos,
+            // so the extra button would be redundant (CandidateTray hides it when
+            // onSendToTP is undefined).
+            onSendToTP={session?.mode === 'turningpoint' ? undefined : handleSendCandidateToTP}
             onSlotDroppedIn={handleSlotDroppedToTray}
             hideSet2={isPrecision && session?.mode === 'track'}
           />
@@ -1158,7 +1232,7 @@ function AppApi() {
 
       {/* Footer */}
       <Box component="footer" sx={{ py: 2, mt: 4, bgcolor: 'background.default' }}>
-        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
+        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
           <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#1565C0' }}>
             <Typography variant="body2" align="center" sx={{ color: 'common.white' }}>
               {t('footer.copy', { year: new Date().getFullYear(), name: 'Lukáš Běhounek' })} {' '}
@@ -1262,6 +1336,34 @@ function AppApi() {
                         >
                           {selectedPhoto.photo.filename}
                         </Typography>
+                      )}
+                      {/* Prev/next navigation within the same set/pool. Mirrors
+                          the ArrowLeft/ArrowRight keyboard shortcuts; hidden when
+                          the set has a single photo. Clamps at both ends. */}
+                      {modalPhotoList.length > 1 && (
+                        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => navigateModalPhoto(-1)}
+                            disabled={!canPrev}
+                            aria-label={t('modal.prevPhoto')}
+                            title={t('modal.prevPhoto')}
+                          >
+                            <ChevronLeft />
+                          </IconButton>
+                          <Typography variant="caption" color="text.secondary" sx={{ minWidth: 48, textAlign: 'center' }}>
+                            {modalIndex + 1} / {modalPhotoList.length}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => navigateModalPhoto(1)}
+                            disabled={!canNext}
+                            aria-label={t('modal.nextPhoto')}
+                            title={t('modal.nextPhoto')}
+                          >
+                            <ChevronRight />
+                          </IconButton>
+                        </Box>
                       )}
                     </Box>
 

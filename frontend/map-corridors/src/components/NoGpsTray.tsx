@@ -37,11 +37,16 @@ export interface NoGpsTrayProps {
    * X badge on photo-helper grid tiles.
    */
   onPhotoDelete: (photoId: string) => void | Promise<void>
+  /**
+   * Double-clicking a tray thumbnail opens the full-resolution single-photo
+   * preview (lightbox). Undefined leaves the thumbnail drag-only.
+   */
+  onPreview?: (photoId: string) => void
 }
 
 export function NoGpsTray(props: NoGpsTrayProps) {
   const { t } = useI18n()
-  const { photos, open, onToggleOpen, storage, photosDir, onPhotoDelete } = props
+  const { photos, open, onToggleOpen, storage, photosDir, onPhotoDelete, onPreview } = props
 
   const sorted = useMemo(() => [...photos].sort(compareNoGpsPhotos), [photos])
 
@@ -94,6 +99,7 @@ export function NoGpsTray(props: NoGpsTrayProps) {
               dragHint={t('photo.tray.dragHint')}
               onDelete={onPhotoDelete}
               deleteTooltip={t('photo.deleteTooltip')}
+              onPreview={onPreview}
             />
           ))}
         </Box>
@@ -109,8 +115,9 @@ function NoGpsTrayThumb(props: {
   dragHint: string
   onDelete: (photoId: string) => void | Promise<void>
   deleteTooltip: string
+  onPreview?: (photoId: string) => void
 }) {
-  const { photo, storage, photosDir, dragHint, onDelete, deleteTooltip } = props
+  const { photo, storage, photosDir, dragHint, onDelete, deleteTooltip, onPreview } = props
   const { url, state } = usePhotoThumbUrl(storage, photosDir, photo.photoId)
   // Custom name when set, else the camera filename — shown in the tooltip,
   // a11y labels, and the no-thumb placeholder.
@@ -136,6 +143,7 @@ function NoGpsTrayThumb(props: {
             e.dataTransfer.setData(NO_GPS_PHOTO_DRAG_TYPE, photo.photoId)
             e.dataTransfer.effectAllowed = 'move'
           }}
+          onDoubleClick={onPreview ? () => onPreview(photo.photoId) : undefined}
           sx={{
             width: THUMB_WIDTH_PX,
             height: THUMB_HEIGHT_PX,

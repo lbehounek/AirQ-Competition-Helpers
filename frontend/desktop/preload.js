@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (name, workingDir) => ipcRenderer.invoke('competition-create', name, workingDir),
     setActive: (id) => ipcRenderer.invoke('competition-set-active', id),
     setDiscipline: (id, discipline) => ipcRenderer.invoke('competition-set-discipline', id, discipline),
+    rename: (id, name) => ipcRenderer.invoke('competition-rename', id, name),
     delete: (id) => ipcRenderer.invoke('competition-delete', id),
     // Per-competition working folder: every export dialog defaults here
     // (feedback 2026-04-25). Persisted in the competitions index.

@@ -37,6 +37,13 @@ import { filterCandidates, countByFlag } from '../utils/candidateFilter';
 import { parseDragPayload, serializeDragPayload, DRAG_PAYLOAD_MIME } from '../utils/dragPayload';
 import type { ApiPhoto, CandidateFlag } from '../types/api';
 
+// Pick (star) / reject (block) flagging in the candidate tray is intentionally
+// hidden: that selection workflow now lives in the Map Corridors app, and
+// surfacing it here too confused users (feedback 2026-05-30). The code paths
+// (onSetFlag, flag state, candidateFilter) are kept intact — flip this to
+// re-enable the per-thumb star/block toolbar buttons.
+const SHOW_CANDIDATE_FLAG_UI = false;
+
 export interface CandidateTrayProps {
   photos: ApiPhoto[];
   onAddFiles: (files: File[]) => void;
@@ -44,6 +51,14 @@ export interface CandidateTrayProps {
   onSetFlag: (photoId: string, flag: CandidateFlag) => void;
   onDelete: (photoId: string) => void;
   onSendToSet: (photoId: string, setKey: 'set1' | 'set2') => void;
+  /**
+   * Send a candidate to the turning-point ("TP photos") set. When provided, a
+   * dedicated TP button shows on each thumb. AppApi switches the editor to
+   * turning-point mode and places the photo there. Omitted (undefined) when
+   * already in turning-point mode — set1/set2 are the TP photos then, so the
+   * extra button would be redundant.
+   */
+  onSendToTP?: (photoId: string) => void;
   /**
    * Called when a slot photo is dropped into the tray. Receives the parsed
    * dataTransfer payload. If the payload is a slot drop, AppApi demotes it.
@@ -63,6 +78,7 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
   onSetFlag,
   onDelete,
   onSendToSet,
+  onSendToTP,
   onSlotDroppedIn,
   hideSet2,
 }) => {
@@ -215,23 +231,29 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
           {t('candidates.title', { count: counts.total })}
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1, ml: 1, flexWrap: 'wrap' }}>
-          <CountChip icon={<Star sx={{ fontSize: 14 }} />} count={counts.pick} color="warning" />
-          <CountChip count={counts.neutral} color="default" />
-          <CountChip icon={<Block sx={{ fontSize: 14 }} />} count={counts.reject} color="error" />
-        </Box>
+        {/* Pick/reject count chips + "Hide rejects" toggle are hidden together
+            with the per-thumb star/block buttons (see SHOW_CANDIDATE_FLAG_UI). */}
+        {SHOW_CANDIDATE_FLAG_UI && (
+          <Box sx={{ display: 'flex', gap: 1, ml: 1, flexWrap: 'wrap' }}>
+            <CountChip icon={<Star sx={{ fontSize: 14 }} />} count={counts.pick} color="warning" />
+            <CountChip count={counts.neutral} color="default" />
+            <CountChip icon={<Block sx={{ fontSize: 14 }} />} count={counts.reject} color="error" />
+          </Box>
+        )}
         <Box sx={{ flex: 1 }} />
-        <FormControlLabel
-          control={
-            <Switch
-              size="small"
-              checked={hideRejects}
-              onChange={(_, v) => setHideRejects(v)}
-            />
-          }
-          label={<Typography variant="caption">{t('candidates.hideRejects')}</Typography>}
-          sx={{ mr: 1 }}
-        />
+        {SHOW_CANDIDATE_FLAG_UI && (
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={hideRejects}
+                onChange={(_, v) => setHideRejects(v)}
+              />
+            }
+            label={<Typography variant="caption">{t('candidates.hideRejects')}</Typography>}
+            sx={{ mr: 1 }}
+          />
+        )}
         <Tooltip title={t('candidates.addMore')}>
           <span>
             <Button
@@ -298,6 +320,7 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
               onSetFlag={(flag) => onSetFlag(photo.id, flag)}
               onDelete={() => onDelete(photo.id)}
               onSendToSet={(setKey) => onSendToSet(photo.id, setKey)}
+              onSendToTP={onSendToTP ? () => onSendToTP(photo.id) : undefined}
             />
           ))}
           {visiblePhotos.length === 0 && (
@@ -346,6 +369,7 @@ interface CandidateThumbProps {
   onSetFlag: (flag: CandidateFlag) => void;
   onDelete: () => void;
   onSendToSet: (setKey: 'set1' | 'set2') => void;
+  onSendToTP?: () => void;
 }
 const CandidateThumb: React.FC<CandidateThumbProps> = ({
   photo,
@@ -355,6 +379,7 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
   onSetFlag,
   onDelete,
   onSendToSet,
+  onSendToTP,
 }) => {
   const theme = useTheme();
   const { t } = useI18n();
@@ -465,23 +490,26 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
           bgcolor: alpha(theme.palette.background.default, 0.6),
         }}
       >
-        {/* Flag toggles */}
-        <Box sx={{ display: 'flex', gap: 0.25 }}>
-          {tbBtn(
-            t('candidates.flag.pick'),
-            isPick,
-            'warning',
-            isPick ? <Star sx={{ fontSize: 16 }} /> : <StarBorder sx={{ fontSize: 16 }} />,
-            () => onSetFlag(isPick ? 'neutral' : 'pick'),
-          )}
-          {tbBtn(
-            t('candidates.flag.reject'),
-            isReject,
-            'error',
-            <Block sx={{ fontSize: 16 }} />,
-            () => onSetFlag(isReject ? 'neutral' : 'reject'),
-          )}
-        </Box>
+        {/* Flag toggles — hidden (see SHOW_CANDIDATE_FLAG_UI). Empty span keeps
+            the space-between layout so "Send to set" stays right-aligned. */}
+        {SHOW_CANDIDATE_FLAG_UI ? (
+          <Box sx={{ display: 'flex', gap: 0.25 }}>
+            {tbBtn(
+              t('candidates.flag.pick'),
+              isPick,
+              'warning',
+              isPick ? <Star sx={{ fontSize: 16 }} /> : <StarBorder sx={{ fontSize: 16 }} />,
+              () => onSetFlag(isPick ? 'neutral' : 'pick'),
+            )}
+            {tbBtn(
+              t('candidates.flag.reject'),
+              isReject,
+              'error',
+              <Block sx={{ fontSize: 16 }} />,
+              () => onSetFlag(isReject ? 'neutral' : 'reject'),
+            )}
+          </Box>
+        ) : <Box />}
 
         {/* Send to set */}
         <Box sx={{ display: 'flex', gap: 0.25 }}>
@@ -502,6 +530,15 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
               <KeyboardDoubleArrowRight sx={{ fontSize: 14 }} />2
             </Box>,
             () => onSendToSet('set2'),
+          )}
+          {onSendToTP && tbBtn(
+            t('candidates.sendToTP'),
+            false,
+            'primary',
+            <Box sx={{ display: 'flex', alignItems: 'center', fontSize: 11, fontWeight: 700 }}>
+              <KeyboardDoubleArrowRight sx={{ fontSize: 14 }} />TP
+            </Box>,
+            () => onSendToTP(),
           )}
           {tbBtn(
             t('common.delete'),
