@@ -13,7 +13,7 @@ function pm(over: Partial<PhotoMarker>): PhotoMarker {
   return { id: 'pm', lng: 14, lat: 50, name: 'x.jpg', photoId: 'pm', ...over } as PhotoMarker
 }
 
-const pick = pm({ id: 'a', photoId: 'pa', flag: 'pick' })
+const pick = pm({ id: 'a', photoId: 'pa', flag: 'pick-track' })
 const neutral = pm({ id: 'b', photoId: 'pb' })
 const rejected = pm({ id: 'c', photoId: 'pc', flag: 'reject' })
 const kml = pm({ id: 'k', photoId: undefined }) // KML marker, no photoId

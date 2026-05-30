@@ -2,11 +2,12 @@
 // Pure function so the component itself stays thin and the grouping logic
 // is testable without mounting React.
 
+import { isPickFlag } from '@airq/shared-handoff'
 import type { NoGpsPhoto, PhotoMarker } from '../types/markers'
 import { compareFilenames, compareNoGpsPhotos } from '../types/markers'
 
 export interface GroupedPhotos {
-  /** Photo markers with `flag === 'pick'`. Includes label-less picks. */
+  /** Photo markers picked as track OR turning-point. Includes label-less picks. */
   picks: readonly PhotoMarker[]
   /** Photo markers with no flag and no label. */
   neutral: readonly PhotoMarker[]
@@ -32,7 +33,9 @@ export function groupPhotosByFlag(
   const rejects: PhotoMarker[] = []
   for (const m of markers) {
     if (!m.photoId) continue // KML markers don't belong in the photo list
-    if (m.flag === 'pick') picks.push(m)
+    // Both pick categories (track + turning-point) count as "picks" — the
+    // 4-group panel stays; the category only matters for the editor handoff.
+    if (isPickFlag(m.flag)) picks.push(m)
     else if (m.flag === 'reject') rejects.push(m)
     else neutral.push(m)
   }

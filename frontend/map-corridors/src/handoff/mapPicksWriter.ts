@@ -16,6 +16,7 @@
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import {
   MAP_PICKS_FILENAME,
+  isPickFlag,
   type MapPickEntry,
   type MapPicksFile,
 } from '@airq/shared-handoff'
@@ -91,7 +92,10 @@ export function buildMapPickEntry(marker: PhotoMarker): MapPickEntry | null {
 export function buildMapPicks(markers: readonly PhotoMarker[]): MapPickEntry[] {
   const out: MapPickEntry[] = []
   for (const m of markers) {
-    if (m.flag !== 'pick') continue
+    // Both pick categories cross the handoff; the category (`pick-track` /
+    // `pick-turning`) rides through as-is on `entry.flag` so the editor can
+    // route the photo into the right print set.
+    if (!isPickFlag(m.flag)) continue
     const entry = buildMapPickEntry(m)
     if (entry) out.push(entry)
   }

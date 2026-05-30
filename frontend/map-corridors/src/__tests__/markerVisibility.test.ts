@@ -15,8 +15,9 @@ describe('isPhotoMarkerVisible', () => {
     expect(isPhotoMarkerVisible(pm({}))).toBe(true)
   })
 
-  it('shows a picked photo', () => {
-    expect(isPhotoMarkerVisible(pm({ flag: 'pick' }))).toBe(true)
+  it('shows a picked photo (both track and turning categories)', () => {
+    expect(isPhotoMarkerVisible(pm({ flag: 'pick-track' }))).toBe(true)
+    expect(isPhotoMarkerVisible(pm({ flag: 'pick-turning' }))).toBe(true)
   })
 
   it('hides a rejected photo (disappears from the map)', () => {

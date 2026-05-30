@@ -4,10 +4,12 @@
 // MapProviderView ignorant of storage.
 
 import { Box, Button, CircularProgress, Stack, Typography } from '@mui/material'
+import CheckIcon from '@mui/icons-material/Check'
+import FlagIcon from '@mui/icons-material/Flag'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import { useI18n } from '../contexts/I18nContext'
 import { usePhotoThumbUrl } from './usePhotoThumbUrl'
-import type { PhotoLabel } from '../types/markers'
+import type { PhotoFlag, PhotoLabel } from '../types/markers'
 import { ALL_PHOTO_LABELS } from '../types/markers'
 
 export interface PhotoMarkerPopupProps {
@@ -33,7 +35,16 @@ export interface PhotoMarkerPopupProps {
   usedLabels?: readonly string[]
   onLabelChange?: (label: PhotoLabel) => void
   onLabelClear?: () => void
-  onInclude: () => void
+  /**
+   * Current pick category of the marker, used to highlight the active
+   * Track / Turning-point button. Absent for an un-categorized photo (e.g. a
+   * provisional no-GPS placement that hasn't been committed yet).
+   */
+  flag?: PhotoFlag
+  /** Pick as a TRACK photo (blue). Routes to the editor's track print set. */
+  onIncludeTrack: () => void
+  /** Pick as a TURNING-POINT photo (purple). Routes to the editor's TP set. */
+  onIncludeTurning: () => void
   onSkip: () => void
   onReject: () => void
   /**
@@ -78,6 +89,8 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
   const { t } = useI18n()
   const { photoId, filename, originalFilename, timestamp, storage, photosDir } = props
   const { url: thumbUrl, state: loadState } = usePhotoThumbUrl(storage, photosDir, photoId)
+  const isPickTrack = props.flag === 'pick-track'
+  const isPickTurning = props.flag === 'pick-turning'
 
   return (
     <Box sx={{ minWidth: THUMB_WIDTH_PX + 16 }}>
@@ -124,11 +137,26 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
           {timestamp}
         </Typography>
       )}
-      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-        <Button size="small" variant="contained" onClick={props.onInclude}>
-          {t('photo.popup.include')}
+      <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
+        <Button
+          size="small"
+          variant={isPickTrack ? 'contained' : 'outlined'}
+          color={isPickTrack ? 'primary' : 'inherit'}
+          startIcon={<CheckIcon />}
+          onClick={props.onIncludeTrack}
+        >
+          {t('photo.popup.pickTrack')}
         </Button>
-        <Button size="small" variant="outlined" onClick={props.onSkip}>
+        <Button
+          size="small"
+          variant={isPickTurning ? 'contained' : 'outlined'}
+          color={isPickTurning ? 'secondary' : 'inherit'}
+          startIcon={<FlagIcon />}
+          onClick={props.onIncludeTurning}
+        >
+          {t('photo.popup.pickTurning')}
+        </Button>
+        <Button size="small" variant="outlined" color="inherit" onClick={props.onSkip}>
           {t('photo.popup.skip')}
         </Button>
         <Button size="small" variant="outlined" color="error" onClick={props.onReject}>

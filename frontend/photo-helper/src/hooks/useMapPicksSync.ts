@@ -65,6 +65,16 @@ export interface MapPicksSyncSessionApi {
 const PM_PREFIX = PM_PHOTO_ID_PREFIX;
 
 /**
+ * Normalize a wire flag into the candidate's flag. A legacy bare `pick`
+ * (written by map-corridors before the pick/track split, A3 2026-05-30)
+ * becomes `pick-track` so a candidate always carries an explicit category
+ * after crossing the handoff. Every other value passes through unchanged.
+ */
+function normalizeCandidateFlag(flag: MapPickEntry['flag']): CandidateFlag {
+  return flag === 'pick' ? 'pick-track' : flag;
+}
+
+/**
  * Reusable side-effect: read map-picks.json, project entries into the
  * candidate pool. Exported (not just the hook) so tests + a future
  * one-shot integration can call it without React. Returns the number
@@ -110,6 +120,7 @@ export async function syncMapPicksOnce(
     }
     if (!entry.photoId.startsWith(PM_PREFIX)) continue;
     remoteIds.add(entry.photoId);
+    const entryFlag = normalizeCandidateFlag(entry.flag);
     const existing = localById.get(entry.photoId);
     if (!existing) {
       // Narrow the swallow to NotFoundError — other storage errors
@@ -135,7 +146,7 @@ export async function syncMapPicksOnce(
         filename: entry.filename,
         canvasState: createDefaultCanvasState(),
         label: entry.label ?? '',
-        flag: entry.flag,
+        flag: entryFlag,
         ...(entry.labelUpdatedAt ? { labelUpdatedAt: entry.labelUpdatedAt } : {}),
       };
       await session.addCandidate(photo);
@@ -143,8 +154,8 @@ export async function syncMapPicksOnce(
       inserts++;
     } else {
       let touched = false;
-      if (existing.flag !== entry.flag) {
-        await session.setCandidateFlag(entry.photoId, entry.flag);
+      if (existing.flag !== entryFlag) {
+        await session.setCandidateFlag(entry.photoId, entryFlag);
         touched = true;
       }
       // Bidirectional label sync — newer wins. Equal timestamps → local

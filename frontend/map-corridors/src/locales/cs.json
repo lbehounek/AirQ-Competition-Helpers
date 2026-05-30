@@ -38,6 +38,8 @@
     },
     "popup": {
       "include": "Vybrané",
+      "pickTrack": "Fotka trati",
+      "pickTurning": "Fotka otočného bodu",
       "skip": "Neutrální",
       "reject": "Odmítnuté",
       "thumbMissing": "Náhled není k dispozici",

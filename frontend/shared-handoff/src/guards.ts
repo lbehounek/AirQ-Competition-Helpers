@@ -20,10 +20,24 @@ export const EDITOR_PICKS_FILENAME = 'photo-helper-picks.json' as const;
 /** Prefix that marks a photo as map-originated. Readers gate inclusion on this. */
 export const PM_PHOTO_ID_PREFIX = 'pm-' as const;
 
-const WIRE_FLAGS: ReadonlySet<string> = new Set(['pick', 'neutral', 'reject']);
+// Bare `pick` kept for back-compat with legacy map-picks.json (pre-split).
+const WIRE_FLAGS: ReadonlySet<string> = new Set(['pick', 'pick-track', 'pick-turning', 'neutral', 'reject']);
 
 export function isWireFlag(x: unknown): x is WireFlag {
   return typeof x === 'string' && WIRE_FLAGS.has(x);
+}
+
+// The three values that all mean "this photo is a pick". Single source of
+// truth so the pick/track split (A3, 2026-05-30) doesn't leave stale
+// `flag === 'pick'` comparisons scattered across both apps. Includes the
+// legacy bare `pick` so a candidate that hasn't been normalized yet still
+// reads as a pick. Accepts `unknown` (and undefined) so callers can pass a
+// possibly-absent marker/candidate flag without a pre-check.
+const PICK_FLAGS: ReadonlySet<string> = new Set(['pick', 'pick-track', 'pick-turning']);
+
+/** True for any pick category — bare `pick` (legacy), `pick-track`, or `pick-turning`. */
+export function isPickFlag(x: unknown): boolean {
+  return typeof x === 'string' && PICK_FLAGS.has(x);
 }
 
 function isObject(x: unknown): x is Record<string, unknown> {

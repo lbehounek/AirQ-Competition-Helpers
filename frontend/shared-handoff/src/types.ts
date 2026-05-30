@@ -11,8 +11,15 @@
 //   - `flag` is a closed `WireFlag` union — the cross-app vocabulary
 //     must agree, so a typo in one app must compile-fail in the other.
 
-/** Closed enum of valid flag values on the wire. */
-export type WireFlag = 'pick' | 'neutral' | 'reject';
+/**
+ * Closed enum of valid flag values on the wire.
+ *
+ * Bare `pick` is RETAINED for backward compatibility with `map-picks.json`
+ * files written before the pick/track split — a v1 file's `flag: 'pick'`
+ * must still validate. New writes emit the categorized `pick-track` /
+ * `pick-turning`; the reader normalizes a legacy bare `pick` to `pick-track`.
+ */
+export type WireFlag = 'pick' | 'pick-track' | 'pick-turning' | 'neutral' | 'reject';
 
 /**
  * One row in `map-picks.json` — photo-map-culling's outgoing handoff

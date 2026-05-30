@@ -25,8 +25,9 @@ describe('buildMapPickEntry', () => {
     expect(e.flag).toBe('neutral')
   })
 
-  it('preserves explicit pick/reject', () => {
-    expect(buildMapPickEntry(pm({ photoId: 'pid', flag: 'pick' }))!.flag).toBe('pick')
+  it('preserves explicit pick categories + reject (category rides the wire)', () => {
+    expect(buildMapPickEntry(pm({ photoId: 'pid', flag: 'pick-track' }))!.flag).toBe('pick-track')
+    expect(buildMapPickEntry(pm({ photoId: 'pid', flag: 'pick-turning' }))!.flag).toBe('pick-turning')
     expect(buildMapPickEntry(pm({ photoId: 'pid', flag: 'reject' }))!.flag).toBe('reject')
   })
 
@@ -83,7 +84,7 @@ describe('buildMapPickEntry', () => {
     const e = buildMapPickEntry(pm({
       photoId: 'pid',
       lng: 14, lat: 50,
-      flag: 'pick',
+      flag: 'pick-track',
       // no capturedAt
     }))!
     expect(e.gps?.subjectAt).toEqual({ lng: 14, lat: 50 })
@@ -109,10 +110,10 @@ describe('buildMapPicks', () => {
     // is still tracked on PhotoMarker.flag.
     const result = buildMapPicks([
       pm({ id: 'kml', photoId: undefined }),
-      pm({ id: 'p1', photoId: 'pid-1', flag: 'pick' }),
+      pm({ id: 'p1', photoId: 'pid-1', flag: 'pick-track' }),
       pm({ id: 'p2', photoId: 'pid-2' }), // no flag → neutral → excluded
       pm({ id: 'p3', photoId: 'pid-3', flag: 'reject' }), // excluded
-      pm({ id: 'p4', photoId: 'pid-4', flag: 'pick' }),
+      pm({ id: 'p4', photoId: 'pid-4', flag: 'pick-turning' }), // turning still crosses
     ])
     expect(result.map(e => e.photoId)).toEqual(['pid-1', 'pid-4'])
   })

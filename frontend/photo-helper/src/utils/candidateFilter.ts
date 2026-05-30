@@ -4,6 +4,7 @@
  * `hideRejects` toggle; future pill filters (Picks / Neutral / Rejects)
  * will add cases to this helper rather than re-implementing the predicates.
  */
+import { isPickFlag } from '@airq/shared-handoff';
 import type { ApiPhoto } from '../types/api';
 
 export type CandidateFilter = { hideRejects: boolean };
@@ -35,7 +36,9 @@ export function countByFlag(photos: ApiPhoto[]): {
   let neutral = 0;
   let reject = 0;
   for (const p of photos) {
-    if (p.flag === 'pick') pick++;
+    // Any pick category (legacy `pick`, `pick-track`, `pick-turning`) tallies
+    // as a pick — see shared isPickFlag (A3 split, 2026-05-30).
+    if (isPickFlag(p.flag)) pick++;
     else if (p.flag === 'reject') reject++;
     else neutral++;
   }

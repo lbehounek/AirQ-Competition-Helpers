@@ -10,6 +10,7 @@ import {
   isMapPickEntry,
   isMapPicksFile,
   isWireFlag,
+  isPickFlag,
   MAP_PICKS_FILENAME,
   EDITOR_PICKS_FILENAME,
   PM_PHOTO_ID_PREFIX,
@@ -27,7 +28,9 @@ describe('constants — wire contract', () => {
 })
 
 describe('isWireFlag', () => {
-  it.each(['pick', 'neutral', 'reject'])('accepts %s', (f) => {
+  // Bare `pick` retained for back-compat with legacy map-picks.json (pre-split);
+  // `pick-track`/`pick-turning` are the categorized values new writes emit.
+  it.each(['pick', 'pick-track', 'pick-turning', 'neutral', 'reject'])('accepts %s', (f) => {
     expect(isWireFlag(f)).toBe(true)
   })
 
@@ -40,6 +43,27 @@ describe('isWireFlag', () => {
     ['object', { kind: 'pick' }],
   ])('rejects %s', (_label, v) => {
     expect(isWireFlag(v)).toBe(false)
+  })
+})
+
+describe('isPickFlag', () => {
+  // Single source of truth for "is this a pick" across both apps — guards
+  // against stale `flag === 'pick'` comparisons surviving the A3 split.
+  it.each(['pick', 'pick-track', 'pick-turning'])('accepts pick category %s', (f) => {
+    expect(isPickFlag(f)).toBe(true)
+  })
+
+  it.each([
+    ['neutral', 'neutral'],
+    ['reject', 'reject'],
+    ['empty string', ''],
+    ['unknown string', 'archived'],
+    ['number', 1],
+    ['null', null],
+    ['undefined', undefined],
+    ['object', { kind: 'pick' }],
+  ])('rejects %s', (_label, v) => {
+    expect(isPickFlag(v)).toBe(false)
   })
 })
 

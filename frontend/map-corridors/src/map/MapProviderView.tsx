@@ -9,13 +9,14 @@ import { shouldClearActivePhoto } from '../activePhoto/activePhoto'
 import { isPhotoMarkerVisible } from './photoLayers/markerVisibility'
 import { captureMapForPrint } from '../utils/mapCapture'
 import type { PrintCaptureResult } from '../utils/mapCapture'
-import type { PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
+import type { PhotoFlag, PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
 import { useMarkerFan } from './photoLayers/useMarkerFan'
 import { PhotoMarkerPopup } from '../components/PhotoMarkerPopup'
 import { NO_GPS_PHOTO_DRAG_TYPE } from '../components/NoGpsTray'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
+import { isPickFlag } from '@airq/shared-handoff'
 import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
 import {
   LIVE_GROUND_MARKER_ICON_PX,
@@ -94,7 +95,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // have to touch them; absence simply means no photo popup is shown.
   photoStorage?: StorageInterface | null
   photoDir?: DirectoryHandle | null
-  onPhotoInclude?: (markerId: string) => void
+  // Two pick categories — track vs turning-point — so the cross-app handoff
+  // can route the photo into the editor's matching print set (A3, 2026-05-30).
+  onPhotoIncludeTrack?: (markerId: string) => void
+  onPhotoIncludeTurning?: (markerId: string) => void
   onPhotoSkip?: (markerId: string) => void
   onPhotoReject?: (markerId: string) => void
   // Phase 6 — fires when a no-GPS thumbnail from NoGpsTray is dropped
@@ -114,7 +118,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // no placement in progress.
   provisionalPlacement?: { photoId: string; filename: string; lng: number; lat: number } | null
   onProvisionalDrag?: (lng: number, lat: number) => void
-  onProvisionalCommit?: (flag: 'pick' | 'reject' | null) => void
+  onProvisionalCommit?: (flag: PhotoFlag | null) => void
   onProvisionalCancel?: () => void
 }>(function MapProviderView(props, ref) {
   const { mapStyle, mapboxAccessToken, geojsonOverlays } = props
@@ -340,7 +344,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       // coords. Both use lng/lat or capturedAt.lng/lat — subject is
       // initialised to capturedAt on import (ADR-007), so for unmoved
       // markers either works. Picks may have been dragged.
-      const center: [number, number] = marker.flag === 'pick'
+      const center: [number, number] = isPickFlag(marker.flag)
         ? [marker.lng, marker.lat]
         : [marker.capturedAt?.lng ?? marker.lng, marker.capturedAt?.lat ?? marker.lat]
       map.flyTo({ center, zoom: Math.max(map.getZoom(), 14), duration: 700 })
@@ -704,7 +708,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         // old grey (#616161), which was nearly invisible on both street and
         // satellite basemaps — feedback 2026-05-30 ("brown dots, invisible").
         const ringColor = m.label ? '#facc15'
-          : m.flag === 'pick' ? '#1976d2'
+          : m.flag === 'pick-track' ? '#1976d2'
+          : m.flag === 'pick-turning' ? '#7b1fa2'
           : m.flag === 'reject' ? '#d32f2f'
           : '#fb8c00'
         const bg = moved ? ringColor : '#ffffff'
@@ -955,7 +960,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       {(() => {
         if (!activePhotoMarkerId) return null
         if (!props.photoStorage || !props.photoDir) return null
-        if (!props.onPhotoInclude || !props.onPhotoSkip || !props.onPhotoReject) return null
+        if (!props.onPhotoIncludeTrack || !props.onPhotoIncludeTurning || !props.onPhotoSkip || !props.onPhotoReject) return null
         const marker = props.markers?.find(m => m.id === activePhotoMarkerId)
         if (!marker || !marker.capturedAt || !marker.photoId) return null
         const popupId = activePhotoMarkerId
@@ -985,6 +990,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               filename={marker.displayName ?? marker.name}
               originalFilename={marker.displayName ? marker.name : undefined}
               timestamp={marker.capturedAt.timestamp}
+              flag={marker.flag}
               storage={props.photoStorage}
               photosDir={props.photoDir}
               label={marker.label}
@@ -992,10 +998,13 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               usedLabels={props.usedLabels}
               onLabelChange={(L) => props.onMarkerLabelChange?.(popupId, L)}
               onLabelClear={() => props.onMarkerLabelClear?.(popupId)}
-              onInclude={() => {
-                props.onPhotoInclude?.(popupId)
-                // Keep the popup open after Include — user often wants
-                // to assign a label right after picking. Was: closed.
+              onIncludeTrack={() => {
+                props.onPhotoIncludeTrack?.(popupId)
+                // Keep the popup open after picking — user often wants
+                // to assign a label right after. Was: closed.
+              }}
+              onIncludeTurning={() => {
+                props.onPhotoIncludeTurning?.(popupId)
               }}
               onSkip={() => {
                 props.onPhotoSkip?.(popupId)
@@ -1053,7 +1062,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 filename={prov.filename}
                 storage={props.photoStorage}
                 photosDir={props.photoDir}
-                onInclude={() => props.onProvisionalCommit?.('pick')}
+                onIncludeTrack={() => props.onProvisionalCommit?.('pick-track')}
+                onIncludeTurning={() => props.onProvisionalCommit?.('pick-turning')}
                 onSkip={() => props.onProvisionalCommit?.(null)}
                 onReject={() => props.onProvisionalCommit?.('reject')}
               />

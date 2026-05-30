@@ -14,7 +14,9 @@ export type PanelGroupKey = 'picks' | 'neutral' | 'rejects' | 'noGps'
  */
 export function flagForGroup(key: PanelGroupKey): PhotoFlag | null | undefined {
   switch (key) {
-    case 'picks': return 'pick'
+    // Dropping into the picks section defaults to track; the user re-categorizes
+    // to turning-point via the marker popup. (A neutral pick category isn't a thing.)
+    case 'picks': return 'pick-track'
     case 'neutral': return null
     case 'rejects': return 'reject'
     default: return undefined // noGps — not a recategorize target

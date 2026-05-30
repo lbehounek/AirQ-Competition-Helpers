@@ -14,7 +14,7 @@
 // flag-only `setPhotoFlag` handler, which likewise leaves `labelUpdatedAt`
 // alone.
 
-import type { PhotoMarker } from '../types/markers'
+import type { PhotoFlag, PhotoMarker } from '../types/markers'
 
 export function resolveVariantFlags(
   markers: readonly PhotoMarker[],
@@ -23,7 +23,12 @@ export function resolveVariantFlags(
 ): readonly PhotoMarker[] {
   const loserSet = new Set(loserIds)
   return markers.map(m => {
-    if (m.id === winnerId) return { ...m, flag: 'pick' as const }
+    if (m.id === winnerId) {
+      // Preserve the winner's existing pick category if it already had one;
+      // otherwise default to track (the user re-categorizes via the popup).
+      const winnerFlag: PhotoFlag = m.flag === 'pick-turning' ? 'pick-turning' : 'pick-track'
+      return { ...m, flag: winnerFlag }
+    }
     if (loserSet.has(m.id)) return { ...m, flag: 'reject' as const }
     return m
   })
