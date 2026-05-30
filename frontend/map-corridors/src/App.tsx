@@ -1201,17 +1201,22 @@ function App() {
                 <Home />
               </IconButton>
             )}
-            <Place sx={{ fontSize: 28 }} />
+            {competitionId && window.electronAPI && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => window.electronAPI?.navigateToApp?.('photo-helper', competitionId)}
+                startIcon={<PhotoCamera sx={{ fontSize: 18 }} />}
+                sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 0.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
+              >
+                {t('app.openEditor')}
+              </Button>
+            )}
             <Typography variant="h6" sx={{ fontWeight: 600, color: 'white' }}>{t('app.title')}</Typography>
             {competitionName && (
               <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
             )}
           </Box>
-          {competitionId && window.electronAPI && (
-            <IconButton size="small" onClick={() => window.electronAPI?.navigateToApp?.('photo-helper', competitionId)} sx={{ color: 'white' }} title="Photo Editor">
-              <PhotoCamera />
-            </IconButton>
-          )}
         </Box>
         {/* Controls row */}
         <Box sx={{

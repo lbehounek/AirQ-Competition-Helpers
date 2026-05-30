@@ -18,7 +18,8 @@
     },
     "printMap": "Tisk mapy",
     "dragToPlaceGround": "Přetáhni pro umístění znaku",
-    "backToMenu": "Zpět do hlavního menu"
+    "backToMenu": "Zpět do hlavního menu",
+    "openEditor": "Editor fotek"
   },
   "photo": {
     "import": {

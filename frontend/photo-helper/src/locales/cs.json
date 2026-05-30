@@ -2,7 +2,8 @@
   "app": {
     "title": "Foto editor",
     "subtitle": "Organizujte fotografie z navigačního letu do standardizovaných PDF rozvržení",
-    "backToMenu": "Zpět do hlavního menu"
+    "backToMenu": "Zpět do hlavního menu",
+    "switchToPlacement": "Umístění fotek"
   },
   "navigation": {
     "overview": "Přehled",

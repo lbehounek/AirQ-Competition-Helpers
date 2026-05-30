@@ -15,6 +15,11 @@ const translations = {
     'competition.defaultName': 'Soutěž',
     'competition.selectFirst': 'Nejdříve vyberte soutěž',
     'competition.deleteBtn': 'Smazat',
+    'competition.renameBtn': 'Přejmenovat',
+    'competition.renameTitle': 'Přejmenovat soutěž',
+    'competition.renamePrompt': 'Nový název soutěže:',
+    'competition.renameConfirm': 'Uložit',
+    'competition.renameFailed': 'Přejmenování soutěže selhalo: {error}',
     'competition.confirmDelete': 'Smazat',
     'competition.cancelDelete': 'Zrušit',
     'competition.deleteConfirmText': 'Opravdu smazat "{name}"? Toto nelze vrátit.',
@@ -53,6 +58,11 @@ const translations = {
     'competition.defaultName': 'Competition',
     'competition.selectFirst': 'Select a competition first',
     'competition.deleteBtn': 'Delete',
+    'competition.renameBtn': 'Rename',
+    'competition.renameTitle': 'Rename competition',
+    'competition.renamePrompt': 'New competition name:',
+    'competition.renameConfirm': 'Save',
+    'competition.renameFailed': 'Failed to rename competition: {error}',
     'competition.confirmDelete': 'Delete',
     'competition.cancelDelete': 'Cancel',
     'competition.deleteConfirmText': 'Delete "{name}"? This cannot be undone.',
@@ -252,6 +262,8 @@ function updateCardsState() {
   });
   const delBtn = document.getElementById('competition-delete');
   if (delBtn) delBtn.disabled = !hasComp;
+  const renBtn = document.getElementById('competition-rename');
+  if (renBtn) renBtn.disabled = !hasComp;
 }
 
 // Competition change handler
@@ -517,6 +529,62 @@ async function confirmDelete() {
 deleteBtn.addEventListener('click', showDeleteConfirm);
 deleteCancelBtn.addEventListener('click', hideDeleteConfirm);
 deleteConfirmBtn.addEventListener('click', confirmDelete);
+
+// ============================================================================
+// Rename competition — inline form (feedback 2026-05-30)
+// ============================================================================
+
+const renameBtn = document.getElementById('competition-rename');
+const barRename = document.getElementById('competition-bar-rename');
+const renameInput = document.getElementById('competition-rename-input');
+const renameConfirmBtn = document.getElementById('competition-rename-confirm');
+const renameCancelBtn = document.getElementById('competition-rename-cancel');
+let renameInFlight = false;
+
+function showRenameForm() {
+  if (!activeCompetitionId) return;
+  const comp = competitionsList.find(c => c.id === activeCompetitionId);
+  barSelect.classList.add('hidden');
+  barRename.classList.remove('hidden');
+  // Prefill with the current name (not the "name (date)" select label) so the
+  // user edits the real value, not the decorated dropdown text.
+  renameInput.value = (comp && comp.name) || '';
+  renameInput.focus();
+  renameInput.select();
+}
+
+function hideRenameForm() {
+  barRename.classList.add('hidden');
+  barSelect.classList.remove('hidden');
+}
+
+async function confirmRename() {
+  if (renameInFlight) return;
+  if (!activeCompetitionId || !window.electronAPI?.competitions) return;
+  const name = renameInput.value.trim();
+  if (!name) return;
+  renameInFlight = true;
+  try {
+    await window.electronAPI.competitions.rename(activeCompetitionId, name);
+    hideRenameForm();
+    // Reload so the dropdown label + lastModified sort order reflect the
+    // new name; loadCompetitions re-selects the active competition.
+    await loadCompetitions();
+  } catch (err) {
+    console.error('Failed to rename competition:', err);
+    showError('competition.renameFailed', { error: err instanceof Error ? err.message : String(err) });
+  } finally {
+    renameInFlight = false;
+  }
+}
+
+renameBtn.addEventListener('click', showRenameForm);
+renameCancelBtn.addEventListener('click', hideRenameForm);
+renameConfirmBtn.addEventListener('click', confirmRename);
+renameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') confirmRename();
+  if (e.key === 'Escape') hideRenameForm();
+});
 
 // ============================================================================
 // Cleanup suggestions

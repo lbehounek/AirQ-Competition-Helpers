@@ -630,7 +630,7 @@ function AppApi() {
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 4 }}>
-      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
+      <Container maxWidth={false} sx={{ pt: 4, px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
         {/* Unified Header and Controls */}
         <Paper elevation={2} sx={{ mb: 3, borderRadius: 2, overflow: 'hidden' }}>
           {/* Blue Header Section */}
@@ -652,6 +652,21 @@ function AppApi() {
                   <Home />
                 </IconButton>
               )}
+              {isDesktopManaged && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    const params = new URLSearchParams(window.location.search);
+                    const compId = params.get('competitionId');
+                    (window as any).electronAPI?.navigateToApp('map-corridors', compId);
+                  }}
+                  startIcon={<Map sx={{ fontSize: 18 }} />}
+                  sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 1.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
+                >
+                  {t('app.switchToPlacement')}
+                </Button>
+              )}
               <FlightTakeoff sx={{ fontSize: 32, color: 'white', mr: 1.5 }} />
               <Typography variant="h5" component="h1" sx={{ color: 'white', fontWeight: 600 }}>
                 {t('app.title')}
@@ -660,20 +675,6 @@ function AppApi() {
                 <Chip label={currentCompetition.name} size="small" sx={{ ml: 2, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
               )}
             </Box>
-            {isDesktopManaged && (
-              <IconButton
-                size="small"
-                onClick={() => {
-                  const params = new URLSearchParams(window.location.search);
-                  const compId = params.get('competitionId');
-                  (window as any).electronAPI?.navigateToApp('map-corridors', compId);
-                }}
-                sx={{ color: 'white' }}
-                title={t('app.switchToPlacement') || 'Photo Placement'}
-              >
-                <Map />
-              </IconButton>
-            )}
           </Box>
 
           {/* White Content Section */}
@@ -1158,7 +1159,7 @@ function AppApi() {
 
       {/* Footer */}
       <Box component="footer" sx={{ py: 2, mt: 4, bgcolor: 'background.default' }}>
-        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 }, maxWidth: { xl: '75%' }, mx: { xl: 'auto' } }}>
+        <Container maxWidth={false} sx={{ px: { xs: 2, sm: 3, md: 4, lg: 5 } }}>
           <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#1565C0' }}>
             <Typography variant="body2" align="center" sx={{ color: 'common.white' }}>
               {t('footer.copy', { year: new Date().getFullYear(), name: 'Lukáš Běhounek' })} {' '}

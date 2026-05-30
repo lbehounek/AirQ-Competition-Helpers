@@ -863,6 +863,48 @@ safeHandle('competition-set-discipline', async (event, id, discipline) => {
   return target;
 });
 
+// Rename a competition. Updates the index metadata `name` (what the launcher
+// dropdown and all menu shortcuts display) and, when present, the per-
+// competition session.json `competition_name` so photo-helper's internal copy
+// stays in sync. Feedback 2026-05-30: "on homepage it is not possible to
+// rename an existing competition".
+safeHandle('competition-rename', async (event, id, name) => {
+  if (typeof id !== 'string' || !id) throw new Error('Invalid competition id');
+  if (typeof name !== 'string') throw new Error('Invalid competition name');
+  // Mirror the create form's constraints: non-empty after trim, capped at the
+  // same 60 chars the name input enforces (maxlength="60").
+  const trimmed = name.trim().slice(0, 60);
+  if (!trimmed) throw new Error('Competition name must not be empty');
+
+  const index = readCompetitionsIndex();
+  const target = index.competitions.find(c => c.id === id);
+  if (!target) {
+    throw new Error(`Competition not found: ${id}`);
+  }
+  target.name = trimmed;
+  target.lastModified = new Date().toISOString();
+  writeCompetitionsIndex(index);
+
+  // Keep session.json's competition_name in sync (best-effort — a missing or
+  // unreadable session file must not fail the rename, since the index is the
+  // source of truth for the displayed name).
+  try {
+    const competitionsDir = path.join(getPhotoSessionsPath(), 'competitions');
+    const compDir = validateStoragePath(path.join(competitionsDir, sanitizeFileName(id)));
+    const sessionPath = path.join(compDir, 'session.json');
+    if (fs.existsSync(sessionPath)) {
+      const session = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+      session.competition_name = trimmed;
+      session.updatedAt = new Date().toISOString();
+      fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2), 'utf8');
+    }
+  } catch (e) {
+    console.error('competition-rename: failed to sync session.json name:', e);
+  }
+
+  return target;
+});
+
 // Delete a competition
 safeHandle('competition-delete', async (event, id) => {
   const index = readCompetitionsIndex();

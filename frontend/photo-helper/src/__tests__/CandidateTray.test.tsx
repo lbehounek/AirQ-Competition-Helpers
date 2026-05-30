@@ -172,15 +172,13 @@ describe('CandidateTray — populated state', () => {
     expect(screen.getByTestId('mock-editor-c')).toBeInTheDocument();
   });
 
-  it('toggling Hide Rejected removes rejected photos from the DOM', () => {
+  // The "Hide rejects" toggle is part of the pick/reject workflow now hidden
+  // from the candidate tray (SHOW_CANDIDATE_FLAG_UI = false, feedback
+  // 2026-05-30). The filtering logic is retained and unit-tested in
+  // candidateFilter; here we assert the toggle UI is gone.
+  it('does not render the "Hide rejects" toggle', () => {
     renderTray({ photos: [p('a', 'pick'), p('b', 'reject'), p('c')] });
-    // Find the toggle switch — the FormControlLabel wraps a label with the
-    // i18n string. Clicking the visible label flips the control.
-    const toggleLabel = screen.getByText('candidates.hideRejects');
-    fireEvent.click(toggleLabel);
-    expect(screen.getByTestId('mock-editor-a')).toBeInTheDocument();
-    expect(screen.queryByTestId('mock-editor-b')).not.toBeInTheDocument();
-    expect(screen.getByTestId('mock-editor-c')).toBeInTheDocument();
+    expect(screen.queryByText('candidates.hideRejects')).not.toBeInTheDocument();
   });
 
   it('fires onSendToSet when a "Send to Set 1" toolbar button is clicked', () => {
@@ -192,20 +190,18 @@ describe('CandidateTray — populated state', () => {
     expect(onSendToSet).toHaveBeenCalledWith('photo-X', 'set1');
   });
 
-  it('fires onSetFlag with "pick" when star button is clicked on a neutral photo', () => {
-    const onSetFlag = vi.fn();
-    renderTray({ photos: [p('photo-X')], onSetFlag });
-    const pickButtons = screen.getAllByLabelText('candidates.flag.pick');
-    fireEvent.click(pickButtons[pickButtons.length - 1]);
-    expect(onSetFlag).toHaveBeenCalledWith('photo-X', 'pick');
+  // Per-thumb star (pick) / block (reject) buttons are intentionally hidden
+  // (SHOW_CANDIDATE_FLAG_UI = false) — that selection workflow moved to the Map
+  // Corridors app (feedback 2026-05-30). onSetFlag remains on the props so the
+  // capability can be re-enabled; these assert the buttons are not rendered.
+  it('does not render the star (pick) flag button', () => {
+    renderTray({ photos: [p('photo-X')] });
+    expect(screen.queryByLabelText('candidates.flag.pick')).not.toBeInTheDocument();
   });
 
-  it('fires onSetFlag with "neutral" when star button is clicked on an already-picked photo', () => {
-    const onSetFlag = vi.fn();
-    renderTray({ photos: [p('photo-X', 'pick')], onSetFlag });
-    const pickButtons = screen.getAllByLabelText('candidates.flag.pick');
-    fireEvent.click(pickButtons[pickButtons.length - 1]);
-    expect(onSetFlag).toHaveBeenCalledWith('photo-X', 'neutral');
+  it('does not render the block (reject) flag button', () => {
+    renderTray({ photos: [p('photo-X')] });
+    expect(screen.queryByLabelText('candidates.flag.reject')).not.toBeInTheDocument();
   });
 
   it('fires onDelete when delete button is clicked', () => {

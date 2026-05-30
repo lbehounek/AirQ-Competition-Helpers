@@ -307,6 +307,22 @@ header p {
   background: #DBEAFE;
 }
 
+.btn-rename {
+  border-color: #1976D2;
+  color: #1976D2;
+  background: #fff;
+}
+
+.btn-rename:hover {
+  background: #EBF5FF;
+}
+
+.btn-rename:disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
 .btn-delete {
   border-color: #E53E3E;
   color: #E53E3E;

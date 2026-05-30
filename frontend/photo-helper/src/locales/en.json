@@ -2,7 +2,8 @@
   "app": {
     "title": "Photo Editor",
     "subtitle": "Organize your navigation flight photos into standardized PDF layouts",
-    "backToMenu": "Back to main menu"
+    "backToMenu": "Back to main menu",
+    "switchToPlacement": "Photo Placement"
   },
   "navigation": {
     "overview": "Overview",

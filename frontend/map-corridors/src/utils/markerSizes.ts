@@ -13,9 +13,16 @@
  *  Previous values are left as a // comment so the +50% history is
  *  visible without a git blame round-trip.
  * ────────────────────────────────────────────────────────────────────── */
-export const LIVE_MARKER_DOT_PX = 12             // was 8
-export const LIVE_MARKER_DOT_BORDER_RADIUS_PX = 6 // was 4
+export const LIVE_MARKER_DOT_PX = 18             // was 12 (orig 8) — bumped for tap-ability (feedback 2026-05-30)
+export const LIVE_MARKER_DOT_BORDER_RADIUS_PX = 9 // was 6 (orig 4)
 export const LIVE_GROUND_MARKER_ICON_PX = 24     // was 16
+
+// Transparent circular click halo rendered as an absolutely-positioned child
+// of each live marker dot. It enlarges the clickable / tappable target a few
+// pixels beyond the visible dot WITHOUT affecting marker layout or the label
+// offsets (which are measured from the dot in normal flow). Markers were
+// "extremely small, hard to click / very sensitive" — feedback 2026-05-30.
+export const LIVE_MARKER_HIT_PX = 38
 
 /* ──────────────────────────────────────────────────────────────────────
  *  Printed / PNG map capture (mapCapture.ts)

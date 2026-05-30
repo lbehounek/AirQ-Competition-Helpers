@@ -21,6 +21,7 @@ import {
   LIVE_GROUND_MARKER_ICON_PX,
   LIVE_MARKER_DOT_BORDER_RADIUS_PX,
   LIVE_MARKER_DOT_PX,
+  LIVE_MARKER_HIT_PX,
 } from '../utils/markerSizes'
 
 type Overlay = {
@@ -310,10 +311,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         }))
 
       const printMarkers = (props.markers || []).map(m => ({
-        lng: m.lng,
-        lat: m.lat,
-        label: m.label,
-      }))
+          lng: m.lng,
+          lat: m.lat,
+          label: m.label,
+        }))
 
       const printGroundMarkers = (props.groundMarkerProps?.groundMarkers || []).map(gm => ({
         lng: gm.lng,
@@ -699,10 +700,13 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         // marker color so a user scanning the map sees one consistent
         // visual for "this is going on the score sheet" regardless of
         // origin. Unlabelled photos colour by flag.
+        // Unflagged ("neutral") photos use a high-contrast amber instead of the
+        // old grey (#616161), which was nearly invisible on both street and
+        // satellite basemaps — feedback 2026-05-30 ("brown dots, invisible").
         const ringColor = m.label ? '#facc15'
           : m.flag === 'pick' ? '#1976d2'
           : m.flag === 'reject' ? '#d32f2f'
-          : '#616161'
+          : '#fb8c00'
         const bg = moved ? ringColor : '#ffffff'
         // Phase 13 — the active photo (popup open / selected in the side
         // panel) gets a glow + scale-up and is lifted above its neighbours.
@@ -764,11 +768,12 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
             }}
           >
             <div style={{
-              width: 14,
-              height: 14,
+              width: LIVE_MARKER_DOT_PX,
+              height: LIVE_MARKER_DOT_PX,
               borderRadius: '50%',
               background: bg,
               border: `2px solid ${ringColor}`,
+              position: 'relative',
               // Active marker: white halo + blue glow so it reads on any
               // basemap; otherwise the subtle drop shadow for moved photos.
               boxShadow: isActive
@@ -777,7 +782,23 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               transform: isActive ? 'scale(1.3)' : undefined,
               transition: 'transform 120ms ease, box-shadow 120ms ease',
               cursor: 'pointer',
-            }} />
+            }}>
+              {/* Transparent click/tap halo — enlarges the hit target a few px
+                  beyond the visible dot so markers are easier to grab without
+                  making the dot itself huge (feedback 2026-05-30). Centered on
+                  the dot; does not affect layout or the label offset. */}
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                width: LIVE_MARKER_HIT_PX,
+                height: LIVE_MARKER_HIT_PX,
+                transform: 'translate(-50%, -50%)',
+                borderRadius: '50%',
+                background: 'transparent',
+                cursor: 'pointer',
+              }} />
+            </div>
             {m.label && (
               <div style={{
                 position: 'absolute',
