@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -8,12 +8,9 @@ import {
   Alert,
   Button,
   IconButton,
-  Divider,
   Modal,
   Backdrop,
   Fade,
-  Card,
-  CardContent,
   useMediaQuery,
   useTheme,
   Link,
@@ -34,6 +31,8 @@ import {
   Warning,
   Home,
   Map,
+  ChevronLeft,
+  ChevronRight,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { useClipboardPaste } from './hooks/useClipboardPaste';
@@ -367,7 +366,7 @@ function AppApi() {
 
   const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
     const setPhotos = session?.sets[setKey].photos || [];
-    const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
+    const photoIndex = setPhotos.findIndex((p: ApiPhoto) => p.id === photo.id);
     setSelectedPhoto({ photo, setKey, label: computeLabelForSlot(setKey, photoIndex) });
   };
 
@@ -393,7 +392,7 @@ function AppApi() {
       const list = prev.setKey === 'candidates'
         ? (session?.candidates?.photos || [])
         : (session?.sets[prev.setKey]?.photos || []);
-      const idx = list.findIndex(p => p.id === prev.photo.id);
+      const idx = list.findIndex((p: ApiPhoto) => p.id === prev.photo.id);
       if (idx === -1) return prev;
       const nextIdx = idx + dir;
       if (nextIdx < 0 || nextIdx >= list.length) return prev;
@@ -406,7 +405,7 @@ function AppApi() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, isPrecision, generateLabel]);
 
-  const modalIndex = selectedPhoto ? modalPhotoList.findIndex(p => p.id === selectedPhoto.photo.id) : -1;
+  const modalIndex = selectedPhoto ? modalPhotoList.findIndex((p: ApiPhoto) => p.id === selectedPhoto.photo.id) : -1;
   const canPrev = modalIndex > 0;
   const canNext = modalIndex >= 0 && modalIndex < modalPhotoList.length - 1;
 
@@ -475,7 +474,7 @@ function AppApi() {
     setPendingTPSend(null);
     // Only place if the candidate is still in the pool (it may have been moved
     // or deleted between the mode switch and this effect firing).
-    if (session.candidates?.photos?.some(p => p.id === photoId)) {
+    if (session.candidates?.photos?.some((p: ApiPhoto) => p.id === photoId)) {
       void handleSendCandidateToSet(photoId, 'set1');
     }
   // handleSendCandidateToSet closes over the fresh post-switch session; keying
@@ -957,6 +956,10 @@ function AppApi() {
             onSetFlag={(photoId, flag) => { if (setCandidateFlag) void setCandidateFlag(photoId, flag); }}
             onDelete={(photoId) => { if (removeCandidate) void removeCandidate(photoId); }}
             onSendToSet={handleSendCandidateToSet}
+            // Track mode only — in turning-point mode set1/set2 ARE the TP photos,
+            // so the extra button would be redundant (CandidateTray hides it when
+            // onSendToTP is undefined).
+            onSendToTP={session?.mode === 'turningpoint' ? undefined : handleSendCandidateToTP}
             onSlotDroppedIn={handleSlotDroppedToTray}
             hideSet2={isPrecision && session?.mode === 'track'}
           />
@@ -1333,6 +1336,34 @@ function AppApi() {
                         >
                           {selectedPhoto.photo.filename}
                         </Typography>
+                      )}
+                      {/* Prev/next navigation within the same set/pool. Mirrors
+                          the ArrowLeft/ArrowRight keyboard shortcuts; hidden when
+                          the set has a single photo. Clamps at both ends. */}
+                      {modalPhotoList.length > 1 && (
+                        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => navigateModalPhoto(-1)}
+                            disabled={!canPrev}
+                            aria-label={t('modal.prevPhoto')}
+                            title={t('modal.prevPhoto')}
+                          >
+                            <ChevronLeft />
+                          </IconButton>
+                          <Typography variant="caption" color="text.secondary" sx={{ minWidth: 48, textAlign: 'center' }}>
+                            {modalIndex + 1} / {modalPhotoList.length}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => navigateModalPhoto(1)}
+                            disabled={!canNext}
+                            aria-label={t('modal.nextPhoto')}
+                            title={t('modal.nextPhoto')}
+                          >
+                            <ChevronRight />
+                          </IconButton>
+                        </Box>
                       )}
                     </Box>
 
