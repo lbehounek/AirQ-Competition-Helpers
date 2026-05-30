@@ -14,6 +14,7 @@ import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
 import { useMarkerFan } from './photoLayers/useMarkerFan'
 import { PhotoMarkerPopup } from '../components/PhotoMarkerPopup'
+import { MAX_COMPARE_VARIANTS } from '../components/PhotoListPanel'
 import { NO_GPS_PHOTO_DRAG_TYPE } from '../components/NoGpsTray'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
@@ -108,6 +109,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // Double-clicking the popup thumbnail opens the full-res single-photo
   // preview. Receives the photoId (keyed the same as the panel rows).
   onPhotoPreview?: (photoId: string) => void
+  // Compare 2–3 photos side-by-side (winner=pick, losers=reject). Same handler
+  // the side panel uses, so the cluster pill / map multi-select and the panel
+  // share one modal + resolve path. Undefined disables map-side comparison.
+  onCompareVariants?: (markers: readonly PhotoMarker[]) => void
   // Phase 14 — provisional placement of a no-GPS photo: a draggable pin at the
   // map center whose popup commits the photo to a chosen category. `null` =
   // no placement in progress.
@@ -145,6 +150,67 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     markers: props.markers,
     draggingMarkerId: draggingPhotoMarkerId,
   })
+
+  // Map-side multi-select for side-by-side compare. Holds markerIds in click
+  // order (mirrors PhotoListPanel's `selectedIds`). Driven by Ctrl/Cmd/Shift-
+  // click on dots and by the cluster pill; the floating bar compares 2–3.
+  const [selectedPhotoMarkerIds, setSelectedPhotoMarkerIds] = useState<readonly string[]>([])
+  const clearPhotoSelection = useCallback(() => setSelectedPhotoMarkerIds([]), [])
+  const togglePhotoSelection = useCallback((markerId: string) => {
+    setSelectedPhotoMarkerIds(prev =>
+      prev.includes(markerId) ? prev.filter(id => id !== markerId) : [...prev, markerId],
+    )
+  }, [])
+
+  // Resolve a list of markerIds to live PhotoMarkers in the given order,
+  // skipping any that have since vanished.
+  const markersByIdForCompare = useCallback((ids: readonly string[]): PhotoMarker[] => {
+    const byId = new Map<string, PhotoMarker>()
+    for (const m of props.markers ?? []) byId.set(m.id, m)
+    const out: PhotoMarker[] = []
+    for (const id of ids) {
+      const m = byId.get(id)
+      if (m) out.push(m)
+    }
+    return out
+  }, [props.markers])
+
+  // Prune selection when a selected marker disappears (deleted / demoted to a
+  // non-visible flag) so the floating bar count stays honest.
+  useEffect(() => {
+    setSelectedPhotoMarkerIds(prev => {
+      if (prev.length === 0) return prev
+      const valid = new Set((props.markers ?? []).filter(isPhotoMarkerVisible).map(m => m.id))
+      const next = prev.filter(id => valid.has(id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [props.markers])
+
+  // Esc clears the map selection (parallels the panel's clear button).
+  useEffect(() => {
+    if (selectedPhotoMarkerIds.length === 0) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') clearPhotoSelection() }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [selectedPhotoMarkerIds.length, clearPhotoSelection])
+
+  const selectedCompareMarkers = useMemo(
+    () => markersByIdForCompare(selectedPhotoMarkerIds),
+    [markersByIdForCompare, selectedPhotoMarkerIds],
+  )
+
+  // Open the compare modal for a set of markers, or — when there are too many
+  // for the 2–3 modal — drop them into the selection so the user can trim via
+  // the floating bar. Shared by the cluster pill and (for ≤3) direct calls.
+  const compareOrSelect = useCallback((markers: readonly PhotoMarker[]) => {
+    if (markers.length < 2) return
+    if (markers.length <= MAX_COMPARE_VARIANTS) {
+      props.onCompareVariants?.(markers)
+      clearPhotoSelection()
+    } else {
+      setSelectedPhotoMarkerIds(markers.map(m => m.id))
+    }
+  }, [props, clearPhotoSelection])
   // Attach native DnD listeners on the canvas to support custom marker drops
   useEffect(() => {
     if (!isMapLoaded || !mapRef.current) return
@@ -416,6 +482,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}
       onLoad={() => setIsMapLoaded(true)}
+      // A click on the empty map (not a marker — those are DOM overlays and
+      // don't raise the map's `click`) clears any pending compare selection,
+      // the same way clicking off a selection deselects elsewhere.
+      onClick={() => { if (selectedPhotoMarkerIds.length) clearPhotoSelection() }}
       ref={mapRef}
     >
       {geojsonOverlays?.map((ov) => (
@@ -707,6 +777,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         // Phase 13 — the active photo (popup open / selected in the side
         // panel) gets a glow + scale-up and is lifted above its neighbours.
         const isActive = activePhotoMarkerId === m.id
+        // Map-side compare selection (Ctrl/Cmd/Shift-click). Gets a distinct
+        // ring; can coexist with the active glow.
+        const isSelected = selectedPhotoMarkerIds.includes(m.id)
         return (
           <Marker
             key={m.id}
@@ -717,14 +790,23 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
             // (anchor stays at the true lng/lat). Suppressed while THIS marker
             // is being dragged so its dot tracks the cursor without a jump.
             offset={draggingPhotoMarkerId === m.id ? undefined : photoFan.offsets.get(m.id)}
-            style={isActive ? { zIndex: 2 } : undefined}
+            style={isActive || isSelected ? { zIndex: 2 } : undefined}
             onClick={(ev: MarkerEvent<MouseEvent>) => {
               const movedPx = dragMovedPxRef.current.get(m.id) || 0
               dragStartLngLatRef.current.delete(m.id)
               dragMovedPxRef.current.delete(m.id)
               if (movedPx < 8) {
                 ev.originalEvent?.stopPropagation?.()
-                setActivePhotoMarkerId(m.id)
+                const oe = ev.originalEvent
+                // Ctrl/Cmd or Shift → toggle into the compare selection instead
+                // of opening the popup. Plain click → open popup AND drop any
+                // pending selection (don't leave the user in a hidden mode).
+                if (oe && (oe.ctrlKey || oe.metaKey || oe.shiftKey)) {
+                  togglePhotoSelection(m.id)
+                } else {
+                  clearPhotoSelection()
+                  setActivePhotoMarkerId(m.id)
+                }
               }
             }}
             onDragStart={(ev: MarkerDragEvent) => {
@@ -769,12 +851,15 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               borderRadius: '50%',
               background: bg,
               border: `2px solid ${ringColor}`,
-              // Active marker: white halo + blue glow so it reads on any
-              // basemap; otherwise the subtle drop shadow for moved photos.
-              boxShadow: isActive
-                ? '0 0 0 3px rgba(255,255,255,0.9), 0 0 10px 4px rgba(25,118,210,0.65)'
-                : moved ? '0 1px 2px rgba(0,0,0,0.25)' : 'none',
-              transform: isActive ? 'scale(1.3)' : undefined,
+              // Layered halos: active = white + blue glow; selected-for-compare
+              // = purple ring (distinct from the blue active glow, and the two
+              // stack when a marker is both). Else the subtle moved-photo shadow.
+              boxShadow: [
+                isSelected ? '0 0 0 3px #ffffff, 0 0 0 5px #9c27b0' : null,
+                isActive ? '0 0 0 3px rgba(255,255,255,0.9), 0 0 10px 4px rgba(25,118,210,0.65)' : null,
+                !isActive && !isSelected && moved ? '0 1px 2px rgba(0,0,0,0.25)' : null,
+              ].filter(Boolean).join(', ') || 'none',
+              transform: isActive ? 'scale(1.3)' : isSelected ? 'scale(1.15)' : undefined,
               transition: 'transform 120ms ease, box-shadow 120ms ease',
               cursor: 'pointer',
             }} />
@@ -795,6 +880,45 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           </Marker>
         )
       })}
+      {/* Cluster "Compare" pills — one per fanned group, anchored at the
+          centroid where the leader lines converge (no dot sits there, since
+          dots fan outward). Click compares the cluster's photos: ≤3 opens the
+          side-by-side modal directly; >3 drops them into the selection so the
+          floating bar can trim to 3. Only shown when comparison is wired. */}
+      {props.onCompareVariants && photoFan.clusters.map(c => (
+        <Marker
+          key={`fan-pill-${c.ids.join('-')}`}
+          longitude={c.centroidLngLat[0]}
+          latitude={c.centroidLngLat[1]}
+          style={{ zIndex: 3 }}
+        >
+          <button
+            type="button"
+            title={t('photo.map.comparePill')}
+            onClick={(e) => {
+              e.stopPropagation()
+              compareOrSelect(markersByIdForCompare(c.ids))
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 3,
+              height: 22,
+              padding: '0 8px',
+              borderRadius: 11,
+              border: '1px solid #7b1fa2',
+              background: '#9c27b0',
+              color: '#ffffff',
+              fontSize: 12,
+              fontWeight: 700,
+              lineHeight: 1,
+              cursor: 'pointer',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
+              whiteSpace: 'nowrap',
+            }}
+          >⇄ {c.count}</button>
+        </Marker>
+      ))}
       {/* Ground markers */}
       {props.groundMarkerProps?.groundMarkers.map(gm => {
         const gmp = props.groundMarkerProps!
@@ -1038,6 +1162,77 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               />
             </Popup>
           </React.Fragment>
+        )
+      })()}
+      {/* Floating compare bar — appears when ≥1 photo is map-selected
+          (Ctrl/Cmd/Shift-click or via a cluster pill of >3). Enabled for 2–3;
+          disabled with a hint when over the cap, mirroring the side panel. */}
+      {props.onCompareVariants && selectedCompareMarkers.length >= 1 && (() => {
+        const n = selectedCompareMarkers.length
+        const tooMany = n > MAX_COMPARE_VARIANTS
+        const ready = n >= 2 && !tooMany
+        return (
+          <div style={{
+            position: 'absolute',
+            bottom: 20,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 30,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: 'rgba(33,33,33,0.94)',
+            color: '#ffffff',
+            padding: '8px 10px 8px 14px',
+            borderRadius: 24,
+            boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
+            fontSize: 13,
+          }}>
+            <span style={{ fontWeight: 600 }}>
+              {t('photo.list.compareSelected', { count: n })}
+            </span>
+            {tooMany && (
+              <span style={{ color: '#ffcc80', fontSize: 12 }}>
+                {t('photo.list.compareLimitTip', { max: MAX_COMPARE_VARIANTS })}
+              </span>
+            )}
+            <button
+              type="button"
+              disabled={!ready}
+              onClick={() => {
+                if (!ready) return
+                props.onCompareVariants?.(selectedCompareMarkers)
+                clearPhotoSelection()
+              }}
+              style={{
+                height: 28,
+                padding: '0 14px',
+                borderRadius: 14,
+                border: 'none',
+                background: ready ? '#9c27b0' : '#616161',
+                color: '#ffffff',
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: ready ? 'pointer' : 'not-allowed',
+              }}
+            >⇄ {t('photo.map.compareAction')}</button>
+            <button
+              type="button"
+              onClick={clearPhotoSelection}
+              aria-label={t('photo.list.clearSelection')}
+              title={t('photo.list.clearSelection')}
+              style={{
+                height: 28,
+                width: 28,
+                borderRadius: '50%',
+                border: 'none',
+                background: 'transparent',
+                color: '#ffffff',
+                fontSize: 16,
+                cursor: 'pointer',
+              }}
+            >✕</button>
+          </div>
         )
       })()}
     </MapGL>

@@ -22,6 +22,13 @@ new desktop release.
   one back to the spot, so every photo stays individually clickable. The fan
   recomputes as you zoom and pan, and collapses once the dots are far enough
   apart on their own.
+- **Map Corridors:** compare co-located photos straight from the map. Each
+  fanned cluster shows a small **⇄ N** pill at its centre — click it to open the
+  photos side-by-side and pick the best one (2–3 open immediately; larger groups
+  drop into a selection to trim down). You can also **Ctrl/Cmd/Shift-click** any
+  dots to multi-select them (highlighted with a ring); a floating **Compare**
+  bar then opens the side-by-side view. Both routes feed the existing compare
+  modal (winner stays, the rest move to Odmítnuté).
 
 ### Changed
 - **Desktop launcher:** the app now opens maximised (filling the screen) on

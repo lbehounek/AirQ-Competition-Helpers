@@ -50,6 +50,10 @@
       "loading": "Loading photo…",
       "missing": "Couldn't load photo"
     },
+    "map": {
+      "comparePill": "Compare these photos side-by-side",
+      "compareAction": "Compare"
+    },
     "tray": {
       "title": "No GPS ({{count}})",
       "dragHint": "Drag onto the map to place",

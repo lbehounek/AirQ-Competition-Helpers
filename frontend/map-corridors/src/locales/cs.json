@@ -50,6 +50,10 @@
       "loading": "Načítání fotky…",
       "missing": "Fotku se nepodařilo načíst"
     },
+    "map": {
+      "comparePill": "Porovnat tyto fotky vedle sebe",
+      "compareAction": "Porovnat"
+    },
     "tray": {
       "title": "Bez GPS ({{count}})",
       "dragHint": "Přetáhni na mapu pro umístění",

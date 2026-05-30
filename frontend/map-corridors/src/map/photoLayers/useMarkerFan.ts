@@ -23,14 +23,24 @@ import type { PhotoMarker } from '../../types/markers'
 import { isPhotoMarkerVisible } from './markerVisibility'
 import { computeMarkerFan, type ScreenPoint } from './markerFan'
 
+/** A fanned cluster surfaced to the map: members (markerIds), the centroid in
+ *  lng/lat (so the "Compare N" pill can be a <Marker>), and the member count. */
+export interface FanCluster {
+  ids: string[]
+  centroidLngLat: [number, number]
+  count: number
+}
+
 export interface UseMarkerFanResult {
   offsets: Map<string, [number, number]>
   leaders: FeatureCollection<LineString>
+  clusters: FanCluster[]
 }
 
 const EMPTY: UseMarkerFanResult = {
   offsets: new Map(),
   leaders: { type: 'FeatureCollection', features: [] },
+  clusters: [],
 }
 
 export function useMarkerFan(params: {
@@ -91,7 +101,12 @@ export function useMarkerFan(params: {
       }
     })
 
-    return { offsets: fan.offsets, leaders: { type: 'FeatureCollection', features } }
+    const clusters: FanCluster[] = fan.clusters.map(c => {
+      const ll = map.unproject(c.centroid)
+      return { ids: c.ids, centroidLngLat: [ll.lng, ll.lat], count: c.ids.length }
+    })
+
+    return { offsets: fan.offsets, leaders: { type: 'FeatureCollection', features }, clusters }
     // settleTick intentionally in deps: it's the signal that the viewport
     // moved and projections must be recomputed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
