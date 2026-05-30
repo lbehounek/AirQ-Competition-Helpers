@@ -47,6 +47,10 @@
       "labelSet": "Přiřadit štítek",
       "labelUsed": "Již použito"
     },
+    "map": {
+      "resetNorth": "Otočit mapu na sever",
+      "resetNorthTooltip": "Otočit mapu na sever (N)"
+    },
     "preview": {
       "title": "Fotka",
       "close": "Zavřít",
