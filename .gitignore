@@ -116,8 +116,12 @@ public_html
 
 # Local scratch / scrap files dropped in the repo root during work sessions
 # (raw patches, KML/photo exports, scratch docs) — not part of the project.
+# RED.kml / RED_SC.kml are intentionally-tracked root corridor assets, so they
+# are negated below; add any future legitimate root KML the same way.
 /*.patch
 /*.kml
+!/RED.kml
+!/RED_SC.kml
 /*.docx
 /RIMG*.JPG
 
