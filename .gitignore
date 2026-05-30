@@ -108,8 +108,18 @@ public_html
 .claude/*.lock
 
 # Local PR diff dumps (e.g. pr47.diff, pr50_review.diff) saved during
-# review sessions — never intended for the repo
+# review sessions — never intended for the repo. Both plain and dot-prefixed
+# scratch names (e.g. .pr64_p2.txt, .pr66.diff).
 /pr*.diff
+/.pr*.diff
+/.pr*.txt
+
+# Local scratch / scrap files dropped in the repo root during work sessions
+# (raw patches, KML/photo exports, scratch docs) — not part of the project.
+/*.patch
+/*.kml
+/*.docx
+/RIMG*.JPG
 
 # Root-level static deploy bundle (built output staged for hosting,
 # distinct from per-app `dist/` already covered above)
