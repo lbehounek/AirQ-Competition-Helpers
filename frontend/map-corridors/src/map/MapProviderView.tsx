@@ -16,6 +16,7 @@ import { useMarkerFan } from './photoLayers/useMarkerFan'
 import { PhotoMarkerPopup } from '../components/PhotoMarkerPopup'
 import { NO_GPS_PHOTO_DRAG_TYPE } from '../components/NoGpsTray'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
+import { isPickFlag } from '@airq/shared-handoff'
 import { GROUND_MARKER_ICON } from '../components/GroundMarkerIcons'
 import {
   LIVE_GROUND_MARKER_ICON_PX,
@@ -343,7 +344,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       // coords. Both use lng/lat or capturedAt.lng/lat — subject is
       // initialised to capturedAt on import (ADR-007), so for unmoved
       // markers either works. Picks may have been dragged.
-      const center: [number, number] = (marker.flag === 'pick-track' || marker.flag === 'pick-turning')
+      const center: [number, number] = isPickFlag(marker.flag)
         ? [marker.lng, marker.lat]
         : [marker.capturedAt?.lng ?? marker.lng, marker.capturedAt?.lat ?? marker.lat]
       map.flyTo({ center, zoom: Math.max(map.getZoom(), 14), duration: 700 })

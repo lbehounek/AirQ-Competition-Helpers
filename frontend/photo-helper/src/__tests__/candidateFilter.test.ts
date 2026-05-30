@@ -73,4 +73,18 @@ describe('countByFlag', () => {
   it('zeros all counts on an empty pool', () => {
     expect(countByFlag([])).toEqual({ pick: 0, neutral: 0, reject: 0, total: 0 });
   });
+
+  // A3 (2026-05-30) split `pick` into `pick-track`/`pick-turning`; a map-
+  // originated candidate now carries a category, never bare `pick`. All pick
+  // categories must still tally as picks or the header chip reads 0.
+  it('counts pick-track and pick-turning as picks (not neutral)', () => {
+    const photos = [
+      makePhoto('a', 'pick'),
+      makePhoto('b', 'pick-track'),
+      makePhoto('c', 'pick-turning'),
+      makePhoto('d'),
+      makePhoto('e', 'reject'),
+    ];
+    expect(countByFlag(photos)).toEqual({ pick: 3, neutral: 1, reject: 1, total: 5 });
+  });
 });

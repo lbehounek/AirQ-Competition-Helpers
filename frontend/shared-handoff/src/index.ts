@@ -25,6 +25,7 @@ export {
   EDITOR_PICKS_FILENAME,
   PM_PHOTO_ID_PREFIX,
   isWireFlag,
+  isPickFlag,
   isMapPickEntry,
   isMapPicksFile,
   isEditorPickEntry,

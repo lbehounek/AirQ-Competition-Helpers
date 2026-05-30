@@ -34,6 +34,7 @@ import { PhotoEditorApi } from './PhotoEditorApi';
 import { useI18n } from '../contexts/I18nContext';
 import { isValidImageFile } from '../utils/imageProcessing';
 import { filterCandidates, countByFlag } from '../utils/candidateFilter';
+import { isPickFlag } from '@airq/shared-handoff';
 import { parseDragPayload, serializeDragPayload, DRAG_PAYLOAD_MIME } from '../utils/dragPayload';
 import type { ApiPhoto, CandidateFlag } from '../types/api';
 
@@ -384,7 +385,10 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
   const theme = useTheme();
   const { t } = useI18n();
   const flag: CandidateFlag = (photo.flag as CandidateFlag | undefined) ?? 'neutral';
-  const isPick = flag === 'pick';
+  // Any pick category counts as picked for the status border/toggle. A
+  // map-originated candidate now carries `pick-track`/`pick-turning`, not bare
+  // `pick`, so a literal `=== 'pick'` would drop its picked highlight (A3 split).
+  const isPick = isPickFlag(flag);
   const isReject = flag === 'reject';
 
   // Status border colour communicates flag at a glance.

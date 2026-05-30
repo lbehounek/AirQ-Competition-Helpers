@@ -27,6 +27,19 @@ export function isWireFlag(x: unknown): x is WireFlag {
   return typeof x === 'string' && WIRE_FLAGS.has(x);
 }
 
+// The three values that all mean "this photo is a pick". Single source of
+// truth so the pick/track split (A3, 2026-05-30) doesn't leave stale
+// `flag === 'pick'` comparisons scattered across both apps. Includes the
+// legacy bare `pick` so a candidate that hasn't been normalized yet still
+// reads as a pick. Accepts `unknown` (and undefined) so callers can pass a
+// possibly-absent marker/candidate flag without a pre-check.
+const PICK_FLAGS: ReadonlySet<string> = new Set(['pick', 'pick-track', 'pick-turning']);
+
+/** True for any pick category — bare `pick` (legacy), `pick-track`, or `pick-turning`. */
+export function isPickFlag(x: unknown): boolean {
+  return typeof x === 'string' && PICK_FLAGS.has(x);
+}
+
 function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
 }
