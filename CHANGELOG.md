@@ -10,6 +10,20 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.20.0] - 2026-05-30
+
+### Added
+- **Map Corridors:** picked photos can now be categorised as **track** or
+  **turning-point** photos. The marker popup's single *Vybrané* button is
+  replaced by two pick buttons — *Fotka trati* / *Fotka otočného bodu*
+  (English *Track photo* / *Turning-point photo*). The chosen category shows in
+  the marker's ring colour — blue for track, purple for turning-point — and is
+  highlighted in the popup. The category travels with the photo across the
+  handoff into Photo Helper, so the editor knows which print set each photo
+  belongs to. Picking does not auto-place the photo; the existing "Send to set"
+  / "Send to TP photos" controls still do that. Sessions saved before this
+  release load their existing picks as track photos (no picks are lost).
+
 ## [2.19.0] - 2026-05-30
 
 ### Added
