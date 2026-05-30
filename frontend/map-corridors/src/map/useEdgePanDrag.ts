@@ -47,14 +47,17 @@ export type EdgePanDragController = {
 }
 
 type DragState = {
-  cfg: DragHandleConfig
-  pointerId: number
+  // Captured once at grab time and never reassigned — `readonly` so a future
+  // edit can't corrupt the click-threshold baseline or grab offset mid-gesture.
+  readonly cfg: DragHandleConfig
+  readonly pointerId: number
   /** Cursor-to-anchor pixel offset captured at grab time (keeps the grab point
    *  under the cursor as it moves). */
-  offsetX: number
-  offsetY: number
-  startCx: number
-  startCy: number
+  readonly offsetX: number
+  readonly offsetY: number
+  readonly startCx: number
+  readonly startCy: number
+  // Mutated as the gesture progresses.
   lastCx: number
   lastCy: number
   vx: number
@@ -85,8 +88,9 @@ type ActiveDrag = { id: string; lng: number; lat: number } | null
 // Builds the stable drag controller once. Every handler closes over the same
 // `state` + `mapRef`, so add/removeEventListener stays symmetric. The mutable
 // drag state is a plain closure variable (not a React ref) so it's never read
-// during render.
-function createEdgePanController(
+// during render. Exported so the drag state machine can be unit-tested with a
+// fake map + fake requestAnimationFrame (see useEdgePanDrag.test.ts).
+export function createEdgePanController(
   mapRef: React.RefObject<MapRef | null>,
   setActiveDrag: (d: ActiveDrag) => void,
 ): EdgePanDragController & { destroy: () => void } {
@@ -136,11 +140,18 @@ function createEdgePanController(
       if (!map) return
       st.lastCx = e.clientX
       st.lastCy = e.clientY
-      syncMarker(map, st)
-      const threshold = st.cfg.clickThresholdPx ?? DEFAULT_CLICK_THRESHOLD_PX
-      const ddx = e.clientX - st.startCx
-      const ddy = e.clientY - st.startCy
-      if (!st.moved && ddx * ddx + ddy * ddy >= threshold * threshold) st.moved = true
+      // Below the click threshold the gesture is still a potential tap: track
+      // the cursor but DON'T move the dot or start auto-pan yet, so a click
+      // never visually nudges the marker (parity with the native draggable,
+      // which only repositioned once the drag was recognised).
+      if (!st.moved) {
+        const threshold = st.cfg.clickThresholdPx ?? DEFAULT_CLICK_THRESHOLD_PX
+        const ddx = e.clientX - st.startCx
+        const ddy = e.clientY - st.startCy
+        if (ddx * ddx + ddy * ddy < threshold * threshold) return
+        st.moved = true
+      }
+      syncMarker(map, st) // keep the grab point under the cursor
       updateVelocity(map, st)
       ensureRaf(st)
     }

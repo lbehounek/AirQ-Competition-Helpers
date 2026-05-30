@@ -1,5 +1,17 @@
 import React, { useEffect, useRef } from 'react'
-import type { EdgePanDragController } from './useEdgePanDrag'
+import type { DragHandleConfig, EdgePanDragController } from './useEdgePanDrag'
+
+/**
+ * Props are the drag config the controller needs ({@link DragHandleConfig})
+ * plus the controller itself and the marker's visual children. Reusing
+ * `DragHandleConfig` keeps this in lock-step with the controller's input — a
+ * new config field flows here automatically instead of needing a hand-mirrored
+ * copy.
+ */
+export type MarkerDragHandleProps = DragHandleConfig & {
+  controller: EdgePanDragController
+  children: React.ReactNode
+}
 
 /**
  * Wraps a marker's visual children and routes their pointer gestures through an
@@ -10,16 +22,7 @@ import type { EdgePanDragController } from './useEdgePanDrag'
  * never reach mapbox's canvas-container handlers (which would otherwise pan/zoom
  * the map or fire a map click underneath the marker).
  */
-export function MarkerDragHandle(props: {
-  controller: EdgePanDragController
-  id: string
-  lng: number
-  lat: number
-  onCommit: (lng: number, lat: number) => void
-  onClick?: () => void
-  clickThresholdPx?: number
-  children: React.ReactNode
-}): React.ReactElement {
+export function MarkerDragHandle(props: MarkerDragHandleProps): React.ReactElement {
   const ref = useRef<HTMLDivElement | null>(null)
   // Latest props for the once-attached native listener to read at fire time.
   // Updated in an effect (not during render) so the ref is only written outside
@@ -34,15 +37,10 @@ export function MarkerDragHandle(props: {
       // Primary, left-button only; let secondary buttons/touches fall through.
       if (!e.isPrimary || e.button !== 0) return
       e.stopPropagation()
-      const p = latest.current
-      p.controller.startDrag(e, {
-        id: p.id,
-        lng: p.lng,
-        lat: p.lat,
-        onCommit: p.onCommit,
-        onClick: p.onClick,
-        clickThresholdPx: p.clickThresholdPx,
-      })
+      // Strip the wrapper-only props; the rest IS a DragHandleConfig.
+      const { controller, children, ...cfg } = latest.current
+      void children // rendered separately below, not part of the drag config
+      controller.startDrag(e, cfg)
     }
     const block = (e: Event) => e.stopPropagation()
     el.addEventListener('pointerdown', onPointerDown)

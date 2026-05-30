@@ -15,7 +15,7 @@
 // recomputes when the marker set changes or when a marker enters/leaves drag
 // (the dragged marker is excluded so its dot snaps cleanly to the cursor).
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import type { MapRef } from 'react-map-gl/mapbox'
 import type { FeatureCollection, LineString } from 'geojson'
@@ -46,10 +46,21 @@ export function useMarkerFan(params: {
   // Bumped on every map settle so the memo below re-projects against the new
   // viewport. A counter (not the camera state) keeps the dependency cheap.
   const [settleTick, setSettleTick] = useState(0)
+
+  // Edge-pan marker drag calls `map.panBy({ duration: 0 })` every animation
+  // frame, and mapbox emits a `moveend` per call — so without this guard the
+  // fan would re-project every visible marker at ~60fps while a marker is held
+  // against a viewport edge (the exact per-frame work this `moveend`-vs-`move`
+  // choice was made to avoid). Skip the bump mid-drag; the memo recomputes once
+  // on drag end via its `draggingMarkerId` dependency. A ref (not a dep of the
+  // subscribe effect) so the listener isn't re-bound on every drag transition.
+  const draggingRef = useRef(draggingMarkerId)
+  useEffect(() => { draggingRef.current = draggingMarkerId }, [draggingMarkerId])
+
   useEffect(() => {
     if (!isMapLoaded || !mapRef.current) return
     const map = mapRef.current.getMap()
-    const bump = () => setSettleTick(t => t + 1)
+    const bump = () => { if (draggingRef.current == null) setSettleTick(t => t + 1) }
     map.on('moveend', bump)
     map.on('zoomend', bump)
     // Initial compute once the map is ready (no settle event fires on load).
