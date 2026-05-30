@@ -1,6 +1,6 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import MapGL, { Layer, Source, Marker, Popup } from 'react-map-gl/mapbox'
-import type { MapRef, MarkerDragEvent, MarkerEvent } from 'react-map-gl/mapbox'
+import type { MapRef } from 'react-map-gl/mapbox'
 import type { GeoJSON, Geometry, Position } from 'geojson'
 import type { LngLatBoundsLike, LngLatLike, StyleSpecification } from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -13,6 +13,8 @@ import type { PhotoFlag, PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
 import { useMarkerFan } from './photoLayers/useMarkerFan'
+import { useEdgePanDrag } from './useEdgePanDrag'
+import { MarkerDragHandle } from './MarkerDragHandle'
 import { PhotoMarkerPopup } from '../components/PhotoMarkerPopup'
 import { NO_GPS_PHOTO_DRAG_TYPE } from '../components/NoGpsTray'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
@@ -148,17 +150,25 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     (id: string | null) => { onActivePhotoMarkerChange?.(id) },
     [onActivePhotoMarkerChange],
   )
-  const dragStartLngLatRef = useRef<Map<string, { lng: number, lat: number }>>(new Map())
-  const dragMovedPxRef = useRef<Map<string, number>>(new Map())
-  // Auto-fan: which photo marker is mid-drag (excluded from fanning so its
-  // dot snaps to the cursor instead of sitting at its fan offset). `null` =
-  // none dragging. State (not a ref) so dropping its offset re-renders.
-  const [draggingPhotoMarkerId, setDraggingPhotoMarkerId] = useState<string | null>(null)
+  // Custom marker drag with auto-pan when the cursor nears a viewport edge
+  // (replaces react-map-gl's built-in `draggable`, which can't scroll the map
+  // mid-drag without the dot sliding off the cursor — see useEdgePanDrag).
+  // `activeDrag` is the live override position of whichever marker is mid-drag.
+  const { activeDrag, controller: dragController } = useEdgePanDrag(mapRef)
+  // Position a marker at its live drag override (if it's the one being dragged)
+  // or its committed prop position otherwise.
+  const liveDragPos = useCallback(
+    (id: string, lng: number, lat: number) =>
+      activeDrag && activeDrag.id === id ? { lng: activeDrag.lng, lat: activeDrag.lat } : { lng, lat },
+    [activeDrag],
+  )
   const photoFan = useMarkerFan({
     mapRef,
     isMapLoaded,
     markers: props.markers,
-    draggingMarkerId: draggingPhotoMarkerId,
+    // Auto-fan excludes the dragging marker so its dot snaps to the cursor
+    // instead of sitting at its fan offset.
+    draggingMarkerId: activeDrag?.id ?? null,
   })
   // `N` resets the map to north (Google-Earth style). Suppressed while typing
   // in a field (marker-name inputs live in popups) and for modifier combos
@@ -517,75 +527,49 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           markers (m.photoId !== undefined) are handled in the photo-
           pin block below to keep the click + popup semantics distinct
           (photo popup vs KML label picker). */}
-      {props.markers?.filter(m => !m.photoId).map(m => (
+      {props.markers?.filter(m => !m.photoId).map(m => {
+        const pos = liveDragPos(m.id, m.lng, m.lat)
+        return (
         <React.Fragment key={m.id}>
           <Marker
-            longitude={m.lng}
-            latitude={m.lat}
-            draggable
-            onClick={(ev: MarkerEvent<MouseEvent>) => {
-              const moved = dragMovedPxRef.current.get(m.id) || 0
-              if (moved < 8) {
-                ev.originalEvent?.stopPropagation?.()
-                props.onMarkerClick?.(m.id)
-              }
-              dragStartLngLatRef.current.delete(m.id)
-              dragMovedPxRef.current.delete(m.id)
-            }}
-            onDragStart={(ev: MarkerDragEvent) => {
-              const ll = ev.lngLat
-              dragStartLngLatRef.current.set(m.id, { lng: ll.lng, lat: ll.lat })
-              dragMovedPxRef.current.set(m.id, 0)
-            }}
-            onDrag={(ev: MarkerDragEvent) => {
-              const start = dragStartLngLatRef.current.get(m.id)
-              if (!start || !mapRef.current) return
-              const map = mapRef.current.getMap()
-              const p0 = map.project([start.lng, start.lat])
-              const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat])
-              const dx = p1.x - p0.x
-              const dy = p1.y - p0.y
-              const dist = Math.sqrt(dx*dx + dy*dy)
-              dragMovedPxRef.current.set(m.id, dist)
-            }}
-            onDragEnd={(ev: MarkerDragEvent) => {
-              const moved = dragMovedPxRef.current.get(m.id) || 0
-              dragStartLngLatRef.current.delete(m.id)
-              dragMovedPxRef.current.delete(m.id)
-              if (moved < 8) {
-                // Treat as click: do not update position, just open popup
-                props.onMarkerClick?.(m.id)
-              } else {
-                const ll = ev.lngLat
-                props.onMarkerDragEnd?.(m.id, ll.lng, ll.lat)
-                props.onMarkerClick?.(m.id)
-              }
-            }}
+            longitude={pos.lng}
+            latitude={pos.lat}
           >
-            <div style={{
-              width: LIVE_MARKER_DOT_PX,
-              height: LIVE_MARKER_DOT_PX,
-              borderRadius: LIVE_MARKER_DOT_BORDER_RADIUS_PX,
-              background: '#FFFF00',
-              border: '1px solid #333333',
-              cursor: 'pointer',
-              position: 'relative'
-            }} />
-            {/* Letter label near the marker */}
-            {m.label && (
+            <MarkerDragHandle
+              controller={dragController}
+              id={m.id}
+              lng={m.lng}
+              lat={m.lat}
+              // Drag: update position then open the popup (parity with the old
+              // native onDragEnd). Tap: just open the popup.
+              onCommit={(lng, lat) => { props.onMarkerDragEnd?.(m.id, lng, lat); props.onMarkerClick?.(m.id) }}
+              onClick={() => props.onMarkerClick?.(m.id)}
+            >
               <div style={{
-                position: 'absolute',
-                transform: 'translate(10px, -6px)',
-                background: 'rgba(255,255,255,0.85)',
-                borderRadius: 4,
-                padding: '1px 4px',
-                fontSize: 14,
-                lineHeight: '18px',
-                fontWeight: 600,
-                color: '#111',
-                border: '1px solid #e5e7eb'
-              }}>{m.label}</div>
-            )}
+                width: LIVE_MARKER_DOT_PX,
+                height: LIVE_MARKER_DOT_PX,
+                borderRadius: LIVE_MARKER_DOT_BORDER_RADIUS_PX,
+                background: '#FFFF00',
+                border: '1px solid #333333',
+                cursor: 'pointer',
+                position: 'relative'
+              }} />
+              {/* Letter label near the marker */}
+              {m.label && (
+                <div style={{
+                  position: 'absolute',
+                  transform: 'translate(10px, -6px)',
+                  background: 'rgba(255,255,255,0.85)',
+                  borderRadius: 4,
+                  padding: '1px 4px',
+                  fontSize: 14,
+                  lineHeight: '18px',
+                  fontWeight: 600,
+                  color: '#111',
+                  border: '1px solid #e5e7eb'
+                }}>{m.label}</div>
+              )}
+            </MarkerDragHandle>
           </Marker>
           {props.activeMarkerId === m.id && (
             <Popup longitude={m.lng} latitude={m.lat} anchor="top" closeButton={true} closeOnMove={false}
@@ -721,7 +705,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
             </Popup>
           )}
         </React.Fragment>
-      ))}
+        )
+      })}
       {/* Photo markers — every photo is draggable. Pin position is the
           subject (m.lng/lat); fill is solid when the user has moved the
           marker away from its EXIF capture spot (= processed), hollow
@@ -750,62 +735,29 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         // Phase 13 — the active photo (popup open / selected in the side
         // panel) gets a glow + scale-up and is lifted above its neighbours.
         const isActive = activePhotoMarkerId === m.id
+        const pos = liveDragPos(m.id, m.lng, m.lat)
         return (
           <Marker
             key={m.id}
-            longitude={m.lng}
-            latitude={m.lat}
-            draggable
+            longitude={pos.lng}
+            latitude={pos.lat}
             // Auto-fan: nudge overlapping markers apart by a pixel offset
             // (anchor stays at the true lng/lat). Suppressed while THIS marker
             // is being dragged so its dot tracks the cursor without a jump.
-            offset={draggingPhotoMarkerId === m.id ? undefined : photoFan.offsets.get(m.id)}
+            offset={activeDrag?.id === m.id ? undefined : photoFan.offsets.get(m.id)}
             style={isActive ? { zIndex: 2 } : undefined}
-            onClick={(ev: MarkerEvent<MouseEvent>) => {
-              const movedPx = dragMovedPxRef.current.get(m.id) || 0
-              dragStartLngLatRef.current.delete(m.id)
-              dragMovedPxRef.current.delete(m.id)
-              if (movedPx < 8) {
-                ev.originalEvent?.stopPropagation?.()
-                setActivePhotoMarkerId(m.id)
-              }
-            }}
-            onDragStart={(ev: MarkerDragEvent) => {
-              const ll = ev.lngLat
-              dragStartLngLatRef.current.set(m.id, { lng: ll.lng, lat: ll.lat })
-              dragMovedPxRef.current.set(m.id, 0)
-              setDraggingPhotoMarkerId(m.id)
-            }}
-            onDrag={(ev: MarkerDragEvent) => {
-              const start = dragStartLngLatRef.current.get(m.id)
-              if (!start || !mapRef.current) return
-              const map = mapRef.current.getMap()
-              const p0 = map.project([start.lng, start.lat])
-              const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat])
-              const dx = p1.x - p0.x
-              const dy = p1.y - p0.y
-              dragMovedPxRef.current.set(m.id, Math.sqrt(dx * dx + dy * dy))
-            }}
-            onDragEnd={(ev: MarkerDragEvent) => {
-              const movedPx = dragMovedPxRef.current.get(m.id) || 0
-              dragStartLngLatRef.current.delete(m.id)
-              dragMovedPxRef.current.delete(m.id)
-              // Clear the drag exclusion; the fan recomputes for the new
-              // position (a marker drag fires no map `moveend`, so the hook's
-              // dependency on `draggingMarkerId` is what triggers the recompute).
-              setDraggingPhotoMarkerId(null)
-              if (movedPx < 8) {
-                // Treated as click — open photo popup without moving.
-                setActivePhotoMarkerId(m.id)
-              } else {
-                const ll = ev.lngLat
-                props.onMarkerDragEnd?.(m.id, ll.lng, ll.lat)
-                // Intentionally do NOT auto-open the photo popup after a
-                // real drag — the user has just placed the subject and
-                // doesn't need the popup interrupting their flow.
-              }
-            }}
           >
+            <MarkerDragHandle
+              controller={dragController}
+              id={m.id}
+              lng={m.lng}
+              lat={m.lat}
+              // Tap → open the photo popup. Real drag → commit the new subject
+              // coords; intentionally do NOT auto-open the popup afterwards, so
+              // it doesn't interrupt the user who has just placed the subject.
+              onCommit={(lng, lat) => props.onMarkerDragEnd?.(m.id, lng, lat)}
+              onClick={() => setActivePhotoMarkerId(m.id)}
+            >
             <div style={{
               width: LIVE_MARKER_DOT_PX,
               height: LIVE_MARKER_DOT_PX,
@@ -852,6 +804,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 border: '1px solid #e5e7eb',
               }}>{m.label}</div>
             )}
+            </MarkerDragHandle>
           </Marker>
         )
       })}
@@ -866,71 +819,46 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           console.error('[MapProviderView] Unknown ground marker type in session:', gm.type, gm.id)
           return null
         }
+        const pos = liveDragPos(gm.id, gm.lng, gm.lat)
         return (
           <React.Fragment key={`gm-${gm.id}`}>
             <Marker
-              longitude={gm.lng}
-              latitude={gm.lat}
-              draggable
-              onClick={(ev: MarkerEvent<MouseEvent>) => {
-                const moved = dragMovedPxRef.current.get(gm.id) || 0
-                if (moved < 8) {
-                  ev.originalEvent?.stopPropagation?.()
-                  gmp.onGroundMarkerClick(gm.id)
-                }
-                dragStartLngLatRef.current.delete(gm.id)
-                dragMovedPxRef.current.delete(gm.id)
-              }}
-              onDragStart={(ev: MarkerDragEvent) => {
-                const ll = ev.lngLat
-                dragStartLngLatRef.current.set(gm.id, { lng: ll.lng, lat: ll.lat })
-                dragMovedPxRef.current.set(gm.id, 0)
-              }}
-              onDrag={(ev: MarkerDragEvent) => {
-                const start = dragStartLngLatRef.current.get(gm.id)
-                if (!start || !mapRef.current) return
-                const map = mapRef.current.getMap()
-                const p0 = map.project([start.lng, start.lat])
-                const p1 = map.project([ev.lngLat.lng, ev.lngLat.lat])
-                const dx = p1.x - p0.x
-                const dy = p1.y - p0.y
-                dragMovedPxRef.current.set(gm.id, Math.sqrt(dx*dx + dy*dy))
-              }}
-              onDragEnd={(ev: MarkerDragEvent) => {
-                const moved = dragMovedPxRef.current.get(gm.id) || 0
-                dragStartLngLatRef.current.delete(gm.id)
-                dragMovedPxRef.current.delete(gm.id)
-                if (moved < 8) {
-                  gmp.onGroundMarkerClick(gm.id)
-                } else {
-                  const ll = ev.lngLat
-                  gmp.onGroundMarkerDragEnd(gm.id, ll.lng, ll.lat)
-                  gmp.onGroundMarkerClick(gm.id)
-                }
-              }}
+              longitude={pos.lng}
+              latitude={pos.lat}
             >
-              <div style={{
-                width: LIVE_MARKER_DOT_PX,
-                height: LIVE_MARKER_DOT_PX,
-                borderRadius: LIVE_MARKER_DOT_BORDER_RADIUS_PX,
-                background: '#FF9800',
-                border: '1px solid #333333',
-                cursor: 'pointer',
-                position: 'relative'
-              }} />
-              {/* Type icon label near the marker */}
-              <div style={{
-                position: 'absolute',
-                transform: 'translate(10px, -6px)',
-                background: 'rgba(255,255,255,0.9)',
-                borderRadius: 4,
-                padding: '2px',
-                border: '1px solid #e5e7eb',
-                display: 'flex',
-                alignItems: 'center',
-              }}>
-                <Icon size={LIVE_GROUND_MARKER_ICON_PX} />
-              </div>
+              <MarkerDragHandle
+                controller={dragController}
+                id={gm.id}
+                lng={gm.lng}
+                lat={gm.lat}
+                // Drag → move then open the type picker; tap → just open it
+                // (parity with the old native handlers).
+                onCommit={(lng, lat) => { gmp.onGroundMarkerDragEnd(gm.id, lng, lat); gmp.onGroundMarkerClick(gm.id) }}
+                onClick={() => gmp.onGroundMarkerClick(gm.id)}
+              >
+                <div style={{
+                  width: LIVE_MARKER_DOT_PX,
+                  height: LIVE_MARKER_DOT_PX,
+                  borderRadius: LIVE_MARKER_DOT_BORDER_RADIUS_PX,
+                  background: '#FF9800',
+                  border: '1px solid #333333',
+                  cursor: 'pointer',
+                  position: 'relative'
+                }} />
+                {/* Type icon label near the marker */}
+                <div style={{
+                  position: 'absolute',
+                  transform: 'translate(10px, -6px)',
+                  background: 'rgba(255,255,255,0.9)',
+                  borderRadius: 4,
+                  padding: '2px',
+                  border: '1px solid #e5e7eb',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}>
+                  <Icon size={LIVE_GROUND_MARKER_ICON_PX} />
+                </div>
+              </MarkerDragHandle>
             </Marker>
             {gmp.activeGroundMarkerId === gm.id && (
               <Popup longitude={gm.lng} latitude={gm.lat} anchor="top" closeButton closeOnMove={false}
@@ -1061,29 +989,34 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         const prov = props.provisionalPlacement
         if (!prov) return null
         if (!props.photoStorage || !props.photoDir) return null
+        const provPos = liveDragPos('provisional-placement', prov.lng, prov.lat)
         return (
           <React.Fragment key="provisional-placement">
             <Marker
-              longitude={prov.lng}
-              latitude={prov.lat}
-              draggable
-              onDragEnd={(ev: MarkerDragEvent) => {
-                props.onProvisionalDrag?.(ev.lngLat.lng, ev.lngLat.lat)
-              }}
+              longitude={provPos.lng}
+              latitude={provPos.lat}
             >
-              <div style={{
-                width: 16,
-                height: 16,
-                borderRadius: '50%',
-                background: 'rgba(25,118,210,0.25)',
-                border: '2px dashed #1976d2',
-                boxShadow: '0 0 0 3px rgba(255,255,255,0.9)',
-                cursor: 'grab',
-              }} />
+              <MarkerDragHandle
+                controller={dragController}
+                id="provisional-placement"
+                lng={prov.lng}
+                lat={prov.lat}
+                onCommit={(lng, lat) => props.onProvisionalDrag?.(lng, lat)}
+              >
+                <div style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: '50%',
+                  background: 'rgba(25,118,210,0.25)',
+                  border: '2px dashed #1976d2',
+                  boxShadow: '0 0 0 3px rgba(255,255,255,0.9)',
+                  cursor: 'grab',
+                }} />
+              </MarkerDragHandle>
             </Marker>
             <Popup
-              longitude={prov.lng}
-              latitude={prov.lat}
+              longitude={provPos.lng}
+              latitude={provPos.lat}
               anchor="top"
               closeButton
               closeOnMove={false}
