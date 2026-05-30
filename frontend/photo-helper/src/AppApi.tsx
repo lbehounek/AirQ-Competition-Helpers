@@ -344,12 +344,10 @@ function AppApi() {
   // just grid columns within landscape — but can be re-evaluated if it also
   // feels confusing.)
 
-  const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
-    const setPhotos = session?.sets[setKey].photos || [];
-    const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
-
-    // Calculate label based on mode
-    let label: string;
+  // Label for a slotted photo at a given index in set1/set2, mirroring the grid
+  // labels (mode-aware). Extracted so photo-click AND modal prev/next nav share
+  // one source of truth. Candidate (tray) photos have no slot index → ''.
+  const computeLabelForSlot = (setKey: 'set1' | 'set2', photoIndex: number): string => {
     if (session?.mode === 'turningpoint') {
       // Turning point mode: SP, TP1, TP2, ..., FP
       const set1Count = session.sets.set1.photos.length;
@@ -357,27 +355,20 @@ function AppApi() {
       // (keeps SP/TP/FP sequence anchored to the single visible grid).
       const set2Count = isPrecision ? 0 : session.sets.set2.photos.length;
       const turningPointLabels = generateTurningPointLabels(set1Count, set2Count, session.layoutMode || 'landscape');
-      
-      if (setKey === 'set1') {
-        label = turningPointLabels.set1[photoIndex] || 'X';
-      } else {
-        label = turningPointLabels.set2[photoIndex] || 'X';
-      }
-    } else {
-      // Track mode: use labeling context (letters or numbers) with offset
-      if (setKey === 'set1') {
-        label = generateLabel(photoIndex);
-      } else {
-        const set1Count = session?.sets.set1?.photos?.length || 0;
-        label = generateLabel(photoIndex, set1Count); // Continue sequence from Set 1
-      }
+      return (setKey === 'set1' ? turningPointLabels.set1[photoIndex] : turningPointLabels.set2[photoIndex]) || 'X';
     }
+    // Track mode: use labeling context (letters or numbers) with offset
+    if (setKey === 'set1') {
+      return generateLabel(photoIndex);
+    }
+    const set1Count = session?.sets.set1?.photos?.length || 0;
+    return generateLabel(photoIndex, set1Count); // Continue sequence from Set 1
+  };
 
-    setSelectedPhoto({
-      photo,
-      setKey,
-      label
-    });
+  const handlePhotoClick = (photo: ApiPhoto, setKey: 'set1' | 'set2') => {
+    const setPhotos = session?.sets[setKey].photos || [];
+    const photoIndex = setPhotos.findIndex(p => p.id === photo.id);
+    setSelectedPhoto({ photo, setKey, label: computeLabelForSlot(setKey, photoIndex) });
   };
 
   // Click handler for tray thumbs — opens the same editor modal, label is
@@ -385,6 +376,50 @@ function AppApi() {
   const handleCandidateClick = (photo: ApiPhoto) => {
     setSelectedPhoto({ photo, setKey: 'candidates', label: '' });
   };
+
+  // The ordered photo list the modal navigates within — the set/pool the
+  // currently-open photo came from. Used by prev/next arrows + arrow keys.
+  const modalPhotoList: ApiPhoto[] = selectedPhoto
+    ? (selectedPhoto.setKey === 'candidates'
+        ? (session?.candidates?.photos || [])
+        : (session?.sets[selectedPhoto.setKey]?.photos || []))
+    : [];
+
+  // Step to the previous/next photo within the same set/pool. Clamps at the
+  // ends (no wrap), regenerating the label for slotted photos.
+  const navigateModalPhoto = useCallback((dir: -1 | 1) => {
+    setSelectedPhoto(prev => {
+      if (!prev) return prev;
+      const list = prev.setKey === 'candidates'
+        ? (session?.candidates?.photos || [])
+        : (session?.sets[prev.setKey]?.photos || []);
+      const idx = list.findIndex(p => p.id === prev.photo.id);
+      if (idx === -1) return prev;
+      const nextIdx = idx + dir;
+      if (nextIdx < 0 || nextIdx >= list.length) return prev;
+      const nextPhoto = list[nextIdx];
+      const label = prev.setKey === 'candidates' ? '' : computeLabelForSlot(prev.setKey, nextIdx);
+      return { photo: nextPhoto, setKey: prev.setKey, label };
+    });
+  // computeLabelForSlot closes over session/isPrecision/generateLabel; session
+  // is the meaningful dependency for the list + label recompute.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, isPrecision, generateLabel]);
+
+  const modalIndex = selectedPhoto ? modalPhotoList.findIndex(p => p.id === selectedPhoto.photo.id) : -1;
+  const canPrev = modalIndex > 0;
+  const canNext = modalIndex >= 0 && modalIndex < modalPhotoList.length - 1;
+
+  // Arrow-key navigation while the modal is open.
+  useEffect(() => {
+    if (!selectedPhoto) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); navigateModalPhoto(-1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); navigateModalPhoto(1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedPhoto, navigateModalPhoto]);
 
   // Tray → slot promotion. The hook handles swap-on-occupied semantics and the
   // capacity clamp for out-of-range indices (PR #62 review C1). Errors are

@@ -5,6 +5,10 @@
     "backToMenu": "Back to main menu",
     "switchToPlacement": "Photo Placement"
   },
+  "modal": {
+    "prevPhoto": "Previous photo",
+    "nextPhoto": "Next photo"
+  },
   "navigation": {
     "overview": "Overview",
     "statistics": "Statistics"

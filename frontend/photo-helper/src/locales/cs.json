@@ -5,6 +5,10 @@
     "backToMenu": "Zpět do hlavního menu",
     "switchToPlacement": "Umístění fotek"
   },
+  "modal": {
+    "prevPhoto": "Předchozí fotka",
+    "nextPhoto": "Další fotka"
+  },
   "navigation": {
     "overview": "Přehled",
     "statistics": "Statistiky"
