@@ -33,7 +33,7 @@ import { extractStartName, extractEndName } from './corridors/extractStartName'
 import { buildRouteWaypoints } from './corridors/buildRouteWaypoints'
 import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
-import type { PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
+import type { PhotoFlag, PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
 import { DEFAULT_GROUND_MARKER_TYPE, getLabelsForDiscipline, buildPhotoMarkerKmlName, noGpsPhotoDisplayName, photoMarkerDisplayName } from './types/markers'
 import { importPhotosToStorage } from './photoImport/importPhotosToStorage'
 import type { ImportFailureReason, ImportFailure } from './photoImport/types'
@@ -700,7 +700,7 @@ function App() {
   // Phase 5 photo-popup action handlers. `flag` lives on PhotoMarker as
   // an intermediate until Phase 8 moves the source of truth to
   // map-picks.json — see PhotoMarker type docstring.
-  const setPhotoFlag = useCallback(async (markerId: string, flag: 'pick' | 'reject' | null) => {
+  const setPhotoFlag = useCallback(async (markerId: string, flag: PhotoFlag | null) => {
     await persistMarkers((prev) =>
       prev.map(m => {
         if (m.id !== markerId) return m
@@ -713,8 +713,12 @@ function App() {
     )
   }, [persistMarkers])
 
-  const handlePhotoInclude = useCallback((markerId: string) => {
-    void setPhotoFlag(markerId, 'pick')
+  const handlePhotoIncludeTrack = useCallback((markerId: string) => {
+    void setPhotoFlag(markerId, 'pick-track')
+  }, [setPhotoFlag])
+
+  const handlePhotoIncludeTurning = useCallback((markerId: string) => {
+    void setPhotoFlag(markerId, 'pick-turning')
   }, [setPhotoFlag])
 
   const handlePhotoSkip = useCallback((markerId: string) => {
@@ -790,7 +794,7 @@ function App() {
 
   // Phase 14 — drag-to-recategorize: a row dropped on another group sets its
   // flag. Reuses the same setter the popup buttons use.
-  const handlePhotoSetFlag = useCallback((markerId: string, flag: 'pick' | 'reject' | null) => {
+  const handlePhotoSetFlag = useCallback((markerId: string, flag: PhotoFlag | null) => {
     void setPhotoFlag(markerId, flag)
   }, [setPhotoFlag])
 
@@ -829,7 +833,7 @@ function App() {
   // Commit the provisional placement at the dragged location with the chosen
   // category. Atomic via placeNoGpsPhoto (single persist write); on success the
   // photo leaves "Bez GPS" and becomes a marker.
-  const handleProvisionalCommit = useCallback(async (flag: 'pick' | 'reject' | null) => {
+  const handleProvisionalCommit = useCallback(async (flag: PhotoFlag | null) => {
     const p = provisionalPlacement
     if (!p) return
     setProvisionalPlacement(null)
@@ -1341,7 +1345,8 @@ function App() {
             }}
             photoStorage={storage}
             photoDir={photosDir}
-            onPhotoInclude={handlePhotoInclude}
+            onPhotoIncludeTrack={handlePhotoIncludeTrack}
+            onPhotoIncludeTurning={handlePhotoIncludeTurning}
             onPhotoSkip={handlePhotoSkip}
             onPhotoReject={handlePhotoReject}
             onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}

@@ -6,7 +6,7 @@ import { flagForGroup, canRecategorize } from '../recategorize/recategorize'
 // rejected so the drop handler can no-op cleanly.
 
 describe('flagForGroup', () => {
-  it('picks → pick', () => expect(flagForGroup('picks')).toBe('pick'))
+  it('picks → pick-track (default category; re-categorize to turning via popup)', () => expect(flagForGroup('picks')).toBe('pick-track'))
   it('rejects → reject', () => expect(flagForGroup('rejects')).toBe('reject'))
   it('neutral → null (flag cleared)', () => expect(flagForGroup('neutral')).toBeNull())
   it('noGps → undefined (not a recategorize target)', () => expect(flagForGroup('noGps')).toBeUndefined())

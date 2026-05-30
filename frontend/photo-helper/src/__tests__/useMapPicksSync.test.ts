@@ -73,7 +73,7 @@ function fakeSession(initialCandidates: ApiPhoto[] = []): MapPicksSyncSessionApi
   }
 }
 
-function pmEntry(id: string, flag: 'pick' | 'neutral' | 'reject' = 'pick') {
+function pmEntry(id: string, flag: 'pick-track' | 'neutral' | 'reject' = 'pick-track') {
   return { photoId: id, filename: `${id}.jpg`, flag }
 }
 
@@ -116,7 +116,7 @@ describe('syncMapPicksOnce — file absence', () => {
   it('does NOT delete pool entries when the file is missing (absence ≠ empty)', async () => {
     const storage = fakeStorage()
     storage.readJSON.mockResolvedValue(null)
-    const session = fakeSession([existing('pm-abc', 'pick')])
+    const session = fakeSession([existing('pm-abc', 'pick-track')])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(session.removeCandidate).not.toHaveBeenCalled()
   })
@@ -136,7 +136,7 @@ describe('syncMapPicksOnce — insert path', () => {
     storage.readJSON.mockResolvedValue({
       version: 1,
       updatedAt: 'x',
-      picks: [pmEntry('pm-new', 'pick')],
+      picks: [pmEntry('pm-new', 'pick-track')],
     })
     storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(32)], { type: 'image/jpeg' }))
     const session = fakeSession([])
@@ -146,7 +146,7 @@ describe('syncMapPicksOnce — insert path', () => {
     const inserted = session.addCandidate.mock.calls[0][0] as ApiPhoto
     expect(inserted.id).toBe('pm-new')
     expect(inserted.filename).toBe('pm-new.jpg')
-    expect(inserted.flag).toBe('pick')
+    expect(inserted.flag).toBe('pick-track')
     expect(inserted.canvasState.scale).toBe(1) // matches createDefaultCanvasState
   })
 
@@ -192,7 +192,7 @@ describe('syncMapPicksOnce — insert path', () => {
     storage.readJSON.mockResolvedValue({
       version: 1,
       updatedAt: 'x',
-      picks: [{ photoId: 'photo-from-helper', filename: 'a.jpg', flag: 'pick' as const }],
+      picks: [{ photoId: 'photo-from-helper', filename: 'a.jpg', flag: 'pick-track' as const }],
     })
     storage.getPhotoBlob.mockResolvedValue(new Blob([]))
     const session = fakeSession([])
@@ -202,18 +202,47 @@ describe('syncMapPicksOnce — insert path', () => {
   })
 })
 
+describe('syncMapPicksOnce — legacy flag normalization (bare `pick` → `pick-track`)', () => {
+  it('normalizes a legacy bare `pick` on INSERT so the candidate carries an explicit category', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      // A pre-split map-picks.json wrote bare `pick`.
+      picks: [{ photoId: 'pm-legacy', filename: 'pm-legacy.jpg', flag: 'pick' }],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
+    const session = fakeSession([])
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    const inserted = session.addCandidate.mock.calls[0][0] as ApiPhoto
+    expect(inserted.flag).toBe('pick-track')
+  })
+
+  it('normalizes a legacy bare `pick` on UPDATE (reconciles an existing candidate to pick-track)', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{ photoId: 'pm-abc', filename: 'pm-abc.jpg', flag: 'pick' }],
+    })
+    const session = fakeSession([existing('pm-abc', 'neutral')])
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.setCandidateFlag).toHaveBeenCalledWith('pm-abc', 'pick-track')
+  })
+})
+
 describe('syncMapPicksOnce — update path', () => {
   it('updates flag on a pm- entry already in the pool', async () => {
     const storage = fakeStorage()
     storage.readJSON.mockResolvedValue({
       version: 1,
       updatedAt: 'x',
-      picks: [pmEntry('pm-abc', 'pick')],
+      picks: [pmEntry('pm-abc', 'pick-track')],
     })
     const session = fakeSession([existing('pm-abc', 'neutral')])
     const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(result.updates).toBe(1)
-    expect(session.setCandidateFlag).toHaveBeenCalledWith('pm-abc', 'pick')
+    expect(session.setCandidateFlag).toHaveBeenCalledWith('pm-abc', 'pick-track')
   })
 
   it('does NOT call setCandidateFlag when flag is unchanged', async () => {
@@ -221,9 +250,9 @@ describe('syncMapPicksOnce — update path', () => {
     storage.readJSON.mockResolvedValue({
       version: 1,
       updatedAt: 'x',
-      picks: [pmEntry('pm-abc', 'pick')],
+      picks: [pmEntry('pm-abc', 'pick-track')],
     })
-    const session = fakeSession([existing('pm-abc', 'pick')])
+    const session = fakeSession([existing('pm-abc', 'pick-track')])
     const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(result.updates).toBe(0)
     expect(session.setCandidateFlag).not.toHaveBeenCalled()
@@ -238,7 +267,7 @@ describe('syncMapPicksOnce — update path', () => {
       updatedAt: 'x',
       picks: [pmEntry('pm-abc', 'reject')],
     })
-    const session = fakeSession([existing('pm-abc', 'pick')])
+    const session = fakeSession([existing('pm-abc', 'pick-track')])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(session.addCandidate).not.toHaveBeenCalled()
   })
@@ -251,7 +280,7 @@ describe('syncMapPicksOnce — label sync (bidirectional)', () => {
       version: 1,
       updatedAt: 'x',
       picks: [{
-        photoId: 'pm-new', filename: 'a.jpg', flag: 'pick',
+        photoId: 'pm-new', filename: 'a.jpg', flag: 'pick-track',
         label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z',
       }],
     })
@@ -270,11 +299,11 @@ describe('syncMapPicksOnce — label sync (bidirectional)', () => {
       version: 1,
       updatedAt: 'x',
       picks: [{
-        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick',
+        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick-track',
         label: 'B', labelUpdatedAt: '2024-02-01T00:00:00Z',
       }],
     })
-    const local: ApiPhoto = { ...existing('pm-abc', 'pick'), label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z' }
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick-track'), label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z' }
     const session = fakeSession([local])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(session.setCandidateLabel).toHaveBeenCalledWith('pm-abc', 'B')
@@ -286,11 +315,11 @@ describe('syncMapPicksOnce — label sync (bidirectional)', () => {
       version: 1,
       updatedAt: 'x',
       picks: [{
-        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick',
+        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick-track',
         label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z',
       }],
     })
-    const local: ApiPhoto = { ...existing('pm-abc', 'pick'), label: 'B', labelUpdatedAt: '2024-02-01T00:00:00Z' }
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick-track'), label: 'B', labelUpdatedAt: '2024-02-01T00:00:00Z' }
     const session = fakeSession([local])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(session.setCandidateLabel).not.toHaveBeenCalled()
@@ -302,11 +331,11 @@ describe('syncMapPicksOnce — label sync (bidirectional)', () => {
       version: 1,
       updatedAt: 'x',
       picks: [{
-        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick',
+        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick-track',
         label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z',
       }],
     })
-    const local: ApiPhoto = { ...existing('pm-abc', 'pick'), label: 'B', labelUpdatedAt: '2024-01-01T00:00:00Z' }
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick-track'), label: 'B', labelUpdatedAt: '2024-01-01T00:00:00Z' }
     const session = fakeSession([local])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(session.setCandidateLabel).not.toHaveBeenCalled()
@@ -318,11 +347,11 @@ describe('syncMapPicksOnce — label sync (bidirectional)', () => {
       version: 1,
       updatedAt: 'x',
       picks: [{
-        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick',
+        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick-track',
         label: 'C', labelUpdatedAt: '2024-01-01T00:00:00Z',
       }],
     })
-    const local: ApiPhoto = { ...existing('pm-abc', 'pick'), label: 'A' }
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick-track'), label: 'A' }
     const session = fakeSession([local])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(session.setCandidateLabel).toHaveBeenCalledWith('pm-abc', 'C')
@@ -334,11 +363,11 @@ describe('syncMapPicksOnce — label sync (bidirectional)', () => {
       version: 1,
       updatedAt: 'x',
       picks: [{
-        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick',
+        photoId: 'pm-abc', filename: 'a.jpg', flag: 'pick-track',
         label: '', labelUpdatedAt: '2024-02-01T00:00:00Z',
       }],
     })
-    const local: ApiPhoto = { ...existing('pm-abc', 'pick'), label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z' }
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick-track'), label: 'A', labelUpdatedAt: '2024-01-01T00:00:00Z' }
     const session = fakeSession([local])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(session.setCandidateLabel).toHaveBeenCalledWith('pm-abc', '')
@@ -358,9 +387,9 @@ describe('syncMapPicksOnce — filename one-way sync (rename of existing pm- can
     storage.readJSON.mockResolvedValue({
       version: 1,
       updatedAt: 'x',
-      picks: [{ photoId: 'pm-abc', filename: 'TP1', flag: 'pick' }],
+      picks: [{ photoId: 'pm-abc', filename: 'TP1', flag: 'pick-track' }],
     })
-    const local: ApiPhoto = { ...existing('pm-abc', 'pick') } // filename = 'pm-abc.jpg' from existing()
+    const local: ApiPhoto = { ...existing('pm-abc', 'pick-track') } // filename = 'pm-abc.jpg' from existing()
     const session = fakeSession([local])
     const result = await syncMapPicksOnce(
       storage as unknown as StorageInterface, competitionDir, photosDir, session,
@@ -374,9 +403,9 @@ describe('syncMapPicksOnce — filename one-way sync (rename of existing pm- can
     storage.readJSON.mockResolvedValue({
       version: 1,
       updatedAt: 'x',
-      picks: [{ photoId: 'pm-abc', filename: 'pm-abc.jpg', flag: 'pick' }],
+      picks: [{ photoId: 'pm-abc', filename: 'pm-abc.jpg', flag: 'pick-track' }],
     })
-    const session = fakeSession([existing('pm-abc', 'pick')])
+    const session = fakeSession([existing('pm-abc', 'pick-track')])
     await syncMapPicksOnce(
       storage as unknown as StorageInterface, competitionDir, photosDir, session,
     )
@@ -388,13 +417,13 @@ describe('syncMapPicksOnce — filename one-way sync (rename of existing pm- can
     storage.readJSON.mockResolvedValue({
       version: 1,
       updatedAt: 'x',
-      picks: [{ photoId: 'pm-abc', filename: 'TP2', flag: 'pick' }],
+      picks: [{ photoId: 'pm-abc', filename: 'TP2', flag: 'pick-track' }],
     })
     const session = fakeSession([existing('pm-abc', 'neutral')])
     const result = await syncMapPicksOnce(
       storage as unknown as StorageInterface, competitionDir, photosDir, session,
     )
-    expect(session.setCandidateFlag).toHaveBeenCalledWith('pm-abc', 'pick')
+    expect(session.setCandidateFlag).toHaveBeenCalledWith('pm-abc', 'pick-track')
     expect(session.setCandidateFilename).toHaveBeenCalledWith('pm-abc', 'TP2')
     // Both writes count toward a single "touched" tally (one update event).
     expect(result.updates).toBe(1)
@@ -410,7 +439,7 @@ describe('syncMapPicksOnce — concurrency & blob URL leak guards (CRITICAL bugs
     storage.readJSON.mockResolvedValue({
       version: 1,
       updatedAt: 'x',
-      picks: [pmEntry('pm-dup', 'pick'), pmEntry('pm-dup', 'pick')],
+      picks: [pmEntry('pm-dup', 'pick-track'), pmEntry('pm-dup', 'pick-track')],
     })
     storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
     let createUrlCount = 0
@@ -435,7 +464,7 @@ describe('syncMapPicksOnce — concurrency & blob URL leak guards (CRITICAL bugs
     storage.readJSON.mockResolvedValue({
       version: 1,
       updatedAt: 'x',
-      picks: [pmEntry('pm-new', 'pick')],
+      picks: [pmEntry('pm-new', 'pick-track')],
     })
     storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
     // session.candidates frozen at [] — addCandidate does NOT append to it.
@@ -494,13 +523,13 @@ describe('syncMapPicksOnce — delete path (ADR-019 cleanup)', () => {
       version: 1,
       updatedAt: 'x',
       picks: [
-        { photoId: 'pm-bad', filename: 42, flag: 'pick' }, // filename wrong type → drop
-        pmEntry('pm-good', 'pick'),
+        { photoId: 'pm-bad', filename: 42, flag: 'pick-track' }, // filename wrong type → drop
+        pmEntry('pm-good', 'pick-track'),
       ],
     })
     storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
     const session = fakeSession([
-      existing('pm-bad', 'pick'),  // pre-existing local copy of the now-dropped id
+      existing('pm-bad', 'pick-track'),  // pre-existing local copy of the now-dropped id
       existing('pm-good', 'neutral'),
     ])
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -510,7 +539,7 @@ describe('syncMapPicksOnce — delete path (ADR-019 cleanup)', () => {
     )
     expect(result.deletes).toBe(1)
     expect(session.removeCandidate).toHaveBeenCalledWith('pm-bad')
-    expect(session.setCandidateFlag).toHaveBeenCalledWith('pm-good', 'pick')
+    expect(session.setCandidateFlag).toHaveBeenCalledWith('pm-good', 'pick-track')
     expect(warn).toHaveBeenCalled() // dropped row was logged
     warn.mockRestore()
   })
@@ -521,10 +550,10 @@ describe('syncMapPicksOnce — delete path (ADR-019 cleanup)', () => {
       version: 1,
       updatedAt: 'x',
       picks: [
-        pmEntry('pm-1', 'pick'),
+        pmEntry('pm-1', 'pick-track'),
         { photoId: 'pm-2', filename: 'b.jpg', flag: 'archived' }, // bad flag → drop
-        pmEntry('pm-3', 'pick'),
-        { photoId: 'pm-4', flag: 'pick' },                         // missing filename → drop
+        pmEntry('pm-3', 'pick-track'),
+        { photoId: 'pm-4', flag: 'pick-track' },                         // missing filename → drop
       ],
     })
     storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
@@ -548,7 +577,7 @@ describe('syncMapPicksOnce — delete path (ADR-019 cleanup)', () => {
       version: 1,
       updatedAt: 'x',
       picks: [
-        pmEntry('pm-new', 'pick'),
+        pmEntry('pm-new', 'pick-track'),
         pmEntry('pm-existing', 'reject'), // currently neutral
         // 'pm-going-away' is in the pool but not here
       ],

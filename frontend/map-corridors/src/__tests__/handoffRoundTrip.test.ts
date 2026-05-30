@@ -83,14 +83,15 @@ describe('cross-app round-trip — map writes, editor reads, editor writes back,
   it('map writes a pick → editor side can read it from map-picks.json', async () => {
     const storage = makeStorage()
     const markers: PhotoMarker[] = [
-      pm({ id: 'pm-1', photoId: 'pm-1', flag: 'pick', capturedAt: { lng: 14, lat: 50 } }),
+      pm({ id: 'pm-1', photoId: 'pm-1', flag: 'pick-track', capturedAt: { lng: 14, lat: 50 } }),
     ]
     scheduleWriteMapPicks(storage, compDir, buildMapPicks(markers))
     await flushPendingMapPicks()
     const file = storage._files.get('/competitions/comp-1::map-picks.json') as { picks: Array<{ photoId: string; flag: string }> }
     expect(file).toBeTruthy()
     expect(file.picks).toHaveLength(1)
-    expect(file.picks[0]).toMatchObject({ photoId: 'pm-1', flag: 'pick' })
+    // The pick category rides through the handoff as-is (track vs turning).
+    expect(file.picks[0]).toMatchObject({ photoId: 'pm-1', flag: 'pick-track' })
   })
 
   it('editor writes a label → map applies it via syncEditorPicksOnce (newer-wins)', async () => {
@@ -102,7 +103,7 @@ describe('cross-app round-trip — map writes, editor reads, editor writes back,
       picks: [{ photoId: 'pm-1', label: 'B', labelUpdatedAt: '2025-02-01T00:00:00Z' }],
     })
     const markers: PhotoMarker[] = [
-      pm({ id: 'pm-1', photoId: 'pm-1', flag: 'pick', label: 'A' as never, labelUpdatedAt: '2025-01-01T00:00:00Z' }),
+      pm({ id: 'pm-1', photoId: 'pm-1', flag: 'pick-track', label: 'A' as never, labelUpdatedAt: '2025-01-01T00:00:00Z' }),
     ]
     let updated: PhotoMarker[] = markers
     const setMarkers = async (updater: (prev: readonly PhotoMarker[]) => readonly PhotoMarker[]) => {
@@ -122,7 +123,7 @@ describe('cross-app round-trip — map writes, editor reads, editor writes back,
       picks: [{ photoId: 'pm-1', label: 'remote', labelUpdatedAt: t }],
     })
     const markers: PhotoMarker[] = [
-      pm({ id: 'pm-1', photoId: 'pm-1', flag: 'pick', label: 'local' as never, labelUpdatedAt: t }),
+      pm({ id: 'pm-1', photoId: 'pm-1', flag: 'pick-track', label: 'local' as never, labelUpdatedAt: t }),
     ]
     let updated: PhotoMarker[] = markers
     const result = await syncEditorPicksOnce(
@@ -141,7 +142,7 @@ describe('cross-app round-trip — map writes, editor reads, editor writes back,
       picks: [{ photoId: 'pm-1', label: '', labelUpdatedAt: '2025-02-01T00:00:00Z' }],
     })
     const markers: PhotoMarker[] = [
-      pm({ id: 'pm-1', photoId: 'pm-1', flag: 'pick', label: 'A' as never, labelUpdatedAt: '2025-01-01T00:00:00Z' }),
+      pm({ id: 'pm-1', photoId: 'pm-1', flag: 'pick-track', label: 'A' as never, labelUpdatedAt: '2025-01-01T00:00:00Z' }),
     ]
     let updated: PhotoMarker[] = markers
     await syncEditorPicksOnce(storage, compDir, async u => { updated = [...u(updated)] })
@@ -158,7 +159,7 @@ describe('cross-app round-trip — map writes, editor reads, editor writes back,
       ],
     })
     const markers: PhotoMarker[] = [
-      pm({ id: 'pm-1', photoId: 'pm-1', flag: 'pick' }),
+      pm({ id: 'pm-1', photoId: 'pm-1', flag: 'pick-track' }),
     ]
     let updated: PhotoMarker[] = markers
     const result = await syncEditorPicksOnce(storage, compDir, async u => { updated = [...u(updated)] })

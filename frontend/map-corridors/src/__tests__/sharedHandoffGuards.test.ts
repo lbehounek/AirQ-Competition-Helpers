@@ -27,7 +27,9 @@ describe('constants — wire contract', () => {
 })
 
 describe('isWireFlag', () => {
-  it.each(['pick', 'neutral', 'reject'])('accepts %s', (f) => {
+  // Bare `pick` retained for back-compat with legacy map-picks.json (pre-split);
+  // `pick-track`/`pick-turning` are the categorized values new writes emit.
+  it.each(['pick', 'pick-track', 'pick-turning', 'neutral', 'reject'])('accepts %s', (f) => {
     expect(isWireFlag(f)).toBe(true)
   })
 

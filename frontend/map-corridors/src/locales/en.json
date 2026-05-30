@@ -38,6 +38,8 @@
     },
     "popup": {
       "include": "Picked",
+      "pickTrack": "Track photo",
+      "pickTurning": "Turning-point photo",
       "skip": "Neutral",
       "reject": "Rejected",
       "thumbMissing": "Thumbnail unavailable",

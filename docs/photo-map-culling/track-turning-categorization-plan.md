@@ -1,6 +1,8 @@
 # Plan: Categorize map picks as Track vs Turning-Point photos
 
-**Status:** NOT STARTED — ready to implement in a fresh session.
+**Status:** IMPLEMENTED (2026-05-30, branch `feat/track-turning-categorization`).
+Green gate: `tsc -b` (map-corridors) + `tsc --noEmit` (photo-helper) clean;
+vitest map-corridors 633 ✓ / photo-helper 436 ✓ / desktop 63 ✓.
 **Owner feedback (2026-05-30):** "it would be good in corridors app, to be able to
 distinguish between track and TP photos by categorizing them to track
 photos/turning photos category, once they are selected" + auto-route those into

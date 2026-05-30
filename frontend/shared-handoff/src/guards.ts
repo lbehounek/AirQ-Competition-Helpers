@@ -20,7 +20,8 @@ export const EDITOR_PICKS_FILENAME = 'photo-helper-picks.json' as const;
 /** Prefix that marks a photo as map-originated. Readers gate inclusion on this. */
 export const PM_PHOTO_ID_PREFIX = 'pm-' as const;
 
-const WIRE_FLAGS: ReadonlySet<string> = new Set(['pick', 'neutral', 'reject']);
+// Bare `pick` kept for back-compat with legacy map-picks.json (pre-split).
+const WIRE_FLAGS: ReadonlySet<string> = new Set(['pick', 'pick-track', 'pick-turning', 'neutral', 'reject']);
 
 export function isWireFlag(x: unknown): x is WireFlag {
   return typeof x === 'string' && WIRE_FLAGS.has(x);

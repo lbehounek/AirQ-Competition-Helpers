@@ -91,7 +91,10 @@ export function buildMapPickEntry(marker: PhotoMarker): MapPickEntry | null {
 export function buildMapPicks(markers: readonly PhotoMarker[]): MapPickEntry[] {
   const out: MapPickEntry[] = []
   for (const m of markers) {
-    if (m.flag !== 'pick') continue
+    // Both pick categories cross the handoff; the category (`pick-track` /
+    // `pick-turning`) rides through as-is on `entry.flag` so the editor can
+    // route the photo into the right print set.
+    if (m.flag !== 'pick-track' && m.flag !== 'pick-turning') continue
     const entry = buildMapPickEntry(m)
     if (entry) out.push(entry)
   }

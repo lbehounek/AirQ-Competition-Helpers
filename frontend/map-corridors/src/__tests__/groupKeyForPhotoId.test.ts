@@ -13,7 +13,7 @@ function pm(over: Partial<PhotoMarker>): PhotoMarker {
 }
 
 const markers: PhotoMarker[] = [
-  pm({ id: 'a', photoId: 'a', name: 'a.jpg', flag: 'pick' }),
+  pm({ id: 'a', photoId: 'a', name: 'a.jpg', flag: 'pick-track' }),
   pm({ id: 'b', photoId: 'b', name: 'b.jpg' }), // neutral (no flag)
   pm({ id: 'c', photoId: 'c', name: 'c.jpg', flag: 'reject' }),
 ]

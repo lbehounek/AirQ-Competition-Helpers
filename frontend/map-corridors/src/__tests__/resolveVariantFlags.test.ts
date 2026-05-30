@@ -14,20 +14,30 @@ function pm(over: Partial<PhotoMarker>): PhotoMarker {
 }
 
 describe('resolveVariantFlags', () => {
-  it('promotes the winner to pick and demotes losers to reject', () => {
+  it('promotes a previously-uncategorized winner to pick-track and demotes losers to reject', () => {
     const markers = [
       pm({ id: 'a', photoId: 'a' }),
       pm({ id: 'b', photoId: 'b' }),
       pm({ id: 'c', photoId: 'c' }),
     ]
     const out = resolveVariantFlags(markers, 'b', ['a', 'c'])
-    expect(out.find(m => m.id === 'b')!.flag).toBe('pick')
+    expect(out.find(m => m.id === 'b')!.flag).toBe('pick-track')
     expect(out.find(m => m.id === 'a')!.flag).toBe('reject')
     expect(out.find(m => m.id === 'c')!.flag).toBe('reject')
   })
 
+  it('preserves the winner\'s existing pick-turning category instead of forcing track', () => {
+    const markers = [
+      pm({ id: 'a', photoId: 'a', flag: 'pick-turning' }),
+      pm({ id: 'b', photoId: 'b' }),
+    ]
+    const out = resolveVariantFlags(markers, 'a', ['b'])
+    expect(out.find(m => m.id === 'a')!.flag).toBe('pick-turning')
+    expect(out.find(m => m.id === 'b')!.flag).toBe('reject')
+  })
+
   it('leaves markers outside the variant set untouched (same reference)', () => {
-    const bystander = pm({ id: 'z', photoId: 'z', flag: 'pick', label: 'A' as never })
+    const bystander = pm({ id: 'z', photoId: 'z', flag: 'pick-track', label: 'A' as never })
     const markers = [pm({ id: 'a', photoId: 'a' }), pm({ id: 'b', photoId: 'b' }), bystander]
     const out = resolveVariantFlags(markers, 'a', ['b'])
     // Identity-preserved: a bystander marker is returned by reference, not cloned.
@@ -50,6 +60,6 @@ describe('resolveVariantFlags', () => {
 
   it('handles the 2-variant case (one winner, one loser)', () => {
     const out = resolveVariantFlags([pm({ id: 'a', photoId: 'a' }), pm({ id: 'b', photoId: 'b' })], 'a', ['b'])
-    expect(out.map(m => m.flag)).toEqual(['pick', 'reject'])
+    expect(out.map(m => m.flag)).toEqual(['pick-track', 'reject'])
   })
 })

@@ -18,7 +18,11 @@ export type { PhotoLabel } from '@airq/shared-discipline'
 // `flag` is a Phase-5 intermediate — until Phase 8 (map-picks.json), the
 // flag persists on the marker. Phase 8 makes map-picks.json the source
 // of truth and the marker.flag becomes a render-time projection.
-export type PhotoFlag = 'pick' | 'reject'
+// `pick` was split into two categories so the cross-app handoff can route a
+// photo into the editor's track vs turning-point print sets (A3, 2026-05-30).
+// A legacy persisted `flag: 'pick'` migrates to `pick-track` — see
+// `migrateLegacyPhotoFlag`.
+export type PhotoFlag = 'pick-track' | 'pick-turning' | 'reject'
 export type PhotoMarker = Readonly<{
   id: string
   lng: number
@@ -120,7 +124,7 @@ function isValidCapturedAt(value: unknown): boolean {
   return true
 }
 
-const PHOTO_FLAG_SET: ReadonlySet<string> = new Set<string>(['pick', 'reject'])
+const PHOTO_FLAG_SET: ReadonlySet<string> = new Set<string>(['pick-track', 'pick-turning', 'reject'])
 
 export function isPhotoMarker(value: unknown): value is PhotoMarker {
   if (!value || typeof value !== 'object') return false
@@ -145,9 +149,12 @@ export function sanitizeGroundMarkers(input: unknown): GroundMarker[] {
 
 export function sanitizePhotoMarkers(input: unknown): PhotoMarker[] {
   if (!Array.isArray(input)) return []
+  // Migrate legacy `flag: 'pick'` → `pick-track` BEFORE the guard runs:
+  // `pick` is no longer in PHOTO_FLAG_SET, so an un-migrated marker would
+  // fail isPhotoMarker and a v1 session's picks would be silently dropped.
   // Keep the photo even if its label is illegal — just strip the bad
   // displayName rather than .filter()-evicting the whole marker.
-  return input.filter(isPhotoMarker).map(m => {
+  return input.map(migrateLegacyPhotoFlag).filter(isPhotoMarker).map(m => {
     const displayName = normalizeDisplayName(m.displayName, m.name)
     return displayName === m.displayName ? m : { ...m, displayName }
   })
@@ -286,4 +293,14 @@ export function sanitizeNoGpsPhotos(input: unknown): NoGpsPhoto[] {
     const displayName = normalizeDisplayName(p.displayName, p.filename)
     return displayName === p.displayName ? p : { ...p, displayName }
   })
+}
+
+/** v1 stored a bare `flag: 'pick'`; the flag was split into pick-track /
+ *  pick-turning. A legacy `pick` becomes `pick-track`. MUST run BEFORE the
+ *  isPhotoMarker guard on load or previously-picked photos get dropped. */
+export function migrateLegacyPhotoFlag(m: unknown): unknown {
+  if (m && typeof m === 'object' && (m as { flag?: unknown }).flag === 'pick') {
+    return { ...(m as object), flag: 'pick-track' }
+  }
+  return m
 }

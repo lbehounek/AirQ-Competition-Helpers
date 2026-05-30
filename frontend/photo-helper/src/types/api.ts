@@ -4,7 +4,11 @@
 
 import type { Photo } from './index';
 
-export type CandidateFlag = 'pick' | 'neutral' | 'reject';
+// `pick` retained for back-compat with candidates created before the
+// pick/track split (A3, 2026-05-30); useMapPicksSync normalizes an incoming
+// legacy `pick` to `pick-track` so a candidate always carries an explicit
+// category after crossing the handoff.
+export type CandidateFlag = 'pick' | 'pick-track' | 'pick-turning' | 'neutral' | 'reject';
 
 /**
  * Result of a photo-add operation (`addPhotosToSet`, `addPhotosToTurningPoint`).

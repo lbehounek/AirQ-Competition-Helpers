@@ -216,8 +216,14 @@ describe('isPhotoMarker — photoId', () => {
 describe('isPhotoMarker — flag', () => {
   const base = { id: 'pm-1', lng: 14, lat: 50, name: 'Test' }
 
-  it.each(['pick', 'reject'])('accepts flag = %s', (flag) => {
+  it.each(['pick-track', 'pick-turning', 'reject'])('accepts flag = %s', (flag) => {
     expect(isPhotoMarker({ ...base, flag })).toBe(true)
+  })
+
+  it('rejects a legacy bare "pick" flag (must be migrated to pick-track BEFORE the guard)', () => {
+    // migrateLegacyPhotoFlag runs first in sanitizePhotoMarkers; the raw guard
+    // itself no longer accepts the pre-split value.
+    expect(isPhotoMarker({ ...base, flag: 'pick' })).toBe(false)
   })
 
   it('accepts absent flag (neutral state)', () => {

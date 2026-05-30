@@ -104,7 +104,7 @@ export type CorridorsSession = {
   // Photos imported without EXIF GPS (Phase 6 of photo-map-culling,
   // ADR-012). Live here as candidate-pool entries until the user drags
   // one onto the map; on drop, an entry is removed and a PhotoMarker
-  // is appended to `markers` with `flag: 'pick'` at the drop coord.
+  // is appended to `markers` with `flag: 'pick-track'` at the drop coord.
   noGpsPhotos: readonly NoGpsPhoto[]
   // Persisted UI state for the no-GPS photo tray (ADR-012). `true` = open,
   // `false` = collapsed. Defaults open on first run + after migration.
@@ -391,7 +391,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
   // Replaces the previous two-await sequence which could leave the photo
   // duplicated in both lists if the second write failed (quota, transient
   // I/O). Returns true on success, false when the entry isn't found.
-  const placeNoGpsPhoto = useCallback(async (photoId: string, lng: number, lat: number, flag: PhotoFlag | null = 'pick'): Promise<boolean> => {
+  const placeNoGpsPhoto = useCallback(async (photoId: string, lng: number, lat: number, flag: PhotoFlag | null = 'pick-track'): Promise<boolean> => {
     const current = sessionRef.current
     if (!current) return false
     const entry = (current.noGpsPhotos || []).find(p => p.photoId === photoId)
@@ -407,7 +407,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
       ...(entry.displayName ? { displayName: entry.displayName } : {}),
       // Phase 14 — caller may commit straight to a chosen category (provisional
       // placement). `null` = neutral, so omit the flag field. Tray drag-drop
-      // keeps the historical default of 'pick'.
+      // defaults to 'pick-track' (the common case; re-categorize via the popup).
       ...(flag ? { flag } : {}),
     }
     await persistSession({
