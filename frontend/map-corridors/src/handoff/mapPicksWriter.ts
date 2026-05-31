@@ -20,7 +20,7 @@ import {
   type MapPickEntry,
   type MapPicksFile,
 } from '@airq/shared-handoff'
-import type { PhotoMarker } from '../types/markers'
+import { comparePhotoMarkers, type PhotoMarker } from '../types/markers'
 
 const FILENAME = MAP_PICKS_FILENAME
 const DEBOUNCE_MS = 300
@@ -87,18 +87,40 @@ export function buildMapPickEntry(marker: PhotoMarker): MapPickEntry | null {
  *    side (PhotoMarker.flag) — the wire file is now a transport for
  *    PICKS only, not a general flag-state mirror.
  *
+ * When `breakPhotoId` names a designated set-break turning point, each entry
+ * also carries `set` (`set1`/`set2`) so the editor fills the matching sheet.
+ *
  * Used by both App.tsx (scheduling writes) and tests.
  */
-export function buildMapPicks(markers: readonly PhotoMarker[]): MapPickEntry[] {
+export function buildMapPicks(
+  markers: readonly PhotoMarker[],
+  breakPhotoId?: string | null,
+): MapPickEntry[] {
+  // Emit picks in ROUTE order (filename, then EXIF time — `comparePhotoMarkers`).
+  // The editor fills each sheet in file order, so a sorted file gives correct
+  // within-sheet ordering for free; and the set split below cuts this same
+  // ordered list at the break.
+  const picks = markers.filter(m => m.photoId && isPickFlag(m.flag))
+  const sorted = [...picks].sort(comparePhotoMarkers)
+
+  // The break is a turning point the user designated. Everything up to AND
+  // INCLUDING it is set1; everything after is set2 (locked convention: the
+  // break TP closes leg 1). We split the single ordered list once — the editor
+  // routes each entry into its discipline's set1/set2 by `flag`, so track and
+  // turning photos partition correctly without a separate per-discipline cut.
+  // An unset / no-longer-a-pick break yields breakIndex -1 → no `set` emitted,
+  // and the editor falls back to its default set1→set2→tray fill.
+  const breakIndex = breakPhotoId
+    ? sorted.findIndex(m => m.photoId === breakPhotoId)
+    : -1
+
   const out: MapPickEntry[] = []
-  for (const m of markers) {
-    // Both pick categories cross the handoff; the category (`pick-track` /
-    // `pick-turning`) rides through as-is on `entry.flag` so the editor can
-    // route the photo into the right print set.
-    if (!isPickFlag(m.flag)) continue
+  sorted.forEach((m, i) => {
     const entry = buildMapPickEntry(m)
-    if (entry) out.push(entry)
-  }
+    if (!entry) return
+    if (breakIndex >= 0) entry.set = i <= breakIndex ? 'set1' : 'set2'
+    out.push(entry)
+  })
   return out
 }
 

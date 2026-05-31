@@ -49,6 +49,17 @@ export interface MapPickEntry {
   label?: string;
   /** ISO 8601 — when label was last set in map-corridors. Drives bidirectional sync resolution. */
   labelUpdatedAt?: string;
+  /**
+   * Target print sheet within the photo's discipline, when the user has
+   * designated a "set break" turning point in map-corridors. `set1` = photo
+   * is before-or-at the break in route order; `set2` = after it. The editor
+   * routes the photo into that sheet (overflow → candidate tray) instead of
+   * its default `set1 → set2 → tray` capacity fill. Absent = no break chosen
+   * (or the photo is precision/single-set) → editor uses the default fill.
+   * One-way (map → editor); the reverse channel never carries it. See
+   * docs/photo-map-culling/set-split-suggestion-plan.md.
+   */
+  set?: 'set1' | 'set2';
 }
 
 export interface MapPicksFile {

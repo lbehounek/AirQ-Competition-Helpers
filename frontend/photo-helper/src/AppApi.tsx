@@ -108,6 +108,7 @@ function AppApi() {
     addPhotosToCandidates,
     addExistingCandidate,
     importPickToSets,
+    reconcilePlacedToSets,
     removeCandidate,
     promoteCandidateToSlot,
     demoteSlotToCandidate,
@@ -186,13 +187,17 @@ function AppApi() {
   const pmcSessionApi = useMemo(() => ({
     candidates: candidatePhotos,
     placedIds: placedPmIds,
+    // Active discipline — drives which placed picks reflow on a break change
+    // (only the visible discipline; the other reconciles when it's shown).
+    mode: session?.mode ?? 'track',
     addCandidate: addExistingCandidate,
     importPick: importPickToSets,
+    reconcilePlaced: reconcilePlacedToSets,
     removeCandidate,
     setCandidateFlag,
     setCandidateLabel,
     setCandidateFilename,
-  }), [candidatePhotos, placedPmIds, addExistingCandidate, importPickToSets, removeCandidate, setCandidateFlag, setCandidateLabel, setCandidateFilename]);
+  }), [candidatePhotos, placedPmIds, session?.mode, addExistingCandidate, importPickToSets, reconcilePlacedToSets, removeCandidate, setCandidateFlag, setCandidateLabel, setCandidateFilename]);
 
   useMapPicksSync(pmcCompetitionDir, pmcPhotosDir, pmcSessionApi);
 

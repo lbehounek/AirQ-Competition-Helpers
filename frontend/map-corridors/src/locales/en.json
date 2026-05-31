@@ -42,6 +42,8 @@
       "pickTurning": "Turning-point photo",
       "skip": "Neutral",
       "reject": "Rejected",
+      "setBreak": "Split sets here",
+      "clearBreak": "Clear set split",
       "thumbMissing": "Thumbnail unavailable",
       "label": "Label",
       "labelSet": "Set label",
