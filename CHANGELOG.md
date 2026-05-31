@@ -10,14 +10,58 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
-## [2.21.0] - 2026-05-31
+## [2.25.0] - 2026-05-31
 
 ### Added
 - **Map Corridors:** you can now drag a "Bez GPS" photo row from the right-side
   panel straight onto the map to place it — it lands at the drop point as a
   track pick (blue), the same as dragging from the bottom no-GPS tray. Clicking
   the row (provisional pin at map centre) and double-clicking it (full-res
-  preview) still work as before.
+  preview) still work as before. (#95)
+
+## [2.24.0] - 2026-05-31
+
+### Added
+- **Map Corridors:** compare co-located photos straight from the map. Each
+  fanned cluster shows a small **⇄ N** pill at its centre — click it to open the
+  photos side-by-side and pick the best one (2–3 open immediately; larger groups
+  drop into a selection to trim down). You can also **Ctrl/Cmd/Shift-click** any
+  dots to multi-select them (highlighted with a ring); a floating **Compare**
+  bar then opens the side-by-side view. Both routes feed the existing compare
+  modal (winner stays, the rest move to Odmítnuté). (#94)
+
+## [2.23.1] - 2026-05-31
+
+### Fixed
+- **Map Corridors:** rejected photos no longer reappear in PNG and KML exports.
+  The live map already hid them, but both export paths rendered the unfiltered
+  marker list, so a rejected co-located variant reprinted as a duplicate dot at
+  its original EXIF location. Exports now ship exactly what is visible on the
+  map. (#93)
+
+## [2.23.0] - 2026-05-31
+
+### Fixed
+- **Map Corridors:** fixed a white-screen crash when rotating the map and then
+  tilting it (an `Invalid LngLat (NaN, NaN)` error thrown by the auto-fan
+  projection). The fan now guards against off-screen / NaN projections. (#92)
+
+## [2.22.0] - 2026-05-31
+
+### Added
+- **Map Corridors:** when zoomed in, dragging a marker (photo, KML/click,
+  ground, or no-GPS provisional pin) toward the edge of the map now auto-pans
+  the map in that direction, with the dot staying under the cursor — so you can
+  move a marker anywhere, even off the current screen, in one continuous motion
+  (no more zoom-out / place / zoom-in / nudge dance). (#91)
+
+## [2.21.0] - 2026-05-30
+
+### Added
+- **Map Corridors:** a Google-Earth-style **compass** button appears at the
+  top-left of the map whenever it is rotated; its needle shows the live bearing
+  and clicking it eases the map back to north-up. Pressing **N** does the same
+  (suppressed while typing in an input). (#90)
 
 ## [2.20.0] - 2026-05-30
 
@@ -31,14 +75,7 @@ new desktop release.
   handoff into Photo Helper, so the editor knows which print set each photo
   belongs to. Picking does not auto-place the photo; the existing "Send to set"
   / "Send to TP photos" controls still do that. Sessions saved before this
-  release load their existing picks as track photos (no picks are lost).
-- **Map Corridors:** compare co-located photos straight from the map. Each
-  fanned cluster shows a small **⇄ N** pill at its centre — click it to open the
-  photos side-by-side and pick the best one (2–3 open immediately; larger groups
-  drop into a selection to trim down). You can also **Ctrl/Cmd/Shift-click** any
-  dots to multi-select them (highlighted with a ring); a floating **Compare**
-  bar then opens the side-by-side view. Both routes feed the existing compare
-  modal (winner stays, the rest move to Odmítnuté).
+  release load their existing picks as track photos (no picks are lost). (#87)
 
 ## [2.19.0] - 2026-05-30
 
@@ -52,10 +89,24 @@ new desktop release.
   one back to the spot, so every photo stays individually clickable. The fan
   recomputes as you zoom and pan, and collapses once the dots are far enough
   apart on their own.
+- **Map Corridors:** neutral / unselected photo dots are now high-contrast
+  **amber** instead of near-invisible grey, and all markers are bigger (18px)
+  with a larger transparent click/tap halo so they are easier to grab.
+- **Photo Editor:** the photo modal gains prev/next arrows and
+  ArrowLeft/ArrowRight keyboard navigation within the current set/pool, plus a
+  new "Send to TP photos" candidate-tray button that switches to turning-point
+  mode and places the photo.
+- **Desktop launcher:** you can now rename an existing competition inline.
 
 ### Changed
+- **Map Corridors / Photo Editor:** the app-switch button moved to the top-left
+  and is now a labelled button ("Editor fotek" / "Umístění fotek") instead of a
+  bare icon.
+- **Photo Editor:** the editor expands full-width on wide screens (removed the
+  previous 75% cap); the candidate-tray star/deny flagging UI is hidden (that
+  workflow lives in Map Corridors).
 - **Desktop launcher:** the app now opens maximised (filling the screen) on
-  every launch instead of a fixed-size window.
+  every launch instead of a fixed-size window. (#85)
 
 ## [2.18.0] - 2026-05-24
 
