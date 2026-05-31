@@ -44,6 +44,14 @@ export interface MapPicksSyncSessionApi {
    * leaves the candidate pool, so the candidates-only dedup can't see it).
    */
   placedIds: ReadonlySet<string>;
+  /**
+   * The active discipline. A placed pick only re-flows on a TP-break change
+   * when it belongs to the discipline currently shown — the other discipline's
+   * sheets live in an inactive bucket with `url: ''` (can't render in the
+   * always-visible tray) and reconcile when they become active. Drives the
+   * `reconcilePlaced` gate below.
+   */
+  mode: 'track' | 'turningpoint';
   /** Insert a pre-built ApiPhoto. Called for `pm-` entries not yet in the pool. */
   addCandidate: (photo: ApiPhoto) => Promise<void> | void;
   /**
@@ -55,6 +63,13 @@ export interface MapPicksSyncSessionApi {
    * sheet — overflow → tray, no cross-spill; absent → `set1→set2→tray` fill.
    */
   importPick: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint', desiredSet?: 'set1' | 'set2') => Promise<void> | void;
+  /**
+   * Re-flow an already-placed pick to the sheet its (moved) TP set-break now
+   * dictates. Called for placed picks of the ACTIVE discipline whose
+   * `entry.set` differs from where they sit. Returns whether a move happened.
+   * No-op internally when already correct. See set-split-suggestion-plan.md.
+   */
+  reconcilePlaced: (photoId: string, desiredSet: 'set1' | 'set2') => Promise<boolean> | boolean;
   /** Remove a candidate by id. Called when a `pm-` entry disappears from map-picks.json. */
   removeCandidate: (photoId: string) => Promise<void> | void;
   /** Update flag in place; preserves canvasState + photo-helper-owned fields. */
@@ -145,14 +160,24 @@ export async function syncMapPicksOnce(
     const entryFlag = normalizeCandidateFlag(entry.flag);
     const existing = localById.get(entry.photoId);
     if (!existing) {
-      // Already auto-routed into a set on a previous (or this) sync. Skip
-      // entirely: don't re-insert into the tray, don't re-route. Placed
-      // photos are intentionally detached from the candidate-pool mirror —
-      // identical to how a hand-promoted pm- photo behaves today. A flag /
-      // filename change in map-corridors after placement is NOT propagated
-      // (the photo no longer carries a tray flag); the user owns it once it's
-      // in a set.
+      // Already auto-routed into a set on a previous (or this) sync. Don't
+      // re-insert into the tray. But the user may have moved their TP
+      // set-break, so a placed pick can now belong in the OTHER sheet —
+      // re-flow it. Only for the ACTIVE discipline: the other discipline's
+      // sheets live in an inactive bucket with `url: ''` and would render
+      // blank if overflowed into the always-visible tray, so they reconcile
+      // when shown (the hook re-runs on mode change). `entry.set` absent → no
+      // break → leave the photo where it is (map only owns membership when it
+      // expresses one; flag/label/filename edits stay detached, as before).
       if (session.placedIds.has(entry.photoId) || placedThisRun.has(entry.photoId)) {
+        const placedMode =
+          entryFlag === 'pick-track' ? 'track'
+          : entryFlag === 'pick-turning' ? 'turningpoint'
+          : null;
+        if (entry.set && placedMode === session.mode) {
+          const moved = await session.reconcilePlaced(entry.photoId, entry.set);
+          if (moved) updates++;
+        }
         continue;
       }
       // Narrow the swallow to NotFoundError — other storage errors
@@ -303,5 +328,11 @@ export function useMapPicksSync(
       cancelled = true;
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [competitionDir, photosDir]);
+    // `session.mode` is a dep so switching discipline re-runs the sync: we only
+    // re-flow the ACTIVE discipline's placed picks on a break change, so the
+    // newly-shown discipline must reconcile the moment it becomes active rather
+    // than waiting for the next visibilitychange. `competitionDir`/`photosDir`
+    // identity is stable per competition; mode is a primitive so this doesn't
+    // thrash. All other live state is read through `sessionRef`.
+  }, [competitionDir, photosDir, session.mode]);
 }
