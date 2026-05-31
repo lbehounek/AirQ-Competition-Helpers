@@ -10,6 +10,15 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.26.1] - 2026-05-31
+
+### Fixed
+- **Photo Helper:** you can now drag a photo from the candidate tray onto an
+  **empty** set. Previously the drop only worked once the set already had at
+  least one photo — dropping onto an empty set did nothing. The empty-set drop
+  zone now accepts tray drops (landing in the first slot) and shows the same
+  highlight, while native file drops keep working as before. (#102)
+
 ## [2.26.0] - 2026-05-31
 
 ### Changed
