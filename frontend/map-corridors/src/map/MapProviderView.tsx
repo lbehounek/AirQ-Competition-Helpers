@@ -14,6 +14,7 @@ import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
 import { useMarkerFan } from './photoLayers/useMarkerFan'
 import { useEdgePanDrag } from './useEdgePanDrag'
+import { decideCompareOrSelect } from './compareSelection'
 import { MarkerDragHandle } from './MarkerDragHandle'
 import { PhotoMarkerPopup } from '../components/PhotoMarkerPopup'
 import { MAX_COMPARE_VARIANTS } from '../components/PhotoListPanel'
@@ -230,15 +231,18 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // Open the compare modal for a set of markers, or — when there are too many
   // for the 2–3 modal — drop them into the selection so the user can trim via
   // the floating bar. Shared by the cluster pill and (for ≤3) direct calls.
+  // `onCompareVariants` is destructured so the callback depends on the handler
+  // itself, not the whole (always-fresh) `props` object.
+  const { onCompareVariants } = props
   const compareOrSelect = useCallback((markers: readonly PhotoMarker[]) => {
-    if (markers.length < 2) return
-    if (markers.length <= MAX_COMPARE_VARIANTS) {
-      props.onCompareVariants?.(markers)
+    const decision = decideCompareOrSelect(markers, MAX_COMPARE_VARIANTS)
+    if (decision.kind === 'compare') {
+      onCompareVariants?.(decision.markers)
       clearPhotoSelection()
-    } else {
-      setSelectedPhotoMarkerIds(markers.map(m => m.id))
+    } else if (decision.kind === 'select') {
+      setSelectedPhotoMarkerIds(decision.ids)
     }
-  }, [props, clearPhotoSelection])
+  }, [onCompareVariants, clearPhotoSelection])
 
   // `N` resets the map to north (Google-Earth style). Suppressed while typing
   // in a field (marker-name inputs live in popups) and for modifier combos
@@ -611,8 +615,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       {props.onCompareVariants && photoFan.clusters.map(c => (
         <Marker
           key={`fan-pill-${c.ids.join('-')}`}
-          longitude={c.centroidLngLat[0]}
-          latitude={c.centroidLngLat[1]}
+          longitude={c.centroidLngLat.lng}
+          latitude={c.centroidLngLat.lat}
           style={{ zIndex: 3 }}
         >
           <button
@@ -639,7 +643,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
               whiteSpace: 'nowrap',
             }}
-          >⇄ {c.count}</button>
+          >⇄ {c.ids.length}</button>
         </Marker>
       ))}
       {/* KML / click-placed markers — existing render path. Photo

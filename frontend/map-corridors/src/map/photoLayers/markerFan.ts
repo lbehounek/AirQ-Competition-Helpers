@@ -30,7 +30,7 @@ export interface LeaderSegment {
  *  fan radiates from. Used to anchor the "Compare N" pill and to know which
  *  photos a cluster gesture should compare. */
 export interface MarkerCluster {
-  ids: string[]
+  ids: readonly string[]
   centroid: [number, number]
 }
 

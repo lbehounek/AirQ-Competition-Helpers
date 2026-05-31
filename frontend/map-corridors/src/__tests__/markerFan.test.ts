@@ -85,7 +85,7 @@ describe('computeMarkerFan', () => {
       { thresholdPx: 20 },
     )
     expect(r.clusters).toHaveLength(1)
-    expect(r.clusters[0].ids.sort()).toEqual(['a', 'b'])
+    expect([...r.clusters[0].ids].sort()).toEqual(['a', 'b'])
     // Centroid is the average of the two members' screen points.
     expect(r.clusters[0].centroid[0]).toBeCloseTo(104, 5)
     expect(r.clusters[0].centroid[1]).toBeCloseTo(100, 5)
