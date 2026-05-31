@@ -1039,6 +1039,9 @@ function AppApi() {
                       maxPhotos={isPrecision && session?.mode === 'track' ? 10 : (layoutMode === 'portrait' ? 10 : 9)}
                       loading={loading}
                       error={error}
+                      setKey="set1"
+                      onCandidateDropped={(candidateId) => handleCandidateDropped('set1')(candidateId, 0)}
+                      onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
                     />
                   </Paper>
                 ) : (
@@ -1090,6 +1093,9 @@ function AppApi() {
                       maxPhotos={layoutMode === 'portrait' ? 10 : 9}
                       loading={loading}
                       error={error}
+                      setKey="set2"
+                      onCandidateDropped={(candidateId) => handleCandidateDropped('set2')(candidateId, 0)}
+                      onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
                     />
                   </Paper>
                 ) : (
