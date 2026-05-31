@@ -29,6 +29,16 @@ export const MAX_PAN_PX_PER_FRAME = 18
 // drag — mirrors the 8px threshold the native handlers used.
 const DEFAULT_CLICK_THRESHOLD_PX = 8
 
+/** Modifier-key state at the moment a tap is recognised. Lets a click handler
+ *  branch (e.g. Ctrl/Cmd/Shift-click → multi-select vs plain click → open). */
+export type ClickMods = { ctrl: boolean; meta: boolean; shift: boolean }
+
+const readMods = (e: PointerEvent): ClickMods => ({
+  ctrl: e.ctrlKey,
+  meta: e.metaKey,
+  shift: e.shiftKey,
+})
+
 export type DragHandleConfig = {
   id: string
   /** Marker's true anchor at drag start (not a fan-offset/override position). */
@@ -37,8 +47,10 @@ export type DragHandleConfig = {
   /** Commit a real move (cursor travelled past the click threshold, or the map
    *  auto-panned during the gesture). */
   onCommit: (lng: number, lat: number) => void
-  /** A tap that never crossed the threshold — open a popup, select, etc. */
-  onClick?: () => void
+  /** A tap that never crossed the threshold — open a popup, select, etc. The
+   *  modifier-key state at pointer-up is forwarded so callers can distinguish a
+   *  plain click from a Ctrl/Cmd/Shift-click. */
+  onClick?: (mods: ClickMods) => void
   clickThresholdPx?: number
 }
 
@@ -67,6 +79,9 @@ type DragState = {
   moved: boolean
   curLng: number
   curLat: number
+  /** Modifier keys, captured at grab time and refreshed at pointer-up so a
+   *  tap forwards the modifier state at the click, not at the press. */
+  mods: ClickMods
 }
 
 // Eased 0→1 ramp inside the edge zone; clamps so a cursor *past* the edge
@@ -175,7 +190,7 @@ export function createEdgePanController(
       state = null
       if (commit) {
         if (st.moved) st.cfg.onCommit(st.curLng, st.curLat)
-        else st.cfg.onClick?.()
+        else st.cfg.onClick?.(st.mods)
       }
       // On cancel (Escape / blur / pointercancel) we simply drop the override;
       // the marker snaps back to its prop-driven (original) position.
@@ -185,6 +200,9 @@ export function createEdgePanController(
     function onPointerUp(e: PointerEvent) {
       const st = state
       if (st && e.pointerId !== st.pointerId) return
+      // Refresh modifiers from the up-event so "Ctrl/Cmd/Shift-click" reflects
+      // the key state at the click, not whatever was held at press time.
+      if (st) st.mods = readMods(e)
       endDrag(true)
     }
     function onPointerCancel() {
@@ -221,6 +239,7 @@ export function createEdgePanController(
         moved: false,
         curLng: cfg.lng,
         curLat: cfg.lat,
+        mods: readMods(e),
       }
       setActiveDrag({ id: cfg.id, lng: cfg.lng, lat: cfg.lat })
       window.addEventListener('pointermove', onPointerMove)

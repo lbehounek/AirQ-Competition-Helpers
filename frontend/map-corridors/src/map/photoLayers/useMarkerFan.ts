@@ -23,27 +23,40 @@ import type { PhotoMarker } from '../../types/markers'
 import { isPhotoMarkerVisible } from './markerVisibility'
 import { computeMarkerFan, type ScreenPoint } from './markerFan'
 
+/** A fanned cluster surfaced to the map: its members (markerIds) and the
+ *  centroid in lng/lat (so the "Compare N" pill can be a <Marker>). The member
+ *  count is just `ids.length` — not stored, to avoid a field that can drift out
+ *  of sync. Centroid is `{lng, lat}` (not a bare tuple) so it can't be mixed up
+ *  with the screen-pixel `MarkerCluster.centroid` it's unprojected from. */
+export interface FanCluster {
+  ids: readonly string[]
+  centroidLngLat: { lng: number; lat: number }
+}
+
 export interface UseMarkerFanResult {
   offsets: Map<string, [number, number]>
   leaders: FeatureCollection<LineString>
+  clusters: FanCluster[]
 }
 
 const EMPTY: UseMarkerFanResult = {
   offsets: new Map(),
   leaders: { type: 'FeatureCollection', features: [] },
+  clusters: [],
 }
 
-// A leader endpoint landing above the horizon makes `unproject` throw; that is
-// an expected, recoverable case (we just drop the line), so we must NOT rethrow
-// — doing so during render is the white-screen bug this hook guards against. But
-// silently swallowing every error hides genuinely unexpected failures, so warn
-// once in dev. Module-level latch keeps it to a single line instead of one per
-// off-horizon leader per recompute (which fires on every map settle).
+// A fan point above the horizon makes `unproject` throw (or return a non-finite
+// LngLat); that is an expected, recoverable case (we just drop the leader line
+// or cluster pill), so we must NOT rethrow — doing so during render is the
+// white-screen bug this hook guards against. But silently swallowing every
+// failure hides genuinely unexpected ones, so warn once in dev. Module-level
+// latch keeps it to a single line instead of one per dropped point per recompute
+// (which fires on every map settle).
 let unprojectWarned = false
 function warnUnprojectOnce(err: unknown): void {
   if (unprojectWarned || !import.meta.env.DEV) return
   unprojectWarned = true
-  console.warn('[useMarkerFan] unproject failed for a leader endpoint; dropping its line.', err)
+  console.warn('[useMarkerFan] unproject failed for a fan point (leader endpoint or cluster centroid); dropping it.', err)
 }
 
 /**
@@ -91,7 +104,12 @@ export function buildMarkerFan(
   const safeUnproject = (pt: [number, number]): [number, number] | null => {
     try {
       const ll = map.unproject(pt)
-      return Number.isFinite(ll.lng) && Number.isFinite(ll.lat) ? [ll.lng, ll.lat] : null
+      if (Number.isFinite(ll.lng) && Number.isFinite(ll.lat)) return [ll.lng, ll.lat]
+      // unproject succeeded but produced NaN/Inf — same off-horizon case as a
+      // throw, just surfaced differently. Drop it, and warn so a silent
+      // regression in the guard stays diagnosable.
+      warnUnprojectOnce(new Error(`unproject returned a non-finite LngLat (${ll.lng}, ${ll.lat})`))
+      return null
     } catch (err) {
       warnUnprojectOnce(err)
       return null
@@ -110,7 +128,15 @@ export function buildMarkerFan(
     }]
   })
 
-  return { offsets: fan.offsets, leaders: { type: 'FeatureCollection', features } }
+  // Same off-horizon guard as the leaders: a cluster whose centroid can't
+  // unproject (above the horizon on a pitched map) is dropped rather than
+  // thrown — feeding NaN to a <Marker> would otherwise blank the app.
+  const clusters = fan.clusters.flatMap<FanCluster>(c => {
+    const ll = safeUnproject(c.centroid)
+    return ll ? [{ ids: c.ids, centroidLngLat: { lng: ll[0], lat: ll[1] } }] : []
+  })
+
+  return { offsets: fan.offsets, leaders: { type: 'FeatureCollection', features }, clusters }
 }
 
 export function useMarkerFan(params: {

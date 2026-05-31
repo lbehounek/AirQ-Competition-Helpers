@@ -23,6 +23,13 @@ new desktop release.
   belongs to. Picking does not auto-place the photo; the existing "Send to set"
   / "Send to TP photos" controls still do that. Sessions saved before this
   release load their existing picks as track photos (no picks are lost).
+- **Map Corridors:** compare co-located photos straight from the map. Each
+  fanned cluster shows a small **⇄ N** pill at its centre — click it to open the
+  photos side-by-side and pick the best one (2–3 open immediately; larger groups
+  drop into a selection to trim down). You can also **Ctrl/Cmd/Shift-click** any
+  dots to multi-select them (highlighted with a ring); a floating **Compare**
+  bar then opens the side-by-side view. Both routes feed the existing compare
+  modal (winner stays, the rest move to Odmítnuté).
 
 ## [2.19.0] - 2026-05-30
 

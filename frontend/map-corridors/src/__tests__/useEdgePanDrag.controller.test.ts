@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 import type { MapRef } from 'react-map-gl/mapbox'
-import { createEdgePanController, type DragHandleConfig } from '../map/useEdgePanDrag'
+import { createEdgePanController, type DragHandleConfig, type ClickMods } from '../map/useEdgePanDrag'
 
 // Behavioral tests for the drag state machine inside createEdgePanController —
 // the part that decides what coordinates get written to a competition marker
@@ -66,7 +66,7 @@ type Harness = {
   controller: ReturnType<typeof createEdgePanController>
   active: Array<{ id: string; lng: number; lat: number } | null>
   onCommit: Mock<(lng: number, lat: number) => void>
-  onClick: Mock<() => void>
+  onClick: Mock<(mods: ClickMods) => void>
   fake: ReturnType<typeof makeFakeMap>
   startAt: (cx: number, cy: number, anchor?: { lng: number; lat: number }) => void
 }
@@ -78,7 +78,7 @@ function setup(extraCfg: Partial<DragHandleConfig> = {}): Harness {
   const controller = createEdgePanController(mapRef, d => active.push(d))
   // Typed mocks so they satisfy DragHandleConfig's onCommit/onClick under tsc.
   const onCommit = vi.fn<(lng: number, lat: number) => void>()
-  const onClick = vi.fn<() => void>()
+  const onClick = vi.fn<(mods: ClickMods) => void>()
   const startAt: Harness['startAt'] = (cx, cy, anchor = { lng: cx, lat: cy }) => {
     controller.startDrag(pointerEvent({ clientX: cx, clientY: cy }), {
       id: 'm1', lng: anchor.lng, lat: anchor.lat, onCommit, onClick, ...extraCfg,
@@ -129,6 +129,45 @@ describe('createEdgePanController — commit vs click', () => {
     // Cursor moved by (+100,+100); the anchor should move by the same delta:
     // 485+100=585, 490+100=590 — NOT the raw cursor position (605,600).
     expect(h.onCommit).toHaveBeenCalledWith(585, 590)
+  })
+})
+
+describe('createEdgePanController — modifier-aware click', () => {
+  it('forwards no modifiers for a plain click', () => {
+    const h = setup()
+    h.startAt(500, 500)
+    dispatch('pointermove', { pointerId: 1, clientX: 502, clientY: 501 }) // sub-threshold
+    dispatch('pointerup', { pointerId: 1, ctrlKey: false, metaKey: false, shiftKey: false })
+    expect(h.onClick).toHaveBeenCalledTimes(1)
+    expect(h.onClick).toHaveBeenCalledWith({ ctrl: false, meta: false, shift: false })
+  })
+
+  it('forwards the modifiers held at pointer-up (Ctrl/Cmd/Shift-click)', () => {
+    const h = setup()
+    h.startAt(500, 500)
+    dispatch('pointerup', { pointerId: 1, ctrlKey: true, metaKey: false, shiftKey: true })
+    expect(h.onClick).toHaveBeenCalledWith({ ctrl: true, meta: false, shift: true })
+  })
+
+  it('reads modifiers at release, not at press (refresh on pointer-up)', () => {
+    const h = setup()
+    h.startAt(500, 500) // pressed with NO modifier
+    // Release WITH Ctrl held: the click must reflect the release state, not the
+    // press. This pins the `st.mods = readMods(e)` refresh in onPointerUp — a
+    // regression that forwarded the grab-time mods would silently break it.
+    dispatch('pointerup', { pointerId: 1, ctrlKey: true, metaKey: false, shiftKey: false })
+    expect(h.onClick).toHaveBeenCalledWith({ ctrl: true, meta: false, shift: false })
+  })
+
+  it('does NOT fire onClick for a drag even with a modifier held', () => {
+    const h = setup()
+    h.startAt(500, 500)
+    dispatch('pointermove', { pointerId: 1, clientX: 600, clientY: 540 }) // supra-threshold
+    dispatch('pointerup', { pointerId: 1, ctrlKey: true, metaKey: false, shiftKey: false })
+    // The modifier must not bypass the move/commit guard: a Ctrl-drag still
+    // commits a move and never selects.
+    expect(h.onClick).not.toHaveBeenCalled()
+    expect(h.onCommit).toHaveBeenCalledTimes(1)
   })
 })
 
