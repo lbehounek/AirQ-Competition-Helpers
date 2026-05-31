@@ -107,6 +107,7 @@ function AppApi() {
     // Candidate pool operations (see docs/CANDIDATE_PHOTOS.md)
     addPhotosToCandidates,
     addExistingCandidate,
+    importPickToSets,
     removeCandidate,
     promoteCandidateToSlot,
     demoteSlotToCandidate,
@@ -120,6 +121,27 @@ function AppApi() {
   // Candidate photos — derived from session for stable rendering. The pool
   // is optional on older sessions, so default to empty.
   const candidatePhotos: ApiPhoto[] = session?.candidates?.photos ?? [];
+
+  // `pm-` ids already placed in a set across any discipline bucket. Fed to
+  // useMapPicksSync so a re-sync never re-inserts an auto-routed photo into
+  // the tray (placed photos drop their flag + leave the candidate pool, so
+  // the candidates-only dedup can't see them). Recomputed whenever the sets
+  // change. See docs/CANDIDATE_PHOTOS.md "Map-pick auto-routing".
+  const placedPmIds: ReadonlySet<string> = useMemo(() => {
+    const ids = new Set<string>();
+    const collect = (sets?: { set1: { photos: ApiPhoto[] }; set2: { photos: ApiPhoto[] } }) => {
+      if (!sets) return;
+      for (const setKey of ['set1', 'set2'] as const) {
+        for (const p of sets[setKey].photos) {
+          if (p.id.startsWith('pm-')) ids.add(p.id);
+        }
+      }
+    };
+    collect(session?.sets);
+    collect(session?.setsTrack);
+    collect(session?.setsTurning);
+    return ids;
+  }, [session?.sets, session?.setsTrack, session?.setsTurning]);
 
   // Phase 8b of photo-map-culling — resolve the per-competition dirs
   // and mount the map-picks sync hook. The dirs come from the OPFS
@@ -163,12 +185,14 @@ function AppApi() {
 
   const pmcSessionApi = useMemo(() => ({
     candidates: candidatePhotos,
+    placedIds: placedPmIds,
     addCandidate: addExistingCandidate,
+    importPick: importPickToSets,
     removeCandidate,
     setCandidateFlag,
     setCandidateLabel,
     setCandidateFilename,
-  }), [candidatePhotos, addExistingCandidate, removeCandidate, setCandidateFlag, setCandidateLabel, setCandidateFilename]);
+  }), [candidatePhotos, placedPmIds, addExistingCandidate, importPickToSets, removeCandidate, setCandidateFlag, setCandidateLabel, setCandidateFilename]);
 
   useMapPicksSync(pmcCompetitionDir, pmcPhotosDir, pmcSessionApi);
 

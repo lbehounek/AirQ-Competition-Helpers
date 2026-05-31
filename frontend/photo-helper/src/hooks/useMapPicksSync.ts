@@ -36,8 +36,23 @@ export type { MapPickEntry };
  */
 export interface MapPicksSyncSessionApi {
   candidates: readonly ApiPhoto[];
+  /**
+   * `pm-` photo ids that already live in a set (any of `sets`, `setsTrack`,
+   * `setsTurning`) because a prior sync auto-routed them, or the user placed
+   * them by hand. The insert path consults this so a re-sync never re-inserts
+   * a placed photo back into the tray (a placed photo has its flag cleared and
+   * leaves the candidate pool, so the candidates-only dedup can't see it).
+   */
+  placedIds: ReadonlySet<string>;
   /** Insert a pre-built ApiPhoto. Called for `pm-` entries not yet in the pool. */
   addCandidate: (photo: ApiPhoto) => Promise<void> | void;
+  /**
+   * Auto-route a category-flagged pick straight into its discipline's sets on
+   * first import (`pick-track` → track, `pick-turning` → turning), instead of
+   * the candidate tray. set1→set2→tray fill, no active-mode switch. Called in
+   * place of `addCandidate` for `pick-track` / `pick-turning` inserts.
+   */
+  importPick: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint') => Promise<void> | void;
   /** Remove a candidate by id. Called when a `pm-` entry disappears from map-picks.json. */
   removeCandidate: (photoId: string) => Promise<void> | void;
   /** Update flag in place; preserves canvasState + photo-helper-owned fields. */
@@ -105,6 +120,11 @@ export async function syncMapPicksOnce(
   // photo and doesn't allocate a fresh blob URL for the same id.
   const localById = new Map<string, ApiPhoto>();
   for (const p of session.candidates) localById.set(p.id, p);
+  // Photos auto-routed into a set during THIS run. `session.placedIds` is a
+  // snapshot from render-time and can't see same-run placements, so a
+  // duplicate row in map-picks.json would otherwise place the same photo
+  // twice. Combined with `placedIds` this guards both within and across runs.
+  const placedThisRun = new Set<string>();
 
   for (const entry of file.picks) {
     // Per-row validation — drop malformed entries individually so a
@@ -123,6 +143,16 @@ export async function syncMapPicksOnce(
     const entryFlag = normalizeCandidateFlag(entry.flag);
     const existing = localById.get(entry.photoId);
     if (!existing) {
+      // Already auto-routed into a set on a previous (or this) sync. Skip
+      // entirely: don't re-insert into the tray, don't re-route. Placed
+      // photos are intentionally detached from the candidate-pool mirror —
+      // identical to how a hand-promoted pm- photo behaves today. A flag /
+      // filename change in map-corridors after placement is NOT propagated
+      // (the photo no longer carries a tray flag); the user owns it once it's
+      // in a set.
+      if (session.placedIds.has(entry.photoId) || placedThisRun.has(entry.photoId)) {
+        continue;
+      }
       // Narrow the swallow to NotFoundError — other storage errors
       // (permission revoked, InvalidStateError) shouldn't silently
       // collapse into "photo missing".
@@ -149,8 +179,18 @@ export async function syncMapPicksOnce(
         flag: entryFlag,
         ...(entry.labelUpdatedAt ? { labelUpdatedAt: entry.labelUpdatedAt } : {}),
       };
-      await session.addCandidate(photo);
-      localById.set(entry.photoId, photo);
+      // Category-flagged picks auto-route into their discipline's sets on
+      // first import; everything else (defensive — only picks cross the
+      // handoff writer) lands in the candidate tray as before. A pick whose
+      // sets are full falls back to the tray inside `importPick`.
+      if (entryFlag === 'pick-track' || entryFlag === 'pick-turning') {
+        const targetMode = entryFlag === 'pick-track' ? 'track' : 'turningpoint';
+        await session.importPick(photo, targetMode);
+        placedThisRun.add(entry.photoId);
+      } else {
+        await session.addCandidate(photo);
+        localById.set(entry.photoId, photo);
+      }
       inserts++;
     } else {
       let touched = false;
