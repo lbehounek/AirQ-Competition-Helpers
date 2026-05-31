@@ -10,6 +10,15 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.25.2] - 2026-05-31
+
+### Fixed
+- **Map Corridors:** photos in the side-by-side compare view now appear in
+  shooting order (by original filename, then EXIF capture time) instead of the
+  order you happened to click or select them. Affects both compare routes — the
+  right-panel selection and the map's **⇄ N** cluster pill / Compare bar — and
+  the 1/2/3 keyboard shortcuts stay aligned with the tile numbering. (#99)
+
 ## [2.25.0] - 2026-05-31
 
 ### Added
