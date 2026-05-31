@@ -10,6 +10,15 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.21.0] - 2026-05-31
+
+### Added
+- **Map Corridors:** you can now drag a "Bez GPS" photo row from the right-side
+  panel straight onto the map to place it — it lands at the drop point as a
+  track pick (blue), the same as dragging from the bottom no-GPS tray. Clicking
+  the row (provisional pin at map centre) and double-clicking it (full-res
+  preview) still work as before.
+
 ## [2.20.0] - 2026-05-30
 
 ### Added
