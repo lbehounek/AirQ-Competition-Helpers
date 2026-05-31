@@ -13,6 +13,7 @@ import type { PhotoFlag, PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
 import { useMarkerFan } from './photoLayers/useMarkerFan'
+import { resolveFanOffset } from './photoLayers/markerOffset'
 import { useEdgePanDrag } from './useEdgePanDrag'
 import { decideCompareOrSelect } from './compareSelection'
 import { MarkerDragHandle } from './MarkerDragHandle'
@@ -870,7 +871,12 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
             // Auto-fan: nudge overlapping markers apart by a pixel offset
             // (anchor stays at the true lng/lat). Suppressed while THIS marker
             // is being dragged so its dot tracks the cursor without a jump.
-            offset={activeDrag?.id === m.id ? undefined : photoFan.offsets.get(m.id)}
+            // `resolveFanOffset` guarantees a non-undefined [0,0] when this
+            // marker isn't fanned — see markerOffset.ts. A falsy offset would
+            // leave a stale fan offset stuck on the marker (the "placed photo
+            // drifts off the map on zoom-out" bug). Suppressed to [0,0] while
+            // THIS marker is dragged so its dot tracks the cursor without a jump.
+            offset={activeDrag?.id === m.id ? [0, 0] : resolveFanOffset(photoFan.offsets.get(m.id))}
             style={isActive || isSelected ? { zIndex: 2 } : undefined}
           >
             <MarkerDragHandle
@@ -1067,8 +1073,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         const popupId = activePhotoMarkerId
         // When the active marker is fanned, shift the popup by the same pixel
         // offset so its tail points at the fanned dot the user clicked rather
-        // than the (now-empty) true GPS point under the cluster.
-        const fanOffset = photoFan.offsets.get(popupId)
+        // than the (now-empty) true GPS point under the cluster. `resolveFanOffset`
+        // returns [0,0] (never undefined) when un-fanned — the <Popup> wrapper has
+        // the same falsy-offset-ignored bug as <Marker> (see markerOffset.ts).
+        const fanOffset = resolveFanOffset(photoFan.offsets.get(popupId))
         return (
           <Popup
             longitude={marker.lng}
