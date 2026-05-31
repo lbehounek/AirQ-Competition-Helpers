@@ -7,6 +7,7 @@ import {
   clearAllCandidates,
   updateCandidateCanvasState,
   routeImportedPickIntoSets,
+  reconcilePlacedToDesiredSet,
 } from '../utils/candidateTransitions';
 import type { ApiPhoto, ApiPhotoSession, CandidateFlag } from '../types/api';
 
@@ -562,5 +563,99 @@ describe('routeImportedPickIntoSets', () => {
     expect(next.setsTurning?.set2.photos.map(p => p.id)).toEqual(['pm-tp']);
     expect(next.setsTurning?.set2.photos[0].url).toBe('');
     expect(revokeUrl).toBe('blob:pm-tp');
+  });
+});
+
+describe('reconcilePlacedToDesiredSet', () => {
+  // Active-discipline session: session.sets IS the discipline's live sheets.
+  function makeActiveSession(opts: {
+    mode?: 'track' | 'turningpoint';
+    set1?: ApiPhoto[];
+    set2?: ApiPhoto[];
+    candidates?: ApiPhoto[];
+    layoutMode?: 'portrait' | 'landscape';
+  }): ApiPhotoSession {
+    const base: any = {
+      id: 'sess-1',
+      version: 1,
+      createdAt: '2026-05-31T00:00:00Z',
+      updatedAt: '2026-05-31T00:00:00Z',
+      mode: opts.mode ?? 'track',
+      competition_name: 'Test',
+      sets: {
+        set1: { title: 'S1', photos: opts.set1 ?? [] },
+        set2: { title: 'S2', photos: opts.set2 ?? [] },
+      },
+      candidates: { photos: opts.candidates ?? [] },
+    };
+    if (opts.layoutMode) base.layoutMode = opts.layoutMode;
+    return base as ApiPhotoSession;
+  }
+
+  const fillR = (n: number, prefix: string) =>
+    Array.from({ length: n }, (_, i) => makePhoto(`${prefix}${i + 1}`));
+
+  it('moves a placed pick set1 → set2 when the break says so, preserving its state', () => {
+    const p = makePhoto('pm-x');
+    p.label = 'TP3';
+    p.canvasState = { ...p.canvasState, brightness: 0.7 } as any;
+    const session = makeActiveSession({ set1: [makePhoto('a'), p, makePhoto('b')], set2: [] });
+
+    const { session: next, moved } = reconcilePlacedToDesiredSet(session, 'pm-x', 'set2', false);
+
+    expect(moved).toBe(true);
+    // Removed from set1 (others keep order), appended to set2.
+    expect(next.sets.set1.photos.map(q => q.id)).toEqual(['a', 'b']);
+    expect(next.sets.set2.photos.map(q => q.id)).toEqual(['pm-x']);
+    // Editor-owned state survives the move.
+    expect(next.sets.set2.photos[0].label).toBe('TP3');
+    expect((next.sets.set2.photos[0].canvasState as any).brightness).toBe(0.7);
+    // Active bucket mirrored.
+    expect(next.setsTrack?.set2.photos.map(q => q.id)).toEqual(['pm-x']);
+    expect(next.version).toBe(session.version + 1);
+  });
+
+  it('is a no-op (same ref) when the pick is already in the desired sheet', () => {
+    const p = makePhoto('pm-x');
+    const session = makeActiveSession({ set1: [p], set2: [] });
+    const { session: next, moved } = reconcilePlacedToDesiredSet(session, 'pm-x', 'set1', false);
+    expect(moved).toBe(false);
+    expect(next).toBe(session);
+  });
+
+  it('is a no-op when the pick is not in the active sets (inactive bucket / tray)', () => {
+    const session = makeActiveSession({ set1: [makePhoto('a')], set2: [] });
+    const { session: next, moved } = reconcilePlacedToDesiredSet(session, 'pm-missing', 'set2', false);
+    expect(moved).toBe(false);
+    expect(next).toBe(session);
+  });
+
+  it('overflows to the tray (category flag) when the target sheet is full — no cross-spill back', () => {
+    const p = makePhoto('pm-x');
+    // set1 has the pick + others; set2 (target) is full at capacity 9.
+    const session = makeActiveSession({ set1: [p, ...fillR(3, 's')], set2: fillR(9, 't') });
+
+    const { session: next, moved } = reconcilePlacedToDesiredSet(session, 'pm-x', 'set2', false);
+
+    expect(moved).toBe(true);
+    expect(next.sets.set1.photos.map(q => q.id)).toEqual(['s1', 's2', 's3']); // removed from set1
+    expect(next.sets.set2.photos).toHaveLength(9); // unchanged — full
+    expect(next.candidates?.photos.map(q => q.id)).toEqual(['pm-x']);
+    expect(next.candidates?.photos[0].flag).toBe('pick-track'); // re-flagged by category
+  });
+
+  it('tray overflow uses pick-turning in turning-point mode', () => {
+    const p = makePhoto('pm-x');
+    const session = makeActiveSession({ mode: 'turningpoint', set1: [p], set2: fillR(10, 't') });
+    const { session: next } = reconcilePlacedToDesiredSet(session, 'pm-x', 'set2', false);
+    expect(next.candidates?.photos[0].flag).toBe('pick-turning');
+  });
+
+  it('is a no-op under precision (single-set — no cross-sheet membership)', () => {
+    const p = makePhoto('pm-x');
+    const session = makeActiveSession({ set1: [p], set2: [] });
+    const { session: next, moved } = reconcilePlacedToDesiredSet(session, 'pm-x', 'set2', true);
+    expect(moved).toBe(false);
+    expect(next).toBe(session);
   });
 });

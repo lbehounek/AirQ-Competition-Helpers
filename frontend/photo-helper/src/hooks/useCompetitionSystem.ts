@@ -28,6 +28,7 @@ import {
   clearAllCandidates as clearAllCandidatesPure,
   updateCandidateCanvasState as updateCandidateCanvasStatePure,
   routeImportedPickIntoSets,
+  reconcilePlacedToDesiredSet,
 } from '../utils/candidateTransitions';
 import {
   defaultTrackSetTitles,
@@ -88,6 +89,13 @@ export interface UseCompetitionSystemResult {
    * docs/photo-map-culling/set-split-suggestion-plan.md.
    */
   importPickToSets: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint', desiredSet?: 'set1' | 'set2') => Promise<void>;
+  /**
+   * Re-flow an already-placed pick to the sheet its TP set-break now dictates
+   * (the user moved the break in map-corridors). Active discipline only.
+   * Returns whether a move happened. See
+   * docs/photo-map-culling/set-split-suggestion-plan.md.
+   */
+  reconcilePlacedToSets: (photoId: string, desiredSet: 'set1' | 'set2') => Promise<boolean>;
   removeCandidate: (photoId: string) => Promise<void>;
   promoteCandidateToSlot: (candidateId: string, setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
   demoteSlotToCandidate: (setKey: 'set1' | 'set2', photoId: string) => Promise<void>;
@@ -703,6 +711,29 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       try { URL.revokeObjectURL(revokeUrl); } catch { /* best-effort */ }
     }
   }, [updateCurrentCompetition, currentCompetition, isPrecisionDiscipline]);
+
+  /**
+   * Re-flow an already-placed map pick to the sheet its (possibly-moved) TP
+   * set-break now dictates. Active discipline only — see
+   * `reconcilePlacedToDesiredSet`. Returns whether a move happened so the
+   * caller (useMapPicksSync) can count it; pre-checks against the live ref so
+   * an already-correct photo never triggers a wasteful persist.
+   */
+  const reconcilePlacedToSets = useCallback(async (
+    photoId: string,
+    desiredSet: 'set1' | 'set2',
+  ): Promise<boolean> => {
+    const cur = currentCompetitionRef.current;
+    if (!cur) return false;
+    if (!reconcilePlacedToDesiredSet(cur.session, photoId, desiredSet, isPrecisionDiscipline).moved) {
+      return false;
+    }
+    await updateCurrentCompetition(
+      session => reconcilePlacedToDesiredSet(session, photoId, desiredSet, isPrecisionDiscipline).session,
+      { updatePhotos: true },
+    );
+    return true;
+  }, [updateCurrentCompetition, isPrecisionDiscipline]);
 
   const addPhotosToSet = useCallback(async (files: File[], setKey: 'set1' | 'set2'): Promise<AddPhotosResult> => {
     if (!currentCompetition?.session) {
@@ -1478,6 +1509,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     addPhotosToCandidates,
     addExistingCandidate,
     importPickToSets,
+    reconcilePlacedToSets,
     removeCandidate,
     promoteCandidateToSlot,
     demoteSlotToCandidate,
