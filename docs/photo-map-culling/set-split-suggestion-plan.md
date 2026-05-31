@@ -1,6 +1,11 @@
-# Plan (DRAFT): set1↔set2 split at a user-chosen turning point
+# Plan: set1↔set2 split at a user-chosen turning point
 
-**Status:** DRAFT — awaiting sign-off. Not implemented.
+**Status:** IMPLEMENTED — branch `feat/set-split-tp-break`. Green gate:
+shared-handoff + map-corridors `tsc -b` clean, photo-helper `tsc --noEmit`
+clean; vitest map-corridors 719 ✓ / photo-helper 466 ✓.
+Phases: shared-handoff `MapPickEntry.set` → photo-helper honor + reflow →
+map-corridors break selection. Decision **(b)** (reconcile on break change)
+shipped; reflow is active-discipline-only (see "photo-helper side" below).
 **Builds on:** PR #100 (`feat/map-picks-auto-route-sets`, merged), which auto-routes
 imported picks into their discipline's sets with a `set1 → set2 → tray`
 capacity fill.
