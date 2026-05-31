@@ -23,14 +23,24 @@ import type { PhotoMarker } from '../../types/markers'
 import { isPhotoMarkerVisible } from './markerVisibility'
 import { computeMarkerFan, type ScreenPoint } from './markerFan'
 
+/** A fanned cluster surfaced to the map: members (markerIds), the centroid in
+ *  lng/lat (so the "Compare N" pill can be a <Marker>), and the member count. */
+export interface FanCluster {
+  ids: string[]
+  centroidLngLat: [number, number]
+  count: number
+}
+
 export interface UseMarkerFanResult {
   offsets: Map<string, [number, number]>
   leaders: FeatureCollection<LineString>
+  clusters: FanCluster[]
 }
 
 const EMPTY: UseMarkerFanResult = {
   offsets: new Map(),
   leaders: { type: 'FeatureCollection', features: [] },
+  clusters: [],
 }
 
 // A leader endpoint landing above the horizon makes `unproject` throw; that is
@@ -110,7 +120,15 @@ export function buildMarkerFan(
     }]
   })
 
-  return { offsets: fan.offsets, leaders: { type: 'FeatureCollection', features } }
+  // Same off-horizon guard as the leaders: a cluster whose centroid can't
+  // unproject (above the horizon on a pitched map) is dropped rather than
+  // thrown — feeding NaN to a <Marker> would otherwise blank the app.
+  const clusters = fan.clusters.flatMap<FanCluster>(c => {
+    const ll = safeUnproject(c.centroid)
+    return ll ? [{ ids: c.ids, centroidLngLat: ll, count: c.ids.length }] : []
+  })
+
+  return { offsets: fan.offsets, leaders: { type: 'FeatureCollection', features }, clusters }
 }
 
 export function useMarkerFan(params: {

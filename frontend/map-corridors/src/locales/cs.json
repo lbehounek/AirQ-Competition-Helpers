@@ -49,7 +49,9 @@
     },
     "map": {
       "resetNorth": "Otočit mapu na sever",
-      "resetNorthTooltip": "Otočit mapu na sever (N)"
+      "resetNorthTooltip": "Otočit mapu na sever (N)",
+      "comparePill": "Srovnat tyto fotky vedle sebe",
+      "compareAction": "Srovnat"
     },
     "preview": {
       "title": "Fotka",

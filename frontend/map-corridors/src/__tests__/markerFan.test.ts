@@ -78,6 +78,24 @@ describe('computeMarkerFan', () => {
     }
   })
 
+  it('reports clusters with member ids and centroid for each fanned group', () => {
+    // One overlapping pair + one solitary marker far away.
+    const r = computeMarkerFan(
+      [sp('a', 100, 100), sp('b', 108, 100), sp('solo', 400, 400)],
+      { thresholdPx: 20 },
+    )
+    expect(r.clusters).toHaveLength(1)
+    expect(r.clusters[0].ids.sort()).toEqual(['a', 'b'])
+    // Centroid is the average of the two members' screen points.
+    expect(r.clusters[0].centroid[0]).toBeCloseTo(104, 5)
+    expect(r.clusters[0].centroid[1]).toBeCloseTo(100, 5)
+  })
+
+  it('has no clusters when nothing overlaps', () => {
+    const r = computeMarkerFan([sp('a', 0, 0), sp('b', 300, 0)], { thresholdPx: 20 })
+    expect(r.clusters).toHaveLength(0)
+  })
+
   it('grows the fan radius with group size (clamped)', () => {
     const pts = Array.from({ length: 8 }, (_, i) => sp(`p${i}`, 100, 100))
     const r = computeMarkerFan(pts, {

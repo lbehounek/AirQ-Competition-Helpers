@@ -49,7 +49,9 @@
     },
     "map": {
       "resetNorth": "Reset map to north",
-      "resetNorthTooltip": "Reset map to north (N)"
+      "resetNorthTooltip": "Reset map to north (N)",
+      "comparePill": "Compare these photos side-by-side",
+      "compareAction": "Compare"
     },
     "preview": {
       "title": "Photo",

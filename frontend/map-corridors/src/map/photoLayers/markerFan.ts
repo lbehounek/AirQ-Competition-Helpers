@@ -26,11 +26,21 @@ export interface LeaderSegment {
   to: [number, number]
 }
 
+/** A fanned cluster: its members (markerIds) and the screen-space centroid the
+ *  fan radiates from. Used to anchor the "Compare N" pill and to know which
+ *  photos a cluster gesture should compare. */
+export interface MarkerCluster {
+  ids: string[]
+  centroid: [number, number]
+}
+
 export interface MarkerFanResult {
   /** markerId → [dx, dy] pixel offset. Only members of a fanned group appear. */
   offsets: Map<string, [number, number]>
   /** One per fanned marker. Empty when nothing overlaps. */
   leaders: LeaderSegment[]
+  /** One per fanned group (size ≥ 2). Empty when nothing overlaps. */
+  clusters: MarkerCluster[]
 }
 
 export interface MarkerFanOptions {
@@ -116,6 +126,7 @@ export function computeMarkerFan(
   const opt = { ...DEFAULTS, ...options }
   const offsets = new Map<string, [number, number]>()
   const leaders: LeaderSegment[] = []
+  const clusters: MarkerCluster[] = []
 
   const groups = clusterByProximity(points, opt.thresholdPx)
   for (const group of groups) {
@@ -129,6 +140,7 @@ export function computeMarkerFan(
     const cx = members.reduce((s, p) => s + p.x, 0) / members.length
     const cy = members.reduce((s, p) => s + p.y, 0) / members.length
     const n = members.length
+    clusters.push({ ids: members.map(p => p.id), centroid: [cx, cy] })
     const radius = clamp(
       opt.baseRadiusPx + opt.radiusStepPx * (n - 2),
       opt.minRadiusPx,
@@ -147,5 +159,5 @@ export function computeMarkerFan(
     }
   }
 
-  return { offsets, leaders }
+  return { offsets, leaders, clusters }
 }

@@ -1359,6 +1359,7 @@ function App() {
             activePhotoMarkerId={activePhotoMarkerId}
             onActivePhotoMarkerChange={setActivePhotoMarkerId}
             onPhotoPreview={handleOpenPhotoPreview}
+            onCompareVariants={handleCompareVariants}
             provisionalPlacement={provisionalPlacement}
             onProvisionalDrag={handleProvisionalDrag}
             onProvisionalCommit={handleProvisionalCommit}
