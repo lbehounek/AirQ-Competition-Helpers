@@ -106,6 +106,12 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   onPhotoIncludeTurning?: (markerId: string) => void
   onPhotoSkip?: (markerId: string) => void
   onPhotoReject?: (markerId: string) => void
+  // Toggle a turning-point photo as the set1↔set2 break (keyed by photoId).
+  // Omitted for precision (single-set) so the popup hides the control.
+  onPhotoSetBreak?: (photoId: string) => void
+  // photoId of the current set-break TP, for the popup toggle state + the
+  // marker badge. `null` = no break designated.
+  setBreakPhotoId?: string | null
   // Phase 6 — fires when a no-GPS thumbnail from NoGpsTray is dropped
   // on the map. Receives the photoId and the unprojected drop coords.
   onNoGpsPhotoPlaced?: (photoId: string, lng: number, lat: number) => void
@@ -862,6 +868,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         // Map-side compare selection (Ctrl/Cmd/Shift-click). Gets a distinct
         // ring; can coexist with the active glow.
         const isSelected = selectedIdSet.has(m.id)
+        // The designated set1↔set2 break turning point. Gets a teal halo + a
+        // scissors badge so the user can see at a glance where the sheets split.
+        const isSetBreak = !!m.photoId && props.setBreakPhotoId === m.photoId
         const pos = liveDragPos(m.id, m.lng, m.lat)
         return (
           <Marker
@@ -911,9 +920,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               // = purple ring (distinct from the blue active glow, and the two
               // stack when a marker is both). Else the subtle moved-photo shadow.
               boxShadow: [
+                isSetBreak ? '0 0 0 2px #ffffff, 0 0 0 5px #0891b2' : null,
                 isSelected ? '0 0 0 3px #ffffff, 0 0 0 5px #9c27b0' : null,
                 isActive ? '0 0 0 3px rgba(255,255,255,0.9), 0 0 10px 4px rgba(25,118,210,0.65)' : null,
-                !isActive && !isSelected && moved ? '0 1px 2px rgba(0,0,0,0.25)' : null,
+                !isActive && !isSelected && !isSetBreak && moved ? '0 1px 2px rgba(0,0,0,0.25)' : null,
               ].filter(Boolean).join(', ') || 'none',
               transform: isActive ? 'scale(1.3)' : isSelected ? 'scale(1.15)' : undefined,
               transition: 'transform 120ms ease, box-shadow 120ms ease',
@@ -934,6 +944,26 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 background: 'transparent',
                 cursor: 'pointer',
               }} />
+              {/* Set-break badge — a small scissors glyph pinned to the dot's
+                  top-right so the split point reads at a glance even without
+                  the popup open. */}
+              {isSetBreak && (
+                <div style={{
+                  position: 'absolute',
+                  top: -6,
+                  right: -8,
+                  background: '#0891b2',
+                  color: '#ffffff',
+                  borderRadius: '50%',
+                  width: 16,
+                  height: 16,
+                  fontSize: 10,
+                  lineHeight: '16px',
+                  textAlign: 'center',
+                  border: '1px solid #ffffff',
+                  pointerEvents: 'none',
+                }}>✂</div>
+              )}
             </div>
             {m.label && (
               <div style={{
@@ -1123,6 +1153,12 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 props.onPhotoReject?.(popupId)
                 setActivePhotoMarkerId(null)
               }}
+              onSetBreak={
+                props.onPhotoSetBreak && marker.photoId
+                  ? () => props.onPhotoSetBreak?.(marker.photoId!)
+                  : undefined
+              }
+              isSetBreak={!!marker.photoId && props.setBreakPhotoId === marker.photoId}
               onPreview={props.onPhotoPreview ? () => props.onPhotoPreview?.(marker.photoId!) : undefined}
             />
           </Popup>

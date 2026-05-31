@@ -129,6 +129,59 @@ describe('buildMapPicks', () => {
   it('returns [] for empty input', () => {
     expect(buildMapPicks([])).toEqual([])
   })
+
+  it('emits picks in ROUTE order (filename) regardless of input order', () => {
+    const result = buildMapPicks([
+      pm({ id: 'c', photoId: 'pid-c', name: 'c.jpg', flag: 'pick-track' }),
+      pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track' }),
+      pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning' }),
+    ])
+    expect(result.map(e => e.photoId)).toEqual(['pid-a', 'pid-b', 'pid-c'])
+  })
+})
+
+describe('buildMapPicks — set-break assignment', () => {
+  // Route order is by filename; `bTP` (b.jpg) is the designated break.
+  const markers = () => [
+    pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track' }),
+    pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning' }), // break
+    pm({ id: 'c', photoId: 'pid-c', name: 'c.jpg', flag: 'pick-track' }),
+    pm({ id: 'd', photoId: 'pid-d', name: 'd.jpg', flag: 'pick-turning' }),
+  ]
+
+  it('adds NO set field when no break is designated (back-compat / default fill)', () => {
+    const result = buildMapPicks(markers(), null)
+    expect(result.every(e => e.set === undefined)).toBe(true)
+  })
+
+  it('splits at the break TP — before-or-at → set1, after → set2', () => {
+    const result = buildMapPicks(markers(), 'pid-b')
+    const byId = Object.fromEntries(result.map(e => [e.photoId, e.set]))
+    expect(byId).toEqual({
+      'pid-a': 'set1', // before the break
+      'pid-b': 'set1', // the break TP closes leg 1 (inclusive)
+      'pid-c': 'set2', // after
+      'pid-d': 'set2',
+    })
+  })
+
+  it('partitions track and turning independently via the single cut', () => {
+    const result = buildMapPicks(markers(), 'pid-b')
+    const track = result.filter(e => e.flag === 'pick-track')
+    const turning = result.filter(e => e.flag === 'pick-turning')
+    expect(track.map(e => e.set)).toEqual(['set1', 'set2'])   // a, c
+    expect(turning.map(e => e.set)).toEqual(['set1', 'set2'])  // b, d
+  })
+
+  it('break at the FIRST pick → only it is set1, the rest set2', () => {
+    const result = buildMapPicks(markers(), 'pid-a')
+    expect(result.map(e => e.set)).toEqual(['set1', 'set2', 'set2', 'set2'])
+  })
+
+  it('emits no set when the break id is not among the picks (stale/unpicked break)', () => {
+    const result = buildMapPicks(markers(), 'pid-gone')
+    expect(result.every(e => e.set === undefined)).toBe(true)
+  })
 })
 
 describe('scheduleWriteMapPicks — debounce + serialization', () => {

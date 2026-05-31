@@ -199,6 +199,7 @@ function App() {
     photosDir,
     competitionDir,
     setMapStyleId,
+    setSetBreakPhotoId,
     setMarkers: persistMarkers,
     setGroundMarkers: persistGroundMarkers,
     setNoGpsPhotos: persistNoGpsPhotos,
@@ -676,9 +677,13 @@ function App() {
   // toggles coalesce into one disk write. Pagehide flushes best-effort.
   useEffect(() => {
     if (!storage || !competitionDir) return
-    const picks = buildMapPicks(markers)
+    // `setBreakPhotoId` (the user's set1↔set2 break TP) stamps each pick with
+    // its target sheet; effectiveDiscipline === 'precision' is single-set, so
+    // skip the break there and let the editor use its default fill.
+    const breakId = effectiveDiscipline === 'precision' ? null : (session?.setBreakPhotoId ?? null)
+    const picks = buildMapPicks(markers, breakId)
     scheduleWriteMapPicks(storage, competitionDir, picks)
-  }, [markers, storage, competitionDir])
+  }, [markers, storage, competitionDir, session?.setBreakPhotoId, effectiveDiscipline])
 
   // Pagehide-flush. Fire-and-forget per ADR-009 (async OPFS won't fully
   // settle before unload, but kicking the timer is strictly better than
@@ -731,6 +736,14 @@ function App() {
   const handlePhotoReject = useCallback((markerId: string) => {
     void setPhotoFlag(markerId, 'reject')
   }, [setPhotoFlag])
+
+  // Toggle a turning-point photo as the set1↔set2 break (keyed by photoId —
+  // the handoff and the editor identify picks by photoId, not marker id).
+  // Clicking the current break again clears it.
+  const handlePhotoSetBreak = useCallback((photoId: string) => {
+    const current = session?.setBreakPhotoId ?? null
+    void setSetBreakPhotoId(current === photoId ? null : photoId)
+  }, [session?.setBreakPhotoId, setSetBreakPhotoId])
 
   // Phase 12 — atomic variant resolution. Promotes the winner to 'pick' and
   // demotes every loser to 'reject' in a single OPFS write so the user
@@ -1355,6 +1368,10 @@ function App() {
             onPhotoIncludeTurning={handlePhotoIncludeTurning}
             onPhotoSkip={handlePhotoSkip}
             onPhotoReject={handlePhotoReject}
+            // Set-break is a rally-only, turning-point-only action; omit it for
+            // precision (single-set) so the popup hides the control entirely.
+            onPhotoSetBreak={effectiveDiscipline === 'precision' ? undefined : handlePhotoSetBreak}
+            setBreakPhotoId={session?.setBreakPhotoId ?? null}
             onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}
             activePhotoMarkerId={activePhotoMarkerId}
             onActivePhotoMarkerChange={setActivePhotoMarkerId}
