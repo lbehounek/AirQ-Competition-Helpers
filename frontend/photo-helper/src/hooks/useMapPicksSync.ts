@@ -268,14 +268,27 @@ export function useMapPicksSync(
   useEffect(() => {
     if (!competitionDir || !photosDir) return;
     let cancelled = false;
-    const run = async () => {
-      try {
-        const storage = getStorage();
+    // Serialize sync passes. The mount run and every `visibilitychange` run
+    // share one competition; if two passes overlapped, both could read a
+    // `placedIds` snapshot taken before the other's placement committed and
+    // route the same `pm-` pick into a set twice (the auto-route insert path
+    // appends — it isn't filter-then-readd idempotent like the tray path).
+    // Chaining each run after the previous one's completion means a queued
+    // run always observes the prior run's placement on the live session ref,
+    // and avoids the wasted blob-URL churn of redundant concurrent passes.
+    // (`routeImportedPickIntoSets` also guards by id as defense in depth.)
+    let chain: Promise<void> = Promise.resolve();
+    const run = (): Promise<void> => {
+      chain = chain.then(async () => {
         if (cancelled) return;
-        await syncMapPicksOnce(storage, competitionDir, photosDir, sessionRef.current);
-      } catch (err) {
-        if (!cancelled) console.warn('[useMapPicksSync] sync failed:', err);
-      }
+        try {
+          const storage = getStorage();
+          await syncMapPicksOnce(storage, competitionDir, photosDir, sessionRef.current);
+        } catch (err) {
+          if (!cancelled) console.warn('[useMapPicksSync] sync failed:', err);
+        }
+      });
+      return chain;
     };
     void run();
     const onVis = () => {

@@ -158,12 +158,15 @@ export interface RouteImportedPickResult {
   /** Where the imported photo landed. 'tray' = both sets full (or set2 unavailable). */
   placement: SetKey | 'tray';
   /**
-   * A live `blob:` URL the caller should revoke. Set ONLY when the photo
-   * landed in an INACTIVE mode bucket — those buckets store photos with
-   * `url: ''` (regenerated from OPFS on mode-load, mirroring the
-   * sanitisation `updateSessionMode` already applies to the outgoing bucket),
-   * so the URL created at import time is now orphaned. Tray / active-set
-   * placements keep the live URL and return `undefined`.
+   * A live `blob:` URL the caller should revoke. Set in two cases:
+   *   1. The photo landed in an INACTIVE mode bucket — those buckets store
+   *      photos with `url: ''` (regenerated from OPFS on mode-load, mirroring
+   *      the sanitisation `updateSessionMode` already applies to the outgoing
+   *      bucket), so the URL created at import time is now orphaned.
+   *   2. The idempotency guard short-circuited (the id is already placed) —
+   *      the URL minted for this duplicate attempt is redundant.
+   * A fresh active-set / tray placement keeps the live URL and returns
+   * `undefined`.
    */
   revokeUrl?: string;
 }
@@ -204,6 +207,24 @@ export function routeImportedPickIntoSets(
   const working = active
     ? session.sets
     : (session[bucketKey] ?? emptyModeSets());
+
+  // Idempotency by id — counterpart to the filter-then-readd dedup in
+  // `addExistingCandidate`. This helper APPENDS, so a rapid re-sync whose
+  // `placedIds` / candidates snapshot predates a still-uncommitted placement
+  // (mount run + a `visibilitychange` run, before React recomputes the memo)
+  // could call us twice for the same `pm-` id and duplicate the photo in a
+  // set or the tray. The live session we receive (published synchronously to
+  // the ref before persist, see useCompetitionSystem.updateCurrentCompetition)
+  // already reflects the prior placement, so short-circuit and let the caller
+  // revoke the redundant blob URL minted for this duplicate attempt.
+  const inSet1 = working.set1.photos.some((p) => p.id === photo.id);
+  const inSet2 = working.set2.photos.some((p) => p.id === photo.id);
+  if (inSet1 || inSet2) {
+    return { session, placement: inSet1 ? 'set1' : 'set2', revokeUrl: photo.url };
+  }
+  if (getCandidatePhotos(session).some((p) => p.id === photo.id)) {
+    return { session, placement: 'tray', revokeUrl: photo.url };
+  }
 
   const capacity = getGridCapacity({
     mode: targetMode,

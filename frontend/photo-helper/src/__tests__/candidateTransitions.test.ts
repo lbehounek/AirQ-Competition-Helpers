@@ -449,4 +449,67 @@ describe('routeImportedPickIntoSets', () => {
     expect(next.sets.set2.photos).toHaveLength(0);
     expect(next.candidates?.photos.map(p => p.id)).toEqual(['pm-a']);
   });
+
+  // Idempotency guard — a rapid re-sync (mount run + a visibilitychange run)
+  // can call the helper twice for the same id before React recomputes the
+  // `placedIds` memo. The second call must NOT append a duplicate; it returns
+  // the existing placement and hands back the redundant blob URL to revoke.
+  it('is idempotent by id in the active set — second call does not duplicate', () => {
+    const first = routeImportedPickIntoSets(
+      makeRouteSession({ mode: 'track' }),
+      makePhoto('pm-a', { flag: 'pick-track' as CandidateFlag }),
+      'track',
+      false,
+    );
+    expect(first.session.sets.set1.photos.map(p => p.id)).toEqual(['pm-a']);
+
+    // Re-run against the just-placed session with a fresh-URL duplicate.
+    const dup = makePhoto('pm-a', { flag: 'pick-track' as CandidateFlag, url: 'blob:pm-a-2' });
+    const second = routeImportedPickIntoSets(first.session, dup, 'track', false);
+
+    expect(second.placement).toBe('set1');
+    expect(second.session.sets.set1.photos.map(p => p.id)).toEqual(['pm-a']); // no duplicate
+    expect(second.session.sets.set1.photos).toHaveLength(1);
+    // The redundant URL minted for this attempt is handed back for revocation.
+    expect(second.revokeUrl).toBe('blob:pm-a-2');
+    // No-op: session is returned unchanged (version not bumped).
+    expect(second.session).toBe(first.session);
+  });
+
+  it('is idempotent by id in an inactive bucket — second call does not duplicate', () => {
+    const first = routeImportedPickIntoSets(
+      makeRouteSession({ mode: 'track' }),
+      makePhoto('pm-tp', { flag: 'pick-turning' as CandidateFlag }),
+      'turningpoint',
+      false,
+    );
+    expect(first.session.setsTurning?.set1.photos.map(p => p.id)).toEqual(['pm-tp']);
+
+    const dup = makePhoto('pm-tp', { flag: 'pick-turning' as CandidateFlag, url: 'blob:pm-tp-2' });
+    const second = routeImportedPickIntoSets(first.session, dup, 'turningpoint', false);
+
+    expect(second.placement).toBe('set1');
+    expect(second.session.setsTurning?.set1.photos).toHaveLength(1);
+    expect(second.revokeUrl).toBe('blob:pm-tp-2');
+    expect(second.session).toBe(first.session);
+  });
+
+  it('is idempotent by id in the tray — a re-routed overflow pick does not duplicate', () => {
+    const first = routeImportedPickIntoSets(
+      makeRouteSession({ mode: 'track', sets: { set1: fill(9, 's'), set2: fill(9, 't') } }),
+      makePhoto('pm-a', { flag: 'pick-track' as CandidateFlag }),
+      'track',
+      false,
+    );
+    expect(first.placement).toBe('tray');
+    expect(first.session.candidates?.photos.map(p => p.id)).toEqual(['pm-a']);
+
+    const dup = makePhoto('pm-a', { flag: 'pick-track' as CandidateFlag, url: 'blob:pm-a-2' });
+    const second = routeImportedPickIntoSets(first.session, dup, 'track', false);
+
+    expect(second.placement).toBe('tray');
+    expect(second.session.candidates?.photos.map(p => p.id)).toEqual(['pm-a']); // no duplicate
+    expect(second.revokeUrl).toBe('blob:pm-a-2');
+    expect(second.session).toBe(first.session);
+  });
 });
