@@ -44,6 +44,8 @@
       "pickTurning": "Fotka otočného bodu",
       "skip": "Neutrální",
       "reject": "Odmítnuté",
+      "setBreak": "Rozdělit sady zde",
+      "clearBreak": "Zrušit rozdělení sad",
       "thumbMissing": "Náhled není k dispozici",
       "label": "Štítek",
       "labelSet": "Přiřadit štítek",
