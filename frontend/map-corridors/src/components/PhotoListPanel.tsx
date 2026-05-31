@@ -25,6 +25,7 @@ import type { NoGpsPhoto, PhotoMarker } from '../types/markers'
 import { noGpsPhotoDisplayName, photoMarkerDisplayName } from '../types/markers'
 import { useI18n } from '../contexts/I18nContext'
 import { usePhotoThumbUrl } from './usePhotoThumbUrl'
+import { NO_GPS_PHOTO_DRAG_TYPE } from './NoGpsTray'
 import { groupPhotosByFlag } from './groupPhotosByFlag'
 import { flagForGroup, canRecategorize } from '../recategorize/recategorize'
 import type { PhotoFlag } from '../types/markers'
@@ -525,13 +526,23 @@ function renderGroupItems(
         storage={ctx.storage}
         photosDir={ctx.photosDir}
         // Phase 14 — clicking a no-GPS row starts placing it on the map
-        // (provisional pin at map center). Not draggable-for-recat (no flag).
+        // (provisional pin at map center). Distinct from the drag below: a
+        // drag fires only on motion, a click only without it.
         onClick={ctx.onNoGpsPhotoClick ? () => ctx.onNoGpsPhotoClick!(p.photoId) : undefined}
         // Double-click opens the full-res preview (same as GPS rows).
         onDoubleClick={ctx.onRowDoubleClick ? () => ctx.onRowDoubleClick!(p.photoId) : undefined}
         selected={false}
         active={false}
-        recatDraggable={false}
+        // Drag the row straight onto the map to place it — same drag type the
+        // bottom tray uses, so it lands at the drop point as a Track pick via
+        // the map's existing NO_GPS_PHOTO_DRAG_TYPE drop handler. NOT the
+        // recategorise drag (that's GPS-rows-only, drops onto panel groups), so
+        // we deliberately don't touch onRowDragStart's group-highlight state.
+        recatDraggable
+        onRecatDragStart={(e) => {
+          e.dataTransfer.setData(NO_GPS_PHOTO_DRAG_TYPE, p.photoId)
+          e.dataTransfer.effectAllowed = 'move'
+        }}
         onDelete={ctx.onPhotoDelete}
         deleteTooltip={ctx.deleteTooltip}
         {...commonRenameCtx}
