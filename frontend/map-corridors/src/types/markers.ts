@@ -286,6 +286,21 @@ export function compareNoGpsPhotos(a: NoGpsPhoto, b: NoGpsPhoto): number {
   return ta < tb ? -1 : ta > tb ? 1 : 0
 }
 
+/**
+ * Sort comparator for compare-modal variants ({@link PhotoMarker}). Filename-first
+ * (numeric-aware via {@link compareFilenames}, so `IMG_9` < `IMG_10`), with EXIF
+ * capture time as the tie-break for identical filenames. Sorts by the immutable
+ * original `name` — not the user's `displayName` — so a rename never reorders the
+ * compare tiles, mirroring {@link compareNoGpsPhotos}. Missing timestamps sort last.
+ */
+export function comparePhotoMarkers(a: PhotoMarker, b: PhotoMarker): number {
+  const byName = compareFilenames(a.name, b.name)
+  if (byName !== 0) return byName
+  const ta = a.capturedAt?.timestamp ?? '￿'
+  const tb = b.capturedAt?.timestamp ?? '￿'
+  return ta < tb ? -1 : ta > tb ? 1 : 0
+}
+
 export function sanitizeNoGpsPhotos(input: unknown): NoGpsPhoto[] {
   if (!Array.isArray(input)) return []
   // Strip an empty/redundant displayName rather than dropping the photo.

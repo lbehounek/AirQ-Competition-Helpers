@@ -6,7 +6,7 @@
 // rejected variants are NOT deleted from OPFS — they live in the
 // "Odmítnuté" list group as the undo path if the user changes their mind.
 
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import {
   Box,
   Button,
@@ -21,13 +21,18 @@ import {
 import { Close } from '@mui/icons-material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import type { PhotoMarker } from '../types/markers'
-import { photoMarkerDisplayName } from '../types/markers'
+import { comparePhotoMarkers, photoMarkerDisplayName } from '../types/markers'
 import { useI18n } from '../contexts/I18nContext'
 import { usePhotoFullUrl } from './usePhotoFullUrl'
 
 export interface PhotoCompareModalProps {
   open: boolean
-  /** Selected variants, in the order the user picked them. */
+  /**
+   * Selected variants. Received in selection/cluster order; the modal sorts them
+   * by original filename (numeric-aware) with EXIF timestamp as tie-break before
+   * rendering, so tiles + the 1/2/3 shortcuts follow shooting sequence regardless
+   * of click order. See {@link comparePhotoMarkers}.
+   */
   markers: readonly PhotoMarker[]
   storage: StorageInterface | null
   photosDir: DirectoryHandle | null
@@ -45,6 +50,14 @@ export function PhotoCompareModal(props: PhotoCompareModalProps) {
   const { open, markers, storage, photosDir, onClose, onResolve } = props
   const { t } = useI18n()
 
+  // Display in shooting sequence (filename, then EXIF time), not click/cluster
+  // order. Both the keyboard handler and the tile render read this single sorted
+  // array so the number badge always matches its 1/2/3 shortcut.
+  const sortedMarkers = useMemo(
+    () => [...markers].sort(comparePhotoMarkers),
+    [markers],
+  )
+
   const handlePick = useCallback((winnerId: string) => {
     const loserIds = markers
       .filter(m => m.id !== winnerId)
@@ -61,15 +74,15 @@ export function PhotoCompareModal(props: PhotoCompareModalProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === '1' || e.key === '2' || e.key === '3') {
         const idx = Number(e.key) - 1
-        if (idx >= 0 && idx < markers.length) {
+        if (idx >= 0 && idx < sortedMarkers.length) {
           e.preventDefault()
-          handlePick(markers[idx].id)
+          handlePick(sortedMarkers[idx].id)
         }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
-  }, [open, markers, handlePick])
+  }, [open, sortedMarkers, handlePick])
 
   if (!open) return null
   // Defensive: 0 or 1 variants makes the "compare" framing nonsensical.
@@ -102,11 +115,11 @@ export function PhotoCompareModal(props: PhotoCompareModalProps) {
             // 1 col on narrow screens (mobile), N cols otherwise. Capped at
             // 3 by PhotoListPanel's selection limit, so this never grows
             // past 3 columns regardless of viewport.
-            gridTemplateColumns: { xs: '1fr', sm: `repeat(${markers.length}, 1fr)` },
+            gridTemplateColumns: { xs: '1fr', sm: `repeat(${sortedMarkers.length}, 1fr)` },
             gap: 1.5,
           }}
         >
-          {markers.map((m, idx) => (
+          {sortedMarkers.map((m, idx) => (
             <CompareTile
               key={m.id}
               marker={m}

@@ -7,10 +7,16 @@ import { describe, it, expect } from 'vitest'
 import {
   buildPhotoMarkerKmlName,
   compareFilenames,
+  comparePhotoMarkers,
   noGpsPhotoDisplayName,
   normalizeDisplayName,
   photoMarkerDisplayName,
 } from '../types/markers'
+import type { PhotoMarker } from '../types/markers'
+
+function pm(over: Partial<PhotoMarker>): PhotoMarker {
+  return { id: 'm-1', lng: 0, lat: 0, name: 'x.jpg', ...over } as PhotoMarker
+}
 
 describe('photoMarkerDisplayName', () => {
   it('returns the custom displayName when set', () => {
@@ -42,6 +48,51 @@ describe('compareFilenames', () => {
 
   it('returns 0 for identical strings', () => {
     expect(compareFilenames('same.jpg', 'same.jpg')).toBe(0)
+  })
+})
+
+describe('comparePhotoMarkers — compare-modal order (filename primary, EXIF timestamp tie-break)', () => {
+  // The side-by-side compare modal receives markers in click/cluster order; this
+  // comparator re-orders them into shooting sequence so tile badges + 1/2/3 keys
+  // follow the filenames regardless of how the user selected them.
+  it('orders by filename ASC even when capture time disagrees', () => {
+    const sorted = [
+      pm({ id: 'b', name: 'b.jpg', capturedAt: { lng: 0, lat: 0, timestamp: '2024-01-01T00:00:00Z' } }),
+      pm({ id: 'a', name: 'a.jpg', capturedAt: { lng: 0, lat: 0, timestamp: '2024-02-01T00:00:00Z' } }),
+    ].sort(comparePhotoMarkers).map(m => m.id)
+    expect(sorted).toEqual(['a', 'b'])
+  })
+
+  it('is numeric-aware: IMG_9 sorts before IMG_10', () => {
+    const sorted = [
+      pm({ id: 'ten', name: 'IMG_10.jpg' }),
+      pm({ id: 'nine', name: 'IMG_9.jpg' }),
+    ].sort(comparePhotoMarkers).map(m => m.id)
+    expect(sorted).toEqual(['nine', 'ten'])
+  })
+
+  it('tie-breaks by EXIF timestamp when filenames are identical', () => {
+    const sorted = [
+      pm({ id: 'late', name: 'same.jpg', capturedAt: { lng: 0, lat: 0, timestamp: '2024-02-01T00:00:00Z' } }),
+      pm({ id: 'early', name: 'same.jpg', capturedAt: { lng: 0, lat: 0, timestamp: '2024-01-01T00:00:00Z' } }),
+    ].sort(comparePhotoMarkers).map(m => m.id)
+    expect(sorted).toEqual(['early', 'late'])
+  })
+
+  it('sorts a marker without capturedAt last among identical filenames', () => {
+    const sorted = [
+      pm({ id: 'none', name: 'same.jpg' }),
+      pm({ id: 'early', name: 'same.jpg', capturedAt: { lng: 0, lat: 0, timestamp: '2024-01-01T00:00:00Z' } }),
+    ].sort(comparePhotoMarkers).map(m => m.id)
+    expect(sorted).toEqual(['early', 'none'])
+  })
+
+  it('orders by filename even when entries lack a timestamp', () => {
+    const sorted = [
+      pm({ id: 'z', name: 'z.jpg' }),
+      pm({ id: 'a', name: 'a.jpg' }),
+    ].sort(comparePhotoMarkers).map(m => m.id)
+    expect(sorted).toEqual(['a', 'z'])
   })
 })
 
