@@ -512,4 +512,55 @@ describe('routeImportedPickIntoSets', () => {
     expect(second.revokeUrl).toBe('blob:pm-a-2');
     expect(second.session).toBe(first.session);
   });
+
+  // --- desiredSet (TP set-break) routing ---
+
+  it('honors desiredSet=set2 — goes straight to set2 even though set1 has room', () => {
+    const session = makeRouteSession({ mode: 'track' });
+    const photo = makePhoto('pm-a', { flag: 'pick-track' as CandidateFlag });
+
+    const { session: next, placement } = routeImportedPickIntoSets(session, photo, 'track', false, 'set2');
+
+    expect(placement).toBe('set2');
+    expect(next.sets.set1.photos).toHaveLength(0);
+    expect(next.sets.set2.photos.map(p => p.id)).toEqual(['pm-a']);
+  });
+
+  it('overflows a full desiredSet to the tray — never cross-spills into the other sheet', () => {
+    // desiredSet=set1 is full, but set2 is empty: must go to tray, NOT set2.
+    const session = makeRouteSession({ mode: 'track', sets: { set1: fill(9, 's'), set2: [] } });
+    const photo = makePhoto('pm-a', { flag: 'pick-track' as CandidateFlag });
+
+    const { session: next, placement } = routeImportedPickIntoSets(session, photo, 'track', false, 'set1');
+
+    expect(placement).toBe('tray');
+    expect(next.sets.set2.photos).toHaveLength(0); // no cross-spill
+    expect(next.candidates?.photos.map(p => p.id)).toEqual(['pm-a']);
+    expect(next.candidates?.photos[0].flag).toBe('pick-track');
+  });
+
+  it('ignores desiredSet under precision (single-set) — falls back to default fill', () => {
+    // Precision: set2 unavailable. desiredSet=set2 must be ignored → set1.
+    const session = makeRouteSession({ mode: 'track' });
+    const photo = makePhoto('pm-a', { flag: 'pick-track' as CandidateFlag });
+
+    const { session: next, placement } = routeImportedPickIntoSets(session, photo, 'track', true, 'set2');
+
+    expect(placement).toBe('set1');
+    expect(next.sets.set1.photos.map(p => p.id)).toEqual(['pm-a']);
+  });
+
+  it('desiredSet routes into the inactive bucket with url:"" like the default path', () => {
+    const session = makeRouteSession({ mode: 'track' });
+    const photo = makePhoto('pm-tp', { flag: 'pick-turning' as CandidateFlag });
+
+    const { session: next, placement, revokeUrl } =
+      routeImportedPickIntoSets(session, photo, 'turningpoint', false, 'set2');
+
+    expect(placement).toBe('set2');
+    expect(next.sets.set1.photos).toHaveLength(0); // active track view untouched
+    expect(next.setsTurning?.set2.photos.map(p => p.id)).toEqual(['pm-tp']);
+    expect(next.setsTurning?.set2.photos[0].url).toBe('');
+    expect(revokeUrl).toBe('blob:pm-tp');
+  });
 });

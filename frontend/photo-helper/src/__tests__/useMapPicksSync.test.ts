@@ -177,7 +177,21 @@ describe('syncMapPicksOnce — insert path', () => {
     const session = fakeSession([])
     const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(result.inserts).toBe(1)
-    expect(session.importPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'pm-tp' }), 'turningpoint')
+    // No break chosen → entry.set is undefined, passed through as the 3rd arg.
+    expect(session.importPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'pm-tp' }), 'turningpoint', undefined)
+  })
+
+  it('passes entry.set (TP set-break) through to importPick', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{ photoId: 'pm-s', filename: 'pm-s.jpg', flag: 'pick-track', set: 'set2' }],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
+    const session = fakeSession([])
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.importPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'pm-s' }), 'track', 'set2')
   })
 
   it('does NOT re-route a photo already placed in a set (placedIds guard prevents tray duplicate)', async () => {

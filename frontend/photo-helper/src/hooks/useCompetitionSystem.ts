@@ -79,13 +79,15 @@ export interface UseCompetitionSystemResult {
   addExistingCandidate: (photo: ApiPhoto) => Promise<void>;
   /**
    * Auto-route a freshly-imported map-corridors pick straight into its
-   * discipline's sets (`pick-track` → track, `pick-turning` → turning) using
-   * the `set1→set2→tray` fill policy, without switching the user's active
-   * mode. Called by `useMapPicksSync` on first import instead of
-   * `addExistingCandidate` for category-flagged picks. See
-   * docs/CANDIDATE_PHOTOS.md "Map-pick auto-routing".
+   * discipline's sets (`pick-track` → track, `pick-turning` → turning),
+   * without switching the user's active mode. Called by `useMapPicksSync` on
+   * first import instead of `addExistingCandidate` for category-flagged picks.
+   * `desiredSet` (from `MapPickEntry.set`, the user's TP set-break) targets a
+   * specific sheet — overflow → tray, no cross-spill; absent → `set1→set2→tray`
+   * fill. See docs/CANDIDATE_PHOTOS.md "Map-pick auto-routing" and
+   * docs/photo-map-culling/set-split-suggestion-plan.md.
    */
-  importPickToSets: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint') => Promise<void>;
+  importPickToSets: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint', desiredSet?: 'set1' | 'set2') => Promise<void>;
   removeCandidate: (photoId: string) => Promise<void>;
   promoteCandidateToSlot: (candidateId: string, setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
   demoteSlotToCandidate: (setKey: 'set1' | 'set2', photoId: string) => Promise<void>;
@@ -688,11 +690,12 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   const importPickToSets = useCallback(async (
     photo: ApiPhoto,
     targetMode: 'track' | 'turningpoint',
+    desiredSet?: 'set1' | 'set2',
   ) => {
     if (!currentCompetition?.session) return;
     let revokeUrl: string | undefined;
     await updateCurrentCompetition(session => {
-      const result = routeImportedPickIntoSets(session, photo, targetMode, isPrecisionDiscipline);
+      const result = routeImportedPickIntoSets(session, photo, targetMode, isPrecisionDiscipline, desiredSet);
       revokeUrl = result.revokeUrl;
       return result.session;
     }, { updatePhotos: true });

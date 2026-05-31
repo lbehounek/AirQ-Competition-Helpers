@@ -177,11 +177,14 @@ export interface RouteImportedPickResult {
  * the manual `promoteCandidateToSlot` flow, but driven by the `pick-track` /
  * `pick-turning` flag carried across the handoff (see useMapPicksSync).
  *
- * Fill policy (decided with the user): `set1 → set2 → tray`. set1 fills to
- * `getGridCapacity` first, overflow spills into set2, and once both are full
- * the photo stays in the candidate tray (with its flag) for manual placement.
- * Precision discipline is single-set, so set2 is skipped and overflow goes
- * straight to the tray.
+ * Fill policy: when the map designates a target sheet via `desiredSet`
+ * (the user's set-break turning point, carried on `MapPickEntry.set`), the
+ * photo goes into THAT sheet; if it's at capacity the photo overflows to the
+ * candidate tray — never cross-spilled into the other sheet (that would
+ * corrupt the before/after-break ordering). When `desiredSet` is absent (no
+ * break chosen), the default `set1 → set2 → tray` spillover applies: set1
+ * fills first, overflow into set2, both-full → tray. Precision discipline is
+ * single-set, so `desiredSet` is ignored and set2 is skipped.
  *
  * Mode policy (decided with the user): never switch the user's active mode.
  * A pick for the discipline NOT currently shown is written into that mode's
@@ -198,6 +201,7 @@ export function routeImportedPickIntoSets(
   photo: ApiPhoto,
   targetMode: 'track' | 'turningpoint',
   isPrecision: boolean,
+  desiredSet?: 'set1' | 'set2',
 ): RouteImportedPickResult {
   const active = session.mode === targetMode;
   const bucketKey = targetMode === 'track' ? 'setsTrack' : 'setsTurning';
@@ -231,9 +235,18 @@ export function routeImportedPickIntoSets(
     layoutMode: (session as unknown as { layoutMode?: string }).layoutMode,
   });
   const allowSet2 = !isPrecision;
+  // Precision is single-sheet, so the map's `desiredSet` is meaningless there —
+  // ignore it and fall back to the default fill (which skips set2 anyway).
+  const effectiveDesired = !isPrecision && (desiredSet === 'set1' || desiredSet === 'set2')
+    ? desiredSet
+    : undefined;
 
   let target: RouteImportedPickResult['placement'];
-  if ((working.set1.photos.length) < capacity) {
+  if (effectiveDesired) {
+    // Map-designated sheet: place there if there's room, else overflow to the
+    // tray — never cross-spill into the other sheet.
+    target = working[effectiveDesired].photos.length < capacity ? effectiveDesired : 'tray';
+  } else if ((working.set1.photos.length) < capacity) {
     target = 'set1';
   } else if (allowSet2 && working.set2.photos.length < capacity) {
     target = 'set2';
