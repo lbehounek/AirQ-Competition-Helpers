@@ -6,7 +6,7 @@ import type { LngLatBoundsLike, LngLatLike, StyleSpecification } from 'mapbox-gl
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useI18n } from '../contexts/I18nContext'
 import { shouldClearActivePhoto } from '../activePhoto/activePhoto'
-import { isPhotoMarkerVisible } from './photoLayers/markerVisibility'
+import { isPhotoMarkerVisible, isMarkerVisibleOnMap } from './photoLayers/markerVisibility'
 import { captureMapForPrint } from '../utils/mapCapture'
 import type { PrintCaptureResult } from '../utils/mapCapture'
 import type { PhotoFlag, PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
@@ -351,7 +351,13 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           layout: ov.layout,
         }))
 
-      const printMarkers = (props.markers || []).map(m => ({
+      // Match the live map: rejected photos are hidden on screen, so the print
+      // must skip them too — otherwise a rejected co-located variant prints a
+      // stray dot at its original EXIF location next to the kept photo the user
+      // dragged into place, looking like a duplicate. (isMarkerVisibleOnMap.)
+      const printMarkers = (props.markers || [])
+        .filter(isMarkerVisibleOnMap)
+        .map(m => ({
           lng: m.lng,
           lat: m.lat,
           label: m.label,

@@ -44,6 +44,7 @@ import { PhotoPreviewModal } from './components/PhotoPreviewModal'
 import { resolveVariantFlags } from './photoVariants/resolveVariantFlags'
 import { resolveActivePhotoId } from './activePhoto/activePhoto'
 import { isProvisionalValid, type ProvisionalPlacement } from './provisionalPlacement/provisionalPlacement'
+import { isMarkerVisibleOnMap } from './map/photoLayers/markerVisibility'
 import type { PhotoMarker } from './types/markers'
 import {
   buildMapPicks,
@@ -929,8 +930,13 @@ function App() {
     }
     // Export photo markers and ground markers — no corridors, gates, or exact point labels
     const features: any[] = []
-    if (markers.length) {
-      const markerFeatures = markers.map(m => {
+    // Rejected photos are hidden on the live map — keep the KML export
+    // consistent so a rejected co-located variant doesn't ship a stray pin at
+    // its original EXIF spot. Non-photo (KML / click-placed) markers always
+    // export. (isMarkerVisibleOnMap — same gate the PNG print uses.)
+    const exportableMarkers = markers.filter(isMarkerVisibleOnMap)
+    if (exportableMarkers.length) {
+      const markerFeatures = exportableMarkers.map(m => {
         // KML <name>: custom name (with original filename in parens) prefixed by
         // the competition label when present — e.g. "A - TP1 (DSC_0123.JPG)".
         // See buildPhotoMarkerKmlName for the exact branches (unit-tested).
