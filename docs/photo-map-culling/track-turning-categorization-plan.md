@@ -27,6 +27,17 @@ unreliable mid-session; it must be redone cleanly. Nothing about A3 is committed
    candidate's flag; the existing tray "Send to Set" / "Send to TP photos"
    controls (shipped in B2) do the actual placement.
 
+   > **SUPERSEDED 2026-05-31** (PR #100, branch
+   > `feat/map-picks-auto-route-sets`). The owner reversed this: arriving picks
+   > now **do** auto-route into the editor's sets on first import
+   > (`pick-track` → track sets, `pick-turning` → turning sets), filling the
+   > *inactive* discipline's bucket silently rather than switching the view.
+   > The "hidden mode bucket" concern this decision raised is handled by storing
+   > inactive-bucket photos with `url: ''` (regenerated on mode-load) and by an
+   > idempotency guard (`placedIds`) so re-syncs don't duplicate. See
+   > `docs/CANDIDATE_PHOTOS.md` "Map-pick auto-routing" and the follow-up
+   > `set-split-suggestion-plan.md` for the set1↔set2 boundary work.
+
 ## Visual language
 
 - Track pick marker ring: blue `#1976d2` (current pick color — keep).

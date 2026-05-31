@@ -27,6 +27,7 @@ import {
   removeCandidate as removeCandidatePure,
   clearAllCandidates as clearAllCandidatesPure,
   updateCandidateCanvasState as updateCandidateCanvasStatePure,
+  routeImportedPickIntoSets,
 } from '../utils/candidateTransitions';
 import {
   defaultTrackSetTitles,
@@ -76,6 +77,15 @@ export interface UseCompetitionSystemResult {
    * to avoid duplicates on visibility-change re-syncs.
    */
   addExistingCandidate: (photo: ApiPhoto) => Promise<void>;
+  /**
+   * Auto-route a freshly-imported map-corridors pick straight into its
+   * discipline's sets (`pick-track` → track, `pick-turning` → turning) using
+   * the `set1→set2→tray` fill policy, without switching the user's active
+   * mode. Called by `useMapPicksSync` on first import instead of
+   * `addExistingCandidate` for category-flagged picks. See
+   * docs/CANDIDATE_PHOTOS.md "Map-pick auto-routing".
+   */
+  importPickToSets: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint') => Promise<void>;
   removeCandidate: (photoId: string) => Promise<void>;
   promoteCandidateToSlot: (candidateId: string, setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
   demoteSlotToCandidate: (setKey: 'set1' | 'set2', photoId: string) => Promise<void>;
@@ -663,6 +673,33 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       };
     }, { updatePhotos: true });
   }, [updateCurrentCompetition, currentCompetition]);
+
+  /**
+   * Auto-route a freshly-imported map-corridors pick into the sets of its
+   * discipline (`pick-track` → track sets, `pick-turning` → turning sets)
+   * instead of the candidate tray. Used by `useMapPicksSync` on first import.
+   * Delegates the placement decision (set1→set2→tray spillover, active vs.
+   * inactive mode bucket) to the pure `routeImportedPickIntoSets` helper, then
+   * revokes the now-orphaned blob URL when the photo landed in an inactive
+   * bucket (stored there with `url: ''`, like every other inactive-bucket
+   * photo). Single source of truth for the fill/mode policy lives in the
+   * helper so this stays a thin persistence wrapper.
+   */
+  const importPickToSets = useCallback(async (
+    photo: ApiPhoto,
+    targetMode: 'track' | 'turningpoint',
+  ) => {
+    if (!currentCompetition?.session) return;
+    let revokeUrl: string | undefined;
+    await updateCurrentCompetition(session => {
+      const result = routeImportedPickIntoSets(session, photo, targetMode, isPrecisionDiscipline);
+      revokeUrl = result.revokeUrl;
+      return result.session;
+    }, { updatePhotos: true });
+    if (revokeUrl && revokeUrl.startsWith('blob:')) {
+      try { URL.revokeObjectURL(revokeUrl); } catch { /* best-effort */ }
+    }
+  }, [updateCurrentCompetition, currentCompetition, isPrecisionDiscipline]);
 
   const addPhotosToSet = useCallback(async (files: File[], setKey: 'set1' | 'set2'): Promise<AddPhotosResult> => {
     if (!currentCompetition?.session) {
@@ -1437,6 +1474,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // Candidate pool surface
     addPhotosToCandidates,
     addExistingCandidate,
+    importPickToSets,
     removeCandidate,
     promoteCandidateToSlot,
     demoteSlotToCandidate,

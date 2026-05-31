@@ -10,6 +10,18 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.26.0] - 2026-05-31
+
+### Changed
+- **Photo Helper:** photos sent from Map Corridors now land directly in the
+  matching set instead of all piling into the candidate tray. A **track** pick
+  fills the track sets and a **turning** pick fills the turning sets (set 1
+  first, then set 2; once both are full the rest stay in the tray for manual
+  placement). The editor never switches discipline on you — picks for the view
+  you're not currently looking at fill silently and appear when you switch to
+  that discipline. Once a photo is in a set it belongs to the editor: later
+  re-categorising or un-picking it on the map no longer moves it.
+
 ## [2.25.3] - 2026-05-31
 
 ### Fixed

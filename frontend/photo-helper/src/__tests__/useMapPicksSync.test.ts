@@ -33,8 +33,12 @@ function fakeStorage(): FakeStorage {
   }
 }
 
-function fakeSession(initialCandidates: ApiPhoto[] = []): MapPicksSyncSessionApi & {
+function fakeSession(
+  initialCandidates: ApiPhoto[] = [],
+  placed: string[] = [],
+): MapPicksSyncSessionApi & {
   addCandidate: Mock
+  importPick: Mock
   removeCandidate: Mock
   setCandidateFlag: Mock
   setCandidateLabel: Mock
@@ -43,7 +47,11 @@ function fakeSession(initialCandidates: ApiPhoto[] = []): MapPicksSyncSessionApi
   const candidates = [...initialCandidates]
   const api = {
     candidates,
+    placedIds: new Set(placed),
     addCandidate: vi.fn(async (p: ApiPhoto) => { candidates.push(p) }),
+    // Auto-routes category picks into sets — modelled as "leaves the candidate
+    // pool" (the real helper clears the flag and moves it into a set bucket).
+    importPick: vi.fn(async (_p: ApiPhoto, _mode: 'track' | 'turningpoint') => { /* placed in a set */ }),
     removeCandidate: vi.fn(async (id: string) => {
       const idx = candidates.findIndex(p => p.id === id)
       if (idx >= 0) candidates.splice(idx, 1)
@@ -66,6 +74,7 @@ function fakeSession(initialCandidates: ApiPhoto[] = []): MapPicksSyncSessionApi
   }
   return api as MapPicksSyncSessionApi & {
     addCandidate: Mock
+    importPick: Mock
     removeCandidate: Mock
     setCandidateFlag: Mock
     setCandidateLabel: Mock
@@ -73,7 +82,10 @@ function fakeSession(initialCandidates: ApiPhoto[] = []): MapPicksSyncSessionApi
   }
 }
 
-function pmEntry(id: string, flag: 'pick-track' | 'neutral' | 'reject' = 'pick-track') {
+function pmEntry(
+  id: string,
+  flag: 'pick-track' | 'pick-turning' | 'neutral' | 'reject' = 'pick-track',
+) {
   return { photoId: id, filename: `${id}.jpg`, flag }
 }
 
@@ -131,7 +143,9 @@ describe('syncMapPicksOnce — file absence', () => {
 })
 
 describe('syncMapPicksOnce — insert path', () => {
-  it('inserts a new pm- entry not yet in the pool', async () => {
+  // A category-flagged pick now auto-routes into its discipline's sets via
+  // `importPick` (set1→set2→tray spillover) instead of landing in the tray.
+  it('auto-routes a new pick-track entry into the track sets (not the tray)', async () => {
     const storage = fakeStorage()
     storage.readJSON.mockResolvedValue({
       version: 1,
@@ -142,12 +156,46 @@ describe('syncMapPicksOnce — insert path', () => {
     const session = fakeSession([])
     const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(result.inserts).toBe(1)
-    expect(session.addCandidate).toHaveBeenCalledTimes(1)
-    const inserted = session.addCandidate.mock.calls[0][0] as ApiPhoto
-    expect(inserted.id).toBe('pm-new')
-    expect(inserted.filename).toBe('pm-new.jpg')
-    expect(inserted.flag).toBe('pick-track')
-    expect(inserted.canvasState.scale).toBe(1) // matches createDefaultCanvasState
+    expect(session.addCandidate).not.toHaveBeenCalled()
+    expect(session.importPick).toHaveBeenCalledTimes(1)
+    const [photo, mode] = session.importPick.mock.calls[0] as [ApiPhoto, string]
+    expect(photo.id).toBe('pm-new')
+    expect(photo.filename).toBe('pm-new.jpg')
+    expect(photo.flag).toBe('pick-track')
+    expect(photo.canvasState.scale).toBe(1) // matches createDefaultCanvasState
+    expect(mode).toBe('track')
+  })
+
+  it('auto-routes a new pick-turning entry into the turning sets', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [pmEntry('pm-tp', 'pick-turning')],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(32)], { type: 'image/jpeg' }))
+    const session = fakeSession([])
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(result.inserts).toBe(1)
+    expect(session.importPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'pm-tp' }), 'turningpoint')
+  })
+
+  it('does NOT re-route a photo already placed in a set (placedIds guard prevents tray duplicate)', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [pmEntry('pm-placed', 'pick-track')],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
+    // pm-placed was auto-routed on a prior sync → it now lives in a set, so it
+    // is reported via placedIds (and is NOT in the candidate pool).
+    const session = fakeSession([], ['pm-placed'])
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(result.inserts).toBe(0)
+    expect(session.importPick).not.toHaveBeenCalled()
+    expect(session.addCandidate).not.toHaveBeenCalled()
+    expect(storage.getPhotoBlob).not.toHaveBeenCalled() // skipped before blob fetch
   })
 
   it('skips insert when the photo blob is missing (orphan entry)', async () => {
@@ -181,8 +229,8 @@ describe('syncMapPicksOnce — insert path', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(result.inserts).toBe(1)
-    expect(session.addCandidate).toHaveBeenCalledTimes(1)
-    expect(session.addCandidate.mock.calls[0][0].id).toBe('pm-ok')
+    expect(session.importPick).toHaveBeenCalledTimes(1)
+    expect(session.importPick.mock.calls[0][0].id).toBe('pm-ok')
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()
   })
@@ -214,8 +262,10 @@ describe('syncMapPicksOnce — legacy flag normalization (bare `pick` → `pick-
     storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
     const session = fakeSession([])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
-    const inserted = session.addCandidate.mock.calls[0][0] as ApiPhoto
+    // Normalized to pick-track, so it auto-routes into the track sets.
+    const [inserted, mode] = session.importPick.mock.calls[0] as [ApiPhoto, string]
     expect(inserted.flag).toBe('pick-track')
+    expect(mode).toBe('track')
   })
 
   it('normalizes a legacy bare `pick` on UPDATE (reconciles an existing candidate to pick-track)', async () => {
@@ -287,8 +337,9 @@ describe('syncMapPicksOnce — label sync (bidirectional)', () => {
     storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
     const session = fakeSession([])
     await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
-    expect(session.addCandidate).toHaveBeenCalledTimes(1)
-    const inserted = session.addCandidate.mock.calls[0][0] as ApiPhoto
+    // pick-track auto-routes into a set; the label rides along on the photo.
+    expect(session.importPick).toHaveBeenCalledTimes(1)
+    const inserted = session.importPick.mock.calls[0][0] as ApiPhoto
     expect(inserted.label).toBe('A')
     expect(inserted.labelUpdatedAt).toBe('2024-01-01T00:00:00Z')
   })
@@ -450,7 +501,9 @@ describe('syncMapPicksOnce — concurrency & blob URL leak guards (CRITICAL bugs
     const session = fakeSession([])
     const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(result.inserts).toBe(1)
-    expect(session.addCandidate).toHaveBeenCalledTimes(1)
+    // Routed once (pick-track → set); the same-run placedThisRun guard skips the
+    // duplicate row before it allocates a second blob URL.
+    expect(session.importPick).toHaveBeenCalledTimes(1)
     expect(createUrlCount).toBe(1)
   })
 
@@ -472,7 +525,9 @@ describe('syncMapPicksOnce — concurrency & blob URL leak guards (CRITICAL bugs
     // `candidates` array passed in is unchanged mid-pass.
     const session = {
       candidates: [] as readonly ApiPhoto[],
+      placedIds: new Set<string>(),
       addCandidate: vi.fn(async () => undefined),
+      importPick: vi.fn(async () => undefined),
       removeCandidate: vi.fn(async () => undefined),
       setCandidateFlag: vi.fn(async () => undefined),
       setCandidateLabel: vi.fn(async () => undefined),
@@ -564,8 +619,8 @@ describe('syncMapPicksOnce — delete path (ADR-019 cleanup)', () => {
       competitionDir, photosDir, session,
     )
     expect(result.inserts).toBe(2)
-    expect(session.addCandidate).toHaveBeenCalledTimes(2)
-    const ids = session.addCandidate.mock.calls.map(c => (c[0] as ApiPhoto).id).sort()
+    expect(session.importPick).toHaveBeenCalledTimes(2)
+    const ids = session.importPick.mock.calls.map(c => (c[0] as ApiPhoto).id).sort()
     expect(ids).toEqual(['pm-1', 'pm-3'])
     expect(warn).toHaveBeenCalledTimes(2) // one warn per dropped row
     warn.mockRestore()

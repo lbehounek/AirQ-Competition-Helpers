@@ -195,6 +195,51 @@ to candidates.
 
 ---
 
+## Map-pick auto-routing
+
+Picks handed off from **map-corridors** already carry a discipline category in
+their flag (`pick-track` / `pick-turning`, see the handoff `WireFlag`). On
+**first import** `useMapPicksSync` routes them straight into the matching
+discipline's sets instead of the candidate tray — the category the user already
+chose on the map is honoured, so they don't re-sort everything by hand in the
+editor.
+
+Routing lives in the pure helper `routeImportedPickIntoSets`
+(`utils/candidateTransitions.ts`); the hook wrapper is
+`useCompetitionSystem.importPickToSets`.
+
+**Fill policy — `set1 → set2 → tray`.** set1 fills to `getGridCapacity` first,
+overflow spills into set2, and once both are full the photo stays in the
+candidate tray (flag preserved) for manual placement. **Precision** discipline
+is single-set, so set2 is skipped and overflow from set1 goes straight to the
+tray.
+
+**Mode policy — never auto-switch.** `pick-track` → track sets, `pick-turning`
+→ turning sets, regardless of which discipline the user is currently viewing. A
+pick for the **active** mode is written to `session.sets` (visible immediately)
+and mirrored into the active bucket; a pick for the **inactive** mode is written
+to that mode's bucket (`setsTrack` / `setsTurning`) with `url: ''` — exactly
+like every other inactive-bucket photo — so it surfaces, with a freshly
+regenerated blob URL, when the user switches to that discipline. The user's
+current view is never yanked around.
+
+**Idempotency.** A placed photo loses its tray flag and leaves the candidate
+pool, so the candidates-only dedup in the sync can't see it. `AppApi` therefore
+feeds `useMapPicksSync` a `placedIds` set (all `pm-` ids living in any set
+bucket); the insert path skips any id already in it, so a re-sync on
+`visibilitychange` never re-inserts a duplicate. A same-run guard
+(`placedThisRun`) covers a duplicated row within a single file.
+
+**Known consequences (consistent with hand-promotion).** Once a `pm-` photo is
+placed in a set it is **detached** from the continuous map-pick mirror: a later
+un-pick, re-categorisation, label, or filename edit in map-corridors is **not**
+propagated, and the photo stops round-tripping through `editor-picks.json`
+(which only carries candidates). This is identical to what already happens when
+a user manually promotes a map candidate into a slot — placement transfers
+ownership of the photo to the editor.
+
+---
+
 ## Editor modal behavior
 
 The modal works identically for tray and slot photos. The only differences:
