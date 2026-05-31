@@ -33,6 +33,86 @@ const EMPTY: UseMarkerFanResult = {
   leaders: { type: 'FeatureCollection', features: [] },
 }
 
+// A leader endpoint landing above the horizon makes `unproject` throw; that is
+// an expected, recoverable case (we just drop the line), so we must NOT rethrow
+// — doing so during render is the white-screen bug this hook guards against. But
+// silently swallowing every error hides genuinely unexpected failures, so warn
+// once in dev. Module-level latch keeps it to a single line instead of one per
+// off-horizon leader per recompute (which fires on every map settle).
+let unprojectWarned = false
+function warnUnprojectOnce(err: unknown): void {
+  if (unprojectWarned || !import.meta.env.DEV) return
+  unprojectWarned = true
+  console.warn('[useMarkerFan] unproject failed for a leader endpoint; dropping its line.', err)
+}
+
+/**
+ * The slice of the map API the fan needs: project lng/lat → screen pixels and
+ * back. Declared structurally (a mapbox `Map` satisfies it) so the projection
+ * boundary can be unit-tested with a plain fake — no live map, no jsdom.
+ */
+export interface ProjectionMap {
+  project(lngLat: [number, number]): { x: number; y: number }
+  unproject(pt: [number, number]): { lng: number; lat: number }
+}
+
+/**
+ * Pure projection boundary for the fan: screen-project the visible markers,
+ * cluster them, and unproject the leader segments back to lng/lat. Split out of
+ * the hook's `useMemo` so it carries no React/map-instance dependency and can be
+ * tested directly. Guards the two ways a pitched map produces non-finite
+ * geometry:
+ *
+ *  1. Markers above the horizon (or behind the camera) `project()` to NaN/Inf.
+ *     Feeding those into the clusterer poisons the fan and the downstream
+ *     `unproject` throws on NaN via the LngLat constructor — and because the
+ *     caller runs this during render, an uncaught throw blanks the whole app
+ *     (white screen). Drop non-finite points up front.
+ *  2. Belt-and-suspenders: even from finite inputs an `unproject` can land above
+ *     the horizon and throw, so `safeUnproject` skips any leader endpoint it
+ *     can't resolve instead of propagating.
+ */
+export function buildMarkerFan(
+  map: ProjectionMap,
+  visible: readonly PhotoMarker[],
+  thresholdPx?: number,
+): UseMarkerFanResult {
+  if (visible.length < 2) return EMPTY
+
+  const points: ScreenPoint[] = visible.flatMap(m => {
+    const p = map.project([m.lng, m.lat])
+    return Number.isFinite(p.x) && Number.isFinite(p.y) ? [{ id: m.id, x: p.x, y: p.y }] : []
+  })
+  if (points.length < 2) return EMPTY
+
+  const fan = computeMarkerFan(points, thresholdPx ? { thresholdPx } : undefined)
+  if (fan.offsets.size === 0) return EMPTY
+
+  const safeUnproject = (pt: [number, number]): [number, number] | null => {
+    try {
+      const ll = map.unproject(pt)
+      return Number.isFinite(ll.lng) && Number.isFinite(ll.lat) ? [ll.lng, ll.lat] : null
+    } catch (err) {
+      warnUnprojectOnce(err)
+      return null
+    }
+  }
+
+  const features = fan.leaders.flatMap<FeatureCollection<LineString>['features'][number]>(l => {
+    const from = safeUnproject(l.from)
+    const to = safeUnproject(l.to)
+    if (!from || !to) return []
+    return [{
+      type: 'Feature',
+      id: l.id,
+      geometry: { type: 'LineString', coordinates: [from, to] },
+      properties: {},
+    }]
+  })
+
+  return { offsets: fan.offsets, leaders: { type: 'FeatureCollection', features } }
+}
+
 export function useMarkerFan(params: {
   mapRef: RefObject<MapRef | null>
   isMapLoaded: boolean
@@ -74,35 +154,7 @@ export function useMarkerFan(params: {
   return useMemo<UseMarkerFanResult>(() => {
     if (!isMapLoaded || !mapRef.current || !markers) return EMPTY
     const visible = markers.filter(m => isPhotoMarkerVisible(m) && m.id !== draggingMarkerId)
-    if (visible.length < 2) return EMPTY
-
-    const map = mapRef.current.getMap()
-    const points: ScreenPoint[] = visible.map(m => {
-      const p = map.project([m.lng, m.lat])
-      return { id: m.id, x: p.x, y: p.y }
-    })
-
-    const fan = computeMarkerFan(points, thresholdPx ? { thresholdPx } : undefined)
-    if (fan.offsets.size === 0) return EMPTY
-
-    const features: FeatureCollection<LineString>['features'] = fan.leaders.map(l => {
-      const from = map.unproject(l.from)
-      const to = map.unproject(l.to)
-      return {
-        type: 'Feature',
-        id: l.id,
-        geometry: {
-          type: 'LineString',
-          coordinates: [
-            [from.lng, from.lat],
-            [to.lng, to.lat],
-          ],
-        },
-        properties: {},
-      }
-    })
-
-    return { offsets: fan.offsets, leaders: { type: 'FeatureCollection', features } }
+    return buildMarkerFan(mapRef.current.getMap(), visible, thresholdPx)
     // settleTick intentionally in deps: it's the signal that the viewport
     // moved and projections must be recomputed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
