@@ -49,10 +49,12 @@ export interface MapPicksSyncSessionApi {
   /**
    * Auto-route a category-flagged pick straight into its discipline's sets on
    * first import (`pick-track` → track, `pick-turning` → turning), instead of
-   * the candidate tray. set1→set2→tray fill, no active-mode switch. Called in
-   * place of `addCandidate` for `pick-track` / `pick-turning` inserts.
+   * the candidate tray. No active-mode switch. Called in place of
+   * `addCandidate` for `pick-track` / `pick-turning` inserts. `desiredSet`
+   * (from `MapPickEntry.set`, the user's TP set-break) targets a specific
+   * sheet — overflow → tray, no cross-spill; absent → `set1→set2→tray` fill.
    */
-  importPick: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint') => Promise<void> | void;
+  importPick: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint', desiredSet?: 'set1' | 'set2') => Promise<void> | void;
   /** Remove a candidate by id. Called when a `pm-` entry disappears from map-picks.json. */
   removeCandidate: (photoId: string) => Promise<void> | void;
   /** Update flag in place; preserves canvasState + photo-helper-owned fields. */
@@ -181,11 +183,13 @@ export async function syncMapPicksOnce(
       };
       // Category-flagged picks auto-route into their discipline's sets on
       // first import; everything else (defensive — only picks cross the
-      // handoff writer) lands in the candidate tray as before. A pick whose
-      // sets are full falls back to the tray inside `importPick`.
+      // handoff writer) lands in the candidate tray as before. `entry.set`
+      // (the user's TP set-break) targets a specific sheet; a pick whose
+      // target sheet (or both sheets, absent a break) is full falls back to
+      // the tray inside `importPick`.
       if (entryFlag === 'pick-track' || entryFlag === 'pick-turning') {
         const targetMode = entryFlag === 'pick-track' ? 'track' : 'turningpoint';
-        await session.importPick(photo, targetMode);
+        await session.importPick(photo, targetMode, entry.set);
         placedThisRun.add(entry.photoId);
       } else {
         await session.addCandidate(photo);
