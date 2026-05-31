@@ -214,6 +214,19 @@ candidate tray (flag preserved) for manual placement. **Precision** discipline
 is single-set, so set2 is skipped and overflow from set1 goes straight to the
 tray.
 
+**Designated sheet — `MapPickEntry.set`.** When the user marks a *set-break
+turning point* in map-corridors, each pick crosses the handoff with an explicit
+`set` (`set1`/`set2`). The import targets that sheet directly (overflow → tray,
+**never cross-spilled** into the other sheet); absent `set` falls back to the
+`set1 → set2 → tray` fill above. **Re-flow:** if the user later moves the break,
+a placed pick whose `set` changed is moved to the right sheet on the next sync
+(`reconcilePlacedToDesiredSet`), preserving its `canvasState` + `label` — the
+"map owns set membership" half of the reconcile. Re-flow runs for the **active**
+discipline only (inactive-bucket photos carry `url: ''` and would render blank if
+overflowed into the always-visible tray); the sync re-runs on `session.mode`
+change so the newly-shown discipline reconciles promptly. Full design:
+`docs/photo-map-culling/set-split-suggestion-plan.md`.
+
 **Mode policy — never auto-switch.** `pick-track` → track sets, `pick-turning`
 → turning sets, regardless of which discipline the user is currently viewing. A
 pick for the **active** mode is written to `session.sets` (visible immediately)

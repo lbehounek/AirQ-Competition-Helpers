@@ -10,6 +10,19 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.27.0] - 2026-05-31
+
+### Added
+- **Map Corridors → Photo Helper:** you can now choose *where the answer-sheet
+  pages split*. In Map Corridors, open a turning-point photo and tap **"Split
+  sets here"** — that turning point becomes the set 1 / set 2 break (marked with
+  a scissors badge on the map). Photos up to and including it fill set 1, the
+  rest fill set 2, in route order, for both track and turning-point photos
+  (rally only; precision is single-set). Move the break later and the editor
+  re-flows the already-placed photos to match, keeping each photo's crop and
+  label. Photos that don't fit a full sheet land in the candidate tray. Without
+  a break it behaves exactly as before (set 1 → set 2 → tray).
+
 ## [2.26.1] - 2026-05-31
 
 ### Fixed
