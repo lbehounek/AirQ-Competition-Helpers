@@ -1,0 +1,105 @@
+name: changelog
+
+# Enforce that every pull request updates CHANGELOG.md, so the
+# `desktop-v*` release notes stay complete. Exemptions:
+#   - PRs opened by bots (Dependabot, github-actions, Renovate, …)
+#   - PRs that only bump a package.json "version" field and/or lockfiles
+#   - PRs explicitly labelled `skip-changelog` (no user-facing change)
+#
+# Make this a *required* status check in branch-protection for `main` so it
+# actually blocks merges; the workflow only reports pass/fail on its own.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: changelog-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  require-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require CHANGELOG.md update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+
+          # 1) Bot authors (Dependabot / github-actions / Renovate) are exempt.
+          #    `user.type == Bot` covers GitHub App bots; the suffix/name checks
+          #    are belt-and-braces for legacy bot accounts.
+          if [ "$AUTHOR_TYPE" = "Bot" ] || [[ "$AUTHOR" == *"[bot]" ]] \
+             || [[ "$AUTHOR" =~ ^(dependabot|github-actions|github|renovate)$ ]]; then
+            echo "Author '$AUTHOR' (type=$AUTHOR_TYPE) is a bot — changelog not required."
+            exit 0
+          fi
+
+          # 2) Explicit opt-out label for changes with no user-facing impact.
+          if printf ',%s,' "$LABELS" | grep -q ',skip-changelog,'; then
+            echo "'skip-changelog' label present — changelog not required."
+            exit 0
+          fi
+
+          # 3) Gather the PR's changed files.
+          mapfile -t FILES < <(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[].filename')
+          echo "Changed files:"
+          printf '  %s\n' "${FILES[@]}"
+
+          # 4) CHANGELOG touched → pass.
+          for f in "${FILES[@]}"; do
+            if [ "$f" = "CHANGELOG.md" ]; then
+              echo "CHANGELOG.md updated — OK."
+              exit 0
+            fi
+          done
+
+          # 5) Allow pure version bumps / lockfile-only PRs.
+          #    Skip lockfiles; for each package.json, confirm its diff only
+          #    touches the "version" field. Anything else makes the changelog
+          #    mandatory.
+          LOCKFILE_RE='(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$'
+          PKGJSON_RE='(^|/)package\.json$'
+          changelog_required=false
+          for f in "${FILES[@]}"; do
+            if [[ "$f" =~ $LOCKFILE_RE ]]; then
+              continue
+            fi
+            if [[ "$f" =~ $PKGJSON_RE ]]; then
+              patch="$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" \
+                --jq ".[] | select(.filename==\"$f\") | .patch")"
+              # Added/removed content lines that are NOT the "version" field.
+              offending="$(printf '%s\n' "$patch" \
+                | grep -E '^[+-]' \
+                | grep -vE '^(\+\+\+|---)' \
+                | grep -vE '^[+-][[:space:]]*"version":[[:space:]]*"[^"]+",?[[:space:]]*$' \
+                || true)"
+              if [ -n "$offending" ]; then
+                changelog_required=true
+                break
+              fi
+              continue
+            fi
+            # Any other path → real change → changelog required.
+            changelog_required=true
+            break
+          done
+
+          if [ "$changelog_required" = false ]; then
+            echo "Only lockfiles and/or package.json version bumps changed — changelog not required."
+            exit 0
+          fi
+
+          # 6) Otherwise the changelog is mandatory.
+          echo "::error::CHANGELOG.md was not updated. Add an entry to the top section describing the user-facing change, or apply the 'skip-changelog' label if this PR has no user-facing impact."
+          exit 1
