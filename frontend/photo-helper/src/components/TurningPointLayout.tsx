@@ -96,6 +96,10 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
             maxPhotos={initialDropMax}
             loading={loading}
             error={error}
+            // The empty TP zone's file drops default to set1, so candidate-tray
+            // drops land there too (an empty set always fills slot 0).
+            setKey="set1"
+            onCandidateDropped={onCandidateDropped ? (id) => onCandidateDropped('set1', id, 0) : undefined}
           />
         </Paper>
       ) : (
