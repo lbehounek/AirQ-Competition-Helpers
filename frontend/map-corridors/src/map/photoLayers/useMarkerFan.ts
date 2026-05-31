@@ -77,29 +77,41 @@ export function useMarkerFan(params: {
     if (visible.length < 2) return EMPTY
 
     const map = mapRef.current.getMap()
-    const points: ScreenPoint[] = visible.map(m => {
+    // When the map is pitched, markers above the horizon (or behind the camera)
+    // project to non-finite screen pixels. Feeding NaN/Infinity into the
+    // clusterer poisons the fan, and downstream `unproject` throws on NaN via
+    // the LngLat constructor — which, since this runs in a useMemo during
+    // render, blanks the whole app (white screen). Drop those points up front.
+    const points: ScreenPoint[] = visible.flatMap(m => {
       const p = map.project([m.lng, m.lat])
-      return { id: m.id, x: p.x, y: p.y }
+      return Number.isFinite(p.x) && Number.isFinite(p.y) ? [{ id: m.id, x: p.x, y: p.y }] : []
     })
+    if (points.length < 2) return EMPTY
 
     const fan = computeMarkerFan(points, thresholdPx ? { thresholdPx } : undefined)
     if (fan.offsets.size === 0) return EMPTY
 
-    const features: FeatureCollection<LineString>['features'] = fan.leaders.map(l => {
-      const from = map.unproject(l.from)
-      const to = map.unproject(l.to)
-      return {
+    // Belt-and-suspenders: even with finite inputs, an unproject can land above
+    // the horizon and throw. Skip any leader whose endpoint can't be resolved.
+    const safeUnproject = (pt: [number, number]): [number, number] | null => {
+      try {
+        const ll = map.unproject(pt)
+        return Number.isFinite(ll.lng) && Number.isFinite(ll.lat) ? [ll.lng, ll.lat] : null
+      } catch {
+        return null
+      }
+    }
+
+    const features = fan.leaders.flatMap<FeatureCollection<LineString>['features'][number]>(l => {
+      const from = safeUnproject(l.from)
+      const to = safeUnproject(l.to)
+      if (!from || !to) return []
+      return [{
         type: 'Feature',
         id: l.id,
-        geometry: {
-          type: 'LineString',
-          coordinates: [
-            [from.lng, from.lat],
-            [to.lng, to.lat],
-          ],
-        },
+        geometry: { type: 'LineString', coordinates: [from, to] },
         properties: {},
-      }
+      }]
     })
 
     return { offsets: fan.offsets, leaders: { type: 'FeatureCollection', features } }
