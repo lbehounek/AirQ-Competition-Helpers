@@ -89,7 +89,12 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
   const { t } = useI18n();
-  
+
+  // Turning-point sets supply customLabels (SP/TP1../FP); track sets don't.
+  // Reuse that existing signal to size the burned-in photo label per discipline
+  // (track −20%, turning −35%; feedback 2026-06-19).
+  const labelMode: 'track' | 'turningpoint' = customLabels ? 'turningpoint' : 'track';
+
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -321,6 +326,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                   onRemove={() => onPhotoRemove(slot.photo!.id)}
                   size="grid" // Small size for grid view
                   setKey={setKey} // Pass setKey for PDF generation
+                  mode={labelMode}
                 />
 
                 {/* Delete button — kept OUTSIDE the dark hover-overlay so it

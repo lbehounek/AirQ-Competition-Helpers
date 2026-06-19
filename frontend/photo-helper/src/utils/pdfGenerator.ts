@@ -256,6 +256,7 @@ export const generatePDF = async (
         BASE_WIDTH / aspectRatio,
         false,
         true,
+        mode,
       );
 
       // Circle overlay (drawn after the photo, same as the live editor).

@@ -280,6 +280,11 @@ function AppApi() {
   // appearing isn't a mystery.
   const [dupToast, setDupToast] = useState<{ count: number } | null>(null);
 
+  // Friendly, actionable surface for a PDF export failure (replaces a raw
+  // native alert showing the technical message). Most failures are "a photo
+  // lost its image bytes"; the message tells the user how to recover.
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
   // Hint snackbar for cross-set slot→slot drags (out of scope in v1 per
   // docs/CANDIDATE_PHOTOS.md). Previously a silent no-op (PR #62 review I4).
   const [crossSetHintOpen, setCrossSetHintOpen] = useState(false);
@@ -678,8 +683,17 @@ function AppApi() {
       // user needs to know the export was aborted (or partial), not be left
       // wondering why the dialog never opened.
       console.error('PDF generation failed:', error);
-      const message = error instanceof Error ? error.message : String(error);
-      alert(message);
+      // The hi-res render path attaches `renderFailures` (one entry per
+      // un-renderable photo — usually missing image bytes from a photo that was
+      // deleted earlier). Turn that into a plain-language, actionable message
+      // instead of dumping the raw technical string into a native alert().
+      const failures = (error as { renderFailures?: unknown[] } | null)?.renderFailures;
+      const failedCount = Array.isArray(failures) ? failures.length : 0;
+      setPdfError(
+        failedCount > 0
+          ? t('pdf.error.renderFailed', { count: failedCount })
+          : t('pdf.error.generic'),
+      );
     }
   };
 
@@ -1364,6 +1378,7 @@ function AppApi() {
                         setKey={selectedPhoto.setKey}
                         showOriginal={showOriginal}
                         circleMode={circleMode}
+                        mode={session?.mode}
                       />
                       {/* Filename caption under the photo — screen only. */}
                       {selectedPhoto.photo.filename && (
@@ -1585,6 +1600,20 @@ function AppApi() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={dupToast ? t('candidates.duplicatesSkipped', { count: dupToast.count }) : ''}
       />
+
+      {/* PDF export failure — friendly, actionable surface that replaces the raw
+          native alert. Stays up longer and is dismissible because the message
+          tells the user how to recover (re-import / remove the affected cells). */}
+      <Snackbar
+        open={Boolean(pdfError)}
+        autoHideDuration={14000}
+        onClose={() => setPdfError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" variant="filled" onClose={() => setPdfError(null)} sx={{ maxWidth: 560 }}>
+          {pdfError}
+        </Alert>
+      </Snackbar>
 
       {/* Hint when the user tries an unsupported cross-set slot drag (PR #62
           review I4). The two-step via the tray works; this just tells them. */}

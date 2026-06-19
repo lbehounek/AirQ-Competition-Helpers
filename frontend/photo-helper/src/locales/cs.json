@@ -332,6 +332,10 @@
       "trackSet1": "Traťové foto – 1. sada",
       "trackSet2": "Traťové foto – 2. sada",
       "turningPoint": "Foto otočných bodů"
+    },
+    "error": {
+      "renderFailed": "PDF se nepodařilo vytvořit. Některé fotky ({{count}}) nemají obrazová data a nelze je vykreslit – pravděpodobně byly dříve smazány. Naimportujte je znovu v Koridorech a pošlete do editoru, nebo je v editoru odeberte, a export zopakujte.",
+      "generic": "PDF se nepodařilo vytvořit. Zkuste to prosím znovu."
     }
   }
 }
