@@ -10,6 +10,17 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.26.5] - 2026-06-19
+
+### Changed
+- **Photo Helper:** the burned-in photo labels are now sized per discipline —
+  track-photo numbers are 20% smaller and turning-point labels 35% smaller than
+  before — in both the editor preview and the printed PDF.
+- **Photo Helper:** when a PDF export can't render some photos it now shows a
+  clear, actionable message (how many photos and how to recover them) instead of
+  a raw technical alert. Render failures usually mean a photo's image bytes were
+  lost — re-import those photos or remove the affected cells, then export again.
+
 ## [2.26.4] - 2026-06-19
 
 ### Fixed
