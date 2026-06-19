@@ -53,6 +53,13 @@ export interface ApiPhoto {
    * side). Absent on legacy data.
    */
   labelUpdatedAt?: string;
+  /**
+   * SHA-1 hex of the original file bytes (ADR-020). Set when a photo is
+   * imported via the editor's "Add photos" path so re-importing the same file
+   * is skipped instead of creating a duplicate. Absent on map-handoff (`pm-`)
+   * photos — the handoff doesn't carry a hash — and on legacy data.
+   */
+  contentHash?: string;
 }
 
 export interface ApiPhotoSet {

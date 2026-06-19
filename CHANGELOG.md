@@ -42,6 +42,10 @@ new desktop release.
   drop) is skipped instead of creating a duplicate, and the original (with its
   placement, flag, and edits) is left untouched. A short note reports how many
   duplicates were skipped.
+- **Photo Helper:** the editor's **Add photos** import also skips duplicates now —
+  re-adding a file already in the competition (the candidate tray or any print
+  set) is a no-op instead of creating a second copy, with a short note on what was
+  skipped.
 - **Photo Helper:** candidate-tray thumbnails now show the photo filename next to
   the move/delete buttons, for easier orientation.
 - **Photo Helper:** the toolbar **Add photos** control is more prominent so the

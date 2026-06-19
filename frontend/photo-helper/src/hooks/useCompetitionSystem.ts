@@ -29,6 +29,7 @@ import {
   updateCandidateCanvasState as updateCandidateCanvasStatePure,
   routeImportedPickIntoSets,
 } from '../utils/candidateTransitions';
+import { collectSessionContentHashes, partitionFilesByContentHash } from '../utils/contentHash';
 import {
   defaultTrackSetTitles,
   DEFAULT_TRACK_SET1_TITLE_RALLY,
@@ -68,7 +69,7 @@ export interface UseCompetitionSystemResult {
   updateSessionCompetitionName: (competitionName: string) => Promise<void>;
 
   // Candidate pool operations (see docs/CANDIDATE_PHOTOS.md)
-  addPhotosToCandidates: (files: File[]) => Promise<void>;
+  addPhotosToCandidates: (files: File[]) => Promise<{ added: number; duplicates: number }>;
   /**
    * Insert a pre-built `ApiPhoto` (bytes + thumb already on disk).
    * Used by `useMapPicksSync` (Phase 8b of photo-map-culling) to
@@ -617,23 +618,33 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
    * and indirectly by `addPhotosToSet` via the smart-drop heuristic when a
    * slot batch exceeds remaining capacity. New candidates start as `neutral`.
    */
-  const addPhotosToCandidates = useCallback(async (files: File[]) => {
+  const addPhotosToCandidates = useCallback(async (files: File[]): Promise<{ added: number; duplicates: number }> => {
     if (!currentCompetition?.session) {
       setError(t('errors.noActiveCompetition'));
-      return;
+      return { added: 0, duplicates: 0 };
     }
-    if (files.length === 0) return;
-    await updateCurrentCompetition(session => {
-      const sessionId = session.id;
-      const newPhotos = filesToPhotos(files, sessionId, 'neutral');
-      const existing = session.candidates?.photos ?? [];
-      return {
-        ...session,
-        version: session.version + 1,
-        updatedAt: new Date().toISOString(),
-        candidates: { photos: [...existing, ...newPhotos] },
-      };
-    }, { updatePhotos: true });
+    if (files.length === 0) return { added: 0, duplicates: 0 };
+    // ADR-020 re-import dedup: skip any file whose bytes match a photo already
+    // anywhere in the session (tray or any set) or repeat within this batch, so a
+    // duplicate never creates a second candidate. The original is left untouched.
+    const existingHashes = collectSessionContentHashes(currentCompetition.session);
+    const { fresh, duplicates } = await partitionFilesByContentHash(files, existingHashes);
+    if (fresh.length > 0) {
+      await updateCurrentCompetition(session => {
+        const sessionId = session.id;
+        // filesToPhotos preserves order, so zip the precomputed hashes back on.
+        const newPhotos = filesToPhotos(fresh.map(f => f.file), sessionId, 'neutral')
+          .map((p, i) => ({ ...p, contentHash: fresh[i].contentHash }));
+        const existing = session.candidates?.photos ?? [];
+        return {
+          ...session,
+          version: session.version + 1,
+          updatedAt: new Date().toISOString(),
+          candidates: { photos: [...existing, ...newPhotos] },
+        };
+      }, { updatePhotos: true });
+    }
+    return { added: fresh.length, duplicates: duplicates.length };
   }, [updateCurrentCompetition, currentCompetition, filesToPhotos, t]);
 
   /**

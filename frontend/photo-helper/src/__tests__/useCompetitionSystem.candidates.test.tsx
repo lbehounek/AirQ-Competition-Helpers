@@ -170,7 +170,11 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 function makeFile(name = 'photo.jpg'): File {
-  return new File([new Uint8Array([0xFF, 0xD8, 0xFF])], name, { type: 'image/jpeg' });
+  // Unique content per name so the content-hash re-import dedup doesn't collapse
+  // distinct fixtures; keep the JPEG magic-byte prefix. Two calls with the SAME
+  // name produce identical bytes — used to exercise dedup.
+  const nameBytes = Array.from(name, (c) => c.charCodeAt(0) & 0xff);
+  return new File([new Uint8Array([0xFF, 0xD8, 0xFF, ...nameBytes])], name, { type: 'image/jpeg' });
 }
 
 async function setup() {
@@ -296,6 +300,45 @@ describe('useCompetitionSystem — promoteCandidateToSlot capacity clamp (PR #62
     const session = result.current.session!;
     expect(session.sets.set1.photos.map(p => p.id)).toEqual([candidateId]);
     expect(session.setsTrack?.set1.photos.map(p => p.id)).toEqual([candidateId]);
+  });
+});
+
+describe('useCompetitionSystem — addPhotosToCandidates re-import dedup (ADR-020)', () => {
+  it('adds distinct files and reports zero duplicates', async () => {
+    const result = await setup();
+    let r: { added: number; duplicates: number } | undefined;
+    await act(async () => {
+      r = await result.current.addPhotosToCandidates([makeFile('a.jpg'), makeFile('b.jpg')]);
+    });
+    expect(r).toEqual({ added: 2, duplicates: 0 });
+    expect(result.current.session!.candidates!.photos).toHaveLength(2);
+  });
+
+  it('skips a file already in the candidate tray on a later import', async () => {
+    const result = await setup();
+    await act(async () => {
+      await result.current.addPhotosToCandidates([makeFile('dup.jpg')]);
+    });
+    let r: { added: number; duplicates: number } | undefined;
+    await act(async () => {
+      r = await result.current.addPhotosToCandidates([makeFile('dup.jpg'), makeFile('new.jpg')]);
+    });
+    expect(r).toEqual({ added: 1, duplicates: 1 });
+    // 1 original + 1 genuinely-new = 2; the re-import of dup.jpg was dropped.
+    expect(result.current.session!.candidates!.photos.map(p => p.filename).sort())
+      .toEqual(['dup.jpg', 'new.jpg']);
+  });
+
+  it('dedups within a single batch and stamps a SHA-1 contentHash on the kept photo', async () => {
+    const result = await setup();
+    let r: { added: number; duplicates: number } | undefined;
+    await act(async () => {
+      r = await result.current.addPhotosToCandidates([makeFile('x.jpg'), makeFile('x.jpg')]);
+    });
+    expect(r).toEqual({ added: 1, duplicates: 1 });
+    const photos = result.current.session!.candidates!.photos;
+    expect(photos).toHaveLength(1);
+    expect(photos[0].contentHash).toMatch(/^[0-9a-f]{40}$/);
   });
 });
 

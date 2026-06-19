@@ -301,6 +301,7 @@
     "emptyHint": "Drop extra photos here — drag any onto a slot to use it in the print set",
     "dragHint": "Drag a thumbnail onto an empty slot to add it to the print set, or use the toolbar buttons below each photo.",
     "smartDropToast": "Added {{count}} photos to Candidates — drag any onto a slot to use them.",
+    "duplicatesSkipped": "Skipped {{count}} photo(s) already imported.",
     "crossSetHint": "Cross-set moves go via the Candidates tray. Drag the photo there, then drag it into the other set.",
     "allFiltered": "All candidates are hidden by the filter.",
     "flag": {

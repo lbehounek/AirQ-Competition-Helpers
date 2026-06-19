@@ -275,6 +275,11 @@ function AppApi() {
   // like the photos "disappeared" from the user's perspective.
   const [dropToast, setDropToast] = useState<{ count: number } | null>(null);
 
+  // Snackbar shown when "Add photos" skips files already in the session
+  // (content-hash re-import dedup, ADR-020) — so fewer-than-selected photos
+  // appearing isn't a mystery.
+  const [dupToast, setDupToast] = useState<{ count: number } | null>(null);
+
   // Hint snackbar for cross-set slot→slot drags (out of scope in v1 per
   // docs/CANDIDATE_PHOTOS.md). Previously a silent no-op (PR #62 review I4).
   const [crossSetHintOpen, setCrossSetHintOpen] = useState(false);
@@ -296,6 +301,15 @@ function AppApi() {
     }
   };
 
+  // Wrapper around the hook's `addPhotosToCandidates` that surfaces the re-import
+  // dedup (ADR-020). The dedup happens hook-side for every caller; this only adds
+  // the toast at the user-facing import sites so a skipped duplicate isn't silent.
+  const handleAddCandidates = async (files: File[]) => {
+    if (!addPhotosToCandidates) return;
+    const r = await addPhotosToCandidates(files);
+    if (r && r.duplicates > 0) setDupToast({ count: r.duplicates });
+  };
+
   // Initial drop for rally turning-point distributes across set1+set2; on total
   // overflow the hook routes everything to the candidate tray. Surface the toast
   // the same way `handleAddToSet` does (PR #62 review I1).
@@ -314,7 +328,7 @@ function AppApi() {
   // loaded so a pre-mount paste can't race the session bootstrap.
   const { pasteError, clearPasteError } = useClipboardPaste({
     addFiles: (files) => {
-      if (addPhotosToCandidates) void addPhotosToCandidates(files);
+      void handleAddCandidates(files);
     },
     disabled: !session || !addPhotosToCandidates,
   });
@@ -854,7 +868,7 @@ function AppApi() {
                   </Typography>
                   <ImportPhotosControl
                     onFilesPicked={(files) => {
-                      if (addPhotosToCandidates) void addPhotosToCandidates(files);
+                      void handleAddCandidates(files);
                     }}
                     disabled={!session || !addPhotosToCandidates}
                   />
@@ -975,7 +989,7 @@ function AppApi() {
         {(candidatePhotos.length > 0 || stats.totalPhotos > 0) && (
           <CandidateTray
             photos={candidatePhotos}
-            onAddFiles={(files) => { if (addPhotosToCandidates) void addPhotosToCandidates(files); }}
+            onAddFiles={(files) => { void handleAddCandidates(files); }}
             onPhotoClick={handleCandidateClick}
             onSetFlag={(photoId, flag) => { if (setCandidateFlag) void setCandidateFlag(photoId, flag); }}
             onDelete={(photoId) => { if (removeCandidate) void removeCandidate(photoId); }}
@@ -1560,6 +1574,16 @@ function AppApi() {
         onClose={() => setDropToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={dropToast ? t('candidates.smartDropToast', { count: dropToast.count }) : ''}
+      />
+
+      {/* Re-import dedup notification — "Add photos" skipped files already in the
+          session, so the user doesn't think their pick silently vanished. */}
+      <Snackbar
+        open={Boolean(dupToast)}
+        autoHideDuration={6000}
+        onClose={() => setDupToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={dupToast ? t('candidates.duplicatesSkipped', { count: dupToast.count }) : ''}
       />
 
       {/* Hint when the user tries an unsupported cross-set slot drag (PR #62
