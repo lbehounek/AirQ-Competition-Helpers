@@ -10,6 +10,34 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.26.2] - 2026-06-19
+
+### Fixed
+- **Map Corridors:** a photo imported **without GPS** can now be re-categorised
+  after you place it on the map. Clicking its marker opens the full
+  Track / Turning-point / Skip / Reject + label popup — previously that popup
+  only appeared for photos that had EXIF GPS, so a placed no-GPS photo was stuck
+  on whatever category it was dropped with.
+- **Map Corridors:** the *Poslat do editoru* panel now warns when no-GPS photos
+  are still sitting in the tray (they only transfer once dropped on the map), and
+  a failed tray placement shows an error instead of silently dropping the photo —
+  addressing "one fewer photo reached the editor than I selected".
+- **Map Corridors:** a placed photo no longer drifts from its spot while you
+  zoom. Co-located ("fanned") photos kept a stale screen offset during a
+  continuous zoom; the offset now updates every frame so the dot stays anchored
+  to the map.
+- **Map Corridors:** the no-GPS photo tray auto-scrolls while you drag a
+  thumbnail — nudge the cursor to the strip's left/right edge and it rolls that
+  way, so thumbnails outside the visible window are reachable mid-drag.
+- **Photo Helper:** the TP / track-photo number labels are smaller; they had
+  grown oversized on both the on-screen previews and the printed sheets.
+
+### Added
+- **Photo Helper:** candidate-tray thumbnails now show the photo filename next to
+  the move/delete buttons, for easier orientation.
+- **Photo Helper:** the toolbar **Add photos** control is more prominent so the
+  manual-import entry point is easy to find.
+
 ## [2.26.1] - 2026-05-31
 
 ### Fixed
