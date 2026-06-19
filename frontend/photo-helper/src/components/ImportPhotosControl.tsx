@@ -86,10 +86,12 @@ export const ImportPhotosControl: React.FC<ImportPhotosControlProps> = ({
     ? 'success.main'
     : isDragActive
     ? 'primary.main'
-    // Idle: primary-tinted (was grey) so the always-visible add-photos entry
-    // point reads as an action and is easy to find, including on an empty
-    // competition where it sits beside the hero drop zone (feedback 2026-06-19).
-    : 'primary.main';
+    // Idle: a lighter primary tint (was grey) so the always-visible add-photos
+    // entry point reads as an action and is easy to find, including on an empty
+    // competition beside the hero drop zone — while staying visually distinct
+    // from the solid primary.main border that marks the drag-active state
+    // (feedback 2026-06-19).
+    : 'primary.light';
 
   const bgColor = isDragReject
     ? 'error.light'
