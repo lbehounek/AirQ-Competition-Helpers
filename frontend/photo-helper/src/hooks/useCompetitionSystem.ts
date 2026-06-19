@@ -947,7 +947,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     slotIndex: number,
   ) => {
     const sess = currentCompetition?.session;
-    if (!sess) return;
+    // Turning-point only (the UI button is hidden on track sheets); guard here
+    // too so a stray call can't insert a placeholder into a track set.
+    if (!sess || sess.mode !== 'turningpoint') return;
     const capacity = getGridCapacity(sess as any);
     if ((sess.sets?.[setKey]?.photos?.length ?? 0) >= capacity) return;
     await updateCurrentCompetition(session => {

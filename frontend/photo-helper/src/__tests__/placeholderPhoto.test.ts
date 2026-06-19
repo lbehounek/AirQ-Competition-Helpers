@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { insertPlaceholderIntoSet } from '../utils/candidateTransitions';
+import { insertPlaceholderIntoSet, demoteSlotToCandidate } from '../utils/candidateTransitions';
 import { createPlaceholderPhoto, PLACEHOLDER_ID_PREFIX, isPlaceholderId } from '../utils/placeholderPhoto';
 import type { ApiPhoto, ApiPhotoSession } from '../types/api';
 
@@ -75,5 +75,16 @@ describe('insertPlaceholderIntoSet', () => {
     const session = makeTurningSession([makePhoto('a'), makePhoto('b')]);
     insertPlaceholderIntoSet(session, 'set1', 1, createPlaceholderPhoto('s', 'x'));
     expect(session.sets.set1.photos.map((p) => p.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('placeholders never enter the candidate tray', () => {
+  it('demoteSlotToCandidate is a no-op on a placeholder (would create a dead-url tray entry)', () => {
+    const ph = createPlaceholderPhoto('sess-1', 'Bez fotky');
+    const session = makeTurningSession([ph]);
+    const next = demoteSlotToCandidate(session, 'set1', ph.id);
+    expect(next).toBe(session); // unchanged reference — the guard returns early
+    expect(next.candidates?.photos).toEqual([]);
+    expect(next.sets.set1.photos.map((p) => p.id)).toEqual([ph.id]);
   });
 });

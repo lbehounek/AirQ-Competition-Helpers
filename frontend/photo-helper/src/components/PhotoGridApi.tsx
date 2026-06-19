@@ -434,7 +434,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                 position={slot.index + 1}
                 onFilesDropped={onFilesDropped}
                 maxFilesRemaining={maxFilesRemaining}
-                onAddNoPhoto={labelMode === 'turningpoint' && onAddPlaceholder ? () => onAddPlaceholder(slot.index) : undefined}
+                onAddNoPhoto={labelMode === 'turningpoint' && onAddPlaceholder && slot.index === photoSet.photos.length ? () => onAddPlaceholder(slot.index) : undefined}
               />
             )}
             </Paper>
