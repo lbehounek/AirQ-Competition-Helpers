@@ -10,6 +10,16 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.26.6] - 2026-06-19
+
+### Added
+- **Photo Helper:** turning-point sheets can now hold a **"no photo" placeholder**
+  for a genuinely missing photo. Click **"Insert 'no photo'"** on an empty slot to
+  reserve that position — the surrounding SP/TP/FP numbering stays correct, the
+  cell shows a blank frame with "No photo", and it prints the same blank labeled
+  cell in the PDF (no more padding the gap with a white image). Drag to reorder or
+  delete it like any photo.
+
 ## [2.26.5] - 2026-06-19
 
 ### Changed
