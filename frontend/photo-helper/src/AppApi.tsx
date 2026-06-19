@@ -110,6 +110,7 @@ function AppApi() {
     importPickToSets,
     removeCandidate,
     promoteCandidateToSlot,
+    addPlaceholderToSet,
     demoteSlotToCandidate,
     setCandidateFlag,
     setCandidateLabel,
@@ -1038,6 +1039,7 @@ function AppApi() {
             onCandidateDropped={(setKey, candidateId, slotIndex) =>
               handleCandidateDropped(setKey)(candidateId, slotIndex)
             }
+            onAddPlaceholder={addPlaceholderToSet ? (setKey, slotIndex) => { void addPlaceholderToSet(setKey, slotIndex); } : undefined}
             totalPhotoCount={stats.set1Photos + stats.set2Photos}
             isPrecision={isPrecision}
           />

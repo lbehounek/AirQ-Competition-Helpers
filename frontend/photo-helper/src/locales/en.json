@@ -166,7 +166,10 @@
     "position": "Position {{position}}",
     "loadingFailed": "Failed to load image.",
     "tryAgain": "Please try again or upload a different file.",
-    "deleteTooltip": "Delete photo"
+    "deleteTooltip": "Delete photo",
+    "noPhotoCell": "No photo",
+    "addNoPhoto": "Insert \"no photo\"",
+    "noPhotoFilename": "No photo"
   },
   "controls": {
     "imageAdjustments": "Image Adjustments",

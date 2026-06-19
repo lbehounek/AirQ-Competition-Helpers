@@ -28,7 +28,9 @@ import {
   clearAllCandidates as clearAllCandidatesPure,
   updateCandidateCanvasState as updateCandidateCanvasStatePure,
   routeImportedPickIntoSets,
+  insertPlaceholderIntoSet,
 } from '../utils/candidateTransitions';
+import { createPlaceholderPhoto, PLACEHOLDER_ID_PREFIX } from '../utils/placeholderPhoto';
 import { collectSessionContentHashes, partitionFilesByContentHash } from '../utils/contentHash';
 import {
   defaultTrackSetTitles,
@@ -89,6 +91,12 @@ export interface UseCompetitionSystemResult {
   importPickToSets: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint') => Promise<void>;
   removeCandidate: (photoId: string) => Promise<void>;
   promoteCandidateToSlot: (candidateId: string, setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
+  /**
+   * Insert a "no photo" placeholder at `slotIndex` (turning-point mode), holding
+   * the slot position so the SP/TP/FP numbering of surrounding photos stays
+   * correct when a photo is missing. No-op if the set is already at capacity.
+   */
+  addPlaceholderToSet: (setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
   demoteSlotToCandidate: (setKey: 'set1' | 'set2', photoId: string) => Promise<void>;
   setCandidateFlag: (photoId: string, flag: CandidateFlag) => Promise<void>;
   /**
@@ -838,7 +846,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // "deleted in editor, re-sent 9, only 7 returned"). map-corridors' own
     // hard-delete is the canonical place to free pm- bytes.
     const isMapOwned = photoId.startsWith('pm-');
-    if (compId && !referencedElsewhere && !isMapOwned) {
+    // Placeholders carry no OPFS file (url=''); a delete would throw a swallowed
+    // NotFoundError. Skip the file-delete for them too.
+    const isPlaceholder = photoId.startsWith(PLACEHOLDER_ID_PREFIX);
+    if (compId && !referencedElsewhere && !isMapOwned && !isPlaceholder) {
       try {
         await competitionService.deletePhotosByIds(compId, [photoId]);
       } catch (err) {
@@ -887,7 +898,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // canonical place to delete pm- bytes, and it cleans up both the
     // marker and the file in one shot. User feedback 2026-05-17.
     const isMapOwned = photoId.startsWith('pm-');
-    if (compId && !referencedElsewhere && !isMapOwned) {
+    // Placeholders carry no OPFS file (url=''); a delete would throw a swallowed
+    // NotFoundError. Skip the file-delete for them too.
+    const isPlaceholder = photoId.startsWith(PLACEHOLDER_ID_PREFIX);
+    if (compId && !referencedElsewhere && !isMapOwned && !isPlaceholder) {
       try {
         await competitionService.deletePhotosByIds(compId, [photoId]);
       } catch (err) {
@@ -922,6 +936,25 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       return next;
     }, { updatePhotos: true });
   }, [updateCurrentCompetition]);
+
+  // Insert a "no photo" placeholder at a slot (turning-point only). Holds the
+  // position so SP/TP/FP numbering stays correct. The pure helper splices +
+  // mirrors into the active mode bucket; here we just gate on capacity and build
+  // the localized placeholder. updatePhotos:true persists; the placeholder has
+  // url='' so saveSessionPhotos skips it (no OPFS write).
+  const addPlaceholderToSet = useCallback(async (
+    setKey: 'set1' | 'set2',
+    slotIndex: number,
+  ) => {
+    const sess = currentCompetition?.session;
+    if (!sess) return;
+    const capacity = getGridCapacity(sess as any);
+    if ((sess.sets?.[setKey]?.photos?.length ?? 0) >= capacity) return;
+    await updateCurrentCompetition(session => {
+      const placeholder = createPlaceholderPhoto(session.id, t('photo.noPhotoFilename'));
+      return insertPlaceholderIntoSet(session, setKey, slotIndex, placeholder);
+    }, { updatePhotos: true });
+  }, [updateCurrentCompetition, currentCompetition, t]);
 
   const demoteSlotToCandidate = useCallback(async (
     setKey: 'set1' | 'set2',
@@ -1498,6 +1531,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     importPickToSets,
     removeCandidate,
     promoteCandidateToSlot,
+    addPlaceholderToSet,
     demoteSlotToCandidate,
     setCandidateFlag,
     setCandidateLabel,

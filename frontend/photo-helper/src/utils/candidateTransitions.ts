@@ -83,6 +83,30 @@ export function promoteCandidateToSlot(
 }
 
 /**
+ * Insert a "no photo" placeholder into a set at `slotIndex`, pushing later
+ * photos down so a missing turning-point photo can hold its position and keep
+ * the SP/TP/FP numbering correct. Index is clamped to [0, length]. Mirrors the
+ * new `sets` into the active mode bucket (`setsTrack`/`setsTurning`) like the
+ * other slot mutations, so a mode-switch round-trip preserves it. Pure — the
+ * caller persists the result. The placeholder is built by `createPlaceholderPhoto`.
+ */
+export function insertPlaceholderIntoSet(
+  session: ApiPhotoSession,
+  setKey: SetKey,
+  slotIndex: number,
+  placeholder: ApiPhoto,
+): ApiPhotoSession {
+  const set = session.sets[setKey];
+  const photos = [...set.photos];
+  photos.splice(Math.max(0, Math.min(slotIndex, photos.length)), 0, placeholder);
+  const nextSets = { ...session.sets, [setKey]: { ...set, photos } };
+  const next = bumpVersion({ ...session, sets: nextSets });
+  const modeKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
+  (next as unknown as Record<string, unknown>)[modeKey] = nextSets;
+  return next;
+}
+
+/**
  * Demote a slot photo back to the tray. Default flag is 'pick' — the photo
  * was committed to a slot once, so it's likely a strong candidate the user
  * is reconsidering rather than a fresh neutral upload.
@@ -96,6 +120,10 @@ export function demoteSlotToCandidate(
   const set = session.sets[setKey];
   const photo = set.photos.find((p) => p.id === photoId);
   if (!photo) return session;
+  // Placeholders never enter the candidate tray — they have no image bytes and
+  // exist only to hold a turning-point slot position. Demoting one would create
+  // a tray entry with a dead url. Ignore the request.
+  if (photo.isPlaceholder) return session;
 
   const remainingSlotPhotos = set.photos.filter((p) => p.id !== photoId);
   const demoted: ApiPhoto = { ...photo, flag };

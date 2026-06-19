@@ -5,6 +5,7 @@ import { dirnameOf, slugifyForFilename } from '@airq/shared-storage';
 import { calculateLandscapeGrid } from './pdfLandscapeGrid';
 import { getImageCache } from './imageCache';
 import { BASE_WIDTH, drawCircle, renderPhotoOnCanvas } from '../components/PhotoEditorApi';
+import { drawLabel } from './canvasUtils';
 
 // Hi-res target width for photos embedded in the PDF.
 // At 1600 px wide, a 280 pt landscape A4 cell prints at >400 DPI —
@@ -229,6 +230,34 @@ export const generatePDF = async (
   // photo cell from the printed sheet — for a competition answer-sheet
   // workflow that's a correctness bug, not cosmetic (feedback 2026-05-12).
   const getPhotoDataUrl = async (photo: ApiPhoto): Promise<PhotoRenderResult> => {
+    // "No photo" placeholder: draw a blank white cell with a thin border, a
+    // centered "no photo" caption, and the slot's TP/SP/FP label — no image.
+    // Returns kind:'ok' so it lands at its grid position and never counts as a
+    // render failure (a genuinely missing image still flows to the catch below
+    // and aborts the export — placeholders never mask real failures).
+    if (photo.isPlaceholder) {
+      const canvas = document.createElement('canvas');
+      canvas.width = PDF_PHOTO_TARGET_WIDTH;
+      canvas.height = Math.round(PDF_PHOTO_TARGET_WIDTH / aspectRatio);
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const scale = canvas.width / BASE_WIDTH;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#cccccc';
+        ctx.lineWidth = Math.max(1, Math.round(scale));
+        ctx.strokeRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#9e9e9e';
+        ctx.font = `${Math.round(28 * scale)}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(t ? t('photo.noPhotoCell') : 'No photo', canvas.width / 2, canvas.height / 2);
+        ctx.textAlign = 'start';
+        ctx.textBaseline = 'alphabetic';
+      }
+      drawLabel(canvas, photo.label, photo.canvasState.labelPosition ?? 'bottom-left', mode);
+      return { kind: 'ok', dataUrl: canvas.toDataURL('image/jpeg', PDF_PHOTO_JPEG_QUALITY) };
+    }
     try {
       // Loaded images are normally already cached by the editor grid; this
       // reuses them and falls back to a load if missing (e.g., off-screen).

@@ -166,7 +166,10 @@
     "position": "Pozice {{position}}",
     "loadingFailed": "Nepodařilo se načíst obrázek.",
     "tryAgain": "Zkuste to znovu nebo nahrajte jiný soubor.",
-    "deleteTooltip": "Smazat fotografii"
+    "deleteTooltip": "Smazat fotografii",
+    "noPhotoCell": "Bez fotky",
+    "addNoPhoto": "Vložit „bez fotky“",
+    "noPhotoFilename": "Bez fotky"
   },
   "controls": {
     "imageAdjustments": "Úpravy obrázku",

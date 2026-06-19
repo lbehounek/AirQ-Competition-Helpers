@@ -60,6 +60,14 @@ export interface ApiPhoto {
    * photos — the handoff doesn't carry a hash — and on legacy data.
    */
   contentHash?: string;
+  /**
+   * True for a synthetic "no photo" cell that occupies a turning-point slot so
+   * the SP/TP/FP numbering of the surrounding photos stays correct when a photo
+   * is genuinely missing. Has NO image bytes (`url: ''`, no OPFS file). Rendered
+   * as a blank labeled frame in the editor and as a blank labeled cell in the
+   * PDF (never aborts the export). Absent/false on every real photo.
+   */
+  isPlaceholder?: boolean;
 }
 
 export interface ApiPhotoSet {
