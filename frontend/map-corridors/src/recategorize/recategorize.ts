@@ -5,7 +5,7 @@
 
 import type { PhotoFlag } from '../types/markers'
 
-export type PanelGroupKey = 'picks' | 'neutral' | 'rejects' | 'noGps'
+export type PanelGroupKey = 'picksTurning' | 'picksTrack' | 'neutral' | 'rejects' | 'noGps'
 
 /**
  * The flag a photo takes when dropped into a group. `null` = neutral (flag
@@ -14,9 +14,12 @@ export type PanelGroupKey = 'picks' | 'neutral' | 'rejects' | 'noGps'
  */
 export function flagForGroup(key: PanelGroupKey): PhotoFlag | null | undefined {
   switch (key) {
-    // Dropping into the picks section defaults to track; the user re-categorizes
-    // to turning-point via the marker popup. (A neutral pick category isn't a thing.)
-    case 'picks': return 'pick-track'
+    // The two pick sections set their category directly — dropping a photo onto
+    // "turning-point picks" sets pick-turning, onto "track picks" sets
+    // pick-track. So the user can re-flag turning↔track just by dragging the row
+    // between the two groups (no marker-popup round-trip needed).
+    case 'picksTurning': return 'pick-turning'
+    case 'picksTrack': return 'pick-track'
     case 'neutral': return null
     case 'rejects': return 'reject'
     default: return undefined // noGps — not a recategorize target

@@ -115,16 +115,17 @@ export interface PhotoListPanelProps {
  */
 export const MAX_COMPARE_VARIANTS = 3
 
-type GroupKey = 'picks' | 'neutral' | 'rejects' | 'noGps'
+type GroupKey = 'picksTurning' | 'picksTrack' | 'neutral' | 'rejects' | 'noGps'
 
-const GROUP_ORDER: readonly GroupKey[] = ['picks', 'neutral', 'rejects', 'noGps']
+const GROUP_ORDER: readonly GroupKey[] = ['picksTurning', 'picksTrack', 'neutral', 'rejects', 'noGps']
 
 export function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
   const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick, onPreviewPhoto } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
-    picks: false,
+    picksTurning: false,
+    picksTrack: false,
     neutral: false,
     rejects: true, // default-collapsed — usually fewer items the user revisits less often
     noGps: false,
@@ -141,12 +142,17 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
   const [dragSourceGroup, setDragSourceGroup] = useState<GroupKey | null>(null)
 
   const groups = useMemo(() => groupPhotosByFlag(markers, noGpsPhotos), [markers, noGpsPhotos])
+  // All picks (turning-point + track) — the send button counts/enables on this,
+  // since "Poslat do editoru" sends every pick regardless of category.
+  const pickCount = groups.picksTurning.length + groups.picksTrack.length
 
   // Visible-order index of every selectable row (GPS markers only — noGps
   // rows have no marker to compare). Drives Shift+click range expansion.
   const orderedSelectableIds = useMemo(() => {
     const ids: string[] = []
-    for (const m of groups.picks) if (m.photoId) ids.push(m.photoId)
+    // Visual order matches GROUP_ORDER (turning picks, then track picks, …).
+    for (const m of groups.picksTurning) if (m.photoId) ids.push(m.photoId)
+    for (const m of groups.picksTrack) if (m.photoId) ids.push(m.photoId)
     for (const m of groups.neutral) if (m.photoId) ids.push(m.photoId)
     for (const m of groups.rejects) if (m.photoId) ids.push(m.photoId)
     return ids
@@ -350,10 +356,10 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
             variant="contained"
             size="small"
             startIcon={<SendOutlined fontSize="small" />}
-            disabled={groups.picks.length === 0}
+            disabled={pickCount === 0}
             onClick={() => { void onSendToEditor() }}
           >
-            {t('photo.list.sendToEditor', { count: groups.picks.length })}
+            {t('photo.list.sendToEditor', { count: pickCount })}
           </Button>
           {/* No-GPS photos still sitting in the tray are not picks and will NOT
               transfer to the editor until dropped on the map. Surfacing the
@@ -425,16 +431,17 @@ function groupCount(g: ReturnType<typeof groupPhotosByFlag>, key: GroupKey): num
 }
 
 /**
- * Which marker group (picks/neutral/rejects) a photoId lives in, or `null` if
- * it isn't a GPS marker (unknown id, or a no-GPS tray photo — those have no
- * marker and can't be the active photo). Exported for unit testing; drives the
- * Phase-13 auto-expand of the active photo's group.
+ * Which marker group (turning/track picks, neutral, rejects) a photoId lives
+ * in, or `null` if it isn't a GPS marker (unknown id, or a no-GPS tray photo —
+ * those have no marker and can't be the active photo). Exported for unit
+ * testing; drives the Phase-13 auto-expand of the active photo's group.
  */
 export function groupKeyForPhotoId(
   g: ReturnType<typeof groupPhotosByFlag>,
   photoId: string,
 ): Exclude<GroupKey, 'noGps'> | null {
-  if (g.picks.some(m => m.photoId === photoId)) return 'picks'
+  if (g.picksTurning.some(m => m.photoId === photoId)) return 'picksTurning'
+  if (g.picksTrack.some(m => m.photoId === photoId)) return 'picksTrack'
   if (g.neutral.some(m => m.photoId === photoId)) return 'neutral'
   if (g.rejects.some(m => m.photoId === photoId)) return 'rejects'
   return null

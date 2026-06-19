@@ -70,7 +70,8 @@
     },
     "list": {
       "title": "Fotky",
-      "picks": "Vybrané",
+      "picksTurning": "Otočné body – vybrané",
+      "picksTrack": "Traťové foto – vybrané",
       "neutral": "Neutrální",
       "rejects": "Odmítnuté",
       "noGps": "Bez GPS",

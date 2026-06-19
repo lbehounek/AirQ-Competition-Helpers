@@ -85,15 +85,16 @@ describe('labelButtonState — picker click rules', () => {
 })
 
 describe('PhotoListPanel — Send-to-editor disabled invariant', () => {
-  it('is disabled when picks.length === 0 (covered by groupPhotosByFlag tests)', () => {
-    // The actual `disabled={groups.picks.length === 0}` lives in the
+  it('is disabled when there are no picks (covered by groupPhotosByFlag tests)', () => {
+    // The actual `disabled={pickCount === 0}` (pickCount =
+    // groups.picksTurning.length + groups.picksTrack.length) lives in the
     // panel JSX. The grouping is fully tested by groupPhotosByFlag.test
     // — we just pin the rule here as a doc-test so a regression that
     // changes the predicate (e.g. `> 0` instead of `=== 0`) gets caught
     // by reviewers grepping for this file.
-    const picksEmpty: { length: number } = { length: 0 }
-    const picksNonempty: { length: number } = { length: 3 }
-    expect(picksEmpty.length === 0).toBe(true)
-    expect(picksNonempty.length === 0).toBe(false)
+    const pickCountEmpty: number = 0
+    const pickCountNonempty: number = 3
+    expect(pickCountEmpty === 0).toBe(true)
+    expect(pickCountNonempty === 0).toBe(false)
   })
 })

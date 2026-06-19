@@ -70,7 +70,8 @@
     },
     "list": {
       "title": "Photos",
-      "picks": "Picks",
+      "picksTurning": "Turning points – selected",
+      "picksTrack": "Track photos – selected",
       "neutral": "Neutral",
       "rejects": "Rejects",
       "noGps": "No GPS",
