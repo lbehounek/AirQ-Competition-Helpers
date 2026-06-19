@@ -34,7 +34,9 @@
       "failureStorage": "{{count}} fotek nelze uložit (úložiště)",
       "failureStorageOne": "1 fotku nelze uložit (úložiště)",
       "unsupported": "Nepodporovaný soubor: {{name}}",
-      "noCompetition": "Před importem fotek otevři soutěž z hlavního menu"
+      "noCompetition": "Před importem fotek otevři soutěž z hlavního menu",
+      "duplicatesSkipped": "(přeskočeno duplikátů: {{count}})",
+      "allDuplicates": "Všechny vybrané fotky už byly importované – přeskočeno ({{count}})."
     },
     "popup": {
       "include": "Vybrané",

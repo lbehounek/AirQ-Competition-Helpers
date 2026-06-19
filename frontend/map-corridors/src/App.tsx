@@ -569,9 +569,17 @@ function App() {
       return
     }
     setImportProgress({ done: 0, total: files.length })
+    // ADR-020 re-import dedup: collect the content hashes already in this
+    // competition (placed markers + no-GPS tray) so importPhotosToStorage skips
+    // re-importing the same photo and leaves the original (and its placement /
+    // flag / edits) untouched.
+    const existingContentHashes = new Set<string>()
+    for (const m of markers) if (m.contentHash) existingContentHashes.add(m.contentHash)
+    for (const p of (session?.noGpsPhotos ?? [])) if (p.contentHash) existingContentHashes.add(p.contentHash)
     try {
       const result = await importPhotosToStorage(storage, photosDir, files, {
         onProgress: (done, total) => setImportProgress({ done, total }),
+        existingContentHashes,
       })
       // Phase 4/6: surface imported photos. Photos WITH EXIF GPS become
       // PhotoMarkers and join the capture-dots layer (Phase 4). Photos
@@ -592,6 +600,7 @@ function App() {
                 lng: captured.lng,
                 lat: captured.lat,
                 name: p.file.name,
+                contentHash: p.contentHash,
                 capturedAt: {
                   lng: captured.lng,
                   lat: captured.lat,
@@ -610,6 +619,7 @@ function App() {
               next.push({
                 photoId: p.photoId,
                 filename: p.file.name,
+                contentHash: p.contentHash,
                 ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
               })
             }
@@ -617,12 +627,17 @@ function App() {
           })
         }
       }
-      if (result.failed.length === 0) {
+      const dupCount = result.duplicates?.length ?? 0
+      const dupSuffix = dupCount > 0 ? ` ${t('photo.import.duplicatesSkipped', { count: dupCount })}` : ''
+      if (result.ok.length === 0 && result.failed.length === 0 && dupCount > 0) {
+        // Every selected file was already imported — nothing new, nothing failed.
+        setSnack({ severity: 'info', text: t('photo.import.allDuplicates', { count: dupCount }) })
+      } else if (result.failed.length === 0) {
         setSnack({
           severity: 'success',
-          text: result.ok.length === 1
+          text: (result.ok.length === 1
             ? t('photo.import.successOne')
-            : t('photo.import.success', { count: result.ok.length }),
+            : t('photo.import.success', { count: result.ok.length })) + dupSuffix,
         })
       } else if (result.ok.length === 0) {
         setSnack(summarizeFailures(result.failed, t))
@@ -633,7 +648,7 @@ function App() {
             ok: result.ok.length,
             total: files.length,
             failed: result.failed.length,
-          }),
+          }) + dupSuffix,
         })
       }
     } catch (err) {
@@ -645,7 +660,7 @@ function App() {
     } finally {
       setImportProgress(null)
     }
-  }, [storage, photosDir, t, persistMarkers, persistNoGpsPhotos])
+  }, [storage, photosDir, t, persistMarkers, persistNoGpsPhotos, markers, session?.noGpsPhotos])
 
   // Phase 9 — Send-to-editor button handler. Flushes the pending
   // map-picks write FIRST (ADR-009 navigation-flush requirement) so a

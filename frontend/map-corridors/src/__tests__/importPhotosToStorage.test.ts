@@ -18,14 +18,16 @@ function makeFile(name: string): File {
   return new File([new Uint8Array(8)], name, { type: 'image/jpeg' })
 }
 
-function makePhoto(name: string): ImportedPhoto {
+// Default to a per-name hash so multi-photo fixtures aren't treated as
+// duplicates of each other; pass an explicit hash to exercise dedup.
+function makePhoto(name: string, contentHash: string = `hash-${name}`): ImportedPhoto {
   const file = makeFile(name)
   return {
     photoId: `pm-${name}`,
     file,
     thumbnail: new Blob([new Uint8Array(32)], { type: 'image/jpeg' }),
     exif: {},
-    contentHash: '0'.repeat(40),
+    contentHash,
   }
 }
 
@@ -232,6 +234,78 @@ describe('importPhotosToStorage — storage failures', () => {
       [photo.file],
     )
     expect(result.failed[0].message).toBe('plain string thrown')
+  })
+})
+
+describe('importPhotosToStorage — re-import dedup (ADR-020)', () => {
+  it('skips a file whose hash already exists in the session and never saves it', async () => {
+    const photo = makePhoto('again.jpg', 'dup-hash')
+    importPhotoFilesMock.mockResolvedValue({ ok: [photo], failed: [] } as ImportResult)
+    const storage = fakeStorage()
+
+    const result = await importPhotosToStorage(
+      storage as unknown as StorageInterface,
+      photosDir,
+      [photo.file],
+      { existingContentHashes: new Set(['dup-hash']) },
+    )
+
+    expect(result.ok).toEqual([])
+    expect(result.duplicates).toEqual([{ filename: 'again.jpg', contentHash: 'dup-hash' }])
+    // Original preserved: no blob/thumb written for the duplicate.
+    expect(storage.savePhotoFile).not.toHaveBeenCalled()
+    expect(storage.savePhotoThumb).not.toHaveBeenCalled()
+  })
+
+  it('keeps the first of an intra-batch duplicate pair and skips the rest', async () => {
+    const first = makePhoto('a.jpg', 'same')
+    const second = makePhoto('b.jpg', 'same')
+    importPhotoFilesMock.mockResolvedValue({ ok: [first, second], failed: [] } as ImportResult)
+    const storage = fakeStorage()
+
+    const result = await importPhotosToStorage(
+      storage as unknown as StorageInterface,
+      photosDir,
+      [first.file, second.file],
+    )
+
+    expect(result.ok).toEqual([first])
+    expect(result.duplicates).toEqual([{ filename: 'b.jpg', contentHash: 'same' }])
+    expect(storage.savePhotoFile).toHaveBeenCalledTimes(1)
+    expect(storage.savePhotoFile).toHaveBeenCalledWith(photosDir, 'pm-a.jpg', first.file)
+  })
+
+  it('imports normally when the existing set holds only other hashes', async () => {
+    const photo = makePhoto('new.jpg', 'fresh-hash')
+    importPhotoFilesMock.mockResolvedValue({ ok: [photo], failed: [] } as ImportResult)
+    const storage = fakeStorage()
+
+    const result = await importPhotosToStorage(
+      storage as unknown as StorageInterface,
+      photosDir,
+      [photo.file],
+      { existingContentHashes: new Set(['unrelated']) },
+    )
+
+    expect(result.ok).toEqual([photo])
+    expect(result.duplicates).toBeUndefined()
+    expect(storage.savePhotoFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs intra-batch dedup even without an existingContentHashes set', async () => {
+    const a = makePhoto('x.jpg', 'h')
+    const b = makePhoto('y.jpg', 'h')
+    importPhotoFilesMock.mockResolvedValue({ ok: [a, b], failed: [] } as ImportResult)
+    const storage = fakeStorage()
+
+    const result = await importPhotosToStorage(
+      storage as unknown as StorageInterface,
+      photosDir,
+      [a.file, b.file],
+    )
+
+    expect(result.ok).toHaveLength(1)
+    expect(result.duplicates).toHaveLength(1)
   })
 })
 
