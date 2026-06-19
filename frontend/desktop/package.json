@@ -1,6 +1,6 @@
 {
   "name": "@airq/desktop",
-  "version": "2.25.1",
+  "version": "2.26.2",
   "description": "AirQ Competition Helpers - Desktop App for FAI Rally Flying Competitions",
   "main": "main.js",
   "author": "AirQ Competition Helpers",
