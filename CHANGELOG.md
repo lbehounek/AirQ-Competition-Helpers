@@ -10,6 +10,16 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.26.8] - 2026-06-19
+
+### Changed
+- **Map Corridors:** the side-panel photo list now splits selected photos into
+  two groups — **"Turning points – selected"** and **"Track photos – selected"** —
+  instead of one combined "Picks" group, so it's clear at a glance which picks are
+  turning-point photos and which are track photos. Dragging a row between the two
+  pick groups re-flags the photo (turning ↔ track). The Neutral / Rejected /
+  No-GPS groups and the "Send to editor" handoff are unchanged.
+
 ## [2.26.7] - 2026-06-19
 
 ### Fixed
