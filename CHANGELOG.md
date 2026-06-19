@@ -10,7 +10,7 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
-## [2.26.2] - 2026-06-19
+## [2.26.3] - 2026-06-19
 
 ### Fixed
 - **Map Corridors:** a photo imported **without GPS** can now be re-categorised
@@ -37,6 +37,11 @@ new desktop release.
   grown oversized on both the on-screen previews and the printed sheets.
 
 ### Added
+- **Map Corridors:** importing the same photo twice is now a no-op — a file whose
+  contents match a photo already in the competition (or another file in the same
+  drop) is skipped instead of creating a duplicate, and the original (with its
+  placement, flag, and edits) is left untouched. A short note reports how many
+  duplicates were skipped.
 - **Photo Helper:** candidate-tray thumbnails now show the photo filename next to
   the move/delete buttons, for easier orientation.
 - **Photo Helper:** the toolbar **Add photos** control is more prominent so the
