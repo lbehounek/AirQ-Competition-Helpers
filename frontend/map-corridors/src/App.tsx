@@ -656,6 +656,17 @@ function App() {
   // signal that the picks didn't make it.
   const handleSendToEditor = useCallback(async () => {
     try {
+      // Write the CURRENT picks synchronously at click time, THEN flush — don't
+      // rely on the debounced [markers] effect having already scheduled the
+      // latest snapshot. A photo placed immediately before clicking (typically a
+      // no-GPS photo just dragged from the tray, the last action before sending)
+      // can be one render behind the pending write, so the flushed file would
+      // miss it even though the footer counts it: the "18 selected, 17 arrived"
+      // bug. Re-scheduling here makes the handoff file authoritative over the
+      // visible count; flushPendingMapPicks immediately drains this write.
+      if (storage && competitionDir) {
+        scheduleWriteMapPicks(storage, competitionDir, buildMapPicks(markers))
+      }
       await flushPendingMapPicks()
     } catch (err) {
       console.error('flushPendingMapPicks failed before nav:', err)
@@ -669,7 +680,7 @@ function App() {
     } else {
       window.location.href = `/photo-helper/?competitionId=${competitionId}`
     }
-  }, [competitionId, t])
+  }, [competitionId, storage, competitionDir, markers, t])
 
   // Phase 8a — mirror the in-memory photo markers into map-picks.json
   // every time they change. The writer debounces (300ms) so rapid flag

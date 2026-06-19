@@ -22,6 +22,10 @@ new desktop release.
   are still sitting in the tray (they only transfer once dropped on the map), and
   a failed tray placement shows an error instead of silently dropping the photo —
   addressing "one fewer photo reached the editor than I selected".
+- **Map Corridors:** *Poslat do editoru* now writes the current selection at the
+  moment you click it, fixing a case where a photo placed just before pressing it
+  (typically a no-GPS photo dragged onto the map — often the last one, the finish
+  point) was counted in the button but didn't actually transfer to the editor.
 - **Map Corridors:** a placed photo no longer drifts from its spot while you
   zoom. Co-located ("fanned") photos kept a stale screen offset during a
   continuous zoom; the offset now updates every frame so the dot stays anchored
