@@ -786,12 +786,18 @@ function App() {
   // failure can no longer leave the photo duplicated in both lists.
   const handleNoGpsPhotoPlaced = useCallback(async (photoId: string, lng: number, lat: number) => {
     try {
-      await placeNoGpsPhoto(photoId, lng, lat)
+      // Honor the boolean return: a `false` means the entry was no longer in
+      // the tray (e.g. removed mid-drag), so NO marker was created. Without
+      // this the photo silently vanishes from both the tray and the map with
+      // no feedback — one of the "a photo didn't make it" paths (feedback
+      // 2026-06-19). Mirrors the provisional-commit handler's placeFailed snack.
+      const ok = await placeNoGpsPhoto(photoId, lng, lat)
+      if (!ok) setSnack({ severity: 'error', text: t('photo.tray.placeFailed') })
     } catch (err) {
       console.error('placeNoGpsPhoto failed:', err)
       setSnack({ severity: 'error', text: err instanceof Error ? err.message : String(err) })
     }
-  }, [placeNoGpsPhoto])
+  }, [placeNoGpsPhoto, t])
 
   // Phase 14 — drag-to-recategorize: a row dropped on another group sets its
   // flag. Reuses the same setter the popup buttons use.

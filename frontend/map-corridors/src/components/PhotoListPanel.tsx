@@ -355,6 +355,19 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
           >
             {t('photo.list.sendToEditor', { count: groups.picks.length })}
           </Button>
+          {/* No-GPS photos still sitting in the tray are not picks and will NOT
+              transfer to the editor until dropped on the map. Surfacing the
+              count here stops the export from looking "one fewer than expected"
+              with no explanation (feedback 2026-06-19). */}
+          {groups.noGps.length > 0 && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', mt: 0.75, lineHeight: 1.3 }}
+            >
+              {t('photo.list.noGpsNotPlaced', { count: groups.noGps.length })}
+            </Typography>
+          )}
         </Box>
       )}
     </Paper>

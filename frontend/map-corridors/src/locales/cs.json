@@ -77,7 +77,8 @@
       "sendToEditor": "Poslat do editoru ({{count}})",
       "compareSelected": "Srovnat varianty ({{count}})",
       "compareLimitTip": "Najednou lze srovnávat nejvýše {{max}} varianty",
-      "clearSelection": "Zrušit výběr"
+      "clearSelection": "Zrušit výběr",
+      "noGpsNotPlaced": "Fotky bez GPS ({{count}}) zatím nejsou na mapě – přetáhněte je na ni, jinak se do editoru nepřenesou."
     },
     "compare": {
       "title": "Srovnání variant",

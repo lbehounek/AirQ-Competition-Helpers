@@ -77,7 +77,8 @@
       "sendToEditor": "Send to editor ({{count}})",
       "compareSelected": "Compare variants ({{count}})",
       "compareLimitTip": "At most {{max}} variants can be compared at once",
-      "clearSelection": "Clear selection"
+      "clearSelection": "Clear selection",
+      "noGpsNotPlaced": "No-GPS photos ({{count}}) aren't on the map yet — drag them onto the map or they won't transfer to the editor."
     },
     "compare": {
       "title": "Compare variants",
