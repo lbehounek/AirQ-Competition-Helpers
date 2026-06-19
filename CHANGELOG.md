@@ -26,6 +26,12 @@ new desktop release.
   moment you click it, fixing a case where a photo placed just before pressing it
   (typically a no-GPS photo dragged onto the map — often the last one, the finish
   point) was counted in the button but didn't actually transfer to the editor.
+- **Photo Helper:** deleting a photo from a print set no longer deletes the
+  shared image file it came from, so re-sending those photos from Map Corridors
+  brings them ALL back. Previously, deleting placed photos and then re-sending
+  returned fewer than were picked (e.g. 9 picked → 7 returned), because the
+  set-delete stranded the map's image bytes (the same guard already protected the
+  candidate-tray delete; the set-delete path was missed).
 - **Map Corridors:** a placed photo no longer drifts from its spot while you
   zoom. Co-located ("fanned") photos kept a stale screen offset during a
   continuous zoom; the offset now updates every frame so the dot stays anchored

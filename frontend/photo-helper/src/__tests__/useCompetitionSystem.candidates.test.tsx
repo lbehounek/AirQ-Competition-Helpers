@@ -728,6 +728,47 @@ describe('useCompetitionSystem — addExistingCandidate sequential race (handoff
     expect((await storageMock.listDirectory(photosDir)).map(e => e.name)).toContain(pmId);
   });
 
+  // Regression: feedback 2026-06-19. Same shared-blob hazard as removeCandidate,
+  // but via the SET delete path — the user deleted PLACED turning photos in the
+  // editor, re-sent 9 from corridors, and only 7 returned because `removePhoto`
+  // lacked the pm- guard its sibling delete paths already had, so it stranded the
+  // shared bytes for the deleted photos.
+  it('removePhoto KEEPS the OPFS file for a pm-prefixed photo placed in a set', async () => {
+    const result = await setup();
+    const compId = result.current.currentCompetition!.id;
+    const photosDir = { path: `/competitions/${compId}/photos` } as DirectoryHandle;
+    const pmId = 'pm-set-photo-1';
+    await storageMock.savePhotoFile(photosDir, pmId, makeFile('pm.jpg'));
+
+    // Get the pm- photo into a set via the candidate → slot promotion path.
+    await act(async () => {
+      await result.current.addExistingCandidate({
+        id: pmId,
+        sessionId: result.current.session!.id,
+        url: 'blob:test/pm-set',
+        filename: 'pm.jpg',
+        canvasState: {
+          position: { x: 0, y: 0 }, scale: 1, brightness: 0, contrast: 1,
+          sharpness: 0, whiteBalance: { temperature: 0, tint: 0, auto: false },
+          labelPosition: 'bottom-left' as const,
+        },
+        label: '',
+        flag: 'pick',
+      });
+      await result.current.promoteCandidateToSlot(pmId, 'set1', 0);
+    });
+    expect(result.current.session!.sets.set1.photos.map(p => p.id)).toContain(pmId);
+
+    await act(async () => {
+      await result.current.removePhoto('set1', pmId);
+    });
+
+    // Removed from the set (what the user wanted)...
+    expect(result.current.session!.sets.set1.photos.map(p => p.id)).not.toContain(pmId);
+    // ...but the shared OPFS bytes survive so the next handoff re-inserts it.
+    expect((await storageMock.listDirectory(photosDir)).map(e => e.name)).toContain(pmId);
+  });
+
   it('deleteCandidates KEEPS OPFS files for pm-prefixed photos but deletes non-pm', async () => {
     const result = await setup();
     const compId = result.current.currentCompetition!.id;

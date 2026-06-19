@@ -828,7 +828,17 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       referencedElsewhere = isPhotoReferencedInSession(next, photoId);
       return next;
     }, { updatePhotos: true });
-    if (compId && !referencedElsewhere) {
+    // EXCEPTION: pm-prefixed photos are owned by map-corridors (shared
+    // `competitions/{compId}/photos/` dir). Deleting the file here strands the
+    // map marker — `getPhotoBlob` then NotFoundErrors on the next
+    // `useMapPicksSync` pass and the entry is silently skipped, so a re-Send
+    // brings back FEWER photos than were picked. Mirrors the guard in
+    // `removeCandidate` / `deleteCandidates` (user feedback 2026-05-17 added it
+    // there but THIS set-deletion path was missed — feedback 2026-06-19:
+    // "deleted in editor, re-sent 9, only 7 returned"). map-corridors' own
+    // hard-delete is the canonical place to free pm- bytes.
+    const isMapOwned = photoId.startsWith('pm-');
+    if (compId && !referencedElsewhere && !isMapOwned) {
       try {
         await competitionService.deletePhotosByIds(compId, [photoId]);
       } catch (err) {
