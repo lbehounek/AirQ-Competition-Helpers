@@ -10,7 +10,7 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
-## [2.26.3] - 2026-06-19
+## [2.26.4] - 2026-06-19
 
 ### Fixed
 - **Map Corridors:** a photo imported **without GPS** can now be re-categorised
