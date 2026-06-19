@@ -479,6 +479,33 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
         </Box>
       </Box>
 
+      {/* Filename caption — screen-only orientation aid shown above the move/
+          delete controls (feedback 2026-06-19). Mirrors the print-set slot tiles
+          (PhotoGridApi). The ellipsis clamp is mandatory: the thumb is a fixed
+          width, so an unclamped name would wrap and break the flex-wrap grid.
+          Full name on hover via the title attribute. */}
+      {photo.filename && (
+        <Typography
+          variant="caption"
+          title={photo.filename}
+          sx={{
+            display: 'block',
+            px: 0.5,
+            pt: 0.25,
+            fontFamily: 'monospace',
+            fontSize: '0.65rem',
+            color: 'text.secondary',
+            textAlign: 'center',
+            lineHeight: 1.2,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {photo.filename}
+        </Typography>
+      )}
+
       {/* Always-visible control toolbar. Left-click only — no right-click menu
           (first dev-test feedback 2026-05-12). Flag toggles act radio-like:
           clicking the active flag clears it back to neutral. */}
