@@ -10,6 +10,13 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.26.7] - 2026-06-19
+
+### Fixed
+- **Map Corridors:** a photo placed from the no-GPS tray is now covered by
+  re-import dedup too — its content hash carries onto the map marker, so
+  re-importing the same file no longer creates a duplicate.
+
 ## [2.26.6] - 2026-06-19
 
 ### Added
