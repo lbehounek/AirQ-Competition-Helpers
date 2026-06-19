@@ -71,7 +71,7 @@ export function NoGpsTray(props: NoGpsTrayProps) {
   }, [])
 
   // Cancel any in-flight loop if the tray unmounts mid-drag (no leaked rAF).
-  useEffect(() => stopAutoScroll, [stopAutoScroll])
+  useEffect(() => () => stopAutoScroll(), [stopAutoScroll])
 
   const tick = useCallback(() => {
     const el = scrollRef.current
@@ -141,10 +141,11 @@ export function NoGpsTray(props: NoGpsTrayProps) {
           ref={scrollRef}
           onDragOver={handleStripDragOver}
           onDragLeave={handleStripDragLeave}
-          // Stop the loop when the drag finishes anywhere (dragend bubbles up
-          // from the thumb) or drops onto the strip itself.
+          // Stop the loop when the drag ends: dragend bubbles up from the thumb.
+          // (The strip is never itself a drop target — dragover never calls
+          // preventDefault — so the drop lands on the map canvas, and a
+          // dragleave/dragend always fires here first.)
           onDragEnd={stopAutoScroll}
-          onDrop={stopAutoScroll}
           sx={{
             height: TRAY_HEIGHT_PX - 32, // minus header chrome
             overflowX: 'auto',
