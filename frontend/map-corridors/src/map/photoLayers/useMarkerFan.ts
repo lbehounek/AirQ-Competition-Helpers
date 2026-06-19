@@ -10,10 +10,14 @@
 //                  place. Endpoints are unprojected back to lng/lat so the GL
 //                  layer tracks the map natively between recomputes.
 //
-// Overlap depends on zoom, so the fan recomputes on `moveend`/`zoomend` (the
-// settle events — not `move`/`zoom`, which fire every frame). It also
-// recomputes when the marker set changes or when a marker enters/leaves drag
-// (the dragged marker is excluded so its dot snaps cleanly to the cursor).
+// Overlap depends on zoom, so the fan recomputes on `moveend`/`zoomend` AND on
+// the per-frame `zoom` event — the offset is a SCREEN-PIXEL vector, valid only
+// at the zoom it was projected at, so it must keep up with a zoom in flight or
+// the dot rides a stale offset and slides off its true point until the gesture
+// settles. A pure pan (`move`) is deliberately NOT subscribed: translation
+// preserves the markers' relative screen positions, so the offsets stay valid.
+// It also recomputes when the marker set changes or when a marker enters/leaves
+// drag (the dragged marker is excluded so its dot snaps cleanly to the cursor).
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
@@ -169,11 +173,21 @@ export function useMarkerFan(params: {
     const bump = () => { if (draggingRef.current == null) setSettleTick(t => t + 1) }
     map.on('moveend', bump)
     map.on('zoomend', bump)
+    // Per-frame during a continuous/animated zoom (wheel, pinch, +/- buttons,
+    // flyTo/fitBounds). Without this the fanned dot keeps its pre-zoom pixel
+    // offset layered on the (correctly re-projected) geo-anchor and visibly
+    // drifts relative to the basemap until the gesture settles — the "placed
+    // photo doesn't stay put on zoom" report. The `draggingRef` guard keeps it a
+    // no-op during an edge-pan marker drag, preserving the ~60fps optimisation
+    // that motivated the settle-only choice. Pan (`move`) stays unsubscribed
+    // because translation doesn't change markers' relative screen positions.
+    map.on('zoom', bump)
     // Initial compute once the map is ready (no settle event fires on load).
     bump()
     return () => {
       map.off('moveend', bump)
       map.off('zoomend', bump)
+      map.off('zoom', bump)
     }
   }, [isMapLoaded, mapRef])
 
