@@ -97,10 +97,12 @@ export const drawLabel = (
   
   // Scale font size based on canvas size to maintain consistent visual appearance.
   // Base font size for the 300px-wide on-screen canvas; scales proportionally for
-  // hi-res PDF renders. Bumped 34 → 68 (feedback 2026-05-12) so jury graders can
-  // read the photo number at arm's length on the printed sheet; `bold` removed
-  // at the same time — the heavier stroke at this size felt obtrusive.
-  const baseFontSize = 68;
+  // hi-res PDF renders. History: 34 → 68 (feedback 2026-05-12, jury legibility) →
+  // 48 (feedback 2026-06-19): 68 read as oversized on both the editor previews and
+  // the printed TP/track-number labels; 48 stays comfortably above the original 34
+  // and legible at arm's length while no longer dominating the photo. This constant
+  // is the single source for BOTH the on-screen preview and the PDF label.
+  const baseFontSize = 48;
   const baseCanvasWidth = 300;
   const scaleFactor = canvas.width / baseCanvasWidth;
   const fontSize = Math.round(baseFontSize * scaleFactor);
