@@ -87,20 +87,26 @@ export const drawImageOnCanvas = (
 export const drawLabel = (
   canvas: HTMLCanvasElement,
   label: string,
-  position: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right' = 'bottom-left'
+  position: 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right' = 'bottom-left',
+  mode?: 'track' | 'turningpoint'
 ): void => {
   const ctx = getCanvasContext(canvas);
   if (!ctx) {
     console.warn('Cannot draw label on invalid canvas');
     return;
   }
-  
+
   // Scale font size based on canvas size to maintain consistent visual appearance.
   // Base font size for the 300px-wide on-screen canvas; scales proportionally for
-  // hi-res PDF renders. Bumped 34 → 68 (feedback 2026-05-12) so jury graders can
-  // read the photo number at arm's length on the printed sheet; `bold` removed
-  // at the same time — the heavier stroke at this size felt obtrusive.
-  const baseFontSize = 68;
+  // hi-res PDF renders. History: 34 → 68 (feedback 2026-05-12, jury legibility) →
+  // 48 (feedback 2026-06-19) → per-discipline (feedback 2026-06-19): track numbers
+  // −20% and turning-point labels −35% from the 48 baseline, chosen by the caller's
+  // `mode`. No mode → the 48 default (candidate tray draws no label; legacy callers
+  // keep the old size). Single source for BOTH the on-screen preview and the PDF.
+  const baseFontSize =
+    mode === 'track' ? 48 * 0.80 :
+    mode === 'turningpoint' ? 48 * 0.65 :
+    48;
   const baseCanvasWidth = 300;
   const scaleFactor = canvas.width / baseCanvasWidth;
   const fontSize = Math.round(baseFontSize * scaleFactor);

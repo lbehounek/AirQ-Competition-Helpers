@@ -34,7 +34,9 @@
       "failureStorage": "{{count}} fotek nelze uložit (úložiště)",
       "failureStorageOne": "1 fotku nelze uložit (úložiště)",
       "unsupported": "Nepodporovaný soubor: {{name}}",
-      "noCompetition": "Před importem fotek otevři soutěž z hlavního menu"
+      "noCompetition": "Před importem fotek otevři soutěž z hlavního menu",
+      "duplicatesSkipped": "(přeskočeno duplikátů: {{count}})",
+      "allDuplicates": "Všechny vybrané fotky už byly importované – přeskočeno ({{count}})."
     },
     "popup": {
       "include": "Vybrané",
@@ -68,7 +70,8 @@
     },
     "list": {
       "title": "Fotky",
-      "picks": "Vybrané",
+      "picksTurning": "Otočné body – vybrané",
+      "picksTrack": "Traťové foto – vybrané",
       "neutral": "Neutrální",
       "rejects": "Odmítnuté",
       "noGps": "Bez GPS",
@@ -77,7 +80,8 @@
       "sendToEditor": "Poslat do editoru ({{count}})",
       "compareSelected": "Srovnat varianty ({{count}})",
       "compareLimitTip": "Najednou lze srovnávat nejvýše {{max}} varianty",
-      "clearSelection": "Zrušit výběr"
+      "clearSelection": "Zrušit výběr",
+      "noGpsNotPlaced": "Fotky bez GPS ({{count}}) zatím nejsou na mapě – přetáhněte je na ni, jinak se do editoru nepřenesou."
     },
     "compare": {
       "title": "Srovnání variant",

@@ -8,9 +8,19 @@
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import { importPhotoFiles } from './importPhotoFiles'
 import type { ImportPhotoFilesOpts } from './importPhotoFiles'
-import type { ImportResult } from './types'
+import type { ImportDuplicate, ImportResult } from './types'
 
-export type ImportPhotosToStorageOpts = ImportPhotoFilesOpts
+export interface ImportPhotosToStorageOpts extends ImportPhotoFilesOpts {
+  /**
+   * SHA-1 hashes already present in the session (markers + no-GPS tray). A
+   * freshly-read file whose hash matches one of these — or an earlier file in
+   * the SAME batch — is reported in `result.duplicates` and NOT saved, so the
+   * existing photo (and its placement / flag / edits) is preserved and no orphan
+   * blob is written. ADR-020 re-import dedup. Omit to disable cross-session
+   * dedup; intra-batch dedup always runs.
+   */
+  existingContentHashes?: ReadonlySet<string>
+}
 
 /**
  * Run the Phase 1 import pipeline, then persist each successful import
@@ -32,6 +42,26 @@ export async function importPhotosToStorage(
   opts: ImportPhotosToStorageOpts = {},
 ): Promise<ImportResult> {
   const result = await importPhotoFiles(files, opts)
+
+  // ADR-020 re-import dedup. Drop any read whose content hash already exists in
+  // the session, or repeats within this batch, BEFORE saving — so a duplicate
+  // never writes a second blob and never produces a second marker / tray entry.
+  // `seen` is seeded with the session's hashes; each kept file adds its own so a
+  // file dropped twice in one batch only lands once.
+  const seen = new Set<string>(opts.existingContentHashes ?? [])
+  const duplicates: ImportDuplicate[] = []
+  const fresh: ImportResult['ok'] = []
+  for (const photo of result.ok) {
+    if (seen.has(photo.contentHash)) {
+      duplicates.push({ filename: photo.file.name, contentHash: photo.contentHash })
+    } else {
+      seen.add(photo.contentHash)
+      fresh.push(photo)
+    }
+  }
+  result.ok = fresh
+  if (duplicates.length > 0) result.duplicates = duplicates
+
   if (result.ok.length === 0) return result
 
   const persisted = await Promise.all(result.ok.map(async (photo) => {

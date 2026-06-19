@@ -43,6 +43,24 @@ describe('buildPdfSets — turningpoint mode', () => {
     ]);
   });
 
+  it('rally: a "no photo" placeholder holds its slot number; surrounding labels are unaffected', () => {
+    const placeholder: ApiPhoto = { ...makePhoto('ph'), isPlaceholder: true, url: '' };
+    const result = buildPdfSets({
+      mode: 'turningpoint',
+      layoutMode: 'landscape',
+      isPrecision: false,
+      // The 2nd photo is missing — a placeholder holds the TP1 position so the
+      // following photos keep TP2/TP3 (numbering not shifted).
+      set1: { title: 'SP - TP3', photos: [makePhoto('a'), placeholder, makePhoto('c'), makePhoto('d')] },
+      set2: makeSet('FP', ['f']),
+      generateLabel: letterLabel,
+    });
+    expect(result.set1WithLabels.photos.map(p => p.label)).toEqual(['SP', 'TP1', 'TP2', 'TP3']);
+    // The placeholder IS the TP1 cell and keeps its flag for the PDF render branch.
+    expect(result.set1WithLabels.photos[1].isPlaceholder).toBe(true);
+    expect(result.set2WithLabels.photos.map(p => p.label)).toEqual(['FP']);
+  });
+
   it('precision: set2 photos dropped, set1 labeled SP + TP1..TP7 + FP (9 photos)', () => {
     const result = buildPdfSets({
       mode: 'turningpoint',

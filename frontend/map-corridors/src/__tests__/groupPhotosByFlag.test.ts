@@ -11,16 +11,17 @@ function ng(photoId: string, filename = `${photoId}.jpg`): NoGpsPhoto {
 }
 
 describe('groupPhotosByFlag', () => {
-  it('returns four empty arrays + total=0 for no input', () => {
+  it('returns empty arrays + total=0 for no input', () => {
     const g = groupPhotosByFlag([], [])
-    expect(g.picks).toEqual([])
+    expect(g.picksTurning).toEqual([])
+    expect(g.picksTrack).toEqual([])
     expect(g.neutral).toEqual([])
     expect(g.rejects).toEqual([])
     expect(g.noGps).toEqual([])
     expect(g.total).toBe(0)
   })
 
-  it('puts photos in their flag groups — BOTH pick categories land in picks', () => {
+  it('splits picks by category — turning-point vs track — and keeps neutral/reject', () => {
     const markers: PhotoMarker[] = [
       pm({ id: 'a', photoId: 'pid-a' }),                        // neutral
       pm({ id: 'b', photoId: 'pid-b', flag: 'pick-track' }),    // pick (track)
@@ -28,9 +29,8 @@ describe('groupPhotosByFlag', () => {
       pm({ id: 'c', photoId: 'pid-c', flag: 'reject' }),        // reject
     ]
     const g = groupPhotosByFlag(markers, [])
-    // Track + turning-point picks both count as "picks"; the category only
-    // matters for the editor handoff, not the 4-group panel.
-    expect(g.picks.map(m => m.id)).toEqual(['b', 'd'])
+    expect(g.picksTurning.map(m => m.id)).toEqual(['d'])
+    expect(g.picksTrack.map(m => m.id)).toEqual(['b'])
     expect(g.neutral.map(m => m.id)).toEqual(['a'])
     expect(g.rejects.map(m => m.id)).toEqual(['c'])
   })
@@ -41,7 +41,7 @@ describe('groupPhotosByFlag', () => {
       pm({ id: 'photo', photoId: 'pid-1', flag: 'pick-track' }),
     ]
     const g = groupPhotosByFlag(markers, [])
-    expect(g.picks.map(m => m.id)).toEqual(['photo'])
+    expect(g.picksTrack.map(m => m.id)).toEqual(['photo'])
     expect(g.neutral).toEqual([])
     expect(g.total).toBe(1)
   })
@@ -52,7 +52,8 @@ describe('groupPhotosByFlag', () => {
     const markers = [pm({ id: 'a', photoId: 'pid-a', label: 'A' })]
     const g = groupPhotosByFlag(markers, [])
     expect(g.neutral.map(m => m.id)).toEqual(['a'])
-    expect(g.picks).toEqual([])
+    expect(g.picksTurning).toEqual([])
+    expect(g.picksTrack).toEqual([])
   })
 
   it('sorts noGpsPhotos by filename (numeric-aware) without mutating the input', () => {
@@ -70,17 +71,17 @@ describe('groupPhotosByFlag', () => {
       pm({ id: 'p100', photoId: 'c', flag: 'pick-track', name: 'DSC_0100.JPG' }),
     ]
     const g = groupPhotosByFlag(markers, [])
-    expect(g.picks.map(m => m.name)).toEqual(['DSC_0009.JPG', 'DSC_0010.JPG', 'DSC_0100.JPG'])
+    expect(g.picksTrack.map(m => m.name)).toEqual(['DSC_0009.JPG', 'DSC_0010.JPG', 'DSC_0100.JPG'])
   })
 
   it('orders by original filename, NOT by a custom displayName', () => {
     const markers: PhotoMarker[] = [
       pm({ id: 'z', photoId: 'a', flag: 'pick-track', name: 'DSC_0002.JPG', displayName: 'AAA' }),
-      pm({ id: 'a', photoId: 'b', flag: 'pick-turning', name: 'DSC_0001.JPG', displayName: 'ZZZ' }),
+      pm({ id: 'a', photoId: 'b', flag: 'pick-track', name: 'DSC_0001.JPG', displayName: 'ZZZ' }),
     ]
     const g = groupPhotosByFlag(markers, [])
     // 0001 before 0002 (filename order) — a rename to ZZZ/AAA must not reorder.
-    expect(g.picks.map(m => m.name)).toEqual(['DSC_0001.JPG', 'DSC_0002.JPG'])
+    expect(g.picksTrack.map(m => m.name)).toEqual(['DSC_0001.JPG', 'DSC_0002.JPG'])
   })
 
   it('total is the sum across all four groups', () => {

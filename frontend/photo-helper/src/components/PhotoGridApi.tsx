@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Paper, CircularProgress, IconButton, Tooltip } from '@mui/material';
+import { Box, Button, Typography, Paper, CircularProgress, IconButton, Tooltip } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import { Image as ImageIcon, CloudUpload, Close } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
@@ -54,6 +54,12 @@ interface PhotoGridApiProps {
    */
   slotsOverride?: number;
   columnsOverride?: number;
+  /**
+   * Insert a "no photo" placeholder at the given slot index. Provided only in
+   * turning-point mode (the affordance is hidden on track sheets). Wired to the
+   * hook's `addPlaceholderToSet`.
+   */
+  onAddPlaceholder?: (slotIndex: number) => void;
 }
 
 interface GridSlot {
@@ -68,6 +74,8 @@ interface PhotoGridSlotEmptyProps {
   position: number;
   onFilesDropped?: (files: File[]) => void;
   maxFilesRemaining?: number;
+  /** When set (turning-point only), shows a "No photo" button that inserts a placeholder in this slot. */
+  onAddNoPhoto?: () => void;
 }
 
 export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
@@ -85,11 +93,17 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   maxPhotosOverride,
   slotsOverride,
   columnsOverride,
+  onAddPlaceholder,
 }) => {
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
   const { t } = useI18n();
-  
+
+  // Turning-point sets supply customLabels (SP/TP1../FP); track sets don't.
+  // Reuse that existing signal to size the burned-in photo label per discipline
+  // (track −20%, turning −35%; feedback 2026-06-19).
+  const labelMode: 'track' | 'turningpoint' = customLabels ? 'turningpoint' : 'track';
+
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -298,9 +312,9 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
             >
             {slot.photo ? (
               <Box
-                onClick={() => onPhotoClick && onPhotoClick(slot.photo!)}
+                onClick={slot.photo.isPlaceholder ? undefined : () => onPhotoClick && onPhotoClick(slot.photo!)}
                 sx={{
-                  cursor: 'pointer',
+                  cursor: slot.photo.isPlaceholder ? 'default' : 'pointer',
                   width: '100%',
                   height: '100%',
                   position: 'relative',
@@ -313,15 +327,33 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                   }
                 }}
               >
-                <PhotoEditorApi
-                  key={slot.photo.id} // Stable key based on photo ID to prevent remounting
-                  photo={slot.photo}
-                  label={slot.label}
-                  onUpdate={(canvasState) => onPhotoUpdate(slot.photo!.id, canvasState)}
-                  onRemove={() => onPhotoRemove(slot.photo!.id)}
-                  size="grid" // Small size for grid view
-                  setKey={setKey} // Pass setKey for PDF generation
-                />
+                {slot.photo.isPlaceholder ? (
+                  // "No photo" placeholder cell: a blank frame holding the slot
+                  // position, with its TP/SP/FP label (bottom-left, mirroring
+                  // drawLabel) and a centered "No photo" caption. No PhotoEditorApi
+                  // (it has no image; routing it there would spin "Loading…" forever).
+                  <Box sx={{ width: '100%', height: '100%', position: 'relative', bgcolor: 'grey.100', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Typography variant="body2" sx={{ color: 'text.disabled', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, userSelect: 'none' }}>
+                      {t('photo.noPhotoCell')}
+                    </Typography>
+                    {slot.label && (
+                      <Box sx={{ position: 'absolute', bottom: 4, left: 4, bgcolor: 'rgba(0, 0, 0, 0.7)', color: 'white', fontSize: '0.75rem', fontWeight: 600, px: 1, py: 0.25, borderRadius: 1, pointerEvents: 'none' }}>
+                        {slot.label}
+                      </Box>
+                    )}
+                  </Box>
+                ) : (
+                  <PhotoEditorApi
+                    key={slot.photo.id} // Stable key based on photo ID to prevent remounting
+                    photo={slot.photo}
+                    label={slot.label}
+                    onUpdate={(canvasState) => onPhotoUpdate(slot.photo!.id, canvasState)}
+                    onRemove={() => onPhotoRemove(slot.photo!.id)}
+                    size="grid" // Small size for grid view
+                    setKey={setKey} // Pass setKey for PDF generation
+                    mode={labelMode}
+                  />
+                )}
 
                 {/* Delete button — kept OUTSIDE the dark hover-overlay so it
                     has its own visibility. Previously embedded inside the
@@ -363,7 +395,9 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
                 {/* Hover overlay — dim + "click to edit" hint. Delete button
                     is now a sibling above, not a child, so its visibility no
-                    longer depends on the overlay opacity. */}
+                    longer depends on the overlay opacity. Hidden for placeholders
+                    (they aren't editable). */}
+                {!slot.photo.isPlaceholder && (
                 <Box
                   className="hover-overlay"
                   sx={{
@@ -392,6 +426,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                     {t('photo.clickToEdit')}
                   </Typography>
                 </Box>
+                )}
               </Box>
             ) : (
               <PhotoGridSlotEmpty
@@ -399,6 +434,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                 position={slot.index + 1}
                 onFilesDropped={onFilesDropped}
                 maxFilesRemaining={maxFilesRemaining}
+                onAddNoPhoto={labelMode === 'turningpoint' && onAddPlaceholder && slot.index === photoSet.photos.length ? () => onAddPlaceholder(slot.index) : undefined}
               />
             )}
             </Paper>
@@ -406,7 +442,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                 canvases by data-photo-id, so this DOM text is never emitted
                 to print. Keeps the photo itself undisturbed for the
                 competitor's view (feedback 2026-04-23). */}
-            {slot.photo?.filename && (
+            {slot.photo?.filename && !slot.photo.isPlaceholder && (
               <Typography
                 variant="caption"
                 title={slot.photo.filename}
@@ -441,7 +477,8 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
   label,
   position: _position,
   onFilesDropped,
-  maxFilesRemaining
+  maxFilesRemaining,
+  onAddNoPhoto
 }) => {
   const theme = useTheme();
   const { t } = useI18n();
@@ -558,6 +595,20 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
           <Typography variant="caption" sx={{ opacity: 0.7, textAlign: 'center', px: 1 }}>
             {t('upload.clickOrDrop')}
           </Typography>
+          {onAddNoPhoto && (
+            // Turning-point only: reserve this slot as a "no photo" placeholder
+            // so the surrounding TP numbering stays correct. stopPropagation +
+            // preventDefault so it doesn't trigger the dropzone's file picker.
+            <Button
+              size="small"
+              variant="text"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); e.preventDefault(); onAddNoPhoto(); }}
+              sx={{ mt: 0.75, fontSize: '0.7rem', textTransform: 'none', color: 'text.secondary', minWidth: 0, px: 1, '&:hover': { color: 'primary.main' } }}
+            >
+              {t('photo.addNoPhoto')}
+            </Button>
+          )}
         </>
       )}
     </Box>

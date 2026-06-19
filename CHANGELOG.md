@@ -10,6 +10,91 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.26.8] - 2026-06-19
+
+### Changed
+- **Map Corridors:** the side-panel photo list now splits selected photos into
+  two groups — **"Turning points – selected"** and **"Track photos – selected"** —
+  instead of one combined "Picks" group, so it's clear at a glance which picks are
+  turning-point photos and which are track photos. Dragging a row between the two
+  pick groups re-flags the photo (turning ↔ track). The Neutral / Rejected /
+  No-GPS groups and the "Send to editor" handoff are unchanged.
+
+## [2.26.7] - 2026-06-19
+
+### Fixed
+- **Map Corridors:** a photo placed from the no-GPS tray is now covered by
+  re-import dedup too — its content hash carries onto the map marker, so
+  re-importing the same file no longer creates a duplicate.
+
+## [2.26.6] - 2026-06-19
+
+### Added
+- **Photo Helper:** turning-point sheets can now hold a **"no photo" placeholder**
+  for a genuinely missing photo. Click **"Insert 'no photo'"** on an empty slot to
+  reserve that position — the surrounding SP/TP/FP numbering stays correct, the
+  cell shows a blank frame with "No photo", and it prints the same blank labeled
+  cell in the PDF (no more padding the gap with a white image). Drag to reorder or
+  delete it like any photo.
+
+## [2.26.5] - 2026-06-19
+
+### Changed
+- **Photo Helper:** the burned-in photo labels are now sized per discipline —
+  track-photo numbers are 20% smaller and turning-point labels 35% smaller than
+  before — in both the editor preview and the printed PDF.
+- **Photo Helper:** when a PDF export can't render some photos it now shows a
+  clear, actionable message (how many photos and how to recover them) instead of
+  a raw technical alert. Render failures usually mean a photo's image bytes were
+  lost — re-import those photos or remove the affected cells, then export again.
+
+## [2.26.4] - 2026-06-19
+
+### Fixed
+- **Map Corridors:** a photo imported **without GPS** can now be re-categorised
+  after you place it on the map. Clicking its marker opens the full
+  Track / Turning-point / Skip / Reject + label popup — previously that popup
+  only appeared for photos that had EXIF GPS, so a placed no-GPS photo was stuck
+  on whatever category it was dropped with.
+- **Map Corridors:** the *Poslat do editoru* panel now warns when no-GPS photos
+  are still sitting in the tray (they only transfer once dropped on the map), and
+  a failed tray placement shows an error instead of silently dropping the photo —
+  addressing "one fewer photo reached the editor than I selected".
+- **Map Corridors:** *Poslat do editoru* now writes the current selection at the
+  moment you click it, fixing a case where a photo placed just before pressing it
+  (typically a no-GPS photo dragged onto the map — often the last one, the finish
+  point) was counted in the button but didn't actually transfer to the editor.
+- **Photo Helper:** deleting a photo from a print set no longer deletes the
+  shared image file it came from, so re-sending those photos from Map Corridors
+  brings them ALL back. Previously, deleting placed photos and then re-sending
+  returned fewer than were picked (e.g. 9 picked → 7 returned), because the
+  set-delete stranded the map's image bytes (the same guard already protected the
+  candidate-tray delete; the set-delete path was missed).
+- **Map Corridors:** a placed photo no longer drifts from its spot while you
+  zoom. Co-located ("fanned") photos kept a stale screen offset during a
+  continuous zoom; the offset now updates every frame so the dot stays anchored
+  to the map.
+- **Map Corridors:** the no-GPS photo tray auto-scrolls while you drag a
+  thumbnail — nudge the cursor to the strip's left/right edge and it rolls that
+  way, so thumbnails outside the visible window are reachable mid-drag.
+- **Photo Helper:** the TP / track-photo number labels are smaller; they had
+  grown oversized on both the on-screen previews and the printed sheets.
+
+### Added
+- **Map Corridors:** importing the same photo twice is now a no-op — a file whose
+  contents match a photo already in the competition (or another file in the same
+  drop) is skipped instead of creating a duplicate, and the original (with its
+  placement, flag, and edits) is left untouched. A short note reports how many
+  duplicates were skipped.
+- **Photo Helper:** the editor's **Add photos** import also skips duplicates now —
+  re-adding a file already in the competition (the candidate tray or any print
+  set) is a no-op instead of creating a second copy, with a short note on what was
+  skipped.
+- **Photo Helper:** candidate-tray thumbnails now show the photo filename next to
+  the move/delete buttons, for easier orientation.
+- **Photo Helper:** the toolbar **Add photos** control is more prominent so the
+  manual-import entry point is easy to find.
+
 ## [2.26.1] - 2026-05-31
 
 ### Fixed

@@ -86,7 +86,12 @@ export const ImportPhotosControl: React.FC<ImportPhotosControlProps> = ({
     ? 'success.main'
     : isDragActive
     ? 'primary.main'
-    : 'grey.400';
+    // Idle: a lighter primary tint (was grey) so the always-visible add-photos
+    // entry point reads as an action and is easy to find, including on an empty
+    // competition beside the hero drop zone — while staying visually distinct
+    // from the solid primary.main border that marks the drag-active state
+    // (feedback 2026-06-19).
+    : 'primary.light';
 
   const bgColor = isDragReject
     ? 'error.light'
@@ -126,7 +131,7 @@ export const ImportPhotosControl: React.FC<ImportPhotosControlProps> = ({
         ) : (
           <CloudUpload sx={{ fontSize: 20, color: 'primary.main' }} />
         )}
-        <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 500, whiteSpace: 'nowrap' }}>
+        <Typography variant="body2" sx={{ fontSize: '0.8rem', fontWeight: 600, color: 'primary.main', whiteSpace: 'nowrap' }}>
           {label}
         </Typography>
       </Box>

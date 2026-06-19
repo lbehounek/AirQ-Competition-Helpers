@@ -569,9 +569,17 @@ function App() {
       return
     }
     setImportProgress({ done: 0, total: files.length })
+    // ADR-020 re-import dedup: collect the content hashes already in this
+    // competition (placed markers + no-GPS tray) so importPhotosToStorage skips
+    // re-importing the same photo and leaves the original (and its placement /
+    // flag / edits) untouched.
+    const existingContentHashes = new Set<string>()
+    for (const m of markers) if (m.contentHash) existingContentHashes.add(m.contentHash)
+    for (const p of (session?.noGpsPhotos ?? [])) if (p.contentHash) existingContentHashes.add(p.contentHash)
     try {
       const result = await importPhotosToStorage(storage, photosDir, files, {
         onProgress: (done, total) => setImportProgress({ done, total }),
+        existingContentHashes,
       })
       // Phase 4/6: surface imported photos. Photos WITH EXIF GPS become
       // PhotoMarkers and join the capture-dots layer (Phase 4). Photos
@@ -592,6 +600,7 @@ function App() {
                 lng: captured.lng,
                 lat: captured.lat,
                 name: p.file.name,
+                contentHash: p.contentHash,
                 capturedAt: {
                   lng: captured.lng,
                   lat: captured.lat,
@@ -610,6 +619,7 @@ function App() {
               next.push({
                 photoId: p.photoId,
                 filename: p.file.name,
+                contentHash: p.contentHash,
                 ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
               })
             }
@@ -617,15 +627,22 @@ function App() {
           })
         }
       }
-      if (result.failed.length === 0) {
+      const dupCount = result.duplicates?.length ?? 0
+      const dupSuffix = dupCount > 0 ? ` ${t('photo.import.duplicatesSkipped', { count: dupCount })}` : ''
+      if (result.ok.length === 0 && result.failed.length === 0 && dupCount > 0) {
+        // Every selected file was already imported — nothing new, nothing failed.
+        setSnack({ severity: 'info', text: t('photo.import.allDuplicates', { count: dupCount }) })
+      } else if (result.failed.length === 0) {
         setSnack({
           severity: 'success',
-          text: result.ok.length === 1
+          text: (result.ok.length === 1
             ? t('photo.import.successOne')
-            : t('photo.import.success', { count: result.ok.length }),
+            : t('photo.import.success', { count: result.ok.length })) + dupSuffix,
         })
       } else if (result.ok.length === 0) {
-        setSnack(summarizeFailures(result.failed, t))
+        // Nothing imported — failures (and possibly some skipped duplicates).
+        const failSnack = summarizeFailures(result.failed, t)
+        setSnack(dupCount > 0 ? { ...failSnack, text: failSnack.text + dupSuffix } : failSnack)
       } else {
         setSnack({
           severity: 'warning',
@@ -633,7 +650,7 @@ function App() {
             ok: result.ok.length,
             total: files.length,
             failed: result.failed.length,
-          }),
+          }) + dupSuffix,
         })
       }
     } catch (err) {
@@ -645,7 +662,7 @@ function App() {
     } finally {
       setImportProgress(null)
     }
-  }, [storage, photosDir, t, persistMarkers, persistNoGpsPhotos])
+  }, [storage, photosDir, t, persistMarkers, persistNoGpsPhotos, markers, session?.noGpsPhotos])
 
   // Phase 9 — Send-to-editor button handler. Flushes the pending
   // map-picks write FIRST (ADR-009 navigation-flush requirement) so a
@@ -656,6 +673,17 @@ function App() {
   // signal that the picks didn't make it.
   const handleSendToEditor = useCallback(async () => {
     try {
+      // Write the CURRENT picks synchronously at click time, THEN flush — don't
+      // rely on the debounced [markers] effect having already scheduled the
+      // latest snapshot. A photo placed immediately before clicking (typically a
+      // no-GPS photo just dragged from the tray, the last action before sending)
+      // can be one render behind the pending write, so the flushed file would
+      // miss it even though the footer counts it: the "18 selected, 17 arrived"
+      // bug. Re-scheduling here makes the handoff file authoritative over the
+      // visible count; flushPendingMapPicks immediately drains this write.
+      if (storage && competitionDir) {
+        scheduleWriteMapPicks(storage, competitionDir, buildMapPicks(markers))
+      }
       await flushPendingMapPicks()
     } catch (err) {
       console.error('flushPendingMapPicks failed before nav:', err)
@@ -669,7 +697,7 @@ function App() {
     } else {
       window.location.href = `/photo-helper/?competitionId=${competitionId}`
     }
-  }, [competitionId, t])
+  }, [competitionId, storage, competitionDir, markers, t])
 
   // Phase 8a — mirror the in-memory photo markers into map-picks.json
   // every time they change. The writer debounces (300ms) so rapid flag
@@ -786,12 +814,18 @@ function App() {
   // failure can no longer leave the photo duplicated in both lists.
   const handleNoGpsPhotoPlaced = useCallback(async (photoId: string, lng: number, lat: number) => {
     try {
-      await placeNoGpsPhoto(photoId, lng, lat)
+      // Honor the boolean return: a `false` means the entry was no longer in
+      // the tray (e.g. removed mid-drag), so NO marker was created. Without
+      // this the photo silently vanishes from both the tray and the map with
+      // no feedback — one of the "a photo didn't make it" paths (feedback
+      // 2026-06-19). Mirrors the provisional-commit handler's placeFailed snack.
+      const ok = await placeNoGpsPhoto(photoId, lng, lat)
+      if (!ok) setSnack({ severity: 'error', text: t('photo.tray.placeFailed') })
     } catch (err) {
       console.error('placeNoGpsPhoto failed:', err)
       setSnack({ severity: 'error', text: err instanceof Error ? err.message : String(err) })
     }
-  }, [placeNoGpsPhoto])
+  }, [placeNoGpsPhoto, t])
 
   // Phase 14 — drag-to-recategorize: a row dropped on another group sets its
   // flag. Reuses the same setter the popup buttons use.

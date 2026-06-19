@@ -405,6 +405,10 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
       // Carry the custom name across so dragging a renamed tray photo onto
       // the map keeps its label (and still preserves the original filename).
       ...(entry.displayName ? { displayName: entry.displayName } : {}),
+      // Carry the import-time content hash across so a placed no-GPS photo stays
+      // covered by re-import dedup (ADR-020) — otherwise re-importing the same
+      // file would create a duplicate marker (matches markers.ts contentHash doc).
+      ...(entry.contentHash ? { contentHash: entry.contentHash } : {}),
       // Phase 14 — caller may commit straight to a chosen category (provisional
       // placement). `null` = neutral, so omit the flag field. Tray drag-drop
       // defaults to 'pick-track' (the common case; re-categorize via the popup).

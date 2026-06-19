@@ -53,6 +53,21 @@ export interface ApiPhoto {
    * side). Absent on legacy data.
    */
   labelUpdatedAt?: string;
+  /**
+   * SHA-1 hex of the original file bytes (ADR-020). Set when a photo is
+   * imported via the editor's "Add photos" path so re-importing the same file
+   * is skipped instead of creating a duplicate. Absent on map-handoff (`pm-`)
+   * photos — the handoff doesn't carry a hash — and on legacy data.
+   */
+  contentHash?: string;
+  /**
+   * True for a synthetic "no photo" cell that occupies a turning-point slot so
+   * the SP/TP/FP numbering of the surrounding photos stays correct when a photo
+   * is genuinely missing. Has NO image bytes (`url: ''`, no OPFS file). Rendered
+   * as a blank labeled frame in the editor and as a blank labeled cell in the
+   * PDF (never aborts the export). Absent/false on every real photo.
+   */
+  isPlaceholder?: boolean;
 }
 
 export interface ApiPhotoSet {

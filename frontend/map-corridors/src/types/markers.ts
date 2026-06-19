@@ -55,6 +55,13 @@ export type PhotoMarker = Readonly<{
   // Drives the "newer wins" conflict resolution in `useEditorPicksSync`
   // and `useMapPicksSync` (label may be set in either app now).
   labelUpdatedAt?: string
+  /**
+   * SHA-1 hex of the original file bytes (ADR-020). Assigned at import and
+   * carried across `placeNoGpsPhoto`. Lets a re-import of the same photo be
+   * rejected so a duplicate never overwrites the original. Optional — absent on
+   * pre-ADR-020 sessions and on KML/click-placed markers.
+   */
+  contentHash?: string
 }>
 
 // Ground marker types — FAI precision flying canvas shapes (12 letters + 14 symbols).
@@ -138,7 +145,8 @@ export function isPhotoMarker(value: unknown): value is PhotoMarker {
     isValidCapturedAt(v.capturedAt) &&
     (v.photoId === undefined || (typeof v.photoId === 'string' && v.photoId.length > 0)) &&
     (v.flag === undefined || (typeof v.flag === 'string' && PHOTO_FLAG_SET.has(v.flag))) &&
-    (v.labelUpdatedAt === undefined || typeof v.labelUpdatedAt === 'string')
+    (v.labelUpdatedAt === undefined || typeof v.labelUpdatedAt === 'string') &&
+    (v.contentHash === undefined || typeof v.contentHash === 'string')
   )
 }
 
@@ -181,6 +189,8 @@ export type NoGpsPhoto = Readonly<{
   displayName?: string
   /** ISO 8601 EXIF DateTimeOriginal; used for tray sort order. Optional — some cameras don't set it. */
   timestamp?: string
+  /** SHA-1 hex of the original file bytes (ADR-020) — re-import dedup. See `PhotoMarker.contentHash`. */
+  contentHash?: string
 }>
 
 export function isNoGpsPhoto(value: unknown): value is NoGpsPhoto {
@@ -190,7 +200,8 @@ export function isNoGpsPhoto(value: unknown): value is NoGpsPhoto {
     typeof v.photoId === 'string' && v.photoId.length > 0 &&
     typeof v.filename === 'string' && v.filename.length > 0 &&
     (v.displayName === undefined || typeof v.displayName === 'string') &&
-    (v.timestamp === undefined || typeof v.timestamp === 'string')
+    (v.timestamp === undefined || typeof v.timestamp === 'string') &&
+    (v.contentHash === undefined || typeof v.contentHash === 'string')
   )
 }
 

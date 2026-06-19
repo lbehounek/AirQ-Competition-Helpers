@@ -40,7 +40,21 @@ export interface ImportFailure {
   message: string
 }
 
+/** A file skipped because its bytes match an already-imported photo (ADR-020). */
+export interface ImportDuplicate {
+  filename: string
+  /** SHA-1 hex that matched an existing photo (or an earlier file in the batch). */
+  contentHash: string
+}
+
 export interface ImportResult {
   ok: ImportedPhoto[]
   failed: ImportFailure[]
+  /**
+   * Files dropped as re-imports of a photo already in the session, or duplicated
+   * within the same batch. Populated by `importPhotosToStorage` (which has the
+   * existing-hash set); `importPhotoFiles` alone never dedups, so it omits this.
+   * Duplicates are NOT saved — the original photo is preserved untouched.
+   */
+  duplicates?: ImportDuplicate[]
 }

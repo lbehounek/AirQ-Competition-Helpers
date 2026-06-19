@@ -26,6 +26,10 @@ interface PhotoEditorApiProps {
   setKey?: 'set1' | 'set2' | 'candidates'; // For PDF generation canvas identification
   showOriginal?: boolean; // Whether to show original (no effects) or edited version
   circleMode?: boolean; // Whether circle mode is enabled
+  // Discipline of the set this photo belongs to — sizes the burned-in label per
+  // the user's per-mode preference (track −20%, turning −35%). Optional; absent
+  // (e.g. candidate-tray thumbs, which pass label="") keeps the default size.
+  mode?: 'track' | 'turningpoint';
 }
 
 // UNIFIED RENDERING SYSTEM - Same logic for grid and modal
@@ -109,7 +113,11 @@ export const renderPhotoOnCanvas = async (
   aspectRatio = 4/3,
   baseHeight = 225,
   showOriginal = false,
-  useHighQuality = false
+  useHighQuality = false,
+  // Discipline of the photo being rendered — drives the per-mode label font
+  // size in drawLabel (track −20%, turning −35%; feedback 2026-06-19). Optional
+  // so callers that don't care (or pre-date it) keep the default size.
+  mode?: 'track' | 'turningpoint'
 ) => {
   const ctx = getCanvasContext(canvas);
   if (!ctx) {
@@ -253,7 +261,7 @@ export const renderPhotoOnCanvas = async (
         ctx.drawImage(processedCanvas, x, y);
         // Draw label on main canvas
         const labelPos = isDragging && localLabelPosition ? localLabelPosition : canvasState.labelPosition;
-        drawLabel(canvas, label, labelPos);
+        drawLabel(canvas, label, labelPos, mode);
         return;
       }
     } catch (error) {
@@ -410,7 +418,7 @@ export const renderPhotoOnCanvas = async (
   // Draw label only when not dragging to save work while moving
   if (!isDragging) {
     const labelPos = isDragging && localLabelPosition ? localLabelPosition : canvasState.labelPosition;
-    drawLabel(canvas, label, labelPos);
+    drawLabel(canvas, label, labelPos, mode);
   }
 };
 
@@ -480,7 +488,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   size = 'grid',
   setKey,
   showOriginal = false,
-  circleMode: externalCircleMode = false
+  circleMode: externalCircleMode = false,
+  mode
 }) => {
   const { currentRatio, getCanvasSize } = useAspectRatio();
   
@@ -721,7 +730,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       currentRatio.ratio,
       BASE_WIDTH / currentRatio.ratio,
       (showOriginal || isDragging),
-      useHighQuality
+      useHighQuality,
+      mode
     );
 
     // Draw circle overlay if it exists
@@ -757,7 +767,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       }
       ctx.drawImage(tempCanvas, 0, 0, canvasSize.width, canvasSize.height);
     }
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview, dragScaleFactor, size, isIdleHQ]);
+  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview, dragScaleFactor, size, isIdleHQ, mode]);
 
   useEffect(() => {
     renderCanvas().catch(error => {

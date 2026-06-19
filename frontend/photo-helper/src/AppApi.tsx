@@ -110,6 +110,7 @@ function AppApi() {
     importPickToSets,
     removeCandidate,
     promoteCandidateToSlot,
+    addPlaceholderToSet,
     demoteSlotToCandidate,
     setCandidateFlag,
     setCandidateLabel,
@@ -275,6 +276,16 @@ function AppApi() {
   // like the photos "disappeared" from the user's perspective.
   const [dropToast, setDropToast] = useState<{ count: number } | null>(null);
 
+  // Snackbar shown when "Add photos" skips files already in the session
+  // (content-hash re-import dedup, ADR-020) — so fewer-than-selected photos
+  // appearing isn't a mystery.
+  const [dupToast, setDupToast] = useState<{ count: number } | null>(null);
+
+  // Friendly, actionable surface for a PDF export failure (replaces a raw
+  // native alert showing the technical message). Most failures are "a photo
+  // lost its image bytes"; the message tells the user how to recover.
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
   // Hint snackbar for cross-set slot→slot drags (out of scope in v1 per
   // docs/CANDIDATE_PHOTOS.md). Previously a silent no-op (PR #62 review I4).
   const [crossSetHintOpen, setCrossSetHintOpen] = useState(false);
@@ -296,6 +307,15 @@ function AppApi() {
     }
   };
 
+  // Wrapper around the hook's `addPhotosToCandidates` that surfaces the re-import
+  // dedup (ADR-020). The dedup happens hook-side for every caller; this only adds
+  // the toast at the user-facing import sites so a skipped duplicate isn't silent.
+  const handleAddCandidates = async (files: File[]) => {
+    if (!addPhotosToCandidates) return;
+    const r = await addPhotosToCandidates(files);
+    if (r && r.duplicates > 0) setDupToast({ count: r.duplicates });
+  };
+
   // Initial drop for rally turning-point distributes across set1+set2; on total
   // overflow the hook routes everything to the candidate tray. Surface the toast
   // the same way `handleAddToSet` does (PR #62 review I1).
@@ -314,7 +334,7 @@ function AppApi() {
   // loaded so a pre-mount paste can't race the session bootstrap.
   const { pasteError, clearPasteError } = useClipboardPaste({
     addFiles: (files) => {
-      if (addPhotosToCandidates) void addPhotosToCandidates(files);
+      void handleAddCandidates(files);
     },
     disabled: !session || !addPhotosToCandidates,
   });
@@ -664,8 +684,17 @@ function AppApi() {
       // user needs to know the export was aborted (or partial), not be left
       // wondering why the dialog never opened.
       console.error('PDF generation failed:', error);
-      const message = error instanceof Error ? error.message : String(error);
-      alert(message);
+      // The hi-res render path attaches `renderFailures` (one entry per
+      // un-renderable photo — usually missing image bytes from a photo that was
+      // deleted earlier). Turn that into a plain-language, actionable message
+      // instead of dumping the raw technical string into a native alert().
+      const failures = (error as { renderFailures?: unknown[] } | null)?.renderFailures;
+      const failedCount = Array.isArray(failures) ? failures.length : 0;
+      setPdfError(
+        failedCount > 0
+          ? t('pdf.error.renderFailed', { count: failedCount })
+          : t('pdf.error.generic'),
+      );
     }
   };
 
@@ -854,7 +883,7 @@ function AppApi() {
                   </Typography>
                   <ImportPhotosControl
                     onFilesPicked={(files) => {
-                      if (addPhotosToCandidates) void addPhotosToCandidates(files);
+                      void handleAddCandidates(files);
                     }}
                     disabled={!session || !addPhotosToCandidates}
                   />
@@ -975,7 +1004,7 @@ function AppApi() {
         {(candidatePhotos.length > 0 || stats.totalPhotos > 0) && (
           <CandidateTray
             photos={candidatePhotos}
-            onAddFiles={(files) => { if (addPhotosToCandidates) void addPhotosToCandidates(files); }}
+            onAddFiles={(files) => { void handleAddCandidates(files); }}
             onPhotoClick={handleCandidateClick}
             onSetFlag={(photoId, flag) => { if (setCandidateFlag) void setCandidateFlag(photoId, flag); }}
             onDelete={(photoId) => { if (removeCandidate) void removeCandidate(photoId); }}
@@ -1010,6 +1039,7 @@ function AppApi() {
             onCandidateDropped={(setKey, candidateId, slotIndex) =>
               handleCandidateDropped(setKey)(candidateId, slotIndex)
             }
+            onAddPlaceholder={addPlaceholderToSet ? (setKey, slotIndex) => { void addPlaceholderToSet(setKey, slotIndex); } : undefined}
             totalPhotoCount={stats.set1Photos + stats.set2Photos}
             isPrecision={isPrecision}
           />
@@ -1350,6 +1380,7 @@ function AppApi() {
                         setKey={selectedPhoto.setKey}
                         showOriginal={showOriginal}
                         circleMode={circleMode}
+                        mode={session?.mode}
                       />
                       {/* Filename caption under the photo — screen only. */}
                       {selectedPhoto.photo.filename && (
@@ -1561,6 +1592,30 @@ function AppApi() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={dropToast ? t('candidates.smartDropToast', { count: dropToast.count }) : ''}
       />
+
+      {/* Re-import dedup notification — "Add photos" skipped files already in the
+          session, so the user doesn't think their pick silently vanished. */}
+      <Snackbar
+        open={Boolean(dupToast)}
+        autoHideDuration={6000}
+        onClose={() => setDupToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={dupToast ? t('candidates.duplicatesSkipped', { count: dupToast.count }) : ''}
+      />
+
+      {/* PDF export failure — friendly, actionable surface that replaces the raw
+          native alert. Stays up longer and is dismissible because the message
+          tells the user how to recover (re-import / remove the affected cells). */}
+      <Snackbar
+        open={Boolean(pdfError)}
+        autoHideDuration={14000}
+        onClose={() => setPdfError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" variant="filled" onClose={() => setPdfError(null)} sx={{ maxWidth: 560 }}>
+          {pdfError}
+        </Alert>
+      </Snackbar>
 
       {/* Hint when the user tries an unsupported cross-set slot drag (PR #62
           review I4). The two-step via the tray works; this just tells them. */}

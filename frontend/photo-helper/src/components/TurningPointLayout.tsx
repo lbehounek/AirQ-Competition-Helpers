@@ -29,6 +29,8 @@ interface TurningPointLayoutProps {
    * omitted, candidate drops on a slot are ignored (back-compat).
    */
   onCandidateDropped?: (setKey: 'set1' | 'set2', candidateId: string, slotIndex: number) => void;
+  /** Insert a "no photo" placeholder at a slot in the given set (turning-point only). */
+  onAddPlaceholder?: (setKey: 'set1' | 'set2', slotIndex: number) => void;
   totalPhotoCount: number;
   /**
    * Precision discipline only uses a single set of up to 9 photos
@@ -54,6 +56,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   onFilesDropped,
   onInitialFilesDropped,
   onCandidateDropped,
+  onAddPlaceholder,
   onPhotoClick,
   onPhotoUpdate,
   onPhotoRemove,
@@ -121,6 +124,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
                 onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set1', fromIndex, toIndex)}
                 onFilesDropped={(files) => onFilesDropped('set1', files)}
                 onCandidateDropped={onCandidateDropped ? (id, idx) => onCandidateDropped('set1', id, idx) : undefined}
+                onAddPlaceholder={onAddPlaceholder ? (idx) => onAddPlaceholder('set1', idx) : undefined}
                 customLabels={turningPointLabels.set1}
                 maxPhotosOverride={rallyMaxPerSet}
                 slotsOverride={set1Grid?.slots}
@@ -145,6 +149,7 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
                 onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set2', fromIndex, toIndex)}
                 onFilesDropped={(files) => onFilesDropped('set2', files)}
                 onCandidateDropped={onCandidateDropped ? (id, idx) => onCandidateDropped('set2', id, idx) : undefined}
+                onAddPlaceholder={onAddPlaceholder ? (idx) => onAddPlaceholder('set2', idx) : undefined}
                 customLabels={turningPointLabels.set2}
                 maxPhotosOverride={rallyMaxPerSet}
                 slotsOverride={set2Grid?.slots}

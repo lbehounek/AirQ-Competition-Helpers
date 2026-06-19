@@ -166,7 +166,10 @@
     "position": "Pozice {{position}}",
     "loadingFailed": "Nepodařilo se načíst obrázek.",
     "tryAgain": "Zkuste to znovu nebo nahrajte jiný soubor.",
-    "deleteTooltip": "Smazat fotografii"
+    "deleteTooltip": "Smazat fotografii",
+    "noPhotoCell": "Bez fotky",
+    "addNoPhoto": "Vložit „bez fotky“",
+    "noPhotoFilename": "Bez fotky"
   },
   "controls": {
     "imageAdjustments": "Úpravy obrázku",
@@ -300,6 +303,7 @@
     "emptyHint": "Sem přetáhněte další fotografie — kteroukoli pak přetáhněte do políčka, aby se dostala do tisku",
     "dragHint": "Přetáhněte miniaturu na prázdné políčko, nebo použijte tlačítka pod každou fotografií.",
     "smartDropToast": "Přidáno {{count}} fotografií do Kandidátů — přetáhněte kteroukoli do políčka, aby se dostala do tisku.",
+    "duplicatesSkipped": "Přeskočeno již importovaných fotografií: {{count}}.",
     "crossSetHint": "Přesun mezi sadami jde přes Kandidáty. Přetáhněte fotografii nejprve sem a pak do druhé sady.",
     "allFiltered": "Všichni kandidáti jsou skryti filtrem.",
     "flag": {
@@ -331,6 +335,10 @@
       "trackSet1": "Traťové foto – 1. sada",
       "trackSet2": "Traťové foto – 2. sada",
       "turningPoint": "Foto otočných bodů"
+    },
+    "error": {
+      "renderFailed": "PDF se nepodařilo vytvořit. Některé fotky ({{count}}) nemají obrazová data a nelze je vykreslit – pravděpodobně byly dříve smazány. Naimportujte je znovu v Koridorech a pošlete do editoru, nebo je v editoru odeberte, a export zopakujte.",
+      "generic": "PDF se nepodařilo vytvořit. Zkuste to prosím znovu."
     }
   }
 }

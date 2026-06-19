@@ -170,7 +170,11 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 function makeFile(name = 'photo.jpg'): File {
-  return new File([new Uint8Array([0xFF, 0xD8, 0xFF])], name, { type: 'image/jpeg' });
+  // Unique content per name so the content-hash re-import dedup doesn't collapse
+  // distinct fixtures; keep the JPEG magic-byte prefix. Two calls with the SAME
+  // name produce identical bytes — used to exercise dedup.
+  const nameBytes = Array.from(name, (c) => c.charCodeAt(0) & 0xff);
+  return new File([new Uint8Array([0xFF, 0xD8, 0xFF, ...nameBytes])], name, { type: 'image/jpeg' });
 }
 
 async function setup() {
@@ -296,6 +300,45 @@ describe('useCompetitionSystem — promoteCandidateToSlot capacity clamp (PR #62
     const session = result.current.session!;
     expect(session.sets.set1.photos.map(p => p.id)).toEqual([candidateId]);
     expect(session.setsTrack?.set1.photos.map(p => p.id)).toEqual([candidateId]);
+  });
+});
+
+describe('useCompetitionSystem — addPhotosToCandidates re-import dedup (ADR-020)', () => {
+  it('adds distinct files and reports zero duplicates', async () => {
+    const result = await setup();
+    let r: { added: number; duplicates: number } | undefined;
+    await act(async () => {
+      r = await result.current.addPhotosToCandidates([makeFile('a.jpg'), makeFile('b.jpg')]);
+    });
+    expect(r).toEqual({ added: 2, duplicates: 0 });
+    expect(result.current.session!.candidates!.photos).toHaveLength(2);
+  });
+
+  it('skips a file already in the candidate tray on a later import', async () => {
+    const result = await setup();
+    await act(async () => {
+      await result.current.addPhotosToCandidates([makeFile('dup.jpg')]);
+    });
+    let r: { added: number; duplicates: number } | undefined;
+    await act(async () => {
+      r = await result.current.addPhotosToCandidates([makeFile('dup.jpg'), makeFile('new.jpg')]);
+    });
+    expect(r).toEqual({ added: 1, duplicates: 1 });
+    // 1 original + 1 genuinely-new = 2; the re-import of dup.jpg was dropped.
+    expect(result.current.session!.candidates!.photos.map(p => p.filename).sort())
+      .toEqual(['dup.jpg', 'new.jpg']);
+  });
+
+  it('dedups within a single batch and stamps a SHA-1 contentHash on the kept photo', async () => {
+    const result = await setup();
+    let r: { added: number; duplicates: number } | undefined;
+    await act(async () => {
+      r = await result.current.addPhotosToCandidates([makeFile('x.jpg'), makeFile('x.jpg')]);
+    });
+    expect(r).toEqual({ added: 1, duplicates: 1 });
+    const photos = result.current.session!.candidates!.photos;
+    expect(photos).toHaveLength(1);
+    expect(photos[0].contentHash).toMatch(/^[0-9a-f]{40}$/);
   });
 });
 
@@ -682,6 +725,47 @@ describe('useCompetitionSystem — addExistingCandidate sequential race (handoff
     expect(result.current.session!.candidates!.photos.map(p => p.id)).not.toContain(pmId);
     // ...but the OPFS bytes are preserved so map-corridors can still
     // serve them on the next handoff round.
+    expect((await storageMock.listDirectory(photosDir)).map(e => e.name)).toContain(pmId);
+  });
+
+  // Regression: feedback 2026-06-19. Same shared-blob hazard as removeCandidate,
+  // but via the SET delete path — the user deleted PLACED turning photos in the
+  // editor, re-sent 9 from corridors, and only 7 returned because `removePhoto`
+  // lacked the pm- guard its sibling delete paths already had, so it stranded the
+  // shared bytes for the deleted photos.
+  it('removePhoto KEEPS the OPFS file for a pm-prefixed photo placed in a set', async () => {
+    const result = await setup();
+    const compId = result.current.currentCompetition!.id;
+    const photosDir = { path: `/competitions/${compId}/photos` } as DirectoryHandle;
+    const pmId = 'pm-set-photo-1';
+    await storageMock.savePhotoFile(photosDir, pmId, makeFile('pm.jpg'));
+
+    // Get the pm- photo into a set via the candidate → slot promotion path.
+    await act(async () => {
+      await result.current.addExistingCandidate({
+        id: pmId,
+        sessionId: result.current.session!.id,
+        url: 'blob:test/pm-set',
+        filename: 'pm.jpg',
+        canvasState: {
+          position: { x: 0, y: 0 }, scale: 1, brightness: 0, contrast: 1,
+          sharpness: 0, whiteBalance: { temperature: 0, tint: 0, auto: false },
+          labelPosition: 'bottom-left' as const,
+        },
+        label: '',
+        flag: 'pick',
+      });
+      await result.current.promoteCandidateToSlot(pmId, 'set1', 0);
+    });
+    expect(result.current.session!.sets.set1.photos.map(p => p.id)).toContain(pmId);
+
+    await act(async () => {
+      await result.current.removePhoto('set1', pmId);
+    });
+
+    // Removed from the set (what the user wanted)...
+    expect(result.current.session!.sets.set1.photos.map(p => p.id)).not.toContain(pmId);
+    // ...but the shared OPFS bytes survive so the next handoff re-inserts it.
     expect((await storageMock.listDirectory(photosDir)).map(e => e.name)).toContain(pmId);
   });
 

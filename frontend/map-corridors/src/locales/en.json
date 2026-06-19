@@ -34,7 +34,9 @@
       "failureStorage": "{{count}} photos could not be saved (storage)",
       "failureStorageOne": "1 photo could not be saved (storage)",
       "unsupported": "Unsupported file: {{name}}",
-      "noCompetition": "Open a competition from the launcher before importing photos"
+      "noCompetition": "Open a competition from the launcher before importing photos",
+      "duplicatesSkipped": "({{count}} duplicate(s) skipped)",
+      "allDuplicates": "All selected photos are already imported — skipped ({{count}})."
     },
     "popup": {
       "include": "Picked",
@@ -68,7 +70,8 @@
     },
     "list": {
       "title": "Photos",
-      "picks": "Picks",
+      "picksTurning": "Turning points – selected",
+      "picksTrack": "Track photos – selected",
       "neutral": "Neutral",
       "rejects": "Rejects",
       "noGps": "No GPS",
@@ -77,7 +80,8 @@
       "sendToEditor": "Send to editor ({{count}})",
       "compareSelected": "Compare variants ({{count}})",
       "compareLimitTip": "At most {{max}} variants can be compared at once",
-      "clearSelection": "Clear selection"
+      "clearSelection": "Clear selection",
+      "noGpsNotPlaced": "No-GPS photos ({{count}}) aren't on the map yet — drag them onto the map or they won't transfer to the editor."
     },
     "compare": {
       "title": "Compare variants",

@@ -166,7 +166,10 @@
     "position": "Position {{position}}",
     "loadingFailed": "Failed to load image.",
     "tryAgain": "Please try again or upload a different file.",
-    "deleteTooltip": "Delete photo"
+    "deleteTooltip": "Delete photo",
+    "noPhotoCell": "No photo",
+    "addNoPhoto": "Insert \"no photo\"",
+    "noPhotoFilename": "No photo"
   },
   "controls": {
     "imageAdjustments": "Image Adjustments",
@@ -301,6 +304,7 @@
     "emptyHint": "Drop extra photos here — drag any onto a slot to use it in the print set",
     "dragHint": "Drag a thumbnail onto an empty slot to add it to the print set, or use the toolbar buttons below each photo.",
     "smartDropToast": "Added {{count}} photos to Candidates — drag any onto a slot to use them.",
+    "duplicatesSkipped": "Skipped {{count}} photo(s) already imported.",
     "crossSetHint": "Cross-set moves go via the Candidates tray. Drag the photo there, then drag it into the other set.",
     "allFiltered": "All candidates are hidden by the filter.",
     "flag": {
@@ -332,6 +336,10 @@
       "trackSet1": "enroute photos first set",
       "trackSet2": "enroute photos second set",
       "turningPoint": "TP photos"
+    },
+    "error": {
+      "renderFailed": "Couldn't create the PDF. Some photos ({{count}}) have no image data and can't be rendered — they were probably deleted earlier. Re-import them in Map Corridors and send them to the editor, or remove those cells in the editor, then export again.",
+      "generic": "Couldn't create the PDF. Please try again."
     }
   }
 }

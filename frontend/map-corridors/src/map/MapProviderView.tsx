@@ -468,8 +468,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       map.flyTo({ center, zoom: Math.max(map.getZoom(), 14), duration: 700 })
       // Also open the photo popup so the panel click is a one-step
       // action (fly + preview + actions). KML/click markers don't have
-      // a photo popup — guarded by photoId + capturedAt.
-      if (marker.photoId && marker.capturedAt) {
+      // a photo popup — gated on photoId (NOT capturedAt) so a no-GPS
+      // photo placed from the tray still opens its flag popup from the list.
+      if (marker.photoId) {
         setActivePhotoMarkerId(markerId)
       }
     },
@@ -1062,14 +1063,18 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           </React.Fragment>
         )
       })}
-      {/* Phase 5 photo-marker popup. Mounted only when a capture dot is
-          clicked AND the parent provides photo storage + handlers. */}
+      {/* Phase 5 photo-marker popup. Mounted when ANY photo marker is active
+          (an EXIF capture dot OR a no-GPS photo placed from the tray) and the
+          parent provides photo storage + handlers. Gated on photoId — NOT
+          capturedAt — so no-GPS placements (which never carry capturedAt) still
+          get the Track/TP/Skip/Reject + label UI. The retained photoId clause
+          keeps KML/click-placed markers (no photoId) popup-free. */}
       {(() => {
         if (!activePhotoMarkerId) return null
         if (!props.photoStorage || !props.photoDir) return null
         if (!props.onPhotoIncludeTrack || !props.onPhotoIncludeTurning || !props.onPhotoSkip || !props.onPhotoReject) return null
         const marker = props.markers?.find(m => m.id === activePhotoMarkerId)
-        if (!marker || !marker.capturedAt || !marker.photoId) return null
+        if (!marker || !marker.photoId) return null
         const popupId = activePhotoMarkerId
         // When the active marker is fanned, shift the popup by the same pixel
         // offset so its tail points at the fanned dot the user clicked rather
@@ -1098,7 +1103,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               photoId={marker.photoId}
               filename={marker.displayName ?? marker.name}
               originalFilename={marker.displayName ? marker.name : undefined}
-              timestamp={marker.capturedAt.timestamp}
+              timestamp={marker.capturedAt?.timestamp}
               flag={marker.flag}
               storage={props.photoStorage}
               photosDir={props.photoDir}

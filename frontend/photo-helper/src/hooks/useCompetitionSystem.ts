@@ -28,7 +28,10 @@ import {
   clearAllCandidates as clearAllCandidatesPure,
   updateCandidateCanvasState as updateCandidateCanvasStatePure,
   routeImportedPickIntoSets,
+  insertPlaceholderIntoSet,
 } from '../utils/candidateTransitions';
+import { createPlaceholderPhoto, PLACEHOLDER_ID_PREFIX } from '../utils/placeholderPhoto';
+import { collectSessionContentHashes, partitionFilesByContentHash } from '../utils/contentHash';
 import {
   defaultTrackSetTitles,
   DEFAULT_TRACK_SET1_TITLE_RALLY,
@@ -68,7 +71,7 @@ export interface UseCompetitionSystemResult {
   updateSessionCompetitionName: (competitionName: string) => Promise<void>;
 
   // Candidate pool operations (see docs/CANDIDATE_PHOTOS.md)
-  addPhotosToCandidates: (files: File[]) => Promise<void>;
+  addPhotosToCandidates: (files: File[]) => Promise<{ added: number; duplicates: number }>;
   /**
    * Insert a pre-built `ApiPhoto` (bytes + thumb already on disk).
    * Used by `useMapPicksSync` (Phase 8b of photo-map-culling) to
@@ -88,6 +91,12 @@ export interface UseCompetitionSystemResult {
   importPickToSets: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint') => Promise<void>;
   removeCandidate: (photoId: string) => Promise<void>;
   promoteCandidateToSlot: (candidateId: string, setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
+  /**
+   * Insert a "no photo" placeholder at `slotIndex` (turning-point mode), holding
+   * the slot position so the SP/TP/FP numbering of surrounding photos stays
+   * correct when a photo is missing. No-op if the set is already at capacity.
+   */
+  addPlaceholderToSet: (setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
   demoteSlotToCandidate: (setKey: 'set1' | 'set2', photoId: string) => Promise<void>;
   setCandidateFlag: (photoId: string, flag: CandidateFlag) => Promise<void>;
   /**
@@ -617,23 +626,33 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
    * and indirectly by `addPhotosToSet` via the smart-drop heuristic when a
    * slot batch exceeds remaining capacity. New candidates start as `neutral`.
    */
-  const addPhotosToCandidates = useCallback(async (files: File[]) => {
+  const addPhotosToCandidates = useCallback(async (files: File[]): Promise<{ added: number; duplicates: number }> => {
     if (!currentCompetition?.session) {
       setError(t('errors.noActiveCompetition'));
-      return;
+      return { added: 0, duplicates: 0 };
     }
-    if (files.length === 0) return;
-    await updateCurrentCompetition(session => {
-      const sessionId = session.id;
-      const newPhotos = filesToPhotos(files, sessionId, 'neutral');
-      const existing = session.candidates?.photos ?? [];
-      return {
-        ...session,
-        version: session.version + 1,
-        updatedAt: new Date().toISOString(),
-        candidates: { photos: [...existing, ...newPhotos] },
-      };
-    }, { updatePhotos: true });
+    if (files.length === 0) return { added: 0, duplicates: 0 };
+    // ADR-020 re-import dedup: skip any file whose bytes match a photo already
+    // anywhere in the session (tray or any set) or repeat within this batch, so a
+    // duplicate never creates a second candidate. The original is left untouched.
+    const existingHashes = collectSessionContentHashes(currentCompetition.session);
+    const { fresh, duplicates } = await partitionFilesByContentHash(files, existingHashes);
+    if (fresh.length > 0) {
+      await updateCurrentCompetition(session => {
+        const sessionId = session.id;
+        // filesToPhotos preserves order, so zip the precomputed hashes back on.
+        const newPhotos = filesToPhotos(fresh.map(f => f.file), sessionId, 'neutral')
+          .map((p, i) => ({ ...p, contentHash: fresh[i].contentHash }));
+        const existing = session.candidates?.photos ?? [];
+        return {
+          ...session,
+          version: session.version + 1,
+          updatedAt: new Date().toISOString(),
+          candidates: { photos: [...existing, ...newPhotos] },
+        };
+      }, { updatePhotos: true });
+    }
+    return { added: fresh.length, duplicates: duplicates.length };
   }, [updateCurrentCompetition, currentCompetition, filesToPhotos, t]);
 
   /**
@@ -817,7 +836,20 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       referencedElsewhere = isPhotoReferencedInSession(next, photoId);
       return next;
     }, { updatePhotos: true });
-    if (compId && !referencedElsewhere) {
+    // EXCEPTION: pm-prefixed photos are owned by map-corridors (shared
+    // `competitions/{compId}/photos/` dir). Deleting the file here strands the
+    // map marker — `getPhotoBlob` then NotFoundErrors on the next
+    // `useMapPicksSync` pass and the entry is silently skipped, so a re-Send
+    // brings back FEWER photos than were picked. Mirrors the guard in
+    // `removeCandidate` / `deleteCandidates` (user feedback 2026-05-17 added it
+    // there but THIS set-deletion path was missed — feedback 2026-06-19:
+    // "deleted in editor, re-sent 9, only 7 returned"). map-corridors' own
+    // hard-delete is the canonical place to free pm- bytes.
+    const isMapOwned = photoId.startsWith('pm-');
+    // Placeholders carry no OPFS file (url=''); a delete would throw a swallowed
+    // NotFoundError. Skip the file-delete for them too.
+    const isPlaceholder = photoId.startsWith(PLACEHOLDER_ID_PREFIX);
+    if (compId && !referencedElsewhere && !isMapOwned && !isPlaceholder) {
       try {
         await competitionService.deletePhotosByIds(compId, [photoId]);
       } catch (err) {
@@ -866,7 +898,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // canonical place to delete pm- bytes, and it cleans up both the
     // marker and the file in one shot. User feedback 2026-05-17.
     const isMapOwned = photoId.startsWith('pm-');
-    if (compId && !referencedElsewhere && !isMapOwned) {
+    // Placeholders carry no OPFS file (url=''); a delete would throw a swallowed
+    // NotFoundError. Skip the file-delete for them too.
+    const isPlaceholder = photoId.startsWith(PLACEHOLDER_ID_PREFIX);
+    if (compId && !referencedElsewhere && !isMapOwned && !isPlaceholder) {
       try {
         await competitionService.deletePhotosByIds(compId, [photoId]);
       } catch (err) {
@@ -901,6 +936,27 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       return next;
     }, { updatePhotos: true });
   }, [updateCurrentCompetition]);
+
+  // Insert a "no photo" placeholder at a slot (turning-point only). Holds the
+  // position so SP/TP/FP numbering stays correct. The pure helper splices +
+  // mirrors into the active mode bucket; here we just gate on capacity and build
+  // the localized placeholder. updatePhotos:true persists; the placeholder has
+  // url='' so saveSessionPhotos skips it (no OPFS write).
+  const addPlaceholderToSet = useCallback(async (
+    setKey: 'set1' | 'set2',
+    slotIndex: number,
+  ) => {
+    const sess = currentCompetition?.session;
+    // Turning-point only (the UI button is hidden on track sheets); guard here
+    // too so a stray call can't insert a placeholder into a track set.
+    if (!sess || sess.mode !== 'turningpoint') return;
+    const capacity = getGridCapacity(sess as any);
+    if ((sess.sets?.[setKey]?.photos?.length ?? 0) >= capacity) return;
+    await updateCurrentCompetition(session => {
+      const placeholder = createPlaceholderPhoto(session.id, t('photo.noPhotoFilename'));
+      return insertPlaceholderIntoSet(session, setKey, slotIndex, placeholder);
+    }, { updatePhotos: true });
+  }, [updateCurrentCompetition, currentCompetition, t]);
 
   const demoteSlotToCandidate = useCallback(async (
     setKey: 'set1' | 'set2',
@@ -1477,6 +1533,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     importPickToSets,
     removeCandidate,
     promoteCandidateToSlot,
+    addPlaceholderToSet,
     demoteSlotToCandidate,
     setCandidateFlag,
     setCandidateLabel,
