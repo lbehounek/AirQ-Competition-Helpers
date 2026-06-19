@@ -640,7 +640,9 @@ function App() {
             : t('photo.import.success', { count: result.ok.length })) + dupSuffix,
         })
       } else if (result.ok.length === 0) {
-        setSnack(summarizeFailures(result.failed, t))
+        // Nothing imported — failures (and possibly some skipped duplicates).
+        const failSnack = summarizeFailures(result.failed, t)
+        setSnack(dupCount > 0 ? { ...failSnack, text: failSnack.text + dupSuffix } : failSnack)
       } else {
         setSnack({
           severity: 'warning',
