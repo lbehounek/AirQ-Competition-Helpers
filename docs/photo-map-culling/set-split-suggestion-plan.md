@@ -1,11 +1,15 @@
 # Plan: set1↔set2 split at a user-chosen turning point
 
-**Status:** IMPLEMENTED — branch `feat/set-split-tp-break`. Green gate:
+**Status:** IMPLEMENTED + REBASED onto current `main` (2026-06-22). Green gate:
 shared-handoff + map-corridors `tsc -b` clean, photo-helper `tsc --noEmit`
-clean; vitest map-corridors 719 ✓ / photo-helper 466 ✓.
+clean; vitest map-corridors **728 ✓** (+2 todo) / photo-helper **478 ✓**
+(counts rose: main's placeholder/dedup suites now run alongside this branch's).
 Phases: shared-handoff `MapPickEntry.set` → photo-helper honor + reflow →
 map-corridors break selection. Decision **(b)** (reconcile on break change)
 shipped; reflow is active-discipline-only (see "photo-helper side" below).
+**See the "Reinvestigation (2026-06-22)" section at the bottom** for the rebase,
+the transfer-path invariants now integrated, the panel-visualization reframe
+(decided: *visualize-break-only*), and the open placeholder edge case.
 **Builds on:** PR #100 (`feat/map-picks-auto-route-sets`, merged), which auto-routes
 imported picks into their discipline's sets with a `set1 → set2 → tray`
 capacity fill.
@@ -153,3 +157,94 @@ reconcile's "where is each photo now" input.
 3. **map-corridors:** break-selection UI on TP markers + per-photo `set`
    computation from route order + visualization. Lights the feature up end to
    end and exercises the re-flow path.
+
+---
+
+## Reinvestigation (2026-06-22)
+
+Trigger: main shipped (a) the **picks-panel split** (`b438053`, desktop 2.26.8)
+— the corridors right-side list now splits picks into **turning-point** vs
+**track** groups, and dragging a row between them re-flags the photo
+(`groupPhotosByFlag` → `flagForGroup` → `recategorize`) — and (b) a series of
+**photo-transfer bug fixes**. This branch predated both (merge-base `9902bb3`,
+~25 commits behind), so it was reinvestigated against current `main`.
+
+### Rebase done (green baseline)
+
+Rebased `feat/set-split-tp-break` onto `d8233a2`. Conflicts were minor and
+textual: an import block in `useCompetitionSystem.ts` (kept both
+`insertPlaceholderIntoSet` from main and `reconcilePlacedToDesiredSet` from this
+branch) and `CHANGELOG.md` (this branch's speculative `2.27.0` entry was moved
+under `## [Unreleased]`, since it is now behind main's released `2.26.8`).
+All other commits replayed clean. Backup ref: `backup/set-split-pre-rebase`.
+
+### Transfer-path invariants integrated / verified
+
+The merged fixes established invariants this branch's reworked sync path must
+honor. Status after rebase:
+
+1. **Write-at-click-time** (`2280360`) — *fixed in rebase*. The fix added an
+   explicit `scheduleWriteMapPicks(buildMapPicks(markers))` inside
+   `handleSendToEditor` (written after this branch's base), so the rebase left
+   it calling `buildMapPicks(markers)` **without** the break id while the
+   debounced `[markers]` effect already passed `breakId`. A break toggled in the
+   same render as "Send" would be dropped from the authoritative handoff file.
+   Now both call sites compute `breakId` identically (null for precision) and
+   pass it. Commit `fix(map-corridors): stamp TP set-break on the click-time
+   send write`.
+2. **`pm-` / shared-blob ownership** (`3e60785`) — *verified compatible*.
+   `reconcilePlacedToDesiredSet`'s overflow re-adds to the tray
+   (`{ ...photo, flag: categoryFlag }`); it never deletes blobs, so the
+   `isMapOwned = id.startsWith('pm-')` delete guard is untouched. A reflow must
+   not look like a delete — confirmed it doesn't.
+3. **Mode-bucket mirroring** (`setsTrack`/`setsTurning`) — *already correct*.
+   `reconcilePlacedToDesiredSet` mirrors into the active bucket, matching
+   `insertPlaceholderIntoSet`'s pattern.
+4. **Content-hash dedup** (`26d1da2`/`cfdae84`/`07bcdec`) — *no interaction*.
+   `entry.set` carries no hash (correct; stays off-wire). Reconcile moves
+   existing objects, never re-imports, so the `seen`/`contentHash` sets are
+   unaffected.
+
+### Reframe (DECIDED: visualize-break-only)
+
+Key insight: **turning/track and set1/set2 are orthogonal axes.** The panel
+split categorizes on turning/track (→ `flag`, crosses the wire, editor routes by
+flag). `set1/set2` is a second axis — answer-sheet pagination — carried on the
+separate `entry.set` field. So "do sets like the panel does turning/track" must
+NOT become per-photo set assignment (that explodes into a 2×2 turning×set /
+track×set grid and contradicts the locked "single break, map owns membership"
+decision, and is more tedious than one break click).
+
+**Decision (owner, 2026-06-22): visualize-break-only.** Keep the TP-break as the
+assignment engine (domain-correct: a rally answer sheet breaks at a leg/TP
+boundary; one click splits everything). Surface its *result* in the existing
+`PhotoListPanel`: draw a `set1 │ set2` divider inside the **turning-point picks**
+and **track picks** groups, at the position the break dictates, reusing
+`groupPhotosByFlag`'s route-ordered lists. The break is still **set/moved from
+the map** (popup "Split sets here" + scissors badge); the panel only *shows* the
+split. Editor stays dumb (obeys `entry.set`).
+
+Implementation sketch (map-corridors only — editor unchanged):
+- Extract the break partition logic from `buildMapPickEntry`/`buildMapPicks` into
+  a small pure helper (e.g. `partitionPicksBySet(markers, breakPhotoId)` in route
+  order) so both the writer and the panel compute the same split from one source
+  of truth.
+- `PhotoListPanel`: within `picksTurning` and `picksTrack`, render the photos in
+  route order with a `set1 │ set2` divider after the last set1 photo (a labelled
+  separator row, not a new collapsible group — avoids the 2×2 blowup and keeps
+  drag-to-recategorize on the existing flag groups). Rally + break-chosen only;
+  hidden for precision and when no break is set.
+- No wire/editor change; no new `flag`/`set` semantics. Pure additive UI.
+
+### Open edge case (resolve during the panel work)
+
+**Placeholder × reflow capacity.** Sets can now contain `isPlaceholder` photos
+(`url:''`, id `placeholder-…`, from `48251c7`). `reconcilePlacedToDesiredSet`
+only acts on `pm-` entries (a placeholder carries no `entry.set`, so it is never
+the *subject* of a reflow), but a placeholder occupying a slot **counts toward
+the target sheet's length**, so a break move could overflow a real `pm-` photo
+to the tray because a placeholder ate the slot, and could disturb TP numbering.
+Tests pass today (no test exercises placeholder + break together). Decision
+needed: does the reflow's capacity count include placeholders (current
+behavior), or should placeholders yield to incoming map picks? Add a regression
+test either way.
