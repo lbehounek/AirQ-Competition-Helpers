@@ -21,6 +21,7 @@ import {
   type MapPicksFile,
 } from '@airq/shared-handoff'
 import { comparePhotoMarkers, type PhotoMarker } from '../types/markers'
+import { partitionPicksBySet } from '../setSplit/partitionPicksBySet'
 
 const FILENAME = MAP_PICKS_FILENAME
 const DEBOUNCE_MS = 300
@@ -103,24 +104,21 @@ export function buildMapPicks(
   const picks = markers.filter(m => m.photoId && isPickFlag(m.flag))
   const sorted = [...picks].sort(comparePhotoMarkers)
 
-  // The break is a turning point the user designated. Everything up to AND
-  // INCLUDING it is set1; everything after is set2 (locked convention: the
-  // break TP closes leg 1). We split the single ordered list once — the editor
-  // routes each entry into its discipline's set1/set2 by `flag`, so track and
-  // turning photos partition correctly without a separate per-discipline cut.
-  // An unset / no-longer-a-pick break yields breakIndex -1 → no `set` emitted,
-  // and the editor falls back to its default set1→set2→tray fill.
-  const breakIndex = breakPhotoId
-    ? sorted.findIndex(m => m.photoId === breakPhotoId)
-    : -1
+  // Set membership comes from the shared partition helper — the SAME source the
+  // panel's set1│set2 divider reads — so the editor's file and what the user
+  // sees in the panel can never disagree. An unset / stale break yields an empty
+  // map → no `set` emitted, and the editor falls back to its default
+  // set1→set2→tray fill. (Route-order cut + break convention live in the helper.)
+  const setByPhotoId = partitionPicksBySet(markers, breakPhotoId)
 
   const out: MapPickEntry[] = []
-  sorted.forEach((m, i) => {
+  for (const m of sorted) {
     const entry = buildMapPickEntry(m)
-    if (!entry) return
-    if (breakIndex >= 0) entry.set = i <= breakIndex ? 'set1' : 'set2'
+    if (!entry) continue
+    const set = m.photoId ? setByPhotoId.get(m.photoId) : undefined
+    if (set) entry.set = set
     out.push(entry)
-  })
+  }
   return out
 }
 

@@ -19,7 +19,7 @@ import {
   Typography,
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
-import { Check, ChevronLeft, ChevronRight, Close, CompareArrows, EditOutlined, ExpandLess, ExpandMore, SendOutlined } from '@mui/icons-material'
+import { Check, ChevronLeft, ChevronRight, Close, CompareArrows, ContentCut, EditOutlined, ExpandLess, ExpandMore, SendOutlined } from '@mui/icons-material'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import type { NoGpsPhoto, PhotoMarker } from '../types/markers'
 import { noGpsPhotoDisplayName, photoMarkerDisplayName } from '../types/markers'
@@ -28,6 +28,7 @@ import { usePhotoThumbUrl } from './usePhotoThumbUrl'
 import { NO_GPS_PHOTO_DRAG_TYPE } from './NoGpsTray'
 import { groupPhotosByFlag } from './groupPhotosByFlag'
 import { flagForGroup, canRecategorize } from '../recategorize/recategorize'
+import { partitionPicksBySet, setBreakDividerIndex, type SetKey } from '../setSplit/partitionPicksBySet'
 import type { PhotoFlag } from '../types/markers'
 
 /** Drag MIME for recategorizing a photo row by dropping it on another group. */
@@ -104,6 +105,16 @@ export interface PhotoListPanelProps {
    * harmless. Undefined disables the preview path.
    */
   onPreviewPhoto?: (photoId: string) => void
+  /**
+   * The photoId of the turning point the user designated as the set1↔set2 break
+   * (rally only — App passes `null` for precision, which is single-set). When
+   * set, the turning-point and track pick groups render a `set1 │ set2` divider
+   * at the cut, mirroring the scissors badge on the map. The break itself is
+   * still set/moved from the map popup; the panel only visualizes the result.
+   * `null`/undefined → no divider. See partitionPicksBySet (single source of
+   * truth shared with the handoff writer).
+   */
+  setBreakPhotoId?: string | null
 }
 
 /**
@@ -121,7 +132,7 @@ const GROUP_ORDER: readonly GroupKey[] = ['picksTurning', 'picksTrack', 'neutral
 
 export function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
-  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick, onPreviewPhoto } = props
+  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick, onPreviewPhoto, setBreakPhotoId } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     picksTurning: false,
@@ -142,6 +153,11 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
   const [dragSourceGroup, setDragSourceGroup] = useState<GroupKey | null>(null)
 
   const groups = useMemo(() => groupPhotosByFlag(markers, noGpsPhotos), [markers, noGpsPhotos])
+  // Per-photo set membership from the designated break TP. Shared source of
+  // truth with the handoff writer (partitionPicksBySet), so the divider the user
+  // sees matches the set the editor receives. Empty map (no break / stale break /
+  // precision) → no divider rendered.
+  const setByPhotoId = useMemo(() => partitionPicksBySet(markers, setBreakPhotoId), [markers, setBreakPhotoId])
   // All picks (turning-point + track) — the send button counts/enables on this,
   // since "Poslat do editoru" sends every pick regardless of category.
   const pickCount = groups.picksTurning.length + groups.picksTrack.length
@@ -318,6 +334,8 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
                 onRowDragStart: (g) => setDragSourceGroup(g),
                 onRowDragEnd: () => setDragSourceGroup(null),
                 onNoGpsPhotoClick,
+                setByPhotoId,
+                setBreakLabel: t('photo.list.setBreakDivider'),
               })}
             />
           ))}
@@ -527,6 +545,10 @@ function renderGroupItems(
     onRowDragStart: (group: GroupKey) => void
     onRowDragEnd: () => void
     onNoGpsPhotoClick?: (photoId: string) => void
+    /** Per-photo set membership (set1/set2) from the TP break; empty when none. */
+    setByPhotoId: ReadonlyMap<string, SetKey>
+    /** Localized caption for the set1│set2 divider row. */
+    setBreakLabel: string
   },
 ): React.ReactNode {
   const commonRenameCtx = {
@@ -570,30 +592,73 @@ function renderGroupItems(
     ))
   }
   const list = g[key]
-  return list.map(m => (
-    <PhotoListItem
-      key={m.id}
-      photoId={m.photoId!}
-      displayName={photoMarkerDisplayName(m)}
-      originalFilename={m.name}
-      storage={ctx.storage}
-      photosDir={ctx.photosDir}
-      onClick={(e) => ctx.onRowClick(m.photoId!, m.id, e)}
-      onDoubleClick={ctx.onRowDoubleClick ? () => ctx.onRowDoubleClick!(m.photoId!) : undefined}
-      selected={selectedSet.has(m.photoId!)}
-      active={m.photoId === ctx.activePhotoId}
-      recatDraggable={ctx.recatEnabled}
-      onRecatDragStart={(e) => {
-        e.dataTransfer.setData(ctx.recatMime, m.id)
-        e.dataTransfer.effectAllowed = 'move'
-        ctx.onRowDragStart(key)
+  // Set1│set2 divider — only inside the two pick groups, and only when this
+  // group straddles the break (has set1 photos followed by set2 photos). The
+  // index is computed from the SAME partition the editor receives.
+  const dividerIndex = (key === 'picksTurning' || key === 'picksTrack')
+    ? setBreakDividerIndex(list.map(m => m.photoId!), ctx.setByPhotoId)
+    : -1
+  const rows: React.ReactNode[] = []
+  list.forEach((m, i) => {
+    if (i === dividerIndex) {
+      rows.push(<SetBreakDivider key="set-break-divider" label={ctx.setBreakLabel} />)
+    }
+    rows.push(
+      <PhotoListItem
+        key={m.id}
+        photoId={m.photoId!}
+        displayName={photoMarkerDisplayName(m)}
+        originalFilename={m.name}
+        storage={ctx.storage}
+        photosDir={ctx.photosDir}
+        onClick={(e) => ctx.onRowClick(m.photoId!, m.id, e)}
+        onDoubleClick={ctx.onRowDoubleClick ? () => ctx.onRowDoubleClick!(m.photoId!) : undefined}
+        selected={selectedSet.has(m.photoId!)}
+        active={m.photoId === ctx.activePhotoId}
+        recatDraggable={ctx.recatEnabled}
+        onRecatDragStart={(e) => {
+          e.dataTransfer.setData(ctx.recatMime, m.id)
+          e.dataTransfer.effectAllowed = 'move'
+          ctx.onRowDragStart(key)
+        }}
+        onRecatDragEnd={ctx.onRowDragEnd}
+        onDelete={ctx.onPhotoDelete}
+        deleteTooltip={ctx.deleteTooltip}
+        {...commonRenameCtx}
+      />
+    )
+  })
+  return rows
+}
+
+/**
+ * Thin labelled separator marking where set 2 begins within a pick group. The
+ * scissors icon ties it visually to the break TP's scissors badge on the map.
+ */
+function SetBreakDivider(props: { label: string }) {
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.75,
+        px: 1,
+        py: 0.25,
+        color: 'primary.main',
+        '&::before, &::after': {
+          content: '""',
+          flex: 1,
+          height: '1px',
+          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.4),
+        },
       }}
-      onRecatDragEnd={ctx.onRowDragEnd}
-      onDelete={ctx.onPhotoDelete}
-      deleteTooltip={ctx.deleteTooltip}
-      {...commonRenameCtx}
-    />
-  ))
+    >
+      <ContentCut sx={{ fontSize: 12 }} />
+      <Typography variant="caption" sx={{ fontWeight: 600, whiteSpace: 'nowrap', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {props.label}
+      </Typography>
+    </Box>
+  )
 }
 
 /**

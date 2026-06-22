@@ -22,6 +22,11 @@ new desktop release.
   re-flows the already-placed photos to match, keeping each photo's crop and
   label. Photos that don't fit a full sheet land in the candidate tray. Without
   a break it behaves exactly as before (set 1 → set 2 → tray).
+- **Map Corridors:** the right-side photo list now shows where the set break
+  falls — a **"Set 2"** divider (with a scissors mark) appears inside the
+  turning-point and track pick groups at the chosen break, so you can see which
+  photos go to which answer sheet without opening the editor. Rally only; hidden
+  when no break is set.
 
 ## [2.26.8] - 2026-06-19
 

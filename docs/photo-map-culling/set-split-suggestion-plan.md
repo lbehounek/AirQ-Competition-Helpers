@@ -236,6 +236,25 @@ Implementation sketch (map-corridors only — editor unchanged):
   hidden for precision and when no break is set.
 - No wire/editor change; no new `flag`/`set` semantics. Pure additive UI.
 
+#### Implemented (2026-06-22)
+
+- New `src/setSplit/partitionPicksBySet.ts` — single source of truth:
+  `partitionPicksBySet(markers, breakPhotoId)` (route-order cut + break
+  convention) and `setBreakDividerIndex(orderedIds, setByPhotoId)` (the
+  "before the first set2 row preceded by a set1 row" boundary rule). Both pure +
+  unit-tested (`__tests__/partitionPicksBySet.test.ts`).
+- `buildMapPicks` refactored to consume `partitionPicksBySet` (DRY — the writer
+  and the panel now read the *same* partition; behavior byte-identical, existing
+  `buildMapPicks — set-break assignment` tests still green).
+- `PhotoListPanel` gains `setBreakPhotoId?` prop; computes `setByPhotoId` and
+  renders a `<SetBreakDivider>` (scissors + "Set 2 / Sada 2", tied to the map's
+  scissors badge) inside `picksTurning` / `picksTrack` only, and only where the
+  group straddles the cut. `App.tsx` passes the prop (`null` for precision).
+  i18n: `photo.list.setBreakDivider` (en/cs).
+- Gate: map-corridors `tsc -b` clean, vitest **740 ✓** (+2 todo). photo-helper
+  untouched. The break is still set/moved from the map popup — the panel only
+  visualizes.
+
 ### Open edge case (resolve during the panel work)
 
 **Placeholder × reflow capacity.** Sets can now contain `isPlaceholder` photos

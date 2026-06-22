@@ -1447,6 +1447,9 @@ function App() {
             onPhotoRename={(photoId, newName) => { void renamePhoto(photoId, newName) }}
             onCompareVariants={handleCompareVariants}
             onPreviewPhoto={handleOpenPhotoPreview}
+            // Visualize the set1↔set2 break in the pick groups (rally only;
+            // precision is single-set, so no break → no divider).
+            setBreakPhotoId={effectiveDiscipline === 'precision' ? null : (session?.setBreakPhotoId ?? null)}
           />
         </Box>
       </Container>
