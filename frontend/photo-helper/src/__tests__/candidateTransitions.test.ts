@@ -651,6 +651,52 @@ describe('reconcilePlacedToDesiredSet', () => {
     expect(next.candidates?.photos[0].flag).toBe('pick-turning');
   });
 
+  // GAP 3 (PR #103 review) — DECIDED: a "no photo" placeholder counts as an
+  // occupied slot. It's a deliberate reservation for a missing TP, can't go to
+  // the tray, and the reflow can't know an incoming photo is "for" it.
+  const placeholder = (id: string) => makePhoto(id, { isPlaceholder: true, url: '' });
+
+  it('counts a placeholder toward capacity: a reflow into a placeholder-full sheet overflows the real pick to the tray, placeholder untouched', () => {
+    const p = makePhoto('pm-x');
+    // turning-point capacity is 10; set2 is 9 real + 1 placeholder = full.
+    const session = makeActiveSession({
+      mode: 'turningpoint',
+      set1: [p],
+      set2: [...fillR(9, 't'), placeholder('placeholder-1')],
+    });
+
+    const { session: next, moved } = reconcilePlacedToDesiredSet(session, 'pm-x', 'set2', false);
+
+    expect(moved).toBe(true);
+    // set2 is untouched (still full, placeholder still present) — not evicted,
+    // grid not exceeded.
+    expect(next.sets.set2.photos).toHaveLength(10);
+    expect(next.sets.set2.photos.some(q => q.id === 'placeholder-1')).toBe(true);
+    expect(next.sets.set2.photos.some(q => q.id === 'pm-x')).toBe(false);
+    // The displaced real pick is surfaced in the tray for manual resolution.
+    expect(next.candidates?.photos.map(q => q.id)).toEqual(['pm-x']);
+    expect(next.candidates?.photos[0].flag).toBe('pick-turning');
+  });
+
+  it('places the pick when a placeholder leaves room under capacity (placeholder kept)', () => {
+    const p = makePhoto('pm-x');
+    // set2 is 8 real + 1 placeholder = 9 < capacity 10 → room for the reflow.
+    const session = makeActiveSession({
+      mode: 'turningpoint',
+      set1: [p],
+      set2: [...fillR(8, 't'), placeholder('placeholder-1')],
+    });
+
+    const { session: next, moved } = reconcilePlacedToDesiredSet(session, 'pm-x', 'set2', false);
+
+    expect(moved).toBe(true);
+    // Appended into set2 (now 10), placeholder preserved, nothing in the tray.
+    expect(next.sets.set2.photos.map(q => q.id)).toEqual([
+      't1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 'placeholder-1', 'pm-x',
+    ]);
+    expect(next.candidates?.photos ?? []).toHaveLength(0);
+  });
+
   it('is a no-op under precision (single-set — no cross-sheet membership)', () => {
     const p = makePhoto('pm-x');
     const session = makeActiveSession({ set1: [p], set2: [] });

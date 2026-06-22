@@ -255,15 +255,27 @@ Implementation sketch (map-corridors only — editor unchanged):
   untouched. The break is still set/moved from the map popup — the panel only
   visualizes.
 
-### Open edge case (resolve during the panel work)
+### Placeholder × reflow capacity — RESOLVED (2026-06-22)
 
-**Placeholder × reflow capacity.** Sets can now contain `isPlaceholder` photos
-(`url:''`, id `placeholder-…`, from `48251c7`). `reconcilePlacedToDesiredSet`
-only acts on `pm-` entries (a placeholder carries no `entry.set`, so it is never
-the *subject* of a reflow), but a placeholder occupying a slot **counts toward
-the target sheet's length**, so a break move could overflow a real `pm-` photo
-to the tray because a placeholder ate the slot, and could disturb TP numbering.
-Tests pass today (no test exercises placeholder + break together). Decision
-needed: does the reflow's capacity count include placeholders (current
-behavior), or should placeholders yield to incoming map picks? Add a regression
-test either way.
+Sets can contain `isPlaceholder` photos (`url:''`, id `placeholder-…`, from
+`48251c7`). `reconcilePlacedToDesiredSet` only acts on `pm-` entries (a
+placeholder carries no `entry.set`, so it is never the *subject* of a reflow),
+but a placeholder occupying a slot counts toward the target sheet's length.
+
+**Decision: a placeholder counts as an occupied slot.** When a break move would
+push a real `pm-` pick into a sheet that's full *including* a placeholder, the
+real pick **overflows to the candidate tray** (re-flagged, surfaced for manual
+resolution) — it does **not** evict the placeholder or exceed the printable
+grid. Rationale: a placeholder is a deliberate reservation for a *missing*
+turning point; it cannot itself be sent to the tray (`demoteSlotToCandidate`
+blocks placeholders), and the reflow cannot know an incoming photo corresponds
+to that specific missing TP, so auto-evicting would be a destructive guess.
+`routeImportedPickIntoSets`' first-import gate counts placeholders the same way,
+so the two paths are consistent. The user resolves the conflict by removing the
+placeholder (if that TP now has a photo) and dragging the tray pick in.
+
+Pinned by `candidateTransitions.test.ts` — a reflow into a placeholder-full
+sheet overflows the pick to the tray (placeholder untouched, grid not exceeded),
+and a reflow into a sheet a placeholder leaves room in places the pick normally.
+Code intent documented at the `targetLen` capacity gate in
+`reconcilePlacedToDesiredSet`.

@@ -390,6 +390,15 @@ export function reconcilePlacedToDesiredSet(
   });
   // The destination sheet is the OTHER one (currentSet !== desiredSet), so the
   // removal above didn't touch it — its current length is the capacity gate.
+  // A "no photo" placeholder occupies a real grid slot, so it IS counted here
+  // (PR #103 review, GAP 3 — decided): a placeholder is a deliberate reservation
+  // for a missing turning point, it cannot itself go to the tray
+  // (`demoteSlotToCandidate` blocks placeholders), and the reflow cannot know an
+  // incoming photo corresponds to that specific missing TP. So when a placeholder
+  // fills the last slot, the displaced real pick overflows to the tray (surfaced
+  // for manual resolution) rather than evicting the placeholder or busting the
+  // printable grid. `routeImportedPickIntoSets`' first-import gate counts them
+  // the same way, so the two paths stay consistent.
   const targetLen = desiredSet === 'set1' ? newSet1.length : newSet2.length;
 
   let candidates = getCandidatePhotos(session);
