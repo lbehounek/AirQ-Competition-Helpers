@@ -683,7 +683,12 @@ function App() {
       // bug. Re-scheduling here makes the handoff file authoritative over the
       // visible count; flushPendingMapPicks immediately drains this write.
       if (storage && competitionDir) {
-        scheduleWriteMapPicks(storage, competitionDir, buildMapPicks(markers))
+        // Stamp each pick with its TP set-break sheet here too — the click-time
+        // write must agree with the debounced [markers] effect, else a break
+        // toggled just before sending would be dropped from the authoritative
+        // handoff file (precision is single-set, so no break).
+        const breakId = effectiveDiscipline === 'precision' ? null : (session?.setBreakPhotoId ?? null)
+        scheduleWriteMapPicks(storage, competitionDir, buildMapPicks(markers, breakId))
       }
       await flushPendingMapPicks()
     } catch (err) {
@@ -698,7 +703,7 @@ function App() {
     } else {
       window.location.href = `/photo-helper/?competitionId=${competitionId}`
     }
-  }, [competitionId, storage, competitionDir, markers, t])
+  }, [competitionId, storage, competitionDir, markers, session?.setBreakPhotoId, effectiveDiscipline, t])
 
   // Phase 8a — mirror the in-memory photo markers into map-picks.json
   // every time they change. The writer debounces (300ms) so rapid flag
