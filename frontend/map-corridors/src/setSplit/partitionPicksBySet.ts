@@ -13,6 +13,22 @@ import { comparePhotoMarkers } from '../types/markers'
 export type SetKey = 'set1' | 'set2'
 
 /**
+ * Resolve the effective set-break id, applying the rally-only rule in ONE
+ * place: precision is single-sheet, so it never has a break (→ `null`, i.e.
+ * default fill on the wire and no divider in the panel). Both `buildMapPicks`
+ * write sites and the `PhotoListPanel` prop go through this, so the
+ * "no break under precision" rule can't drift between the three call sites in
+ * App.tsx (the click-time send write, the debounced effect, and the panel).
+ */
+export function resolveSetBreakId(
+  effectiveDiscipline: string | null | undefined,
+  setBreakPhotoId: string | null | undefined,
+): string | null {
+  if (effectiveDiscipline === 'precision') return null
+  return setBreakPhotoId ?? null
+}
+
+/**
  * Map each pick's photoId to its target sheet, given the designated break TP.
  *
  * Picks are ordered by ROUTE order (`comparePhotoMarkers` — filename, then EXIF

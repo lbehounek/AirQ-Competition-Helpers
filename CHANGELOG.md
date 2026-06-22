@@ -27,6 +27,10 @@ new desktop release.
   turning-point and track pick groups at the chosen break, so you can see which
   photos go to which answer sheet without opening the editor. Rally only; hidden
   when no break is set.
+- **Photo Helper:** if re-sorting photos into the new set split can't be saved
+  (e.g. storage full), the editor now shows a recoverable warning instead of
+  silently leaving photos on the wrong sheet — and the rest of the sync still
+  completes. It retries automatically on the next sync.
 
 ## [2.26.8] - 2026-06-19
 

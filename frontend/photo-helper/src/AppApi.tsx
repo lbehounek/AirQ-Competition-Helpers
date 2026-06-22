@@ -198,7 +198,8 @@ function AppApi() {
     setCandidateFlag,
     setCandidateLabel,
     setCandidateFilename,
-  }), [candidatePhotos, placedPmIds, session?.mode, addExistingCandidate, importPickToSets, reconcilePlacedToSets, removeCandidate, setCandidateFlag, setCandidateLabel, setCandidateFilename]);
+    onReflowError: handleReflowError,
+  }), [candidatePhotos, placedPmIds, session?.mode, addExistingCandidate, importPickToSets, reconcilePlacedToSets, removeCandidate, setCandidateFlag, setCandidateLabel, setCandidateFilename, handleReflowError]);
 
   useMapPicksSync(pmcCompetitionDir, pmcPhotosDir, pmcSessionApi);
 
@@ -299,6 +300,15 @@ function AppApi() {
   // hook's `deleteCandidates` rethrows on OPFS partial failure (CRIT-3); the
   // snackbar replaces the previous blocking `alert()` and is i18n-friendly.
   const [cleanupErrorToast, setCleanupErrorToast] = useState<string | null>(null);
+
+  // Warning snackbar when a break-driven re-flow (set1↔set2) failed to persist
+  // for some placed picks during a map-picks sync. Without this, a failed
+  // reflow silently leaves photos on the wrong answer sheet (PR #103 review).
+  const [reflowErrorToast, setReflowErrorToast] = useState<string | null>(null);
+  const handleReflowError = useCallback(
+    (failedCount: number) => setReflowErrorToast(t('candidates.reflowFailed', { count: failedCount })),
+    [t],
+  );
 
   // Wrapper around the hook's `addPhotosToSet` that surfaces the smart-drop
   // routing result. Calling sites stay simple — they just pass files + set.
@@ -1641,6 +1651,17 @@ function AppApi() {
         onClose={() => setCleanupErrorToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={cleanupErrorToast ?? ''}
+      />
+
+      {/* Re-flow failure surface — a moved set1↔set2 break couldn't re-paginate
+          some placed picks (OPFS quota / permission). Recoverable: it retries
+          on the next sync. Same Snackbar vocabulary as the other toasts. */}
+      <Snackbar
+        open={Boolean(reflowErrorToast)}
+        autoHideDuration={8000}
+        onClose={() => setReflowErrorToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={reflowErrorToast ?? ''}
       />
 
       {/* Clipboard-paste failure surface — partial reads (some files rejected

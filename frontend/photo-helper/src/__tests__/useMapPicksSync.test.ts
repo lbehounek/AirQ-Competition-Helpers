@@ -127,7 +127,7 @@ describe('syncMapPicksOnce — file absence', () => {
       photosDir,
       session,
     )
-    expect(result).toEqual({ inserts: 0, updates: 0, deletes: 0 })
+    expect(result).toEqual({ inserts: 0, updates: 0, deletes: 0, reflowFailures: 0 })
     expect(session.addCandidate).not.toHaveBeenCalled()
     expect(session.removeCandidate).not.toHaveBeenCalled()
   })
@@ -328,6 +328,48 @@ describe('syncMapPicksOnce — reflow on TP set-break change (placed picks)', ()
     const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(session.reconcilePlaced).toHaveBeenCalledWith('pm-x', 'set1')
     expect(result.updates).toBe(0)
+  })
+
+  // PR #103 review, Issue #1: a reflow persist failure must NOT abort the pass
+  // (swallowing every later entry) and must be COUNTED so the hook can warn the
+  // user — otherwise a photo silently stays on the wrong answer sheet.
+  it('counts a reflow rejection in reflowFailures instead of throwing/aborting', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{ photoId: 'pm-x', filename: 'pm-x.jpg', flag: 'pick-track', set: 'set2' }],
+    })
+    const session = fakeSession([], ['pm-x'], 'track')
+    session.reconcilePlaced.mockRejectedValueOnce(
+      Object.assign(new Error('quota'), { name: 'QuotaExceededError' }),
+    )
+    // Must resolve (not reject) — the per-entry guard contains the failure.
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(result.reflowFailures).toBe(1)
+    expect(result.updates).toBe(0)
+  })
+
+  it('a failed reflow on one entry does NOT skip a later entry that needs inserting', async () => {
+    const storage = fakeStorage()
+    // pm-x is placed and its reflow will reject; pm-new is a fresh pick that
+    // must still be inserted on the same pass (the old code aborted the loop).
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [
+        { photoId: 'pm-x', filename: 'pm-x.jpg', flag: 'pick-track', set: 'set2' },
+        { photoId: 'pm-new', filename: 'pm-new.jpg', flag: 'pick-track' },
+      ],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(32)], { type: 'image/jpeg' }))
+    const session = fakeSession([], ['pm-x'], 'track') // only pm-x is already placed
+    session.reconcilePlaced.mockRejectedValueOnce(new Error('boom'))
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(result.reflowFailures).toBe(1)
+    // The later, unrelated insert still happened despite the earlier failure.
+    expect(session.importPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'pm-new' }), 'track', undefined)
+    expect(result.inserts).toBe(1)
   })
 })
 

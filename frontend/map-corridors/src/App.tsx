@@ -51,6 +51,7 @@ import {
   flushPendingMapPicks,
   scheduleWriteMapPicks,
 } from './handoff/mapPicksWriter'
+import { resolveSetBreakId } from './setSplit/partitionPicksBySet'
 import { useEditorPicksSync } from './hooks/useEditorPicksSync'
 
 // File-type routing for the dropzone. KML/GPX → existing corridor
@@ -686,8 +687,8 @@ function App() {
         // Stamp each pick with its TP set-break sheet here too — the click-time
         // write must agree with the debounced [markers] effect, else a break
         // toggled just before sending would be dropped from the authoritative
-        // handoff file (precision is single-set, so no break).
-        const breakId = effectiveDiscipline === 'precision' ? null : (session?.setBreakPhotoId ?? null)
+        // handoff file. `resolveSetBreakId` applies the precision→no-break rule.
+        const breakId = resolveSetBreakId(effectiveDiscipline, session?.setBreakPhotoId)
         scheduleWriteMapPicks(storage, competitionDir, buildMapPicks(markers, breakId))
       }
       await flushPendingMapPicks()
@@ -711,9 +712,9 @@ function App() {
   useEffect(() => {
     if (!storage || !competitionDir) return
     // `setBreakPhotoId` (the user's set1↔set2 break TP) stamps each pick with
-    // its target sheet; effectiveDiscipline === 'precision' is single-set, so
-    // skip the break there and let the editor use its default fill.
-    const breakId = effectiveDiscipline === 'precision' ? null : (session?.setBreakPhotoId ?? null)
+    // its target sheet; `resolveSetBreakId` nulls it for precision (single-set)
+    // so the editor uses its default fill.
+    const breakId = resolveSetBreakId(effectiveDiscipline, session?.setBreakPhotoId)
     const picks = buildMapPicks(markers, breakId)
     scheduleWriteMapPicks(storage, competitionDir, picks)
   }, [markers, storage, competitionDir, session?.setBreakPhotoId, effectiveDiscipline])
@@ -1449,7 +1450,7 @@ function App() {
             onPreviewPhoto={handleOpenPhotoPreview}
             // Visualize the set1↔set2 break in the pick groups (rally only;
             // precision is single-set, so no break → no divider).
-            setBreakPhotoId={effectiveDiscipline === 'precision' ? null : (session?.setBreakPhotoId ?? null)}
+            setBreakPhotoId={resolveSetBreakId(effectiveDiscipline, session?.setBreakPhotoId)}
           />
         </Box>
       </Container>

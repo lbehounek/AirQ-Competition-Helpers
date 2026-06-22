@@ -305,6 +305,7 @@
     "dragHint": "Drag a thumbnail onto an empty slot to add it to the print set, or use the toolbar buttons below each photo.",
     "smartDropToast": "Added {{count}} photos to Candidates — drag any onto a slot to use them.",
     "duplicatesSkipped": "Skipped {{count}} photo(s) already imported.",
+    "reflowFailed": "Couldn't re-sort {{count}} photo(s) to the new set split — they may be on the wrong sheet. It will retry automatically.",
     "crossSetHint": "Cross-set moves go via the Candidates tray. Drag the photo there, then drag it into the other set.",
     "allFiltered": "All candidates are hidden by the filter.",
     "flag": {

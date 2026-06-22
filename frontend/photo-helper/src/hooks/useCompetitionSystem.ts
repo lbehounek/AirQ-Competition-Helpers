@@ -744,13 +744,20 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   ): Promise<boolean> => {
     const cur = currentCompetitionRef.current;
     if (!cur) return false;
-    if (!reconcilePlacedToDesiredSet(cur.session, photoId, desiredSet, isPrecisionDiscipline).moved) {
-      return false;
-    }
-    await updateCurrentCompetition(
-      session => reconcilePlacedToDesiredSet(session, photoId, desiredSet, isPrecisionDiscipline).session,
-      { updatePhotos: true },
+    // Evaluate the reconcile exactly ONCE against the live ref, then persist
+    // that same computed session. Re-evaluating inside the updater (as before)
+    // could return a different `moved` than the one we report — and reporting a
+    // move that wasn't persisted (or vice-versa) makes the caller's `updates`
+    // count lie. `updateCurrentCompetition` reads the ref synchronously with no
+    // await between here and the updater call, so `next` is based on the same
+    // session it would see. The `!moved` short-circuit keeps an already-correct
+    // photo from triggering a wasteful persist (updateCurrentCompetition always
+    // writes metadata, even on a same-ref session).
+    const { session: next, moved } = reconcilePlacedToDesiredSet(
+      cur.session, photoId, desiredSet, isPrecisionDiscipline,
     );
+    if (!moved) return false;
+    await updateCurrentCompetition(() => next, { updatePhotos: true });
     return true;
   }, [updateCurrentCompetition, isPrecisionDiscipline]);
 

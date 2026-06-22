@@ -92,6 +92,15 @@ export interface MapPicksSyncSessionApi {
    * timestamp / newer-wins (no editor-side filename edit exists).
    */
   setCandidateFilename: (photoId: string, filename: string) => Promise<void> | void;
+  /**
+   * Surface a count of placed picks whose break-driven re-flow failed to
+   * persist this pass (OPFS quota / permission). Optional — when omitted the
+   * failure is still logged and the pass still completes; the callback lets the
+   * app show the user a recoverable warning instead of silently leaving photos
+   * on the wrong answer sheet. Called once per pass with the aggregate count
+   * (only when > 0).
+   */
+  onReflowError?: (failedCount: number) => void;
 }
 
 const PM_PREFIX = PM_PHOTO_ID_PREFIX;
@@ -118,16 +127,17 @@ export async function syncMapPicksOnce(
   competitionDir: DirectoryHandle,
   photosDir: DirectoryHandle,
   session: MapPicksSyncSessionApi,
-): Promise<{ inserts: number; updates: number; deletes: number }> {
+): Promise<{ inserts: number; updates: number; deletes: number; reflowFailures: number }> {
   let inserts = 0;
   let updates = 0;
   let deletes = 0;
+  let reflowFailures = 0;
 
   const raw = await storage.readJSON<unknown>(competitionDir, MAP_PICKS_FILENAME);
   if (!isMapPicksFile(raw)) {
     // Absent or malformed file → nothing to sync. Don't delete pool
     // entries either; an absent file is "no info", not "no picks".
-    return { inserts, updates, deletes };
+    return { inserts, updates, deletes, reflowFailures };
   }
   const file = raw;
 
@@ -175,8 +185,19 @@ export async function syncMapPicksOnce(
           : entryFlag === 'pick-turning' ? 'turningpoint'
           : null;
         if (entry.set && placedMode === session.mode) {
-          const moved = await session.reconcilePlaced(entry.photoId, entry.set);
-          if (moved) updates++;
+          // Guard the reflow per-entry, mirroring the getPhotoBlob handling
+          // below: a persist failure (OPFS quota / permission) here must NOT
+          // abort the whole pass and silently skip every later entry's
+          // insert/update/delete. Count the failure so the hook can surface it
+          // — a swallowed reflow leaves a photo on the WRONG answer sheet,
+          // discovered only on the printed PDF.
+          try {
+            const moved = await session.reconcilePlaced(entry.photoId, entry.set);
+            if (moved) updates++;
+          } catch (err) {
+            console.warn('[useMapPicksSync] reflow failed for', entry.photoId, err);
+            reflowFailures++;
+          }
         }
         continue;
       }
@@ -265,7 +286,7 @@ export async function syncMapPicksOnce(
     deletes++;
   }
 
-  return { inserts, updates, deletes };
+  return { inserts, updates, deletes, reflowFailures };
 }
 
 function isNotFoundError(err: unknown): boolean {
@@ -312,7 +333,13 @@ export function useMapPicksSync(
         if (cancelled) return;
         try {
           const storage = getStorage();
-          await syncMapPicksOnce(storage, competitionDir, photosDir, sessionRef.current);
+          const result = await syncMapPicksOnce(storage, competitionDir, photosDir, sessionRef.current);
+          // Surface reflow failures to the app so a silently-wrong answer-sheet
+          // split becomes a visible, recoverable warning. The pass already
+          // completed (per-entry guard); this is just the user-facing signal.
+          if (!cancelled && result.reflowFailures > 0) {
+            sessionRef.current.onReflowError?.(result.reflowFailures);
+          }
         } catch (err) {
           if (!cancelled) console.warn('[useMapPicksSync] sync failed:', err);
         }

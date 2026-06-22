@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { partitionPicksBySet, setBreakDividerIndex, type SetKey } from '../setSplit/partitionPicksBySet'
+import { partitionPicksBySet, setBreakDividerIndex, resolveSetBreakId, type SetKey } from '../setSplit/partitionPicksBySet'
 import type { PhotoMarker } from '../types/markers'
 
 function pm(over: Partial<PhotoMarker>): PhotoMarker {
@@ -94,5 +94,36 @@ describe('setBreakDividerIndex', () => {
     const m = setMap({ a: 'set1', c: 'set2' })
     // 'b' has no membership; the divider still lands at the first qualifying set2.
     expect(setBreakDividerIndex(['a', 'b', 'c'], m)).toBe(2)
+  })
+
+  // GAP 1 (PR #103 review): the panel sorts pick rows by filename only
+  // (groupPhotosByFlag), while membership is by route order (filename + EXIF).
+  // They diverge ONLY when two picks share a filename. In that tie the set2 row
+  // can appear before the set1 row in panel order, so no "set2 after a set1"
+  // boundary exists → divider is suppressed (returns -1). Documented, cosmetic:
+  // the editor still splits correctly by entry.set; the panel just omits the
+  // line rather than drawing it in the wrong place. This test pins that.
+  it('suppresses the divider on an identical-filename tie where panel order ≠ route order', () => {
+    // Route order put dupB in set1 and dupA in set2, but the panel (filename
+    // sort, stable) renders them [dupA, dupB] → set2 row first.
+    const m = setMap({ dupA: 'set2', dupB: 'set1' })
+    expect(setBreakDividerIndex(['dupA', 'dupB'], m)).toBe(-1)
+  })
+})
+
+describe('resolveSetBreakId', () => {
+  it('returns null for precision regardless of the chosen break (single-set)', () => {
+    expect(resolveSetBreakId('precision', 'pid-b')).toBeNull()
+  })
+
+  it('passes the break id through for rally (and any non-precision discipline)', () => {
+    expect(resolveSetBreakId('rally', 'pid-b')).toBe('pid-b')
+    expect(resolveSetBreakId('web', 'pid-b')).toBe('pid-b')
+  })
+
+  it('normalizes an absent break to null (no break chosen)', () => {
+    expect(resolveSetBreakId('rally', null)).toBeNull()
+    expect(resolveSetBreakId('rally', undefined)).toBeNull()
+    expect(resolveSetBreakId(null, undefined)).toBeNull()
   })
 })
