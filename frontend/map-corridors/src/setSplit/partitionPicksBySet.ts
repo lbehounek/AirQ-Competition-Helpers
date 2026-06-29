@@ -94,11 +94,17 @@ export function partitionPicksByRouteTP(
   for (const m of markers) {
     if (!m.photoId || !isPickFlag(m.flag)) continue
     if (!Number.isFinite(m.lng) || !Number.isFinite(m.lat)) {
-      out.set(m.photoId, 'set1') // unprojectable pick → default to set1
+      // Can't project → "no info". Omit it (no `set` emitted) so the editor uses
+      // its default fill, rather than silently pinning it to a guessed sheet.
+      console.warn('[partitionPicksByRouteTP] pick has non-finite coords; left to default fill:', m.photoId)
       continue
     }
-    const loc = nearestPointOnLine(line, turfPoint([m.lng, m.lat])).properties.location ?? 0
-    out.set(m.photoId, loc < breakChainage ? 'set1' : 'set2')
+    const projected = nearestPointOnLine(line, turfPoint([m.lng, m.lat])).properties.location
+    if (projected == null) {
+      console.warn('[partitionPicksByRouteTP] projection yielded no location; left to default fill:', m.photoId)
+      continue
+    }
+    out.set(m.photoId, projected < breakChainage ? 'set1' : 'set2')
   }
   return out
 }

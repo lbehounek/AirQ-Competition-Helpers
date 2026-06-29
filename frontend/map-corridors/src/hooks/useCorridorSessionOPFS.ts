@@ -77,6 +77,22 @@ export function resolveNoGpsTrayOpen(record: unknown, defaultValue: boolean): bo
   return defaultValue
 }
 
+/**
+ * Validate the persisted `setBreakWaypointName` from an untrusted session.json:
+ * a non-empty string (a waypoint name) or `null`. A corrupt/hand-edited value of
+ * the wrong type is logged and cleared, rather than riding through the `...existing`
+ * spread into a field whose type claims `string | null`. Exported for unit testing.
+ */
+export function resolveSetBreakWaypointName(record: unknown): string | null {
+  const asRec = (record && typeof record === 'object') ? record as Record<string, unknown> : {}
+  const raw = asRec.setBreakWaypointName
+  if (typeof raw === 'string' && raw.length > 0) return raw
+  if (raw !== undefined && raw !== null) {
+    console.warn('[session] Persisted setBreakWaypointName was not a non-empty string, clearing:', raw)
+  }
+  return null
+}
+
 export type CorridorsSession = {
   id: string
   version: number
@@ -307,6 +323,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
             groundMarkers: cleanGm,
             noGpsPhotos: cleanNoGps,
             noGpsTrayOpen,
+            setBreakWaypointName: resolveSetBreakWaypointName(asRec),
           })
         } else {
           const fresh = defaultSession(id)

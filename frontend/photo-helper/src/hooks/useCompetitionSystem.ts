@@ -529,7 +529,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   // the persist has settled.
   const updateCurrentCompetition = useCallback(async (
     updater: (session: ApiPhotoSession) => ApiPhotoSession,
-    options?: { updatePhotos?: boolean }
+    options?: { updatePhotos?: boolean; rethrow?: boolean }
   ) => {
     const current = currentCompetitionRef.current;
     if (!current) return;
@@ -600,6 +600,11 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
 
     } catch (err) {
       console.error('Failed to update competition:', err);
+      // When the caller opted to handle the failure itself (the reflow path
+      // surfaces a tailored "couldn't re-sort N photos" toast), rethrow instead
+      // of swallowing into the generic global Alert — otherwise the persist
+      // error is invisible to the caller and the reflowFailures count lies.
+      if (options?.rethrow) throw err;
       setError(err instanceof Error ? err.message : 'Failed to update competition');
     }
   }, [refreshCompetitions]);
@@ -757,7 +762,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       cur.session, photoId, desiredSet, isPrecisionDiscipline,
     );
     if (!moved) return false;
-    await updateCurrentCompetition(() => next, { updatePhotos: true });
+    // `rethrow` so a persist failure REJECTS to useMapPicksSync's per-entry
+    // guard (→ reflowFailures → onReflowError toast), instead of being swallowed
+    // into the generic global Alert by updateCurrentCompetition.
+    await updateCurrentCompetition(() => next, { updatePhotos: true, rethrow: true });
     return true;
   }, [updateCurrentCompetition, isPrecisionDiscipline]);
 

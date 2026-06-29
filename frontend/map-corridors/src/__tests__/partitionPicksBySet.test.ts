@@ -88,13 +88,22 @@ describe('partitionPicksByRouteTP', () => {
     expect(m.get('pid-a')).toBe('set2')
   })
 
-  it('keeps an unprojectable pick (non-finite coords) in set1', () => {
+  it('omits an unprojectable pick (non-finite coords) → editor default fill', () => {
     const m = partitionPicksByRouteTP(
       [pm({ id: 'x', photoId: 'pid-x', flag: 'pick-track', lng: NaN, lat: NaN })],
       route(),
       'TP2',
     )
-    expect(m.get('pid-x')).toBe('set1')
+    expect(m.has('pid-x')).toBe(false)
+  })
+
+  it('a pick exactly at the break TP vertex is set2 (at/after is inclusive)', () => {
+    const m = partitionPicksByRouteTP(
+      [pm({ id: 'v', photoId: 'pid-v', flag: 'pick-track', lng: 2, lat: 0 })], // == TP2 coord
+      route(),
+      'TP2',
+    )
+    expect(m.get('pid-v')).toBe('set2')
   })
 })
 

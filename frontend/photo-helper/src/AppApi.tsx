@@ -185,6 +185,16 @@ function AppApi() {
     return () => { cancelled = true; };
   }, [pmcCompetitionId]);
 
+  // Warning snackbar when a break-driven re-flow (set1↔set2) failed to persist
+  // for some placed picks during a map-picks sync. Declared BEFORE pmcSessionApi
+  // because that useMemo reads it in its factory + deps (a `const` used earlier
+  // would hit the temporal dead zone and throw on render).
+  const [reflowErrorToast, setReflowErrorToast] = useState<string | null>(null);
+  const handleReflowError = useCallback(
+    (failedCount: number) => setReflowErrorToast(t('candidates.reflowFailed', { count: failedCount })),
+    [t],
+  );
+
   const pmcSessionApi = useMemo(() => ({
     candidates: candidatePhotos,
     placedIds: placedPmIds,
@@ -300,15 +310,6 @@ function AppApi() {
   // hook's `deleteCandidates` rethrows on OPFS partial failure (CRIT-3); the
   // snackbar replaces the previous blocking `alert()` and is i18n-friendly.
   const [cleanupErrorToast, setCleanupErrorToast] = useState<string | null>(null);
-
-  // Warning snackbar when a break-driven re-flow (set1↔set2) failed to persist
-  // for some placed picks during a map-picks sync. Without this, a failed
-  // reflow silently leaves photos on the wrong answer sheet (PR #103 review).
-  const [reflowErrorToast, setReflowErrorToast] = useState<string | null>(null);
-  const handleReflowError = useCallback(
-    (failedCount: number) => setReflowErrorToast(t('candidates.reflowFailed', { count: failedCount })),
-    [t],
-  );
 
   // Wrapper around the hook's `addPhotosToSet` that surfaces the smart-drop
   // routing result. Calling sites stay simple — they just pass files + set.
