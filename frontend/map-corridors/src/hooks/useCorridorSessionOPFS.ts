@@ -110,11 +110,13 @@ export type CorridorsSession = {
   // `false` = collapsed. Defaults open on first run + after migration.
   noGpsTrayOpen: boolean
   /**
-   * `photoId` of the turning-point photo the user designated as the
-   * set1↔set2 break (rally only; ignored by precision/single-set). Picks
-   * before-or-at it in route order export `set: 'set1'`, after it `set: 'set2'`;
-   * absent/`null` = no break, so the editor uses its default set1→set2→tray
-   * fill. Cleared automatically if the photo stops being a turning-point pick.
+   * `photoId` of the turning point the user picked as the start of set 2 — the
+   * set1↔set2 break (rally only; ignored by precision/single-set). It is the
+   * FIRST turning point of set 2: in route order the break TP and everything
+   * after export `set: 'set2'`, everything strictly before exports `set: 'set1'`.
+   * Absent/`null` = no break, so the editor uses its default set1→set2→tray fill.
+   * Set from the panel's "Set 2 starts at TP-X" selector; cleared automatically
+   * if the photo stops being a turning-point pick.
    * See docs/photo-map-culling/set-split-suggestion-plan.md.
    */
   setBreakPhotoId?: string | null

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { partitionPicksBySet, setBreakDividerIndex, resolveSetBreakId, type SetKey } from '../setSplit/partitionPicksBySet'
+import { partitionPicksBySet, setBreakDividerIndex, resolveSetBreakId, listSetBreakOptions, type SetKey } from '../setSplit/partitionPicksBySet'
 import type { PhotoMarker } from '../types/markers'
 
 function pm(over: Partial<PhotoMarker>): PhotoMarker {
@@ -21,11 +21,11 @@ describe('partitionPicksBySet', () => {
     expect(partitionPicksBySet(markers(), '').size).toBe(0)
   })
 
-  it('splits in route order — before-or-at the break → set1, after → set2', () => {
+  it('splits in route order — break TP starts set2, everything before → set1', () => {
     const m = partitionPicksBySet(markers(), 'pid-b')
     expect(Object.fromEntries(m)).toEqual({
-      'pid-a': 'set1',
-      'pid-b': 'set1', // break TP closes leg 1 (inclusive)
+      'pid-a': 'set1', // strictly before the break
+      'pid-b': 'set2', // the break TP is the FIRST turning point of set 2
       'pid-c': 'set2',
       'pid-d': 'set2',
     })
@@ -38,20 +38,23 @@ describe('partitionPicksBySet', () => {
         pm({ id: 'n', photoId: 'pid-n', name: 'n.jpg' }), // neutral
         pm({ id: 'r', photoId: 'pid-r', name: 'r.jpg', flag: 'reject' }),
         pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track' }),
+        pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning' }),
       ],
-      'pid-a',
+      'pid-b',
     )
-    expect([...m.keys()]).toEqual(['pid-a'])
+    // Only the two picks are mapped; pid-b (the break) starts set2, pid-a is set1.
+    expect([...m.keys()].sort()).toEqual(['pid-a', 'pid-b'])
     expect(m.get('pid-a')).toBe('set1')
+    expect(m.get('pid-b')).toBe('set2')
   })
 
   it('returns an empty map for a stale break (id not among current picks)', () => {
     expect(partitionPicksBySet(markers(), 'pid-gone').size).toBe(0)
   })
 
-  it('break at the first pick → only it is set1', () => {
+  it('break at the first pick → everything is set2 (set1 empty)', () => {
     const m = partitionPicksBySet(markers(), 'pid-a')
-    expect([...m.values()]).toEqual<SetKey[]>(['set1', 'set2', 'set2', 'set2'])
+    expect([...m.values()]).toEqual<SetKey[]>(['set2', 'set2', 'set2', 'set2'])
   })
 
   it('is independent of input order (sorts by route order internally)', () => {
@@ -108,6 +111,41 @@ describe('setBreakDividerIndex', () => {
     // sort, stable) renders them [dupA, dupB] → set2 row first.
     const m = setMap({ dupA: 'set2', dupB: 'set1' })
     expect(setBreakDividerIndex(['dupA', 'dupB'], m)).toBe(-1)
+  })
+})
+
+describe('listSetBreakOptions', () => {
+  it('lists ONLY turning-point picks, in route order, numbered TP1..TPn', () => {
+    const opts = listSetBreakOptions(markers()) // a=track, b=turning, c=track, d=turning
+    expect(opts.map(o => ({ photoId: o.photoId, tpNumber: o.tpNumber }))).toEqual([
+      { photoId: 'pid-b', tpNumber: 1 },
+      { photoId: 'pid-d', tpNumber: 2 },
+    ])
+  })
+
+  it('excludes track / neutral / reject / KML markers', () => {
+    const opts = listSetBreakOptions([
+      pm({ id: 'k', photoId: undefined, name: 'k.jpg' }),
+      pm({ id: 'n', photoId: 'pid-n', name: 'n.jpg' }), // neutral
+      pm({ id: 't', photoId: 'pid-t', name: 't.jpg', flag: 'pick-track' }),
+      pm({ id: 'r', photoId: 'pid-r', name: 'r.jpg', flag: 'reject' }),
+      pm({ id: 'tp', photoId: 'pid-tp', name: 'tp.jpg', flag: 'pick-turning' }),
+    ])
+    expect(opts.map(o => o.photoId)).toEqual(['pid-tp'])
+  })
+
+  it('carries the custom name and competition label when present', () => {
+    const opts = listSetBreakOptions([
+      pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning', displayName: 'TP1', label: 'A' }),
+    ])
+    expect(opts[0]).toEqual({ photoId: 'pid-b', tpNumber: 1, name: 'TP1', label: 'A' })
+  })
+
+  it('omits the label key when unset and returns [] with no turning points', () => {
+    const opts = listSetBreakOptions([pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning' })])
+    expect(opts[0]).toEqual({ photoId: 'pid-b', tpNumber: 1, name: 'b.jpg' })
+    expect(opts[0].label).toBeUndefined()
+    expect(listSetBreakOptions([pm({ id: 't', photoId: 'pid-t', flag: 'pick-track' })])).toEqual([])
   })
 })
 

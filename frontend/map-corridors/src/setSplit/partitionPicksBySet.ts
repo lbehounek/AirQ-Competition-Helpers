@@ -8,7 +8,7 @@
 
 import { isPickFlag } from '@airq/shared-handoff'
 import type { PhotoMarker } from '../types/markers'
-import { comparePhotoMarkers } from '../types/markers'
+import { comparePhotoMarkers, photoMarkerDisplayName } from '../types/markers'
 
 export type SetKey = 'set1' | 'set2'
 
@@ -32,11 +32,11 @@ export function resolveSetBreakId(
  * Map each pick's photoId to its target sheet, given the designated break TP.
  *
  * Picks are ordered by ROUTE order (`comparePhotoMarkers` — filename, then EXIF
- * time). Everything up to AND INCLUDING the break turning point is `set1`;
- * everything after is `set2` (locked convention: the break TP closes leg 1).
- * Track and turning picks share the single cut — the editor routes each into
- * its discipline's set1/set2 by flag, so one global partition is correct for
- * both disciplines.
+ * time). The break turning point is the **first turning point of set 2**: it and
+ * everything after it → `set2`; everything strictly before it → `set1`. This
+ * matches the user-facing "Set 2 starts at TP-X" control. Track and turning
+ * picks share the single cut — the editor routes each into its discipline's
+ * set1/set2 by flag, so one global partition is correct for both disciplines.
  *
  * Returns an EMPTY map when there's no break, or the break id isn't a current
  * pick (a stale break). Callers then fall back to default behavior: the writer
@@ -53,8 +53,40 @@ export function partitionPicksBySet(
     .sort(comparePhotoMarkers)
   const breakIndex = sorted.findIndex(m => m.photoId === breakPhotoId)
   if (breakIndex < 0) return out
-  sorted.forEach((m, i) => out.set(m.photoId, i <= breakIndex ? 'set1' : 'set2'))
+  // Exclusive at the break: the break TP starts set 2.
+  sorted.forEach((m, i) => out.set(m.photoId, i < breakIndex ? 'set1' : 'set2'))
   return out
+}
+
+/** One option in the "Set 2 starts at …" selector — a turning-point pick. */
+export interface SetBreakOption {
+  photoId: string
+  /** 1-based index of this turning point in route order (TP1, TP2, …). */
+  tpNumber: number
+  /** Custom display name if the user set one, else the original filename. */
+  name: string
+  /** Competition answer-sheet label (A/B/…) if assigned. */
+  label?: string
+}
+
+/**
+ * List the turning-point picks in ROUTE order as set-break options. The break is
+ * "Set 2 starts at TP-X", so the selector offers exactly the turning points —
+ * picking one makes it the first TP of set 2. Track picks are never break
+ * candidates (the break must be a TP). Pure + exported for the panel + tests.
+ */
+export function listSetBreakOptions(
+  markers: readonly PhotoMarker[],
+): SetBreakOption[] {
+  return markers
+    .filter((m): m is PhotoMarker & { photoId: string } => !!m.photoId && m.flag === 'pick-turning')
+    .sort(comparePhotoMarkers)
+    .map((m, i) => ({
+      photoId: m.photoId,
+      tpNumber: i + 1,
+      name: photoMarkerDisplayName(m),
+      ...(m.label ? { label: m.label } : {}),
+    }))
 }
 
 /**

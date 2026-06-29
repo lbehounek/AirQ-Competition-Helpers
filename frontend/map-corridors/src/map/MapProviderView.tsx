@@ -106,11 +106,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   onPhotoIncludeTurning?: (markerId: string) => void
   onPhotoSkip?: (markerId: string) => void
   onPhotoReject?: (markerId: string) => void
-  // Toggle a turning-point photo as the set1↔set2 break (keyed by photoId).
-  // Omitted for precision (single-set) so the popup hides the control.
-  onPhotoSetBreak?: (photoId: string) => void
-  // photoId of the current set-break TP, for the popup toggle state + the
-  // marker badge. `null` = no break designated.
+  // photoId of the current set-break TP, for the marker badge (teal halo +
+  // scissors). The break is SET from the panel selector, not here — this is
+  // read-only confirmation. `null` = no break designated.
   setBreakPhotoId?: string | null
   // Phase 6 — fires when a no-GPS thumbnail from NoGpsTray is dropped
   // on the map. Receives the photoId and the unprojected drop coords.
@@ -1158,12 +1156,6 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
                 props.onPhotoReject?.(popupId)
                 setActivePhotoMarkerId(null)
               }}
-              onSetBreak={
-                props.onPhotoSetBreak && marker.photoId
-                  ? () => props.onPhotoSetBreak?.(marker.photoId!)
-                  : undefined
-              }
-              isSetBreak={!!marker.photoId && props.setBreakPhotoId === marker.photoId}
               onPreview={props.onPhotoPreview ? () => props.onPhotoPreview?.(marker.photoId!) : undefined}
             />
           </Popup>

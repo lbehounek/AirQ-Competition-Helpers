@@ -154,12 +154,12 @@ describe('buildMapPicks — set-break assignment', () => {
     expect(result.every(e => e.set === undefined)).toBe(true)
   })
 
-  it('splits at the break TP — before-or-at → set1, after → set2', () => {
+  it('splits at the break TP — break TP starts set2, everything before → set1', () => {
     const result = buildMapPicks(markers(), 'pid-b')
     const byId = Object.fromEntries(result.map(e => [e.photoId, e.set]))
     expect(byId).toEqual({
-      'pid-a': 'set1', // before the break
-      'pid-b': 'set1', // the break TP closes leg 1 (inclusive)
+      'pid-a': 'set1', // strictly before the break
+      'pid-b': 'set2', // the break TP is the FIRST turning point of set 2
       'pid-c': 'set2', // after
       'pid-d': 'set2',
     })
@@ -169,13 +169,13 @@ describe('buildMapPicks — set-break assignment', () => {
     const result = buildMapPicks(markers(), 'pid-b')
     const track = result.filter(e => e.flag === 'pick-track')
     const turning = result.filter(e => e.flag === 'pick-turning')
-    expect(track.map(e => e.set)).toEqual(['set1', 'set2'])   // a, c
-    expect(turning.map(e => e.set)).toEqual(['set1', 'set2'])  // b, d
+    expect(track.map(e => e.set)).toEqual(['set1', 'set2'])    // a (before), c (after)
+    expect(turning.map(e => e.set)).toEqual(['set2', 'set2'])  // b (break → set2), d (after)
   })
 
-  it('break at the FIRST pick → only it is set1, the rest set2', () => {
+  it('break at the FIRST pick → everything is set2', () => {
     const result = buildMapPicks(markers(), 'pid-a')
-    expect(result.map(e => e.set)).toEqual(['set1', 'set2', 'set2', 'set2'])
+    expect(result.map(e => e.set)).toEqual(['set2', 'set2', 'set2', 'set2'])
   })
 
   it('emits no set when the break id is not among the picks (stale/unpicked break)', () => {

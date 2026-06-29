@@ -12,6 +12,7 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  MenuItem,
   Paper,
   Stack,
   TextField,
@@ -28,7 +29,7 @@ import { usePhotoThumbUrl } from './usePhotoThumbUrl'
 import { NO_GPS_PHOTO_DRAG_TYPE } from './NoGpsTray'
 import { groupPhotosByFlag } from './groupPhotosByFlag'
 import { flagForGroup, canRecategorize } from '../recategorize/recategorize'
-import { partitionPicksBySet, setBreakDividerIndex, type SetKey } from '../setSplit/partitionPicksBySet'
+import { partitionPicksBySet, setBreakDividerIndex, listSetBreakOptions, type SetKey } from '../setSplit/partitionPicksBySet'
 import type { PhotoFlag } from '../types/markers'
 
 /** Drag MIME for recategorizing a photo row by dropping it on another group. */
@@ -115,6 +116,13 @@ export interface PhotoListPanelProps {
    * truth shared with the handoff writer).
    */
   setBreakPhotoId?: string | null
+  /**
+   * Set/clear the set1↔set2 break from the panel's "Set 2 starts at TP-X"
+   * selector. `null` clears the split. Provided ONLY for rally (precision is
+   * single-set) — when omitted, the selector is hidden entirely. This is the
+   * sole way to set the break; the map popup no longer carries a control.
+   */
+  onSetBreakChange?: (photoId: string | null) => void
 }
 
 /**
@@ -132,7 +140,7 @@ const GROUP_ORDER: readonly GroupKey[] = ['picksTurning', 'picksTrack', 'neutral
 
 export function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
-  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick, onPreviewPhoto, setBreakPhotoId } = props
+  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick, onPreviewPhoto, setBreakPhotoId, onSetBreakChange } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     picksTurning: false,
@@ -158,6 +166,12 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
   // sees matches the set the editor receives. Empty map (no break / stale break /
   // precision) → no divider rendered.
   const setByPhotoId = useMemo(() => partitionPicksBySet(markers, setBreakPhotoId), [markers, setBreakPhotoId])
+  // Turning points in route order — the options for the "Set 2 starts at TP-X"
+  // selector. The break must be a TP, so only turning-point picks qualify.
+  const breakOptions = useMemo(() => listSetBreakOptions(markers), [markers])
+  // Guard the Select value against a stale break id (cleared elsewhere) so MUI
+  // doesn't warn about an out-of-range value.
+  const breakValue = breakOptions.some(o => o.photoId === setBreakPhotoId) ? (setBreakPhotoId ?? '') : ''
   // All picks (turning-point + track) — the send button counts/enables on this,
   // since "Poslat do editoru" sends every pick regardless of category.
   const pickCount = groups.picksTurning.length + groups.picksTrack.length
@@ -299,6 +313,37 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
       </Stack>
       {!collapsedPanel && (
         <Box sx={{ flex: 1, overflowY: 'auto' }}>
+          {/* "Set 2 starts at TP-X" selector — rally only (onSetBreakChange
+              wired) and only once at least one turning point exists. The break
+              TP becomes the first turning point of set 2; the editor fills the
+              sheets accordingly and the pick groups below show a "Set 2"
+              divider at the cut. */}
+          {onSetBreakChange && breakOptions.length > 0 && (
+            <Box sx={{ px: 1, py: 0.75, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'grey.50' }}>
+              <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>
+                {t('photo.list.setBreakLabel')}
+              </Typography>
+              <TextField
+                select
+                size="small"
+                fullWidth
+                value={breakValue}
+                onChange={(e) => onSetBreakChange(e.target.value === '' ? null : e.target.value)}
+                SelectProps={{ displayEmpty: true }}
+                inputProps={{ 'aria-label': t('photo.list.setBreakLabel') }}
+              >
+                <MenuItem value="">{t('photo.list.setBreakNone')}</MenuItem>
+                {breakOptions.map(o => (
+                  <MenuItem key={o.photoId} value={o.photoId}>
+                    {t('photo.list.setBreakOption', {
+                      tp: o.tpNumber,
+                      suffix: o.label ? ` (${o.label})` : '',
+                    })}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Box>
+          )}
           {GROUP_ORDER.map(key => (
             <GroupSection
               key={key}

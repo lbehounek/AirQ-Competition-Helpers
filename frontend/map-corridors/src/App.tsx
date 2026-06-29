@@ -771,13 +771,13 @@ function App() {
     void setPhotoFlag(markerId, 'reject')
   }, [setPhotoFlag])
 
-  // Toggle a turning-point photo as the set1↔set2 break (keyed by photoId —
-  // the handoff and the editor identify picks by photoId, not marker id).
-  // Clicking the current break again clears it.
-  const handlePhotoSetBreak = useCallback((photoId: string) => {
-    const current = session?.setBreakPhotoId ?? null
-    void setSetBreakPhotoId(current === photoId ? null : photoId)
-  }, [session?.setBreakPhotoId, setSetBreakPhotoId])
+  // Set/clear the set1↔set2 break from the panel's "Set 2 starts at TP-X"
+  // selector (keyed by photoId — the handoff and the editor identify picks by
+  // photoId, not marker id). The selector passes the chosen TP's photoId, or
+  // null to clear the split.
+  const handleSetBreakChange = useCallback((photoId: string | null) => {
+    void setSetBreakPhotoId(photoId)
+  }, [setSetBreakPhotoId])
 
   // Phase 12 — atomic variant resolution. Promotes the winner to 'pick' and
   // demotes every loser to 'reject' in a single OPFS write so the user
@@ -1408,9 +1408,9 @@ function App() {
             onPhotoIncludeTurning={handlePhotoIncludeTurning}
             onPhotoSkip={handlePhotoSkip}
             onPhotoReject={handlePhotoReject}
-            // Set-break is a rally-only, turning-point-only action; omit it for
-            // precision (single-set) so the popup hides the control entirely.
-            onPhotoSetBreak={effectiveDiscipline === 'precision' ? undefined : handlePhotoSetBreak}
+            // The break is set from the panel selector now (not the popup), but
+            // the map still shows the teal halo + scissors badge on the break TP
+            // as read-only confirmation of where set 2 starts.
             setBreakPhotoId={session?.setBreakPhotoId ?? null}
             onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}
             activePhotoMarkerId={activePhotoMarkerId}
@@ -1451,6 +1451,9 @@ function App() {
             // Visualize the set1↔set2 break in the pick groups (rally only;
             // precision is single-set, so no break → no divider).
             setBreakPhotoId={resolveSetBreakId(effectiveDiscipline, session?.setBreakPhotoId)}
+            // "Set 2 starts at TP-X" selector — the sole way to set the break.
+            // Omitted for precision so the selector is hidden.
+            onSetBreakChange={effectiveDiscipline === 'precision' ? undefined : handleSetBreakChange}
           />
         </Box>
       </Container>

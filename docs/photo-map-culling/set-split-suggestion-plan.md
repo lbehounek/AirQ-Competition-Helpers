@@ -279,3 +279,43 @@ sheet overflows the pick to the tray (placeholder untouched, grid not exceeded),
 and a reflow into a sheet a placeholder leaves room in places the pick normally.
 Code intent documented at the `targetLen` capacity gate in
 `reconcilePlacedToDesiredSet`.
+
+---
+
+## TP-selector reframe (2026-06-22, user feedback)
+
+Live-testing feedback: clicking a *photo* on the map to set the break was
+undiscoverable and conceptually wrong — **the break is a property of the route's
+turning points, not of a photo.** The user's words: "set TP where photos change —
+not photo, but TP… there should be a controller 'photos change at TPx'."
+
+**Decisions (owner):**
+- **Semantics: "Set 2 starts at TP-X".** You pick the *first* turning point of
+  set 2. This flips the internal convention from inclusive (break TP closed
+  set 1) to **exclusive — the break TP is the first TP of set 2**: in route order
+  the break TP and everything after → `set2`, everything strictly before →
+  `set1`. (Free to change — feature is unreleased. The flip also makes "set 2
+  starts at TP1" representable, which the inclusive convention could not.)
+- **Panel selector is the sole input.** A `Set 2 starts at [ TP… ▾ ]` dropdown in
+  the right-side `PhotoListPanel`, listing the turning-point picks in route order
+  (TP1, TP2, … with the competition label in parens). "No split" clears it.
+  Rally only (hidden for precision and when there are no turning points).
+- **The per-photo map popup button is removed** (one way to set it). The map
+  keeps the teal halo + scissors badge on the break TP as *read-only*
+  confirmation.
+
+**Implemented:**
+- `partitionPicksBySet`: exclusive cut (`i < breakIndex ? set1 : set2`); doc
+  updated. New pure `listSetBreakOptions(markers)` → turning-point picks in route
+  order as `{ photoId, tpNumber, name, label? }`. Both unit-tested; the
+  `buildMapPicks`/divider machinery is unchanged (still reads the partition).
+- `PhotoListPanel`: `onSetBreakChange` prop + the selector. `App.tsx`:
+  `handleSetBreakChange` (direct set/clear) wired to the panel; the popup
+  `onPhotoSetBreak` wiring removed.
+- `PhotoMarkerPopup` / `MapProviderView`: removed the "Split sets here" button
+  and its props; kept the break badge. i18n: added `photo.list.setBreakLabel`
+  / `setBreakNone` / `setBreakOption` (en/cs), removed `photo.popup.setBreak`
+  / `clearBreak`.
+- Gate: map-corridors `tsc -b` clean, vitest **748 ✓** (+2 todo). photo-helper
+  untouched (set1/set2 still mean the same sheets; only *which* picks map to them
+  changed, and that's computed map-side).

@@ -6,7 +6,6 @@
 import { Box, Button, CircularProgress, Stack, Typography } from '@mui/material'
 import CheckIcon from '@mui/icons-material/Check'
 import FlagIcon from '@mui/icons-material/Flag'
-import ContentCutIcon from '@mui/icons-material/ContentCut'
 import type { StorageInterface, DirectoryHandle } from '@airq/shared-storage'
 import { useI18n } from '../contexts/I18nContext'
 import { usePhotoThumbUrl } from './usePhotoThumbUrl'
@@ -48,14 +47,6 @@ export interface PhotoMarkerPopupProps {
   onIncludeTurning: () => void
   onSkip: () => void
   onReject: () => void
-  /**
-   * Toggle this turning-point photo as the set1↔set2 break (rally only).
-   * Shown only when provided AND the photo is a turning-point pick — the break
-   * must be a TP. Omitted (undefined) for precision/single-set or non-TP picks.
-   */
-  onSetBreak?: () => void
-  /** True when this photo is the current set-break TP (button shows active). */
-  isSetBreak?: boolean
   /**
    * Double-clicking the thumbnail opens the full-resolution single-photo
    * preview (lightbox). Undefined leaves the thumbnail non-interactive on
@@ -172,21 +163,6 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
           {t('photo.popup.reject')}
         </Button>
       </Stack>
-      {/* Set-break toggle — only for turning-point picks (the break must be a
-          TP) and only when the host wired it (rally, not precision). */}
-      {props.onSetBreak && isPickTurning && (
-        <Button
-          size="small"
-          fullWidth
-          sx={{ mt: 1 }}
-          variant={props.isSetBreak ? 'contained' : 'outlined'}
-          color={props.isSetBreak ? 'info' : 'inherit'}
-          startIcon={<ContentCutIcon />}
-          onClick={props.onSetBreak}
-        >
-          {t(props.isSetBreak ? 'photo.popup.clearBreak' : 'photo.popup.setBreak')}
-        </Button>
-      )}
       {props.onLabelChange && (
         <Box sx={{ mt: 1.5 }}>
           <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>

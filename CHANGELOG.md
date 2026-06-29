@@ -14,19 +14,16 @@ new desktop release.
 
 ### Added
 - **Map Corridors → Photo Helper:** you can now choose *where the answer-sheet
-  pages split*. In Map Corridors, open a turning-point photo and tap **"Split
-  sets here"** — that turning point becomes the set 1 / set 2 break (marked with
-  a scissors badge on the map). Photos up to and including it fill set 1, the
-  rest fill set 2, in route order, for both track and turning-point photos
-  (rally only; precision is single-set). Move the break later and the editor
+  pages split*, by **turning point**. In Map Corridors' right-side photo list,
+  use the **"Set 2 starts at"** selector and pick a turning point (TP1, TP2, …) —
+  that TP and everything after it (in route order) go to **set 2**; everything
+  before it stays in **set 1**, for both track and turning-point photos (rally
+  only; precision is single-set). The chosen TP is marked with a scissors badge
+  on the map, and a **"Set 2"** divider appears in the pick groups so you can see
+  the cut without opening the editor. Change the selection later and the editor
   re-flows the already-placed photos to match, keeping each photo's crop and
-  label. Photos that don't fit a full sheet land in the candidate tray. Without
-  a break it behaves exactly as before (set 1 → set 2 → tray).
-- **Map Corridors:** the right-side photo list now shows where the set break
-  falls — a **"Set 2"** divider (with a scissors mark) appears inside the
-  turning-point and track pick groups at the chosen break, so you can see which
-  photos go to which answer sheet without opening the editor. Rally only; hidden
-  when no break is set.
+  label; anything that doesn't fit a full sheet lands in the candidate tray.
+  Choose **"No split"** for one set (the prior set 1 → set 2 → tray fill).
 - **Photo Helper:** if re-sorting photos into the new set split can't be saved
   (e.g. storage full), the editor now shows a recoverable warning instead of
   silently leaving photos on the wrong sheet — and the rest of the sync still
