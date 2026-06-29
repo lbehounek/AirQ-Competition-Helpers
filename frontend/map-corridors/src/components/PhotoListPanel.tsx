@@ -29,7 +29,8 @@ import { usePhotoThumbUrl } from './usePhotoThumbUrl'
 import { NO_GPS_PHOTO_DRAG_TYPE } from './NoGpsTray'
 import { groupPhotosByFlag } from './groupPhotosByFlag'
 import { flagForGroup, canRecategorize } from '../recategorize/recategorize'
-import { partitionPicksBySet, setBreakDividerIndex, listSetBreakOptions, type SetKey } from '../setSplit/partitionPicksBySet'
+import { partitionPicksByRouteTP, setBreakDividerIndex, listRouteTpOptions, type SetKey } from '../setSplit/partitionPicksBySet'
+import type { RouteWaypoint } from '../corridors/matchPoints'
 import type { PhotoFlag } from '../types/markers'
 
 /** Drag MIME for recategorizing a photo row by dropping it on another group. */
@@ -112,17 +113,21 @@ export interface PhotoListPanelProps {
    * set, the turning-point and track pick groups render a `set1 │ set2` divider
    * at the cut, mirroring the scissors badge on the map. The break itself is
    * still set/moved from the map popup; the panel only visualizes the result.
-   * `null`/undefined → no divider. See partitionPicksBySet (single source of
+   * `null`/undefined → no divider. See partitionPicksByRouteTP (single source of
    * truth shared with the handoff writer).
    */
-  setBreakPhotoId?: string | null
+  setBreakWaypointName?: string | null
   /**
-   * Set/clear the set1↔set2 break from the panel's "Set 2 starts at TP-X"
-   * selector. `null` clears the split. Provided ONLY for rally (precision is
-   * single-set) — when omitted, the selector is hidden entirely. This is the
-   * sole way to set the break; the map popup no longer carries a control.
+   * The route's ordered turning points (SP, TP1…TPn, FP) — the options for the
+   * "Set 2 starts at" selector and the input to the geographic partition.
    */
-  onSetBreakChange?: (photoId: string | null) => void
+  routeWaypoints?: readonly RouteWaypoint[]
+  /**
+   * Set/clear the set1↔set2 break from the panel's "Set 2 starts at" selector,
+   * by route-TP waypoint name (`null` clears the split). Provided ONLY for rally
+   * (precision is single-set) — when omitted, the selector is hidden entirely.
+   */
+  onSetBreakChange?: (waypointName: string | null) => void
 }
 
 /**
@@ -140,7 +145,7 @@ const GROUP_ORDER: readonly GroupKey[] = ['picksTurning', 'picksTrack', 'neutral
 
 export function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
-  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick, onPreviewPhoto, setBreakPhotoId, onSetBreakChange } = props
+  const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick, onPreviewPhoto, setBreakWaypointName, routeWaypoints, onSetBreakChange } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     picksTurning: false,
@@ -165,13 +170,14 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
   // truth with the handoff writer (partitionPicksBySet), so the divider the user
   // sees matches the set the editor receives. Empty map (no break / stale break /
   // precision) → no divider rendered.
-  const setByPhotoId = useMemo(() => partitionPicksBySet(markers, setBreakPhotoId), [markers, setBreakPhotoId])
-  // Turning points in route order — the options for the "Set 2 starts at TP-X"
-  // selector. The break must be a TP, so only turning-point picks qualify.
-  const breakOptions = useMemo(() => listSetBreakOptions(markers), [markers])
-  // Guard the Select value against a stale break id (cleared elsewhere) so MUI
-  // doesn't warn about an out-of-range value.
-  const breakValue = breakOptions.some(o => o.photoId === setBreakPhotoId) ? (setBreakPhotoId ?? '') : ''
+  const waypoints = routeWaypoints ?? []
+  const setByPhotoId = useMemo(() => partitionPicksByRouteTP(markers, waypoints, setBreakWaypointName), [markers, waypoints, setBreakWaypointName])
+  // Route turning points (TP1…TPn) — the options for the "Set 2 starts at"
+  // selector.
+  const breakOptions = useMemo(() => listRouteTpOptions(waypoints), [waypoints])
+  // Guard the Select value against a stale break name (route reloaded without
+  // that TP) so MUI doesn't warn about an out-of-range value.
+  const breakValue = breakOptions.some(o => o.name === setBreakWaypointName) ? (setBreakWaypointName ?? '') : ''
   // All picks (turning-point + track) — the send button counts/enables on this,
   // since "Poslat do editoru" sends every pick regardless of category.
   const pickCount = groups.picksTurning.length + groups.picksTrack.length
@@ -313,11 +319,11 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
       </Stack>
       {!collapsedPanel && (
         <Box sx={{ flex: 1, overflowY: 'auto' }}>
-          {/* "Set 2 starts at TP-X" selector — rally only (onSetBreakChange
-              wired) and only once at least one turning point exists. The break
-              TP becomes the first turning point of set 2; the editor fills the
-              sheets accordingly and the pick groups below show a "Set 2"
-              divider at the cut. */}
+          {/* "Set 2 starts at" selector — rally only (onSetBreakChange wired)
+              and only once the route has turning points. The chosen route TP
+              becomes the start of set 2: picks at/after it (along the route) go
+              to set 2, the editor fills the sheets accordingly, and the pick
+              groups below show a "Set 2" divider at the cut. */}
           {onSetBreakChange && breakOptions.length > 0 && (
             <Box sx={{ px: 1, py: 0.75, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'grey.50' }}>
               <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>
@@ -334,12 +340,7 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
               >
                 <MenuItem value="">{t('photo.list.setBreakNone')}</MenuItem>
                 {breakOptions.map(o => (
-                  <MenuItem key={o.photoId} value={o.photoId}>
-                    {t('photo.list.setBreakOption', {
-                      tp: o.tpNumber,
-                      suffix: o.label ? ` (${o.label})` : '',
-                    })}
-                  </MenuItem>
+                  <MenuItem key={o.name} value={o.name}>{o.name}</MenuItem>
                 ))}
               </TextField>
             </Box>

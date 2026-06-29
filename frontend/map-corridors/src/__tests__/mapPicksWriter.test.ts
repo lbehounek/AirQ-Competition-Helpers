@@ -140,47 +140,50 @@ describe('buildMapPicks', () => {
   })
 })
 
-describe('buildMapPicks — set-break assignment', () => {
-  // Route order is by filename; `bTP` (b.jpg) is the designated break.
+describe('buildMapPicks — set-break assignment (route TP)', () => {
+  // Straight west→east route; a photo's longitude is its distance along it.
+  const route = () => [
+    { name: 'SP', coord: [0, 0] as [number, number] },
+    { name: 'TP1', coord: [1, 0] as [number, number] },
+    { name: 'TP2', coord: [2, 0] as [number, number] },
+    { name: 'FP', coord: [3, 0] as [number, number] },
+  ]
+  // Picks spread along the route; emission order is still by filename.
   const markers = () => [
-    pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track' }),
-    pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning' }), // break
-    pm({ id: 'c', photoId: 'pid-c', name: 'c.jpg', flag: 'pick-track' }),
-    pm({ id: 'd', photoId: 'pid-d', name: 'd.jpg', flag: 'pick-turning' }),
+    pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track', lng: 0.5, lat: 0 }),
+    pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning', lng: 1.5, lat: 0 }),
+    pm({ id: 'c', photoId: 'pid-c', name: 'c.jpg', flag: 'pick-track', lng: 2.5, lat: 0 }),
   ]
 
-  it('adds NO set field when no break is designated (back-compat / default fill)', () => {
-    const result = buildMapPicks(markers(), null)
-    expect(result.every(e => e.set === undefined)).toBe(true)
+  it('adds NO set field when no break is designated (default fill)', () => {
+    expect(buildMapPicks(markers(), route(), null).every(e => e.set === undefined)).toBe(true)
   })
 
-  it('splits at the break TP — break TP starts set2, everything before → set1', () => {
-    const result = buildMapPicks(markers(), 'pid-b')
-    const byId = Object.fromEntries(result.map(e => [e.photoId, e.set]))
+  it('adds NO set field when there is no route (waypoints omitted)', () => {
+    expect(buildMapPicks(markers()).every(e => e.set === undefined)).toBe(true)
+  })
+
+  it('splits by route position — picks at/after the break TP → set2, before → set1', () => {
+    const byId = Object.fromEntries(buildMapPicks(markers(), route(), 'TP2').map(e => [e.photoId, e.set]))
     expect(byId).toEqual({
-      'pid-a': 'set1', // strictly before the break
-      'pid-b': 'set2', // the break TP is the FIRST turning point of set 2
-      'pid-c': 'set2', // after
-      'pid-d': 'set2',
+      'pid-a': 'set1', // lng 0.5 — before TP2
+      'pid-b': 'set1', // lng 1.5 — before TP2
+      'pid-c': 'set2', // lng 2.5 — at/after TP2
     })
   })
 
-  it('partitions track and turning independently via the single cut', () => {
-    const result = buildMapPicks(markers(), 'pid-b')
-    const track = result.filter(e => e.flag === 'pick-track')
-    const turning = result.filter(e => e.flag === 'pick-turning')
-    expect(track.map(e => e.set)).toEqual(['set1', 'set2'])    // a (before), c (after)
-    expect(turning.map(e => e.set)).toEqual(['set2', 'set2'])  // b (break → set2), d (after)
+  it('partitions track and turning together via the single geographic cut', () => {
+    const result = buildMapPicks(markers(), route(), 'TP1')
+    const byId = Object.fromEntries(result.map(e => [e.photoId, e.set]))
+    expect(byId).toEqual({
+      'pid-a': 'set1', // before TP1
+      'pid-b': 'set2', // turning pick, after TP1
+      'pid-c': 'set2', // track pick, after TP1
+    })
   })
 
-  it('break at the FIRST pick → everything is set2', () => {
-    const result = buildMapPicks(markers(), 'pid-a')
-    expect(result.map(e => e.set)).toEqual(['set2', 'set2', 'set2', 'set2'])
-  })
-
-  it('emits no set when the break id is not among the picks (stale/unpicked break)', () => {
-    const result = buildMapPicks(markers(), 'pid-gone')
-    expect(result.every(e => e.set === undefined)).toBe(true)
+  it('emits no set when the break name is not a current waypoint (stale break)', () => {
+    expect(buildMapPicks(markers(), route(), 'TP9').every(e => e.set === undefined)).toBe(true)
   })
 })
 

@@ -1,67 +1,114 @@
 import { describe, it, expect } from 'vitest'
-import { partitionPicksBySet, setBreakDividerIndex, resolveSetBreakId, listSetBreakOptions, type SetKey } from '../setSplit/partitionPicksBySet'
+import {
+  partitionPicksByRouteTP,
+  setBreakDividerIndex,
+  resolveSetBreakName,
+  listRouteTpOptions,
+  type SetKey,
+} from '../setSplit/partitionPicksBySet'
 import type { PhotoMarker } from '../types/markers'
+import type { RouteWaypoint } from '../corridors/matchPoints'
 
 function pm(over: Partial<PhotoMarker>): PhotoMarker {
-  return { id: 'pm', lng: 14, lat: 50, name: 'x.jpg', ...over } as PhotoMarker
+  return { id: 'pm', lng: 0, lat: 0, name: 'x.jpg', ...over } as PhotoMarker
 }
 
-// Route order is by filename; `b.jpg` (pid-b) is the designated break.
-const markers = (): PhotoMarker[] => [
-  pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track' }),
-  pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning' }), // break
-  pm({ id: 'c', photoId: 'pid-c', name: 'c.jpg', flag: 'pick-track' }),
-  pm({ id: 'd', photoId: 'pid-d', name: 'd.jpg', flag: 'pick-turning' }),
+// A straight west→east route on the equator: SP, TP1, TP2, TP3, FP at lng 0..4.
+// A photo's longitude is its distance along the route, so set membership is easy
+// to reason about: "Set 2 starts at TP2" → picks at lng >= 2 are set2.
+const route = (): RouteWaypoint[] => [
+  { name: 'SP', coord: [0, 0] },
+  { name: 'TP1', coord: [1, 0] },
+  { name: 'TP2', coord: [2, 0] },
+  { name: 'TP3', coord: [3, 0] },
+  { name: 'FP', coord: [4, 0] },
 ]
 
-describe('partitionPicksBySet', () => {
-  it('returns an empty map when no break is designated', () => {
-    expect(partitionPicksBySet(markers(), null).size).toBe(0)
-    expect(partitionPicksBySet(markers(), undefined).size).toBe(0)
-    expect(partitionPicksBySet(markers(), '').size).toBe(0)
+// Track picks spread along the route, plus a turning-point pick.
+const picks = (): PhotoMarker[] => [
+  pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track', lng: 0.5, lat: 0 }),
+  pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning', lng: 1.5, lat: 0 }),
+  pm({ id: 'c', photoId: 'pid-c', name: 'c.jpg', flag: 'pick-track', lng: 2.5, lat: 0 }),
+  pm({ id: 'd', photoId: 'pid-d', name: 'd.jpg', flag: 'pick-track', lng: 3.5, lat: 0 }),
+]
+
+describe('partitionPicksByRouteTP', () => {
+  it('returns an empty map when there is no break', () => {
+    expect(partitionPicksByRouteTP(picks(), route(), null).size).toBe(0)
+    expect(partitionPicksByRouteTP(picks(), route(), undefined).size).toBe(0)
+    expect(partitionPicksByRouteTP(picks(), route(), '').size).toBe(0)
   })
 
-  it('splits in route order — break TP starts set2, everything before → set1', () => {
-    const m = partitionPicksBySet(markers(), 'pid-b')
+  it('splits by route position — picks at/after the break TP → set2, before → set1', () => {
+    const m = partitionPicksByRouteTP(picks(), route(), 'TP2')
     expect(Object.fromEntries(m)).toEqual({
-      'pid-a': 'set1', // strictly before the break
-      'pid-b': 'set2', // the break TP is the FIRST turning point of set 2
-      'pid-c': 'set2',
-      'pid-d': 'set2',
+      'pid-a': 'set1', // lng 0.5 — before TP2
+      'pid-b': 'set1', // lng 1.5 — before TP2
+      'pid-c': 'set2', // lng 2.5 — after TP2
+      'pid-d': 'set2', // lng 3.5 — after TP2
     })
   })
 
-  it('ignores non-pick markers (neutral / reject / KML) and unknown break', () => {
-    const m = partitionPicksBySet(
+  it('moving the break to TP3 shifts the cut (a pick before TP3 falls to set1)', () => {
+    const m = partitionPicksByRouteTP(picks(), route(), 'TP3')
+    expect(m.get('pid-c')).toBe('set1') // lng 2.5 — now before TP3
+    expect(m.get('pid-d')).toBe('set2') // lng 3.5 — still after
+  })
+
+  it('break at TP1 puts everything from the first leg onward in set2', () => {
+    const m = partitionPicksByRouteTP(picks(), route(), 'TP1')
+    expect(m.get('pid-a')).toBe('set1') // lng 0.5 — before TP1
+    expect([...m.values()].filter(s => s === 'set2')).toHaveLength(3) // b, c, d
+  })
+
+  it('returns an empty map for a stale break name (not a current waypoint)', () => {
+    expect(partitionPicksByRouteTP(picks(), route(), 'TP9').size).toBe(0)
+  })
+
+  it('returns an empty map when the break names SP (would be all-set2 = no split)', () => {
+    expect(partitionPicksByRouteTP(picks(), route(), 'SP').size).toBe(0)
+  })
+
+  it('returns an empty map when the route has fewer than two waypoints', () => {
+    expect(partitionPicksByRouteTP(picks(), [{ name: 'SP', coord: [0, 0] }], 'TP2').size).toBe(0)
+  })
+
+  it('ignores non-pick markers (neutral / reject / KML)', () => {
+    const m = partitionPicksByRouteTP(
       [
-        pm({ id: 'k', photoId: undefined, name: 'k.jpg' }), // KML
-        pm({ id: 'n', photoId: 'pid-n', name: 'n.jpg' }), // neutral
-        pm({ id: 'r', photoId: 'pid-r', name: 'r.jpg', flag: 'reject' }),
-        pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track' }),
-        pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning' }),
+        pm({ id: 'k', photoId: undefined, name: 'k.jpg', lng: 0.5, lat: 0 }), // KML
+        pm({ id: 'n', photoId: 'pid-n', name: 'n.jpg', lng: 0.5, lat: 0 }), // neutral
+        pm({ id: 'r', photoId: 'pid-r', name: 'r.jpg', flag: 'reject', lng: 0.5, lat: 0 }),
+        pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track', lng: 2.5, lat: 0 }),
       ],
-      'pid-b',
+      route(),
+      'TP2',
     )
-    // Only the two picks are mapped; pid-b (the break) starts set2, pid-a is set1.
-    expect([...m.keys()].sort()).toEqual(['pid-a', 'pid-b'])
-    expect(m.get('pid-a')).toBe('set1')
-    expect(m.get('pid-b')).toBe('set2')
+    expect([...m.keys()]).toEqual(['pid-a'])
+    expect(m.get('pid-a')).toBe('set2')
   })
 
-  it('returns an empty map for a stale break (id not among current picks)', () => {
-    expect(partitionPicksBySet(markers(), 'pid-gone').size).toBe(0)
-  })
-
-  it('break at the first pick → everything is set2 (set1 empty)', () => {
-    const m = partitionPicksBySet(markers(), 'pid-a')
-    expect([...m.values()]).toEqual<SetKey[]>(['set2', 'set2', 'set2', 'set2'])
-  })
-
-  it('is independent of input order (sorts by route order internally)', () => {
-    const shuffled = [markers()[2], markers()[0], markers()[3], markers()[1]]
-    expect(Object.fromEntries(partitionPicksBySet(shuffled, 'pid-b'))).toEqual(
-      Object.fromEntries(partitionPicksBySet(markers(), 'pid-b')),
+  it('keeps an unprojectable pick (non-finite coords) in set1', () => {
+    const m = partitionPicksByRouteTP(
+      [pm({ id: 'x', photoId: 'pid-x', flag: 'pick-track', lng: NaN, lat: NaN })],
+      route(),
+      'TP2',
     )
+    expect(m.get('pid-x')).toBe('set1')
+  })
+})
+
+describe('listRouteTpOptions', () => {
+  it('lists the turning points in route order, excluding SP and FP', () => {
+    expect(listRouteTpOptions(route()).map(o => o.name)).toEqual(['TP1', 'TP2', 'TP3'])
+  })
+
+  it('returns [] for a route with only SP and FP (no turning points)', () => {
+    expect(listRouteTpOptions([{ name: 'SP', coord: [0, 0] }, { name: 'FP', coord: [4, 0] }])).toEqual([])
+  })
+
+  it('returns [] for an empty waypoint list', () => {
+    expect(listRouteTpOptions([])).toEqual([])
   })
 })
 
@@ -79,89 +126,32 @@ describe('setBreakDividerIndex', () => {
   })
 
   it('returns -1 when the group is wholly set1 (no within-group boundary)', () => {
-    const m = setMap({ a: 'set1', b: 'set1' })
-    expect(setBreakDividerIndex(['a', 'b'], m)).toBe(-1)
+    expect(setBreakDividerIndex(['a', 'b'], setMap({ a: 'set1', b: 'set1' }))).toBe(-1)
   })
 
   it('returns -1 when the group is wholly set2 (boundary lives in the other group)', () => {
-    const m = setMap({ c: 'set2', d: 'set2' })
-    expect(setBreakDividerIndex(['c', 'd'], m)).toBe(-1)
+    expect(setBreakDividerIndex(['c', 'd'], setMap({ c: 'set2', d: 'set2' }))).toBe(-1)
   })
 
-  it('divider lands before the very first set2 even if only one set1 precedes it', () => {
-    const m = setMap({ a: 'set1', b: 'set2', c: 'set2' })
-    expect(setBreakDividerIndex(['a', 'b', 'c'], m)).toBe(1)
-  })
-
-  it('ignores ids missing from the set map (e.g. photos with no break info)', () => {
+  it('ignores ids missing from the set map', () => {
     const m = setMap({ a: 'set1', c: 'set2' })
-    // 'b' has no membership; the divider still lands at the first qualifying set2.
     expect(setBreakDividerIndex(['a', 'b', 'c'], m)).toBe(2)
   })
-
-  // GAP 1 (PR #103 review): the panel sorts pick rows by filename only
-  // (groupPhotosByFlag), while membership is by route order (filename + EXIF).
-  // They diverge ONLY when two picks share a filename. In that tie the set2 row
-  // can appear before the set1 row in panel order, so no "set2 after a set1"
-  // boundary exists → divider is suppressed (returns -1). Documented, cosmetic:
-  // the editor still splits correctly by entry.set; the panel just omits the
-  // line rather than drawing it in the wrong place. This test pins that.
-  it('suppresses the divider on an identical-filename tie where panel order ≠ route order', () => {
-    // Route order put dupB in set1 and dupA in set2, but the panel (filename
-    // sort, stable) renders them [dupA, dupB] → set2 row first.
-    const m = setMap({ dupA: 'set2', dupB: 'set1' })
-    expect(setBreakDividerIndex(['dupA', 'dupB'], m)).toBe(-1)
-  })
 })
 
-describe('listSetBreakOptions', () => {
-  it('lists ONLY turning-point picks, in route order, numbered TP1..TPn', () => {
-    const opts = listSetBreakOptions(markers()) // a=track, b=turning, c=track, d=turning
-    expect(opts.map(o => ({ photoId: o.photoId, tpNumber: o.tpNumber }))).toEqual([
-      { photoId: 'pid-b', tpNumber: 1 },
-      { photoId: 'pid-d', tpNumber: 2 },
-    ])
-  })
-
-  it('excludes track / neutral / reject / KML markers', () => {
-    const opts = listSetBreakOptions([
-      pm({ id: 'k', photoId: undefined, name: 'k.jpg' }),
-      pm({ id: 'n', photoId: 'pid-n', name: 'n.jpg' }), // neutral
-      pm({ id: 't', photoId: 'pid-t', name: 't.jpg', flag: 'pick-track' }),
-      pm({ id: 'r', photoId: 'pid-r', name: 'r.jpg', flag: 'reject' }),
-      pm({ id: 'tp', photoId: 'pid-tp', name: 'tp.jpg', flag: 'pick-turning' }),
-    ])
-    expect(opts.map(o => o.photoId)).toEqual(['pid-tp'])
-  })
-
-  it('carries the custom name and competition label when present', () => {
-    const opts = listSetBreakOptions([
-      pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning', displayName: 'TP1', label: 'A' }),
-    ])
-    expect(opts[0]).toEqual({ photoId: 'pid-b', tpNumber: 1, name: 'TP1', label: 'A' })
-  })
-
-  it('omits the label key when unset and returns [] with no turning points', () => {
-    const opts = listSetBreakOptions([pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning' })])
-    expect(opts[0]).toEqual({ photoId: 'pid-b', tpNumber: 1, name: 'b.jpg' })
-    expect(opts[0].label).toBeUndefined()
-    expect(listSetBreakOptions([pm({ id: 't', photoId: 'pid-t', flag: 'pick-track' })])).toEqual([])
-  })
-})
-
-describe('resolveSetBreakId', () => {
+describe('resolveSetBreakName', () => {
   it('returns null for precision regardless of the chosen break (single-set)', () => {
-    expect(resolveSetBreakId('precision', 'pid-b')).toBeNull()
+    expect(resolveSetBreakName('precision', 'TP2')).toBeNull()
   })
 
-  it('passes the break id through for rally (and any non-precision discipline)', () => {
-    expect(resolveSetBreakId('rally', 'pid-b')).toBe('pid-b')
-    expect(resolveSetBreakId('web', 'pid-b')).toBe('pid-b')
+  it('passes the break name through for rally (and any non-precision discipline)', () => {
+    expect(resolveSetBreakName('rally', 'TP2')).toBe('TP2')
+    expect(resolveSetBreakName('web', 'TP2')).toBe('TP2')
   })
 
   it('normalizes an absent break to null (no break chosen)', () => {
-    expect(resolveSetBreakId('rally', null)).toBeNull()
-    expect(resolveSetBreakId('rally', undefined)).toBeNull()
-    expect(resolveSetBreakId(null, undefined)).toBeNull()
+    expect(resolveSetBreakName('rally', null)).toBeNull()
+    expect(resolveSetBreakName('rally', undefined)).toBeNull()
+    expect(resolveSetBreakName(null, undefined)).toBeNull()
   })
 })

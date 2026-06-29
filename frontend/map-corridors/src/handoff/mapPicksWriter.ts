@@ -21,7 +21,8 @@ import {
   type MapPicksFile,
 } from '@airq/shared-handoff'
 import { comparePhotoMarkers, type PhotoMarker } from '../types/markers'
-import { partitionPicksBySet } from '../setSplit/partitionPicksBySet'
+import { partitionPicksByRouteTP } from '../setSplit/partitionPicksBySet'
+import type { RouteWaypoint } from '../corridors/matchPoints'
 
 const FILENAME = MAP_PICKS_FILENAME
 const DEBOUNCE_MS = 300
@@ -88,28 +89,30 @@ export function buildMapPickEntry(marker: PhotoMarker): MapPickEntry | null {
  *    side (PhotoMarker.flag) — the wire file is now a transport for
  *    PICKS only, not a general flag-state mirror.
  *
- * When `breakPhotoId` names a designated set-break turning point, each entry
- * also carries `set` (`set1`/`set2`) so the editor fills the matching sheet.
+ * When `breakWaypointName` names a route turning point (and `waypoints` is the
+ * route's ordered waypoints), each entry also carries `set` (`set1`/`set2`) per
+ * its position along the route, so the editor fills the matching sheet.
  *
  * Used by both App.tsx (scheduling writes) and tests.
  */
 export function buildMapPicks(
   markers: readonly PhotoMarker[],
-  breakPhotoId?: string | null,
+  waypoints: readonly RouteWaypoint[] = [],
+  breakWaypointName?: string | null,
 ): MapPickEntry[] {
   // Emit picks in ROUTE order (filename, then EXIF time — `comparePhotoMarkers`).
   // The editor fills each sheet in file order, so a sorted file gives correct
-  // within-sheet ordering for free; and the set split below cuts this same
-  // ordered list at the break.
+  // within-sheet ordering for free. Set membership is a separate, geographic
+  // cut computed below from the chosen route TP.
   const picks = markers.filter(m => m.photoId && isPickFlag(m.flag))
   const sorted = [...picks].sort(comparePhotoMarkers)
 
   // Set membership comes from the shared partition helper — the SAME source the
   // panel's set1│set2 divider reads — so the editor's file and what the user
-  // sees in the panel can never disagree. An unset / stale break yields an empty
-  // map → no `set` emitted, and the editor falls back to its default
-  // set1→set2→tray fill. (Route-order cut + break convention live in the helper.)
-  const setByPhotoId = partitionPicksBySet(markers, breakPhotoId)
+  // sees in the panel can never disagree. No break / stale name / no route →
+  // empty map → no `set` emitted, and the editor falls back to its default
+  // set1→set2→tray fill.
+  const setByPhotoId = partitionPicksByRouteTP(markers, waypoints, breakWaypointName)
 
   const out: MapPickEntry[] = []
   for (const m of sorted) {

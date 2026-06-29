@@ -51,7 +51,7 @@ import {
   flushPendingMapPicks,
   scheduleWriteMapPicks,
 } from './handoff/mapPicksWriter'
-import { resolveSetBreakId } from './setSplit/partitionPicksBySet'
+import { resolveSetBreakName } from './setSplit/partitionPicksBySet'
 import { useEditorPicksSync } from './hooks/useEditorPicksSync'
 
 // File-type routing for the dropzone. KML/GPX → existing corridor
@@ -200,7 +200,7 @@ function App() {
     photosDir,
     competitionDir,
     setMapStyleId,
-    setSetBreakPhotoId,
+    setSetBreakWaypointName,
     setMarkers: persistMarkers,
     setGroundMarkers: persistGroundMarkers,
     setNoGpsPhotos: persistNoGpsPhotos,
@@ -687,9 +687,9 @@ function App() {
         // Stamp each pick with its TP set-break sheet here too — the click-time
         // write must agree with the debounced [markers] effect, else a break
         // toggled just before sending would be dropped from the authoritative
-        // handoff file. `resolveSetBreakId` applies the precision→no-break rule.
-        const breakId = resolveSetBreakId(effectiveDiscipline, session?.setBreakPhotoId)
-        scheduleWriteMapPicks(storage, competitionDir, buildMapPicks(markers, breakId))
+        // handoff file. `resolveSetBreakName` applies the precision→no-break rule.
+        const breakName = resolveSetBreakName(effectiveDiscipline, session?.setBreakWaypointName)
+        scheduleWriteMapPicks(storage, competitionDir, buildMapPicks(markers, routeWaypoints, breakName))
       }
       await flushPendingMapPicks()
     } catch (err) {
@@ -704,20 +704,20 @@ function App() {
     } else {
       window.location.href = `/photo-helper/?competitionId=${competitionId}`
     }
-  }, [competitionId, storage, competitionDir, markers, session?.setBreakPhotoId, effectiveDiscipline, t])
+  }, [competitionId, storage, competitionDir, markers, routeWaypoints, session?.setBreakWaypointName, effectiveDiscipline, t])
 
   // Phase 8a — mirror the in-memory photo markers into map-picks.json
   // every time they change. The writer debounces (300ms) so rapid flag
   // toggles coalesce into one disk write. Pagehide flushes best-effort.
   useEffect(() => {
     if (!storage || !competitionDir) return
-    // `setBreakPhotoId` (the user's set1↔set2 break TP) stamps each pick with
-    // its target sheet; `resolveSetBreakId` nulls it for precision (single-set)
-    // so the editor uses its default fill.
-    const breakId = resolveSetBreakId(effectiveDiscipline, session?.setBreakPhotoId)
-    const picks = buildMapPicks(markers, breakId)
+    // `setBreakWaypointName` (the route TP that starts set 2) stamps each pick
+    // with its target sheet by route position; `resolveSetBreakName` nulls it
+    // for precision (single-set) so the editor uses its default fill.
+    const breakName = resolveSetBreakName(effectiveDiscipline, session?.setBreakWaypointName)
+    const picks = buildMapPicks(markers, routeWaypoints, breakName)
     scheduleWriteMapPicks(storage, competitionDir, picks)
-  }, [markers, storage, competitionDir, session?.setBreakPhotoId, effectiveDiscipline])
+  }, [markers, storage, competitionDir, routeWaypoints, session?.setBreakWaypointName, effectiveDiscipline])
 
   // Pagehide-flush. Fire-and-forget per ADR-009 (async OPFS won't fully
   // settle before unload, but kicking the timer is strictly better than
@@ -771,13 +771,21 @@ function App() {
     void setPhotoFlag(markerId, 'reject')
   }, [setPhotoFlag])
 
-  // Set/clear the set1↔set2 break from the panel's "Set 2 starts at TP-X"
-  // selector (keyed by photoId — the handoff and the editor identify picks by
-  // photoId, not marker id). The selector passes the chosen TP's photoId, or
-  // null to clear the split.
-  const handleSetBreakChange = useCallback((photoId: string | null) => {
-    void setSetBreakPhotoId(photoId)
-  }, [setSetBreakPhotoId])
+  // Set/clear the set1↔set2 break from the panel's "Set 2 starts at" selector.
+  // The selector passes the chosen ROUTE turning point's waypoint name (e.g.
+  // "TP4"), or null to clear the split.
+  const handleSetBreakChange = useCallback((waypointName: string | null) => {
+    void setSetBreakWaypointName(waypointName)
+  }, [setSetBreakWaypointName])
+
+  // Coordinate of the chosen break TP, for the map's scissors badge (read-only
+  // confirmation of where set 2 starts). Null when no break / precision / the
+  // name isn't a current waypoint.
+  const setBreakWaypointCoord = useMemo<[number, number] | null>(() => {
+    const name = resolveSetBreakName(effectiveDiscipline, session?.setBreakWaypointName)
+    if (!name) return null
+    return routeWaypoints.find(w => w.name === name)?.coord ?? null
+  }, [effectiveDiscipline, session?.setBreakWaypointName, routeWaypoints])
 
   // Phase 12 — atomic variant resolution. Promotes the winner to 'pick' and
   // demotes every loser to 'reject' in a single OPFS write so the user
@@ -1408,10 +1416,10 @@ function App() {
             onPhotoIncludeTurning={handlePhotoIncludeTurning}
             onPhotoSkip={handlePhotoSkip}
             onPhotoReject={handlePhotoReject}
-            // The break is set from the panel selector now (not the popup), but
-            // the map still shows the teal halo + scissors badge on the break TP
-            // as read-only confirmation of where set 2 starts.
-            setBreakPhotoId={session?.setBreakPhotoId ?? null}
+            // The break is a route TP chosen in the panel selector; the map
+            // shows a scissors badge at that TP's coordinate as read-only
+            // confirmation of where set 2 starts.
+            setBreakWaypointCoord={setBreakWaypointCoord}
             onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}
             activePhotoMarkerId={activePhotoMarkerId}
             onActivePhotoMarkerChange={setActivePhotoMarkerId}
@@ -1450,8 +1458,9 @@ function App() {
             onPreviewPhoto={handleOpenPhotoPreview}
             // Visualize the set1↔set2 break in the pick groups (rally only;
             // precision is single-set, so no break → no divider).
-            setBreakPhotoId={resolveSetBreakId(effectiveDiscipline, session?.setBreakPhotoId)}
-            // "Set 2 starts at TP-X" selector — the sole way to set the break.
+            setBreakWaypointName={resolveSetBreakName(effectiveDiscipline, session?.setBreakWaypointName)}
+            routeWaypoints={routeWaypoints}
+            // "Set 2 starts at" selector — the sole way to set the break.
             // Omitted for precision so the selector is hidden.
             onSetBreakChange={effectiveDiscipline === 'precision' ? undefined : handleSetBreakChange}
           />

@@ -110,16 +110,16 @@ export type CorridorsSession = {
   // `false` = collapsed. Defaults open on first run + after migration.
   noGpsTrayOpen: boolean
   /**
-   * `photoId` of the turning point the user picked as the start of set 2 — the
-   * set1↔set2 break (rally only; ignored by precision/single-set). It is the
-   * FIRST turning point of set 2: in route order the break TP and everything
-   * after export `set: 'set2'`, everything strictly before exports `set: 'set1'`.
-   * Absent/`null` = no break, so the editor uses its default set1→set2→tray fill.
-   * Set from the panel's "Set 2 starts at TP-X" selector; cleared automatically
-   * if the photo stops being a turning-point pick.
+   * Name of the ROUTE turning point the user picked as the start of set 2 — the
+   * set1↔set2 break (e.g. "TP4"; rally only, ignored by precision/single-set).
+   * Picks whose position along the route is at/after this TP export
+   * `set: 'set2'`, the rest `set: 'set1'`. Absent/`null` = no break → the editor
+   * uses its default set1→set2→tray fill. Set from the panel's "Set 2 starts at"
+   * selector. A stale name (route reloaded without that TP) is ignored
+   * gracefully (partition yields no split).
    * See docs/photo-map-culling/set-split-suggestion-plan.md.
    */
-  setBreakPhotoId?: string | null
+  setBreakWaypointName?: string | null
 }
 
 /**
@@ -176,20 +176,6 @@ export function computeRenamedPhoto(
   return { markers: nextMarkers, noGpsPhotos: nextNoGps }
 }
 
-/**
- * Whether a designated set-break is still valid after a marker-list change.
- * The break must point at a turning-point pick; if the photo was re-categorised
- * (→ track), rejected, skipped, or removed, the break is stale and `setMarkers`
- * clears it. Exported for unit testing the cleanup rule in isolation.
- */
-export function isSetBreakValid(
-  breakPhotoId: string | null | undefined,
-  markers: readonly PhotoMarker[],
-): boolean {
-  if (!breakPhotoId) return true
-  return markers.some(m => m.photoId === breakPhotoId && m.flag === 'pick-turning')
-}
-
 const defaultSession = (id: string): CorridorsSession => ({
   id,
   version: 1,
@@ -208,7 +194,7 @@ const defaultSession = (id: string): CorridorsSession => ({
   groundMarkers: [],
   noGpsPhotos: [],
   noGpsTrayOpen: true,
-  setBreakPhotoId: null,
+  setBreakWaypointName: null,
 })
 
 export function useCorridorSessionOPFS(competitionId?: string | null) {
@@ -383,28 +369,26 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     await persistSession({ ...current, use1NmAfterSp: use1, version: current.version + 1, updatedAt: new Date().toISOString() })
   }, [persistSession])
 
-  // Toggle (or clear, with `null`) the designated set1↔set2 break turning point.
-  const setSetBreakPhotoId = useCallback(async (photoId: string | null) => {
+  // Set (or clear, with `null`) the designated set1↔set2 break route turning
+  // point, by waypoint name (e.g. "TP4").
+  const setSetBreakWaypointName = useCallback(async (name: string | null) => {
     const current = sessionRef.current
     if (!current) return
-    if ((current.setBreakPhotoId ?? null) === photoId) return // no-op, no version churn
-    await persistSession({ ...current, setBreakPhotoId: photoId, version: current.version + 1, updatedAt: new Date().toISOString() })
+    if ((current.setBreakWaypointName ?? null) === name) return // no-op, no version churn
+    await persistSession({ ...current, setBreakWaypointName: name, version: current.version + 1, updatedAt: new Date().toISOString() })
   }, [persistSession])
 
   // Updaters receive a readonly view so callers can't mutate in place (e.g. prev.push).
   // Returning the same reference (e.g. early-return `prev` on no-op) is also allowed.
+  // The break is keyed to a ROUTE turning point, independent of photo flags, so
+  // re-categorising/removing a photo never invalidates it (no auto-clear here).
   const setMarkers = useCallback(async (updater: (prev: readonly PhotoMarker[]) => readonly PhotoMarker[]) => {
     const current = sessionRef.current
     if (!current) return
     const nextMarkers = updater(current.markers)
-    // Drop a stale break: the break must point at a turning-point pick. If the
-    // designated photo was re-categorised (→ track), rejected, or removed, the
-    // break is no longer valid — clear it so it can't silently mis-split later.
-    const breakStillValid = isSetBreakValid(current.setBreakPhotoId, nextMarkers)
     await persistSession({
       ...current,
       markers: nextMarkers,
-      ...(breakStillValid ? {} : { setBreakPhotoId: null }),
       version: current.version + 1,
       updatedAt: new Date().toISOString(),
     })
@@ -599,7 +583,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setMapStyleId,
     setDiscipline,
     setUse1NmAfterSp,
-    setSetBreakPhotoId,
+    setSetBreakWaypointName,
     setMarkers,
     setGroundMarkers,
     setNoGpsPhotos,

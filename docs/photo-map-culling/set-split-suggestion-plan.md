@@ -319,3 +319,36 @@ not photo, but TP… there should be a controller 'photos change at TPx'."
 - Gate: map-corridors `tsc -b` clean, vitest **748 ✓** (+2 todo). photo-helper
   untouched (set1/set2 still mean the same sheets; only *which* picks map to them
   changed, and that's computed map-side).
+
+---
+
+## Route-TP reframe (2026-06-29, user feedback)
+
+Live testing surfaced the real model error: a competition can have **only track
+photos** (no turning-point photos), so a break anchored on a turning-point
+*photo* had nothing to attach to and the selector stayed empty. The user: "set
+TP where photos change… the app should figure out which photos are after TP X."
+
+**Decision (owner): split by the ROUTE's turning points, not by photos.**
+- The break is stored as `setBreakWaypointName` (e.g. `"TP4"`), replacing the
+  photo-based `setBreakPhotoId`. The route's waypoints already exist:
+  `buildRouteWaypoints(session.exactPoints)` → ordered `SP, TP1…TPn, FP`.
+- `partitionPicksByRouteTP(markers, waypoints, name)` projects each pick's GPS
+  onto the route line (`@turf/turf` `nearestPointOnLine`) to get its
+  distance-along-route, and compares to the break TP's chainage: at/after → set2,
+  before → set1. Works with track-only sets. Same `photoId → set` map downstream,
+  so `buildMapPicks`, the divider, and the editor are unchanged.
+- `listRouteTpOptions(waypoints)` → TP1…TPn (excludes SP = all-set2, FP = empty
+  set2). The panel selector lists these by name; the map shows a scissors badge
+  at the chosen TP's coordinate (read-only). The per-photo popup control and the
+  photo-based break model (`isSetBreakValid`, the `setMarkers` auto-clear) are
+  removed — the break is independent of photo flags now.
+- Edge cases: unprojectable pick (non-finite coords) → set1; stale break name
+  (route reloaded) → graceful no-split (empty partition + value guard in the
+  Select). The panel divider is best-effort when filename order ≠ route order
+  (route doubles back) — exact in the common case.
+
+**Gate:** map-corridors `tsc -b` clean, vitest **743 ✓** (+2 todo;
+`setBreakValidity.test.ts` removed, `partitionPicksByRouteTP`/`listRouteTpOptions`
+covered). photo-helper untouched (set1/set2 unchanged; only which picks map to
+them, computed map-side). Desktop 2.27.0.
