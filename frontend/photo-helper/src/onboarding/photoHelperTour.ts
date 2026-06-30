@@ -13,10 +13,12 @@ export const ONBOARDING_KEY = 'airq.photoHelper.onboarding.v1';
 type T = (key: string, params?: Record<string, string | number>) => string;
 
 /**
- * Build the ordered tour steps from the i18n translator. Pure + exported so the
- * step set (anchors, order, completeness) is unit-testable without a DOM.
+ * Build the ordered tour steps from the i18n translator. The "answer sheets"
+ * step is discipline-aware: rally has two sheets (Set 1 / Set 2), precision has
+ * a single sheet — so the editor's tour must not promise two sets in precision.
+ * Pure + exported so the step set is unit-testable without a DOM.
  */
-export function buildTourSteps(t: T): DriveStep[] {
+export function buildTourSteps(t: T, isPrecision = false): DriveStep[] {
   return [
     {
       popover: {
@@ -26,8 +28,8 @@ export function buildTourSteps(t: T): DriveStep[] {
     },
     {
       popover: {
-        title: t('tour.sets.title'),
-        description: t('tour.sets.body'),
+        title: t(isPrecision ? 'tour.sets.titlePrecision' : 'tour.sets.title'),
+        description: t(isPrecision ? 'tour.sets.bodyPrecision' : 'tour.sets.body'),
       },
     },
     {
@@ -64,7 +66,7 @@ export function buildTourSteps(t: T): DriveStep[] {
 }
 
 /** Start the guided tour now (used by the Help button and first-run). */
-export function startPhotoHelperTour(t: T): void {
+export function startPhotoHelperTour(t: T, isPrecision = false): void {
   const d = driver({
     showProgress: true,
     allowClose: true,
@@ -72,7 +74,7 @@ export function startPhotoHelperTour(t: T): void {
     nextBtnText: t('tour.next'),
     prevBtnText: t('tour.prev'),
     doneBtnText: t('tour.done'),
-    steps: buildTourSteps(t),
+    steps: buildTourSteps(t, isPrecision),
   });
   d.drive();
 }

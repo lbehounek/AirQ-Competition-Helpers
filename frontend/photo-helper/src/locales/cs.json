@@ -9,7 +9,9 @@
     },
     "sets": {
       "title": "Vaše odpovědní listy",
-      "body": "Fotky odeslané z Map Corridors dorazí předtříděné do Sady 1 a Sady 2 (dvě stránky odpovědního listu). Traťové fotky a fotky otočných bodů jdou do odpovídajících sad."
+      "titlePrecision": "Váš odpovědní list",
+      "body": "Fotky odeslané z aplikace Umístění fotek dorazí předtříděné do Sady 1 a Sady 2 (dvě stránky odpovědního listu, pouze rally). Traťové fotky a fotky otočných bodů jdou do odpovídajících sad.",
+      "bodyPrecision": "Fotky odeslané z aplikace Umístění fotek se rozmístí na jeden odpovědní list. Přetáhněte je do mřížky v pořadí, ve kterém se mají vytisknout."
     },
     "edit": {
       "title": "Dolaďte fotku",
@@ -17,7 +19,7 @@
     },
     "tray": {
       "title": "Zásobník kandidátů",
-      "body": "Fotky, které se nevejdou na plnou stránku, čekají v zásobníku dole – přetáhněte kteroukoli do volného místa."
+      "body": "Fotky, které se nevejdou na plnou stránku, čekají v zásobníku kandidátů nahoře – přetáhněte kteroukoli do volného místa."
     },
     "export": {
       "title": "Exportujte PDF",

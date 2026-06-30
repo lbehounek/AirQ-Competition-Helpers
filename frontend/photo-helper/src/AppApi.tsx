@@ -134,12 +134,17 @@ function AppApi() {
   // run the auto-start effect ONCE on mount (see Map Corridors review note).
   const tRef = useRef(t);
   tRef.current = t;
+  // The "answer sheets" step differs by discipline (rally: Set 1/Set 2;
+  // precision: a single sheet). `discipline` is parsed once at mount (above),
+  // so a ref keeps the once-on-mount effect stable.
+  const isPrecisionRef = useRef(false);
+  isPrecisionRef.current = discipline === 'precision';
   const handleStartTour = useCallback(() => {
     markTourSeen();
-    startPhotoHelperTour(tRef.current);
+    startPhotoHelperTour(tRef.current, isPrecisionRef.current);
   }, []);
   useEffect(() => {
-    return scheduleAutoStartTour(() => startPhotoHelperTour(tRef.current));
+    return scheduleAutoStartTour(() => startPhotoHelperTour(tRef.current, isPrecisionRef.current));
   }, []);
 
   // Candidate photos — derived from session for stable rendering. The pool

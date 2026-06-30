@@ -9,7 +9,9 @@
     },
     "sets": {
       "title": "Your answer sheets",
-      "body": "Photos sent from Map Corridors arrive pre-sorted into Set 1 and Set 2 (the two answer-sheet pages). Track and turning-point photos go to their matching sets."
+      "titlePrecision": "Your answer sheet",
+      "body": "Photos sent from Photo Placement arrive pre-sorted into Set 1 and Set 2 (the two answer-sheet pages, rally only). Track and turning-point photos go to their matching sets.",
+      "bodyPrecision": "Photos sent from Photo Placement are laid out on a single answer sheet. Drag them into the grid in the order you want them printed."
     },
     "edit": {
       "title": "Fine-tune a photo",
@@ -17,7 +19,7 @@
     },
     "tray": {
       "title": "Candidate tray",
-      "body": "Photos that don't fit a full sheet wait in the tray below — drag any of them into an open slot."
+      "body": "Photos that don't fit a full sheet wait in the candidate tray at the top — drag any of them into an open slot."
     },
     "export": {
       "title": "Export the PDF",

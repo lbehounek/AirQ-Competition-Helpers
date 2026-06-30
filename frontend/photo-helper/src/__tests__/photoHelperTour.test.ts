@@ -15,6 +15,7 @@ const ALL_TOUR_KEYS = [
   'tour.next', 'tour.prev', 'tour.done',
   'tour.welcome.title', 'tour.welcome.body',
   'tour.sets.title', 'tour.sets.body',
+  'tour.sets.titlePrecision', 'tour.sets.bodyPrecision',
   'tour.edit.title', 'tour.edit.body',
   'tour.tray.title', 'tour.tray.body',
   'tour.export.title', 'tour.export.body',
@@ -42,6 +43,13 @@ describe('photoHelper buildTourSteps', () => {
     expect(steps[1].element).toBeUndefined();
     expect(steps[2].element).toBeUndefined();
     expect(steps[3].element).toBeUndefined();
+  });
+
+  it('the answer-sheets step is discipline-aware (rally vs precision keys)', () => {
+    expect(buildTourSteps(echo, false)[1].popover?.title).toBe('tour.sets.title');
+    expect(buildTourSteps(echo, false)[1].popover?.description).toBe('tour.sets.body');
+    expect(buildTourSteps(echo, true)[1].popover?.title).toBe('tour.sets.titlePrecision');
+    expect(buildTourSteps(echo, true)[1].popover?.description).toBe('tour.sets.bodyPrecision');
   });
 });
 
