@@ -10,6 +10,15 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [Unreleased]
+
+### Added
+- **Guided onboarding tour.** The launcher and Map Corridors now show a short
+  first-run walkthrough (load route & photos → sort track/turning → split the
+  sets → send to the editor) so new organizers know where to start. It appears
+  once automatically and can be replayed anytime from the **?** button. Available
+  in English and Czech.
+
 ## [2.27.1] - 2026-06-30
 
 ### Fixed
