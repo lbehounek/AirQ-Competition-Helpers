@@ -10,7 +10,16 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
-## [Unreleased]
+## [2.27.1] - 2026-06-30
+
+### Fixed
+- **Photo Helper:** fixed the editor opening to a **blank white screen** (most
+  often right after *Send to editor*, including when a set split was set). An
+  initialization-order bug crashed the editor before it could render; it now
+  loads normally. Added an automated guard so this class of crash can't ship
+  unnoticed again.
+
+## [2.27.0] - 2026-06-30
 
 ### Added
 - **Map Corridors → Photo Helper:** you can now choose *where the answer-sheet
