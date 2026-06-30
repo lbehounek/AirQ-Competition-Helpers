@@ -125,6 +125,28 @@ describe('isMapPickEntry', () => {
     expect(isMapPickEntry({ ...valid, labelUpdatedAt: undefined })).toBe(true)
   })
 
+  // --- set (TP-break sheet assignment) coverage ---
+
+  it('accepts set: set1', () => {
+    expect(isMapPickEntry({ ...valid, set: 'set1' })).toBe(true)
+  })
+
+  it('accepts set: set2', () => {
+    expect(isMapPickEntry({ ...valid, set: 'set2' })).toBe(true)
+  })
+
+  it('accepts entry without set (optional — no break chosen)', () => {
+    expect(isMapPickEntry({ ...valid, set: undefined })).toBe(true)
+  })
+
+  it('rejects an invalid set value (closed two-key union)', () => {
+    expect(isMapPickEntry({ ...valid, set: 'set3' })).toBe(false)
+  })
+
+  it('rejects a non-string set (buggy writer)', () => {
+    expect(isMapPickEntry({ ...valid, set: 1 })).toBe(false)
+  })
+
   // --- GPS branch coverage ---
 
   it('accepts empty gps object (both nested fields optional)', () => {

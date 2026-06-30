@@ -44,15 +44,32 @@ export interface MapPicksSyncSessionApi {
    * leaves the candidate pool, so the candidates-only dedup can't see it).
    */
   placedIds: ReadonlySet<string>;
+  /**
+   * The active discipline. A placed pick only re-flows on a TP-break change
+   * when it belongs to the discipline currently shown — the other discipline's
+   * sheets live in an inactive bucket with `url: ''` (can't render in the
+   * always-visible tray) and reconcile when they become active. Drives the
+   * `reconcilePlaced` gate below.
+   */
+  mode: 'track' | 'turningpoint';
   /** Insert a pre-built ApiPhoto. Called for `pm-` entries not yet in the pool. */
   addCandidate: (photo: ApiPhoto) => Promise<void> | void;
   /**
    * Auto-route a category-flagged pick straight into its discipline's sets on
    * first import (`pick-track` → track, `pick-turning` → turning), instead of
-   * the candidate tray. set1→set2→tray fill, no active-mode switch. Called in
-   * place of `addCandidate` for `pick-track` / `pick-turning` inserts.
+   * the candidate tray. No active-mode switch. Called in place of
+   * `addCandidate` for `pick-track` / `pick-turning` inserts. `desiredSet`
+   * (from `MapPickEntry.set`, the user's TP set-break) targets a specific
+   * sheet — overflow → tray, no cross-spill; absent → `set1→set2→tray` fill.
    */
-  importPick: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint') => Promise<void> | void;
+  importPick: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint', desiredSet?: 'set1' | 'set2') => Promise<void> | void;
+  /**
+   * Re-flow an already-placed pick to the sheet its (moved) TP set-break now
+   * dictates. Called for placed picks of the ACTIVE discipline whose
+   * `entry.set` differs from where they sit. Returns whether a move happened.
+   * No-op internally when already correct. See set-split-suggestion-plan.md.
+   */
+  reconcilePlaced: (photoId: string, desiredSet: 'set1' | 'set2') => Promise<boolean> | boolean;
   /** Remove a candidate by id. Called when a `pm-` entry disappears from map-picks.json. */
   removeCandidate: (photoId: string) => Promise<void> | void;
   /** Update flag in place; preserves canvasState + photo-helper-owned fields. */
@@ -75,6 +92,15 @@ export interface MapPicksSyncSessionApi {
    * timestamp / newer-wins (no editor-side filename edit exists).
    */
   setCandidateFilename: (photoId: string, filename: string) => Promise<void> | void;
+  /**
+   * Surface a count of placed picks whose break-driven re-flow failed to
+   * persist this pass (OPFS quota / permission). Optional — when omitted the
+   * failure is still logged and the pass still completes; the callback lets the
+   * app show the user a recoverable warning instead of silently leaving photos
+   * on the wrong answer sheet. Called once per pass with the aggregate count
+   * (only when > 0).
+   */
+  onReflowError?: (failedCount: number) => void;
 }
 
 const PM_PREFIX = PM_PHOTO_ID_PREFIX;
@@ -101,16 +127,17 @@ export async function syncMapPicksOnce(
   competitionDir: DirectoryHandle,
   photosDir: DirectoryHandle,
   session: MapPicksSyncSessionApi,
-): Promise<{ inserts: number; updates: number; deletes: number }> {
+): Promise<{ inserts: number; updates: number; deletes: number; reflowFailures: number }> {
   let inserts = 0;
   let updates = 0;
   let deletes = 0;
+  let reflowFailures = 0;
 
   const raw = await storage.readJSON<unknown>(competitionDir, MAP_PICKS_FILENAME);
   if (!isMapPicksFile(raw)) {
     // Absent or malformed file → nothing to sync. Don't delete pool
     // entries either; an absent file is "no info", not "no picks".
-    return { inserts, updates, deletes };
+    return { inserts, updates, deletes, reflowFailures };
   }
   const file = raw;
 
@@ -143,14 +170,35 @@ export async function syncMapPicksOnce(
     const entryFlag = normalizeCandidateFlag(entry.flag);
     const existing = localById.get(entry.photoId);
     if (!existing) {
-      // Already auto-routed into a set on a previous (or this) sync. Skip
-      // entirely: don't re-insert into the tray, don't re-route. Placed
-      // photos are intentionally detached from the candidate-pool mirror —
-      // identical to how a hand-promoted pm- photo behaves today. A flag /
-      // filename change in map-corridors after placement is NOT propagated
-      // (the photo no longer carries a tray flag); the user owns it once it's
-      // in a set.
+      // Already auto-routed into a set on a previous (or this) sync. Don't
+      // re-insert into the tray. But the user may have moved their TP
+      // set-break, so a placed pick can now belong in the OTHER sheet —
+      // re-flow it. Only for the ACTIVE discipline: the other discipline's
+      // sheets live in an inactive bucket with `url: ''` and would render
+      // blank if overflowed into the always-visible tray, so they reconcile
+      // when shown (the hook re-runs on mode change). `entry.set` absent → no
+      // break → leave the photo where it is (map only owns membership when it
+      // expresses one; flag/label/filename edits stay detached, as before).
       if (session.placedIds.has(entry.photoId) || placedThisRun.has(entry.photoId)) {
+        const placedMode =
+          entryFlag === 'pick-track' ? 'track'
+          : entryFlag === 'pick-turning' ? 'turningpoint'
+          : null;
+        if (entry.set && placedMode === session.mode) {
+          // Guard the reflow per-entry, mirroring the getPhotoBlob handling
+          // below: a persist failure (OPFS quota / permission) here must NOT
+          // abort the whole pass and silently skip every later entry's
+          // insert/update/delete. Count the failure so the hook can surface it
+          // — a swallowed reflow leaves a photo on the WRONG answer sheet,
+          // discovered only on the printed PDF.
+          try {
+            const moved = await session.reconcilePlaced(entry.photoId, entry.set);
+            if (moved) updates++;
+          } catch (err) {
+            console.warn('[useMapPicksSync] reflow failed for', entry.photoId, err);
+            reflowFailures++;
+          }
+        }
         continue;
       }
       // Narrow the swallow to NotFoundError — other storage errors
@@ -181,11 +229,13 @@ export async function syncMapPicksOnce(
       };
       // Category-flagged picks auto-route into their discipline's sets on
       // first import; everything else (defensive — only picks cross the
-      // handoff writer) lands in the candidate tray as before. A pick whose
-      // sets are full falls back to the tray inside `importPick`.
+      // handoff writer) lands in the candidate tray as before. `entry.set`
+      // (the user's TP set-break) targets a specific sheet; a pick whose
+      // target sheet (or both sheets, absent a break) is full falls back to
+      // the tray inside `importPick`.
       if (entryFlag === 'pick-track' || entryFlag === 'pick-turning') {
         const targetMode = entryFlag === 'pick-track' ? 'track' : 'turningpoint';
-        await session.importPick(photo, targetMode);
+        await session.importPick(photo, targetMode, entry.set);
         placedThisRun.add(entry.photoId);
       } else {
         await session.addCandidate(photo);
@@ -236,7 +286,7 @@ export async function syncMapPicksOnce(
     deletes++;
   }
 
-  return { inserts, updates, deletes };
+  return { inserts, updates, deletes, reflowFailures };
 }
 
 function isNotFoundError(err: unknown): boolean {
@@ -283,7 +333,13 @@ export function useMapPicksSync(
         if (cancelled) return;
         try {
           const storage = getStorage();
-          await syncMapPicksOnce(storage, competitionDir, photosDir, sessionRef.current);
+          const result = await syncMapPicksOnce(storage, competitionDir, photosDir, sessionRef.current);
+          // Surface reflow failures to the app so a silently-wrong answer-sheet
+          // split becomes a visible, recoverable warning. The pass already
+          // completed (per-entry guard); this is just the user-facing signal.
+          if (!cancelled && result.reflowFailures > 0) {
+            sessionRef.current.onReflowError?.(result.reflowFailures);
+          }
         } catch (err) {
           if (!cancelled) console.warn('[useMapPicksSync] sync failed:', err);
         }
@@ -299,5 +355,11 @@ export function useMapPicksSync(
       cancelled = true;
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [competitionDir, photosDir]);
+    // `session.mode` is a dep so switching discipline re-runs the sync: we only
+    // re-flow the ACTIVE discipline's placed picks on a break change, so the
+    // newly-shown discipline must reconcile the moment it becomes active rather
+    // than waiting for the next visibilitychange. `competitionDir`/`photosDir`
+    // identity is stable per competition; mode is a primitive so this doesn't
+    // thrash. All other live state is read through `sessionRef`.
+  }, [competitionDir, photosDir, session.mode]);
 }

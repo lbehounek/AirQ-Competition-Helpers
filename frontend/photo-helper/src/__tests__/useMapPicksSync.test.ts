@@ -36,9 +36,11 @@ function fakeStorage(): FakeStorage {
 function fakeSession(
   initialCandidates: ApiPhoto[] = [],
   placed: string[] = [],
+  mode: 'track' | 'turningpoint' = 'track',
 ): MapPicksSyncSessionApi & {
   addCandidate: Mock
   importPick: Mock
+  reconcilePlaced: Mock
   removeCandidate: Mock
   setCandidateFlag: Mock
   setCandidateLabel: Mock
@@ -48,10 +50,14 @@ function fakeSession(
   const api = {
     candidates,
     placedIds: new Set(placed),
+    mode,
     addCandidate: vi.fn(async (p: ApiPhoto) => { candidates.push(p) }),
     // Auto-routes category picks into sets — modelled as "leaves the candidate
     // pool" (the real helper clears the flag and moves it into a set bucket).
-    importPick: vi.fn(async (_p: ApiPhoto, _mode: 'track' | 'turningpoint') => { /* placed in a set */ }),
+    importPick: vi.fn(async (_p: ApiPhoto, _mode: 'track' | 'turningpoint', _set?: 'set1' | 'set2') => { /* placed in a set */ }),
+    // Re-flow stub — by default reports "no move" (already correct). Tests that
+    // exercise a break change override the resolved value.
+    reconcilePlaced: vi.fn(async (_id: string, _set: 'set1' | 'set2') => false),
     removeCandidate: vi.fn(async (id: string) => {
       const idx = candidates.findIndex(p => p.id === id)
       if (idx >= 0) candidates.splice(idx, 1)
@@ -75,6 +81,7 @@ function fakeSession(
   return api as MapPicksSyncSessionApi & {
     addCandidate: Mock
     importPick: Mock
+    reconcilePlaced: Mock
     removeCandidate: Mock
     setCandidateFlag: Mock
     setCandidateLabel: Mock
@@ -120,7 +127,7 @@ describe('syncMapPicksOnce — file absence', () => {
       photosDir,
       session,
     )
-    expect(result).toEqual({ inserts: 0, updates: 0, deletes: 0 })
+    expect(result).toEqual({ inserts: 0, updates: 0, deletes: 0, reflowFailures: 0 })
     expect(session.addCandidate).not.toHaveBeenCalled()
     expect(session.removeCandidate).not.toHaveBeenCalled()
   })
@@ -177,7 +184,21 @@ describe('syncMapPicksOnce — insert path', () => {
     const session = fakeSession([])
     const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(result.inserts).toBe(1)
-    expect(session.importPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'pm-tp' }), 'turningpoint')
+    // No break chosen → entry.set is undefined, passed through as the 3rd arg.
+    expect(session.importPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'pm-tp' }), 'turningpoint', undefined)
+  })
+
+  it('passes entry.set (TP set-break) through to importPick', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{ photoId: 'pm-s', filename: 'pm-s.jpg', flag: 'pick-track', set: 'set2' }],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(8)], { type: 'image/jpeg' }))
+    const session = fakeSession([])
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.importPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'pm-s' }), 'track', 'set2')
   })
 
   it('does NOT re-route a photo already placed in a set (placedIds guard prevents tray duplicate)', async () => {
@@ -247,6 +268,108 @@ describe('syncMapPicksOnce — insert path', () => {
     const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
     expect(result.inserts).toBe(0)
     expect(session.addCandidate).not.toHaveBeenCalled()
+  })
+})
+
+describe('syncMapPicksOnce — reflow on TP set-break change (placed picks)', () => {
+  it('re-flows a placed pick of the ACTIVE discipline when entry.set changed', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      // pm-x is already placed (in setsTrack.set1); the break moved so the map
+      // now says it belongs in set2.
+      picks: [{ photoId: 'pm-x', filename: 'pm-x.jpg', flag: 'pick-track', set: 'set2' }],
+    })
+    const session = fakeSession([], ['pm-x'], 'track') // active = track, pm-x placed
+    session.reconcilePlaced.mockResolvedValueOnce(true) // a move happened
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.reconcilePlaced).toHaveBeenCalledWith('pm-x', 'set2')
+    expect(result.updates).toBe(1)
+    expect(session.importPick).not.toHaveBeenCalled() // not a re-insert
+    expect(storage.getPhotoBlob).not.toHaveBeenCalled() // placed → no blob fetch
+  })
+
+  it('does NOT re-flow a placed pick of the INACTIVE discipline (reconciles when shown)', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{ photoId: 'pm-tp', filename: 'pm-tp.jpg', flag: 'pick-turning', set: 'set2' }],
+    })
+    // Active discipline is track, but the pick is turning → defer.
+    const session = fakeSession([], ['pm-tp'], 'track')
+    await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.reconcilePlaced).not.toHaveBeenCalled()
+  })
+
+  it('does NOT re-flow a placed pick when no break is set (entry.set absent)', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [pmEntry('pm-x', 'pick-track')], // no `set`
+    })
+    const session = fakeSession([], ['pm-x'], 'track')
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.reconcilePlaced).not.toHaveBeenCalled()
+    expect(result.updates).toBe(0)
+  })
+
+  it('counts no update when the placed pick is already in the right sheet (reconcile no-op)', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{ photoId: 'pm-x', filename: 'pm-x.jpg', flag: 'pick-track', set: 'set1' }],
+    })
+    const session = fakeSession([], ['pm-x'], 'track')
+    // default reconcilePlaced resolves false (no move)
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(session.reconcilePlaced).toHaveBeenCalledWith('pm-x', 'set1')
+    expect(result.updates).toBe(0)
+  })
+
+  // PR #103 review, Issue #1: a reflow persist failure must NOT abort the pass
+  // (swallowing every later entry) and must be COUNTED so the hook can warn the
+  // user — otherwise a photo silently stays on the wrong answer sheet.
+  it('counts a reflow rejection in reflowFailures instead of throwing/aborting', async () => {
+    const storage = fakeStorage()
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [{ photoId: 'pm-x', filename: 'pm-x.jpg', flag: 'pick-track', set: 'set2' }],
+    })
+    const session = fakeSession([], ['pm-x'], 'track')
+    session.reconcilePlaced.mockRejectedValueOnce(
+      Object.assign(new Error('quota'), { name: 'QuotaExceededError' }),
+    )
+    // Must resolve (not reject) — the per-entry guard contains the failure.
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(result.reflowFailures).toBe(1)
+    expect(result.updates).toBe(0)
+  })
+
+  it('a failed reflow on one entry does NOT skip a later entry that needs inserting', async () => {
+    const storage = fakeStorage()
+    // pm-x is placed and its reflow will reject; pm-new is a fresh pick that
+    // must still be inserted on the same pass (the old code aborted the loop).
+    storage.readJSON.mockResolvedValue({
+      version: 1,
+      updatedAt: 'x',
+      picks: [
+        { photoId: 'pm-x', filename: 'pm-x.jpg', flag: 'pick-track', set: 'set2' },
+        { photoId: 'pm-new', filename: 'pm-new.jpg', flag: 'pick-track' },
+      ],
+    })
+    storage.getPhotoBlob.mockResolvedValue(new Blob([new Uint8Array(32)], { type: 'image/jpeg' }))
+    const session = fakeSession([], ['pm-x'], 'track') // only pm-x is already placed
+    session.reconcilePlaced.mockRejectedValueOnce(new Error('boom'))
+    const result = await syncMapPicksOnce(storage as unknown as StorageInterface, competitionDir, photosDir, session)
+    expect(result.reflowFailures).toBe(1)
+    // The later, unrelated insert still happened despite the earlier failure.
+    expect(session.importPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'pm-new' }), 'track', undefined)
+    expect(result.inserts).toBe(1)
   })
 })
 
@@ -526,8 +649,10 @@ describe('syncMapPicksOnce — concurrency & blob URL leak guards (CRITICAL bugs
     const session = {
       candidates: [] as readonly ApiPhoto[],
       placedIds: new Set<string>(),
+      mode: 'track' as const,
       addCandidate: vi.fn(async () => undefined),
       importPick: vi.fn(async () => undefined),
+      reconcilePlaced: vi.fn(async () => false),
       removeCandidate: vi.fn(async () => undefined),
       setCandidateFlag: vi.fn(async () => undefined),
       setCandidateLabel: vi.fn(async () => undefined),

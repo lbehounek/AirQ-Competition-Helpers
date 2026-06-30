@@ -56,6 +56,12 @@ function isOptionalNonEmptyString(x: unknown): x is string | undefined {
   return x === undefined || (typeof x === 'string' && x.length > 0);
 }
 
+// `set` is optional (no break chosen / precision); when present it must be
+// exactly one of the two sheet keys — any other string is a malformed row.
+function isOptionalSet(x: unknown): x is 'set1' | 'set2' | undefined {
+  return x === undefined || x === 'set1' || x === 'set2';
+}
+
 function isFiniteNumber(x: unknown): x is number {
   return typeof x === 'number' && Number.isFinite(x);
 }
@@ -89,6 +95,7 @@ export function isMapPickEntry(x: unknown): x is MapPickEntry {
   if (x.gps !== undefined && !isGps(x.gps)) return false;
   if (!isOptionalString(x.label)) return false;
   if (!isOptionalNonEmptyString(x.labelUpdatedAt)) return false;
+  if (!isOptionalSet(x.set)) return false;
   return true;
 }
 

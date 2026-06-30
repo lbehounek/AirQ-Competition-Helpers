@@ -20,7 +20,9 @@ import {
   type MapPickEntry,
   type MapPicksFile,
 } from '@airq/shared-handoff'
-import type { PhotoMarker } from '../types/markers'
+import { comparePhotoMarkers, type PhotoMarker } from '../types/markers'
+import { partitionPicksByRouteTP } from '../setSplit/partitionPicksBySet'
+import type { RouteWaypoint } from '../corridors/matchPoints'
 
 const FILENAME = MAP_PICKS_FILENAME
 const DEBOUNCE_MS = 300
@@ -87,17 +89,38 @@ export function buildMapPickEntry(marker: PhotoMarker): MapPickEntry | null {
  *    side (PhotoMarker.flag) — the wire file is now a transport for
  *    PICKS only, not a general flag-state mirror.
  *
+ * When `breakWaypointName` names a route turning point (and `waypoints` is the
+ * route's ordered waypoints), each entry also carries `set` (`set1`/`set2`) per
+ * its position along the route, so the editor fills the matching sheet.
+ *
  * Used by both App.tsx (scheduling writes) and tests.
  */
-export function buildMapPicks(markers: readonly PhotoMarker[]): MapPickEntry[] {
+export function buildMapPicks(
+  markers: readonly PhotoMarker[],
+  waypoints: readonly RouteWaypoint[] = [],
+  breakWaypointName?: string | null,
+): MapPickEntry[] {
+  // Emit picks in ROUTE order (filename, then EXIF time — `comparePhotoMarkers`).
+  // The editor fills each sheet in file order, so a sorted file gives correct
+  // within-sheet ordering for free. Set membership is a separate, geographic
+  // cut computed below from the chosen route TP.
+  const picks = markers.filter(m => m.photoId && isPickFlag(m.flag))
+  const sorted = [...picks].sort(comparePhotoMarkers)
+
+  // Set membership comes from the shared partition helper — the SAME source the
+  // panel's set1│set2 divider reads — so the editor's file and what the user
+  // sees in the panel can never disagree. No break / stale name / no route →
+  // empty map → no `set` emitted, and the editor falls back to its default
+  // set1→set2→tray fill.
+  const setByPhotoId = partitionPicksByRouteTP(markers, waypoints, breakWaypointName)
+
   const out: MapPickEntry[] = []
-  for (const m of markers) {
-    // Both pick categories cross the handoff; the category (`pick-track` /
-    // `pick-turning`) rides through as-is on `entry.flag` so the editor can
-    // route the photo into the right print set.
-    if (!isPickFlag(m.flag)) continue
+  for (const m of sorted) {
     const entry = buildMapPickEntry(m)
-    if (entry) out.push(entry)
+    if (!entry) continue
+    const set = m.photoId ? setByPhotoId.get(m.photoId) : undefined
+    if (set) entry.set = set
+    out.push(entry)
   }
   return out
 }

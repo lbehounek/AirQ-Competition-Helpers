@@ -29,6 +29,7 @@ import {
   updateCandidateCanvasState as updateCandidateCanvasStatePure,
   routeImportedPickIntoSets,
   insertPlaceholderIntoSet,
+  reconcilePlacedToDesiredSet,
 } from '../utils/candidateTransitions';
 import { createPlaceholderPhoto, PLACEHOLDER_ID_PREFIX } from '../utils/placeholderPhoto';
 import { collectSessionContentHashes, partitionFilesByContentHash } from '../utils/contentHash';
@@ -82,13 +83,22 @@ export interface UseCompetitionSystemResult {
   addExistingCandidate: (photo: ApiPhoto) => Promise<void>;
   /**
    * Auto-route a freshly-imported map-corridors pick straight into its
-   * discipline's sets (`pick-track` → track, `pick-turning` → turning) using
-   * the `set1→set2→tray` fill policy, without switching the user's active
-   * mode. Called by `useMapPicksSync` on first import instead of
-   * `addExistingCandidate` for category-flagged picks. See
-   * docs/CANDIDATE_PHOTOS.md "Map-pick auto-routing".
+   * discipline's sets (`pick-track` → track, `pick-turning` → turning),
+   * without switching the user's active mode. Called by `useMapPicksSync` on
+   * first import instead of `addExistingCandidate` for category-flagged picks.
+   * `desiredSet` (from `MapPickEntry.set`, the user's TP set-break) targets a
+   * specific sheet — overflow → tray, no cross-spill; absent → `set1→set2→tray`
+   * fill. See docs/CANDIDATE_PHOTOS.md "Map-pick auto-routing" and
+   * docs/photo-map-culling/set-split-suggestion-plan.md.
    */
-  importPickToSets: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint') => Promise<void>;
+  importPickToSets: (photo: ApiPhoto, targetMode: 'track' | 'turningpoint', desiredSet?: 'set1' | 'set2') => Promise<void>;
+  /**
+   * Re-flow an already-placed pick to the sheet its TP set-break now dictates
+   * (the user moved the break in map-corridors). Active discipline only.
+   * Returns whether a move happened. See
+   * docs/photo-map-culling/set-split-suggestion-plan.md.
+   */
+  reconcilePlacedToSets: (photoId: string, desiredSet: 'set1' | 'set2') => Promise<boolean>;
   removeCandidate: (photoId: string) => Promise<void>;
   promoteCandidateToSlot: (candidateId: string, setKey: 'set1' | 'set2', slotIndex: number) => Promise<void>;
   /**
@@ -519,7 +529,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   // the persist has settled.
   const updateCurrentCompetition = useCallback(async (
     updater: (session: ApiPhotoSession) => ApiPhotoSession,
-    options?: { updatePhotos?: boolean }
+    options?: { updatePhotos?: boolean; rethrow?: boolean }
   ) => {
     const current = currentCompetitionRef.current;
     if (!current) return;
@@ -590,6 +600,11 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
 
     } catch (err) {
       console.error('Failed to update competition:', err);
+      // When the caller opted to handle the failure itself (the reflow path
+      // surfaces a tailored "couldn't re-sort N photos" toast), rethrow instead
+      // of swallowing into the generic global Alert — otherwise the persist
+      // error is invisible to the caller and the reflowFailures count lies.
+      if (options?.rethrow) throw err;
       setError(err instanceof Error ? err.message : 'Failed to update competition');
     }
   }, [refreshCompetitions]);
@@ -707,11 +722,12 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   const importPickToSets = useCallback(async (
     photo: ApiPhoto,
     targetMode: 'track' | 'turningpoint',
+    desiredSet?: 'set1' | 'set2',
   ) => {
     if (!currentCompetition?.session) return;
     let revokeUrl: string | undefined;
     await updateCurrentCompetition(session => {
-      const result = routeImportedPickIntoSets(session, photo, targetMode, isPrecisionDiscipline);
+      const result = routeImportedPickIntoSets(session, photo, targetMode, isPrecisionDiscipline, desiredSet);
       revokeUrl = result.revokeUrl;
       return result.session;
     }, { updatePhotos: true });
@@ -719,6 +735,39 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       try { URL.revokeObjectURL(revokeUrl); } catch { /* best-effort */ }
     }
   }, [updateCurrentCompetition, currentCompetition, isPrecisionDiscipline]);
+
+  /**
+   * Re-flow an already-placed map pick to the sheet its (possibly-moved) TP
+   * set-break now dictates. Active discipline only — see
+   * `reconcilePlacedToDesiredSet`. Returns whether a move happened so the
+   * caller (useMapPicksSync) can count it; pre-checks against the live ref so
+   * an already-correct photo never triggers a wasteful persist.
+   */
+  const reconcilePlacedToSets = useCallback(async (
+    photoId: string,
+    desiredSet: 'set1' | 'set2',
+  ): Promise<boolean> => {
+    const cur = currentCompetitionRef.current;
+    if (!cur) return false;
+    // Evaluate the reconcile exactly ONCE against the live ref, then persist
+    // that same computed session. Re-evaluating inside the updater (as before)
+    // could return a different `moved` than the one we report — and reporting a
+    // move that wasn't persisted (or vice-versa) makes the caller's `updates`
+    // count lie. `updateCurrentCompetition` reads the ref synchronously with no
+    // await between here and the updater call, so `next` is based on the same
+    // session it would see. The `!moved` short-circuit keeps an already-correct
+    // photo from triggering a wasteful persist (updateCurrentCompetition always
+    // writes metadata, even on a same-ref session).
+    const { session: next, moved } = reconcilePlacedToDesiredSet(
+      cur.session, photoId, desiredSet, isPrecisionDiscipline,
+    );
+    if (!moved) return false;
+    // `rethrow` so a persist failure REJECTS to useMapPicksSync's per-entry
+    // guard (→ reflowFailures → onReflowError toast), instead of being swallowed
+    // into the generic global Alert by updateCurrentCompetition.
+    await updateCurrentCompetition(() => next, { updatePhotos: true, rethrow: true });
+    return true;
+  }, [updateCurrentCompetition, isPrecisionDiscipline]);
 
   const addPhotosToSet = useCallback(async (files: File[], setKey: 'set1' | 'set2'): Promise<AddPhotosResult> => {
     if (!currentCompetition?.session) {
@@ -1531,6 +1580,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     addPhotosToCandidates,
     addExistingCandidate,
     importPickToSets,
+    reconcilePlacedToSets,
     removeCandidate,
     promoteCandidateToSlot,
     addPlaceholderToSet,

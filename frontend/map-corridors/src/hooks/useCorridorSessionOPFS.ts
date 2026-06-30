@@ -77,6 +77,22 @@ export function resolveNoGpsTrayOpen(record: unknown, defaultValue: boolean): bo
   return defaultValue
 }
 
+/**
+ * Validate the persisted `setBreakWaypointName` from an untrusted session.json:
+ * a non-empty string (a waypoint name) or `null`. A corrupt/hand-edited value of
+ * the wrong type is logged and cleared, rather than riding through the `...existing`
+ * spread into a field whose type claims `string | null`. Exported for unit testing.
+ */
+export function resolveSetBreakWaypointName(record: unknown): string | null {
+  const asRec = (record && typeof record === 'object') ? record as Record<string, unknown> : {}
+  const raw = asRec.setBreakWaypointName
+  if (typeof raw === 'string' && raw.length > 0) return raw
+  if (raw !== undefined && raw !== null) {
+    console.warn('[session] Persisted setBreakWaypointName was not a non-empty string, clearing:', raw)
+  }
+  return null
+}
+
 export type CorridorsSession = {
   id: string
   version: number
@@ -109,6 +125,17 @@ export type CorridorsSession = {
   // Persisted UI state for the no-GPS photo tray (ADR-012). `true` = open,
   // `false` = collapsed. Defaults open on first run + after migration.
   noGpsTrayOpen: boolean
+  /**
+   * Name of the ROUTE turning point the user picked as the start of set 2 — the
+   * set1↔set2 break (e.g. "TP4"; rally only, ignored by precision/single-set).
+   * Picks whose position along the route is at/after this TP export
+   * `set: 'set2'`, the rest `set: 'set1'`. Absent/`null` = no break → the editor
+   * uses its default set1→set2→tray fill. Set from the panel's "Set 2 starts at"
+   * selector. A stale name (route reloaded without that TP) is ignored
+   * gracefully (partition yields no split).
+   * See docs/photo-map-culling/set-split-suggestion-plan.md.
+   */
+  setBreakWaypointName?: string | null
 }
 
 /**
@@ -183,6 +210,7 @@ const defaultSession = (id: string): CorridorsSession => ({
   groundMarkers: [],
   noGpsPhotos: [],
   noGpsTrayOpen: true,
+  setBreakWaypointName: null,
 })
 
 export function useCorridorSessionOPFS(competitionId?: string | null) {
@@ -295,6 +323,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
             groundMarkers: cleanGm,
             noGpsPhotos: cleanNoGps,
             noGpsTrayOpen,
+            setBreakWaypointName: resolveSetBreakWaypointName(asRec),
           })
         } else {
           const fresh = defaultSession(id)
@@ -357,12 +386,29 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     await persistSession({ ...current, use1NmAfterSp: use1, version: current.version + 1, updatedAt: new Date().toISOString() })
   }, [persistSession])
 
+  // Set (or clear, with `null`) the designated set1↔set2 break route turning
+  // point, by waypoint name (e.g. "TP4").
+  const setSetBreakWaypointName = useCallback(async (name: string | null) => {
+    const current = sessionRef.current
+    if (!current) return
+    if ((current.setBreakWaypointName ?? null) === name) return // no-op, no version churn
+    await persistSession({ ...current, setBreakWaypointName: name, version: current.version + 1, updatedAt: new Date().toISOString() })
+  }, [persistSession])
+
   // Updaters receive a readonly view so callers can't mutate in place (e.g. prev.push).
   // Returning the same reference (e.g. early-return `prev` on no-op) is also allowed.
+  // The break is keyed to a ROUTE turning point, independent of photo flags, so
+  // re-categorising/removing a photo never invalidates it (no auto-clear here).
   const setMarkers = useCallback(async (updater: (prev: readonly PhotoMarker[]) => readonly PhotoMarker[]) => {
     const current = sessionRef.current
     if (!current) return
-    await persistSession({ ...current, markers: updater(current.markers), version: current.version + 1, updatedAt: new Date().toISOString() })
+    const nextMarkers = updater(current.markers)
+    await persistSession({
+      ...current,
+      markers: nextMarkers,
+      version: current.version + 1,
+      updatedAt: new Date().toISOString(),
+    })
   }, [persistSession])
 
   const setGroundMarkers = useCallback(async (updater: (prev: readonly GroundMarker[]) => readonly GroundMarker[]) => {
@@ -554,6 +600,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setMapStyleId,
     setDiscipline,
     setUse1NmAfterSp,
+    setSetBreakWaypointName,
     setMarkers,
     setGroundMarkers,
     setNoGpsPhotos,

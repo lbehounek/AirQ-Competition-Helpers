@@ -129,6 +129,62 @@ describe('buildMapPicks', () => {
   it('returns [] for empty input', () => {
     expect(buildMapPicks([])).toEqual([])
   })
+
+  it('emits picks in ROUTE order (filename) regardless of input order', () => {
+    const result = buildMapPicks([
+      pm({ id: 'c', photoId: 'pid-c', name: 'c.jpg', flag: 'pick-track' }),
+      pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track' }),
+      pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning' }),
+    ])
+    expect(result.map(e => e.photoId)).toEqual(['pid-a', 'pid-b', 'pid-c'])
+  })
+})
+
+describe('buildMapPicks — set-break assignment (route TP)', () => {
+  // Straight west→east route; a photo's longitude is its distance along it.
+  const route = () => [
+    { name: 'SP', coord: [0, 0] as [number, number] },
+    { name: 'TP1', coord: [1, 0] as [number, number] },
+    { name: 'TP2', coord: [2, 0] as [number, number] },
+    { name: 'FP', coord: [3, 0] as [number, number] },
+  ]
+  // Picks spread along the route; emission order is still by filename.
+  const markers = () => [
+    pm({ id: 'a', photoId: 'pid-a', name: 'a.jpg', flag: 'pick-track', lng: 0.5, lat: 0 }),
+    pm({ id: 'b', photoId: 'pid-b', name: 'b.jpg', flag: 'pick-turning', lng: 1.5, lat: 0 }),
+    pm({ id: 'c', photoId: 'pid-c', name: 'c.jpg', flag: 'pick-track', lng: 2.5, lat: 0 }),
+  ]
+
+  it('adds NO set field when no break is designated (default fill)', () => {
+    expect(buildMapPicks(markers(), route(), null).every(e => e.set === undefined)).toBe(true)
+  })
+
+  it('adds NO set field when there is no route (waypoints omitted)', () => {
+    expect(buildMapPicks(markers()).every(e => e.set === undefined)).toBe(true)
+  })
+
+  it('splits by route position — picks at/after the break TP → set2, before → set1', () => {
+    const byId = Object.fromEntries(buildMapPicks(markers(), route(), 'TP2').map(e => [e.photoId, e.set]))
+    expect(byId).toEqual({
+      'pid-a': 'set1', // lng 0.5 — before TP2
+      'pid-b': 'set1', // lng 1.5 — before TP2
+      'pid-c': 'set2', // lng 2.5 — at/after TP2
+    })
+  })
+
+  it('partitions track and turning together via the single geographic cut', () => {
+    const result = buildMapPicks(markers(), route(), 'TP1')
+    const byId = Object.fromEntries(result.map(e => [e.photoId, e.set]))
+    expect(byId).toEqual({
+      'pid-a': 'set1', // before TP1
+      'pid-b': 'set2', // turning pick, after TP1
+      'pid-c': 'set2', // track pick, after TP1
+    })
+  })
+
+  it('emits no set when the break name is not a current waypoint (stale break)', () => {
+    expect(buildMapPicks(markers(), route(), 'TP9').every(e => e.set === undefined)).toBe(true)
+  })
 })
 
 describe('scheduleWriteMapPicks — debounce + serialization', () => {

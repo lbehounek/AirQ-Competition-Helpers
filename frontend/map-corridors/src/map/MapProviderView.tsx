@@ -106,6 +106,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   onPhotoIncludeTurning?: (markerId: string) => void
   onPhotoSkip?: (markerId: string) => void
   onPhotoReject?: (markerId: string) => void
+  // Coordinate of the current set-break route turning point, for the map's
+  // scissors badge. The break is SET from the panel selector, not here — this is
+  // read-only confirmation. `null` = no break designated.
+  setBreakWaypointCoord?: [number, number] | null
   // Phase 6 — fires when a no-GPS thumbnail from NoGpsTray is dropped
   // on the map. Receives the photoId and the unprojected drop coords.
   onNoGpsPhotoPlaced?: (photoId: string, lng: number, lat: number) => void
@@ -954,6 +958,26 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           </Marker>
         )
       })}
+      {/* Set-break marker — a scissors badge pinned at the chosen route turning
+          point, read-only confirmation of where set 2 starts (set from the
+          panel selector). */}
+      {props.setBreakWaypointCoord && (
+        <Marker longitude={props.setBreakWaypointCoord[0]} latitude={props.setBreakWaypointCoord[1]} style={{ zIndex: 1 }}>
+          <div style={{
+            background: '#0891b2',
+            color: '#ffffff',
+            borderRadius: '50%',
+            width: 20,
+            height: 20,
+            fontSize: 12,
+            lineHeight: '20px',
+            textAlign: 'center',
+            border: '2px solid #ffffff',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+            pointerEvents: 'none',
+          }}>✂</div>
+        </Marker>
+      )}
       {/* Ground markers */}
       {props.groundMarkerProps?.groundMarkers.map(gm => {
         const gmp = props.groundMarkerProps!

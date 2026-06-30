@@ -1,6 +1,15 @@
-# Plan (DRAFT): set1↔set2 split at a user-chosen turning point
+# Plan: set1↔set2 split at a user-chosen turning point
 
-**Status:** DRAFT — awaiting sign-off. Not implemented.
+**Status:** IMPLEMENTED + REBASED onto current `main` (2026-06-22). Green gate:
+shared-handoff + map-corridors `tsc -b` clean, photo-helper `tsc --noEmit`
+clean; vitest map-corridors **728 ✓** (+2 todo) / photo-helper **478 ✓**
+(counts rose: main's placeholder/dedup suites now run alongside this branch's).
+Phases: shared-handoff `MapPickEntry.set` → photo-helper honor + reflow →
+map-corridors break selection. Decision **(b)** (reconcile on break change)
+shipped; reflow is active-discipline-only (see "photo-helper side" below).
+**See the "Reinvestigation (2026-06-22)" section at the bottom** for the rebase,
+the transfer-path invariants now integrated, the panel-visualization reframe
+(decided: *visualize-break-only*), and the open placeholder edge case.
 **Builds on:** PR #100 (`feat/map-picks-auto-route-sets`, merged), which auto-routes
 imported picks into their discipline's sets with a `set1 → set2 → tray`
 capacity fill.
@@ -148,3 +157,198 @@ reconcile's "where is each photo now" input.
 3. **map-corridors:** break-selection UI on TP markers + per-photo `set`
    computation from route order + visualization. Lights the feature up end to
    end and exercises the re-flow path.
+
+---
+
+## Reinvestigation (2026-06-22)
+
+Trigger: main shipped (a) the **picks-panel split** (`b438053`, desktop 2.26.8)
+— the corridors right-side list now splits picks into **turning-point** vs
+**track** groups, and dragging a row between them re-flags the photo
+(`groupPhotosByFlag` → `flagForGroup` → `recategorize`) — and (b) a series of
+**photo-transfer bug fixes**. This branch predated both (merge-base `9902bb3`,
+~25 commits behind), so it was reinvestigated against current `main`.
+
+### Rebase done (green baseline)
+
+Rebased `feat/set-split-tp-break` onto `d8233a2`. Conflicts were minor and
+textual: an import block in `useCompetitionSystem.ts` (kept both
+`insertPlaceholderIntoSet` from main and `reconcilePlacedToDesiredSet` from this
+branch) and `CHANGELOG.md` (this branch's speculative `2.27.0` entry was moved
+under `## [Unreleased]`, since it is now behind main's released `2.26.8`).
+All other commits replayed clean. Backup ref: `backup/set-split-pre-rebase`.
+
+### Transfer-path invariants integrated / verified
+
+The merged fixes established invariants this branch's reworked sync path must
+honor. Status after rebase:
+
+1. **Write-at-click-time** (`2280360`) — *fixed in rebase*. The fix added an
+   explicit `scheduleWriteMapPicks(buildMapPicks(markers))` inside
+   `handleSendToEditor` (written after this branch's base), so the rebase left
+   it calling `buildMapPicks(markers)` **without** the break id while the
+   debounced `[markers]` effect already passed `breakId`. A break toggled in the
+   same render as "Send" would be dropped from the authoritative handoff file.
+   Now both call sites compute `breakId` identically (null for precision) and
+   pass it. Commit `fix(map-corridors): stamp TP set-break on the click-time
+   send write`.
+2. **`pm-` / shared-blob ownership** (`3e60785`) — *verified compatible*.
+   `reconcilePlacedToDesiredSet`'s overflow re-adds to the tray
+   (`{ ...photo, flag: categoryFlag }`); it never deletes blobs, so the
+   `isMapOwned = id.startsWith('pm-')` delete guard is untouched. A reflow must
+   not look like a delete — confirmed it doesn't.
+3. **Mode-bucket mirroring** (`setsTrack`/`setsTurning`) — *already correct*.
+   `reconcilePlacedToDesiredSet` mirrors into the active bucket, matching
+   `insertPlaceholderIntoSet`'s pattern.
+4. **Content-hash dedup** (`26d1da2`/`cfdae84`/`07bcdec`) — *no interaction*.
+   `entry.set` carries no hash (correct; stays off-wire). Reconcile moves
+   existing objects, never re-imports, so the `seen`/`contentHash` sets are
+   unaffected.
+
+### Reframe (DECIDED: visualize-break-only)
+
+Key insight: **turning/track and set1/set2 are orthogonal axes.** The panel
+split categorizes on turning/track (→ `flag`, crosses the wire, editor routes by
+flag). `set1/set2` is a second axis — answer-sheet pagination — carried on the
+separate `entry.set` field. So "do sets like the panel does turning/track" must
+NOT become per-photo set assignment (that explodes into a 2×2 turning×set /
+track×set grid and contradicts the locked "single break, map owns membership"
+decision, and is more tedious than one break click).
+
+**Decision (owner, 2026-06-22): visualize-break-only.** Keep the TP-break as the
+assignment engine (domain-correct: a rally answer sheet breaks at a leg/TP
+boundary; one click splits everything). Surface its *result* in the existing
+`PhotoListPanel`: draw a `set1 │ set2` divider inside the **turning-point picks**
+and **track picks** groups, at the position the break dictates, reusing
+`groupPhotosByFlag`'s route-ordered lists. The break is still **set/moved from
+the map** (popup "Split sets here" + scissors badge); the panel only *shows* the
+split. Editor stays dumb (obeys `entry.set`).
+
+Implementation sketch (map-corridors only — editor unchanged):
+- Extract the break partition logic from `buildMapPickEntry`/`buildMapPicks` into
+  a small pure helper (e.g. `partitionPicksBySet(markers, breakPhotoId)` in route
+  order) so both the writer and the panel compute the same split from one source
+  of truth.
+- `PhotoListPanel`: within `picksTurning` and `picksTrack`, render the photos in
+  route order with a `set1 │ set2` divider after the last set1 photo (a labelled
+  separator row, not a new collapsible group — avoids the 2×2 blowup and keeps
+  drag-to-recategorize on the existing flag groups). Rally + break-chosen only;
+  hidden for precision and when no break is set.
+- No wire/editor change; no new `flag`/`set` semantics. Pure additive UI.
+
+#### Implemented (2026-06-22)
+
+- New `src/setSplit/partitionPicksBySet.ts` — single source of truth:
+  `partitionPicksBySet(markers, breakPhotoId)` (route-order cut + break
+  convention) and `setBreakDividerIndex(orderedIds, setByPhotoId)` (the
+  "before the first set2 row preceded by a set1 row" boundary rule). Both pure +
+  unit-tested (`__tests__/partitionPicksBySet.test.ts`).
+- `buildMapPicks` refactored to consume `partitionPicksBySet` (DRY — the writer
+  and the panel now read the *same* partition; behavior byte-identical, existing
+  `buildMapPicks — set-break assignment` tests still green).
+- `PhotoListPanel` gains `setBreakPhotoId?` prop; computes `setByPhotoId` and
+  renders a `<SetBreakDivider>` (scissors + "Set 2 / Sada 2", tied to the map's
+  scissors badge) inside `picksTurning` / `picksTrack` only, and only where the
+  group straddles the cut. `App.tsx` passes the prop (`null` for precision).
+  i18n: `photo.list.setBreakDivider` (en/cs).
+- Gate: map-corridors `tsc -b` clean, vitest **740 ✓** (+2 todo). photo-helper
+  untouched. The break is still set/moved from the map popup — the panel only
+  visualizes.
+
+### Placeholder × reflow capacity — RESOLVED (2026-06-22)
+
+Sets can contain `isPlaceholder` photos (`url:''`, id `placeholder-…`, from
+`48251c7`). `reconcilePlacedToDesiredSet` only acts on `pm-` entries (a
+placeholder carries no `entry.set`, so it is never the *subject* of a reflow),
+but a placeholder occupying a slot counts toward the target sheet's length.
+
+**Decision: a placeholder counts as an occupied slot.** When a break move would
+push a real `pm-` pick into a sheet that's full *including* a placeholder, the
+real pick **overflows to the candidate tray** (re-flagged, surfaced for manual
+resolution) — it does **not** evict the placeholder or exceed the printable
+grid. Rationale: a placeholder is a deliberate reservation for a *missing*
+turning point; it cannot itself be sent to the tray (`demoteSlotToCandidate`
+blocks placeholders), and the reflow cannot know an incoming photo corresponds
+to that specific missing TP, so auto-evicting would be a destructive guess.
+`routeImportedPickIntoSets`' first-import gate counts placeholders the same way,
+so the two paths are consistent. The user resolves the conflict by removing the
+placeholder (if that TP now has a photo) and dragging the tray pick in.
+
+Pinned by `candidateTransitions.test.ts` — a reflow into a placeholder-full
+sheet overflows the pick to the tray (placeholder untouched, grid not exceeded),
+and a reflow into a sheet a placeholder leaves room in places the pick normally.
+Code intent documented at the `targetLen` capacity gate in
+`reconcilePlacedToDesiredSet`.
+
+---
+
+## TP-selector reframe (2026-06-22, user feedback)
+
+Live-testing feedback: clicking a *photo* on the map to set the break was
+undiscoverable and conceptually wrong — **the break is a property of the route's
+turning points, not of a photo.** The user's words: "set TP where photos change —
+not photo, but TP… there should be a controller 'photos change at TPx'."
+
+**Decisions (owner):**
+- **Semantics: "Set 2 starts at TP-X".** You pick the *first* turning point of
+  set 2. This flips the internal convention from inclusive (break TP closed
+  set 1) to **exclusive — the break TP is the first TP of set 2**: in route order
+  the break TP and everything after → `set2`, everything strictly before →
+  `set1`. (Free to change — feature is unreleased. The flip also makes "set 2
+  starts at TP1" representable, which the inclusive convention could not.)
+- **Panel selector is the sole input.** A `Set 2 starts at [ TP… ▾ ]` dropdown in
+  the right-side `PhotoListPanel`, listing the turning-point picks in route order
+  (TP1, TP2, … with the competition label in parens). "No split" clears it.
+  Rally only (hidden for precision and when there are no turning points).
+- **The per-photo map popup button is removed** (one way to set it). The map
+  keeps the teal halo + scissors badge on the break TP as *read-only*
+  confirmation.
+
+**Implemented:**
+- `partitionPicksBySet`: exclusive cut (`i < breakIndex ? set1 : set2`); doc
+  updated. New pure `listSetBreakOptions(markers)` → turning-point picks in route
+  order as `{ photoId, tpNumber, name, label? }`. Both unit-tested; the
+  `buildMapPicks`/divider machinery is unchanged (still reads the partition).
+- `PhotoListPanel`: `onSetBreakChange` prop + the selector. `App.tsx`:
+  `handleSetBreakChange` (direct set/clear) wired to the panel; the popup
+  `onPhotoSetBreak` wiring removed.
+- `PhotoMarkerPopup` / `MapProviderView`: removed the "Split sets here" button
+  and its props; kept the break badge. i18n: added `photo.list.setBreakLabel`
+  / `setBreakNone` / `setBreakOption` (en/cs), removed `photo.popup.setBreak`
+  / `clearBreak`.
+- Gate: map-corridors `tsc -b` clean, vitest **748 ✓** (+2 todo). photo-helper
+  untouched (set1/set2 still mean the same sheets; only *which* picks map to them
+  changed, and that's computed map-side).
+
+---
+
+## Route-TP reframe (2026-06-29, user feedback)
+
+Live testing surfaced the real model error: a competition can have **only track
+photos** (no turning-point photos), so a break anchored on a turning-point
+*photo* had nothing to attach to and the selector stayed empty. The user: "set
+TP where photos change… the app should figure out which photos are after TP X."
+
+**Decision (owner): split by the ROUTE's turning points, not by photos.**
+- The break is stored as `setBreakWaypointName` (e.g. `"TP4"`), replacing the
+  photo-based `setBreakPhotoId`. The route's waypoints already exist:
+  `buildRouteWaypoints(session.exactPoints)` → ordered `SP, TP1…TPn, FP`.
+- `partitionPicksByRouteTP(markers, waypoints, name)` projects each pick's GPS
+  onto the route line (`@turf/turf` `nearestPointOnLine`) to get its
+  distance-along-route, and compares to the break TP's chainage: at/after → set2,
+  before → set1. Works with track-only sets. Same `photoId → set` map downstream,
+  so `buildMapPicks`, the divider, and the editor are unchanged.
+- `listRouteTpOptions(waypoints)` → TP1…TPn (excludes SP = all-set2, FP = empty
+  set2). The panel selector lists these by name; the map shows a scissors badge
+  at the chosen TP's coordinate (read-only). The per-photo popup control and the
+  photo-based break model (`isSetBreakValid`, the `setMarkers` auto-clear) are
+  removed — the break is independent of photo flags now.
+- Edge cases: unprojectable pick (non-finite coords) → set1; stale break name
+  (route reloaded) → graceful no-split (empty partition + value guard in the
+  Select). The panel divider is best-effort when filename order ≠ route order
+  (route doubles back) — exact in the common case.
+
+**Gate:** map-corridors `tsc -b` clean, vitest **743 ✓** (+2 todo;
+`setBreakValidity.test.ts` removed, `partitionPicksByRouteTP`/`listRouteTpOptions`
+covered). photo-helper untouched (set1/set2 unchanged; only which picks map to
+them, computed map-side). Desktop 2.27.0.

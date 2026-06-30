@@ -304,6 +304,7 @@
     "dragHint": "Přetáhněte miniaturu na prázdné políčko, nebo použijte tlačítka pod každou fotografií.",
     "smartDropToast": "Přidáno {{count}} fotografií do Kandidátů — přetáhněte kteroukoli do políčka, aby se dostala do tisku.",
     "duplicatesSkipped": "Přeskočeno již importovaných fotografií: {{count}}.",
+    "reflowFailed": "Nepodařilo se přeřadit fotografie podle nového rozdělení sad ({{count}}) – mohou být ve špatné sadě. Akce se automaticky zopakuje.",
     "crossSetHint": "Přesun mezi sadami jde přes Kandidáty. Přetáhněte fotografii nejprve sem a pak do druhé sady.",
     "allFiltered": "Všichni kandidáti jsou skryti filtrem.",
     "flag": {

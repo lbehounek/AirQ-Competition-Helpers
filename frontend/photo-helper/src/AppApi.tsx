@@ -108,6 +108,7 @@ function AppApi() {
     addPhotosToCandidates,
     addExistingCandidate,
     importPickToSets,
+    reconcilePlacedToSets,
     removeCandidate,
     promoteCandidateToSlot,
     addPlaceholderToSet,
@@ -184,16 +185,31 @@ function AppApi() {
     return () => { cancelled = true; };
   }, [pmcCompetitionId]);
 
+  // Warning snackbar when a break-driven re-flow (set1↔set2) failed to persist
+  // for some placed picks during a map-picks sync. Declared BEFORE pmcSessionApi
+  // because that useMemo reads it in its factory + deps (a `const` used earlier
+  // would hit the temporal dead zone and throw on render).
+  const [reflowErrorToast, setReflowErrorToast] = useState<string | null>(null);
+  const handleReflowError = useCallback(
+    (failedCount: number) => setReflowErrorToast(t('candidates.reflowFailed', { count: failedCount })),
+    [t],
+  );
+
   const pmcSessionApi = useMemo(() => ({
     candidates: candidatePhotos,
     placedIds: placedPmIds,
+    // Active discipline — drives which placed picks reflow on a break change
+    // (only the visible discipline; the other reconciles when it's shown).
+    mode: session?.mode ?? 'track',
     addCandidate: addExistingCandidate,
     importPick: importPickToSets,
+    reconcilePlaced: reconcilePlacedToSets,
     removeCandidate,
     setCandidateFlag,
     setCandidateLabel,
     setCandidateFilename,
-  }), [candidatePhotos, placedPmIds, addExistingCandidate, importPickToSets, removeCandidate, setCandidateFlag, setCandidateLabel, setCandidateFilename]);
+    onReflowError: handleReflowError,
+  }), [candidatePhotos, placedPmIds, session?.mode, addExistingCandidate, importPickToSets, reconcilePlacedToSets, removeCandidate, setCandidateFlag, setCandidateLabel, setCandidateFilename, handleReflowError]);
 
   useMapPicksSync(pmcCompetitionDir, pmcPhotosDir, pmcSessionApi);
 
@@ -1636,6 +1652,17 @@ function AppApi() {
         onClose={() => setCleanupErrorToast(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={cleanupErrorToast ?? ''}
+      />
+
+      {/* Re-flow failure surface — a moved set1↔set2 break couldn't re-paginate
+          some placed picks (OPFS quota / permission). Recoverable: it retries
+          on the next sync. Same Snackbar vocabulary as the other toasts. */}
+      <Snackbar
+        open={Boolean(reflowErrorToast)}
+        autoHideDuration={8000}
+        onClose={() => setReflowErrorToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={reflowErrorToast ?? ''}
       />
 
       {/* Clipboard-paste failure surface — partial reads (some files rejected

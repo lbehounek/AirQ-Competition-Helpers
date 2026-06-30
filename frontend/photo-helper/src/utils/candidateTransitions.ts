@@ -205,11 +205,14 @@ export interface RouteImportedPickResult {
  * the manual `promoteCandidateToSlot` flow, but driven by the `pick-track` /
  * `pick-turning` flag carried across the handoff (see useMapPicksSync).
  *
- * Fill policy (decided with the user): `set1 → set2 → tray`. set1 fills to
- * `getGridCapacity` first, overflow spills into set2, and once both are full
- * the photo stays in the candidate tray (with its flag) for manual placement.
- * Precision discipline is single-set, so set2 is skipped and overflow goes
- * straight to the tray.
+ * Fill policy: when the map designates a target sheet via `desiredSet`
+ * (the user's set-break turning point, carried on `MapPickEntry.set`), the
+ * photo goes into THAT sheet; if it's at capacity the photo overflows to the
+ * candidate tray — never cross-spilled into the other sheet (that would
+ * corrupt the before/after-break ordering). When `desiredSet` is absent (no
+ * break chosen), the default `set1 → set2 → tray` spillover applies: set1
+ * fills first, overflow into set2, both-full → tray. Precision discipline is
+ * single-set, so `desiredSet` is ignored and set2 is skipped.
  *
  * Mode policy (decided with the user): never switch the user's active mode.
  * A pick for the discipline NOT currently shown is written into that mode's
@@ -226,6 +229,7 @@ export function routeImportedPickIntoSets(
   photo: ApiPhoto,
   targetMode: 'track' | 'turningpoint',
   isPrecision: boolean,
+  desiredSet?: 'set1' | 'set2',
 ): RouteImportedPickResult {
   const active = session.mode === targetMode;
   const bucketKey = targetMode === 'track' ? 'setsTrack' : 'setsTurning';
@@ -259,9 +263,18 @@ export function routeImportedPickIntoSets(
     layoutMode: (session as unknown as { layoutMode?: string }).layoutMode,
   });
   const allowSet2 = !isPrecision;
+  // Precision is single-sheet, so the map's `desiredSet` is meaningless there —
+  // ignore it and fall back to the default fill (which skips set2 anyway).
+  const effectiveDesired = !isPrecision && (desiredSet === 'set1' || desiredSet === 'set2')
+    ? desiredSet
+    : undefined;
 
   let target: RouteImportedPickResult['placement'];
-  if ((working.set1.photos.length) < capacity) {
+  if (effectiveDesired) {
+    // Map-designated sheet: place there if there's room, else overflow to the
+    // tray — never cross-spill into the other sheet.
+    target = working[effectiveDesired].photos.length < capacity ? effectiveDesired : 'tray';
+  } else if ((working.set1.photos.length) < capacity) {
     target = 'set1';
   } else if (allowSet2 && working.set2.photos.length < capacity) {
     target = 'set2';
@@ -320,4 +333,93 @@ export function routeImportedPickIntoSets(
     placement: target,
     revokeUrl: photo.url,
   };
+}
+
+export interface ReconcilePlacedResult {
+  session: ApiPhotoSession;
+  /** True if the photo was moved (caller persists + counts it); false = no-op. */
+  moved: boolean;
+}
+
+/**
+ * Re-flow a single ALREADY-PLACED map pick to the sheet the map now says it
+ * belongs to, because the user moved their TP set-break in map-corridors
+ * (`MapPickEntry.set`). Implements the "map owns set membership" half of the
+ * reconcile: cross-sheet membership is the corridors break's call, so if the
+ * photo's current sheet differs from `desiredSet` we move it; within-sheet
+ * order and crops stay the user's (the existing photo object is moved intact,
+ * never recreated — so `canvasState` + `label` survive).
+ *
+ * ACTIVE discipline only — the photo must live in `session.sets` (live blob
+ * URLs). Inactive-bucket photos carry `url: ''` and would render blank if
+ * overflowed into the always-visible candidate tray; they reconcile when their
+ * discipline becomes active (useMapPicksSync re-runs on mode change). The
+ * caller guarantees this by only invoking for the active discipline.
+ *
+ * If the target sheet is at capacity the photo overflows to the candidate tray
+ * (re-flagged with its category so the tray colours it), never cross-spilled
+ * into the other sheet. No-op (same session ref, `moved: false`) when the photo
+ * isn't in the active sets, is already in the right sheet, or under precision
+ * (single-set). Pure — no blob-URL churn (a move reuses the live URL).
+ */
+export function reconcilePlacedToDesiredSet(
+  session: ApiPhotoSession,
+  photoId: string,
+  desiredSet: SetKey,
+  isPrecision: boolean,
+): ReconcilePlacedResult {
+  if (isPrecision) return { session, moved: false };
+
+  const set1 = session.sets.set1.photos;
+  const set2 = session.sets.set2.photos;
+  const inSet1 = set1.some((p) => p.id === photoId);
+  const inSet2 = set2.some((p) => p.id === photoId);
+  const currentSet: SetKey | null = inSet1 ? 'set1' : inSet2 ? 'set2' : null;
+  if (!currentSet) return { session, moved: false }; // not in the active sets
+  if (currentSet === desiredSet) return { session, moved: false }; // already right
+
+  const photo = (currentSet === 'set1' ? set1 : set2).find((p) => p.id === photoId)!;
+
+  // Remove from the current sheet, preserving the other photos' order.
+  let newSet1 = currentSet === 'set1' ? set1.filter((p) => p.id !== photoId) : [...set1];
+  let newSet2 = currentSet === 'set2' ? set2.filter((p) => p.id !== photoId) : [...set2];
+
+  const capacity = getGridCapacity({
+    mode: session.mode,
+    layoutMode: (session as unknown as { layoutMode?: string }).layoutMode,
+  });
+  // The destination sheet is the OTHER one (currentSet !== desiredSet), so the
+  // removal above didn't touch it — its current length is the capacity gate.
+  // A "no photo" placeholder occupies a real grid slot, so it IS counted here
+  // (PR #103 review, GAP 3 — decided): a placeholder is a deliberate reservation
+  // for a missing turning point, it cannot itself go to the tray
+  // (`demoteSlotToCandidate` blocks placeholders), and the reflow cannot know an
+  // incoming photo corresponds to that specific missing TP. So when a placeholder
+  // fills the last slot, the displaced real pick overflows to the tray (surfaced
+  // for manual resolution) rather than evicting the placeholder or busting the
+  // printable grid. `routeImportedPickIntoSets`' first-import gate counts them
+  // the same way, so the two paths stay consistent.
+  const targetLen = desiredSet === 'set1' ? newSet1.length : newSet2.length;
+
+  let candidates = getCandidatePhotos(session);
+  if (targetLen >= capacity) {
+    // Target sheet full → overflow to the tray, re-flagged with its category.
+    const categoryFlag: CandidateFlag = session.mode === 'track' ? 'pick-track' : 'pick-turning';
+    candidates = [...candidates, { ...photo, flag: categoryFlag }];
+  } else if (desiredSet === 'set1') {
+    newSet1 = [...newSet1, { ...photo }];
+  } else {
+    newSet2 = [...newSet2, { ...photo }];
+  }
+
+  const nextSets = {
+    set1: { ...session.sets.set1, photos: newSet1 },
+    set2: { ...session.sets.set2, photos: newSet2 },
+  };
+  const next: ApiPhotoSession = { ...session, sets: nextSets, candidates: { photos: candidates } };
+  // Mirror into the active mode bucket so a later mode switch doesn't resurrect
+  // the pre-move state (same pattern as promoteCandidateToSlot).
+  const modeKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
+  (next as unknown as Record<string, unknown>)[modeKey] = nextSets;
+  return { session: bumpVersion(next), moved: true };
 }
