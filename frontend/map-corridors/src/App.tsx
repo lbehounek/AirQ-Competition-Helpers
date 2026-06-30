@@ -1041,9 +1041,21 @@ function App() {
       // shows them (otherwise the editor stays empty — feedback). Only flags
       // un-categorised GPS markers (the freshly-imported sample); operates on the
       // latest markers via the updater, not the closure snapshot.
-      await persistMarkers((prev) =>
-        prev.map(m => (m.photoId && !m.flag) ? { ...m, flag: 'pick-track' as const } : m)
-      )
+      let flaggedMarkers: typeof markers = []
+      await persistMarkers((prev) => {
+        const next = prev.map(m => (m.photoId && !m.flag) ? { ...m, flag: 'pick-track' as const } : m)
+        flaggedMarkers = next
+        return next
+      })
+      // Write ALL picks to the handoff file synchronously and flush, rather than
+      // waiting for the debounced [markers] effect. Without this, opening the
+      // editor right after import races the 300ms debounce and lands on a
+      // partial/empty map-picks.json — the "editor shows only one photo" bug.
+      if (storage && competitionDir) {
+        const breakName = resolveSetBreakName(effectiveDiscipline, session?.setBreakWaypointName)
+        scheduleWriteMapPicks(storage, competitionDir, buildMapPicks(flaggedMarkers, routeWaypoints, breakName))
+        await flushPendingMapPicks()
+      }
       // Mark the competition as a sample/VZOR so it's clearly a demo, not a real
       // competition. Renames the competition + refreshes the header chip.
       const sampleName = t('app.sampleName', { label: manifest.label || 'Plasy Blue' })
@@ -1055,7 +1067,7 @@ function App() {
       console.error('[sample] load failed:', err)
       setSnack({ severity: 'error', text: t('app.loadSampleFailed') })
     }
-  }, [onFiles, handlePhotoFiles, persistMarkers, t, competitionId])
+  }, [onFiles, handlePhotoFiles, persistMarkers, t, competitionId, storage, competitionDir, routeWaypoints, effectiveDiscipline, session?.setBreakWaypointName])
 
   // Auto-import the bundled sample into the preloaded "VZOR – Plasy Blue"
   // competition the first time it's opened (main.js marks it `.sample-pending`).
