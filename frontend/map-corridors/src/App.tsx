@@ -11,7 +11,7 @@ import type { Discipline } from './corridors/preciseCorridor'
 
 import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert, Snackbar, LinearProgress } from '@mui/material'
 import { Download, Place, Print, Home, PhotoCamera, Flag, HelpOutline } from '@mui/icons-material'
-import { startMapCorridorsTour, shouldAutoStartTour, markTourSeen } from './onboarding/mapCorridorsTour'
+import { startMapCorridorsTour, scheduleAutoStartTour, markTourSeen } from './onboarding/mapCorridorsTour'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
@@ -805,13 +805,17 @@ function App() {
     markTourSeen()
     startMapCorridorsTour(t)
   }, [t])
+  // `t`'s identity changes when I18nContext re-renders (e.g. after its async
+  // init), so we read it through a ref and run the auto-start effect ONCE on
+  // mount — otherwise a re-render would clear the timer and the re-run would
+  // see the just-set "seen" flag and never fire (PR #109 review bug).
+  const tRef = useRef(t)
+  tRef.current = t
   useEffect(() => {
-    if (!shouldAutoStartTour()) return
-    markTourSeen()
-    // Defer one tick so the toolbar (the tour's anchors) is mounted.
-    const id = window.setTimeout(() => startMapCorridorsTour(t), 600)
-    return () => window.clearTimeout(id)
-  }, [t])
+    // Deferred inside scheduleAutoStartTour so the toolbar (the tour's anchors)
+    // is mounted, and "seen" is marked only when it actually fires.
+    return scheduleAutoStartTour(() => startMapCorridorsTour(tRef.current))
+  }, [])
 
   const handleCompareVariants = useCallback((selected: readonly PhotoMarker[]) => {
     if (selected.length < 2) return

@@ -774,11 +774,12 @@ if (helpTourBtn) {
   }
   // Load competitions
   await loadCompetitions();
-  // First-run onboarding tour (once; replayable from the ? button).
+  // First-run onboarding tour (once; replayable from the ? button). Mark "seen"
+  // only when it actually fires, so closing the window in the 500ms window
+  // doesn't permanently suppress onboarding without ever showing it.
   let tourSeen = false;
   try { tourSeen = localStorage.getItem(LAUNCHER_TOUR_KEY) !== null; } catch { tourSeen = true; }
   if (!tourSeen) {
-    markLauncherTourSeen();
-    setTimeout(startLauncherTour, 500);
+    setTimeout(() => { markLauncherTourSeen(); startLauncherTour(); }, 500);
   }
 })();

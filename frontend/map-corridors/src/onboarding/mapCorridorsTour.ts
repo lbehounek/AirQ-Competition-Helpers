@@ -99,3 +99,23 @@ export function markTourSeen(): void {
     /* best-effort */
   }
 }
+
+/**
+ * Schedule the first-run auto-start and return a cleanup. Two correctness rules
+ * baked in (PR #109 review):
+ *  - "Seen" is marked only when the tour ACTUALLY fires (inside the timer), not
+ *    eagerly — so an unmount/cleanup before it fires doesn't permanently mark
+ *    the user as onboarded without ever showing the tour.
+ *  - The gate is read once at schedule time; callers must run this in a
+ *    mount-once effect (stable deps) so a re-render can't cancel-then-skip it.
+ * `run` is injected (rather than calling startMapCorridorsTour directly) so the
+ * scheduling/marking logic is unit-testable with fake timers.
+ */
+export function scheduleAutoStartTour(run: () => void, delayMs = 600): () => void {
+  if (!shouldAutoStartTour()) return () => {};
+  const id = window.setTimeout(() => {
+    markTourSeen();
+    run();
+  }, delayMs);
+  return () => window.clearTimeout(id);
+}
