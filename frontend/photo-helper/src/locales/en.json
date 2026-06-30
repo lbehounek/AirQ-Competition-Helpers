@@ -19,7 +19,7 @@
     },
     "edit": {
       "title": "Edit a photo",
-      "body": "Click any photo to open the editing modal. Inside, click the ? button in the corner for a guided walkthrough of every editing tool. Use the arrows to move between photos without closing it."
+      "body": "Next, the editor opens automatically on one of your photos to show you the tools. Any time, click a photo to edit it — and the ? in the editor's corner replays this walkthrough."
     },
     "editorTour": {
       "photo": {

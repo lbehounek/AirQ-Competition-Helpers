@@ -139,16 +139,24 @@ function AppApi() {
   // so a ref keeps the once-on-mount effect stable.
   const isPrecisionRef = useRef(false);
   isPrecisionRef.current = discipline === 'precision';
+  // The editor onboarding can OPEN the modal on a real photo and demonstrate the
+  // controls (not just describe them). These refs are populated lower down (once
+  // the photo sources + setSelectedPhoto exist); the tour reads them at runtime.
+  const openEditorForTourRef = useRef<() => boolean>(() => false);
+  const closeEditorForTourRef = useRef<() => void>(() => {});
+  const tourOpts = () => ({
+    isPrecision: isPrecisionRef.current,
+    openEditor: () => openEditorForTourRef.current(),
+    closeEditor: () => closeEditorForTourRef.current(),
+  });
   const handleStartTour = useCallback(() => {
     markTourSeen();
-    startPhotoHelperTour(tRef.current, isPrecisionRef.current);
+    startPhotoHelperTour(tRef.current, tourOpts());
   }, []);
   useEffect(() => {
-    return scheduleAutoStartTour(() => startPhotoHelperTour(tRef.current, isPrecisionRef.current));
+    return scheduleAutoStartTour(() => startPhotoHelperTour(tRef.current, tourOpts()));
   }, []);
-  // The editor modal hosts its own "?" that highlights the editing controls in
-  // place (robustly — the modal is open, so the controls exist). Declared here,
-  // populated below once `t` is captured.
+  // The editor modal also hosts its own "?" that highlights the controls in place.
   const startEditorTour = useCallback(() => startEditorModalTour(tRef.current), []);
 
   // Candidate photos — derived from session for stable rendering. The pool
@@ -465,6 +473,20 @@ function AppApi() {
   const handleCandidateClick = (photo: ApiPhoto) => {
     setSelectedPhoto({ photo, setKey: 'candidates', label: '' });
   };
+
+  // Tour hooks: open the first available photo (set1 → set2 → tray) so the editor
+  // onboarding can demonstrate on a real photo; false if there's nothing to open
+  // (the editor steps then fall back to centered descriptions). Close = dismiss.
+  openEditorForTourRef.current = () => {
+    const s1 = session?.sets.set1.photos[0];
+    if (s1) { handlePhotoClick(s1, 'set1'); return true; }
+    const s2 = !isPrecision ? session?.sets.set2.photos[0] : undefined;
+    if (s2) { handlePhotoClick(s2, 'set2'); return true; }
+    const tray = candidatePhotos[0];
+    if (tray) { handleCandidateClick(tray); return true; }
+    return false;
+  };
+  closeEditorForTourRef.current = () => setSelectedPhoto(null);
 
 
   // The ordered photo list the modal navigates within — the set/pool the

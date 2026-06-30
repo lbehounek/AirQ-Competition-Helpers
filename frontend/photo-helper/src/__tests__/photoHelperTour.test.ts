@@ -43,14 +43,17 @@ function lookup(dict: Record<string, unknown>) {
 describe('photoHelper buildTourSteps', () => {
   it('produces the ordered steps with the expected element anchors', () => {
     const steps = buildTourSteps(echo);
-    expect(steps).toHaveLength(10);
-    // Anchored on real controls (visual, not just descriptive).
+    expect(steps).toHaveLength(11);
+    // Anchored on real controls (visual). The editor section opens the modal and
+    // anchors on the real photo + controls.
     expect(steps[2].element).toBe('[data-tour="layout"]');
-    expect(steps[6].element).toBe('[data-tour="tray"]');
-    expect(steps[8].element).toBe('[data-tour="export"]');
-    expect(steps[9].element).toBe('[data-tour="help"]');
-    // The remaining detailed steps are centered (no element).
-    for (const i of [0, 1, 3, 4, 5, 7]) {
+    expect(steps[4].element).toBe('[data-tour="editor-photo"]');
+    expect(steps[5].element).toBe('[data-tour="editor"]');
+    expect(steps[7].element).toBe('[data-tour="tray"]');
+    expect(steps[9].element).toBe('[data-tour="export"]');
+    expect(steps[10].element).toBe('[data-tour="help"]');
+    // The remaining steps are centered (no element).
+    for (const i of [0, 1, 3, 6, 8]) {
       expect(steps[i].element, `step ${i} should be centered`).toBeUndefined();
     }
   });

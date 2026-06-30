@@ -37,8 +37,17 @@ export function buildTourSteps(t: T, isPrecision = false): DriveStep[] {
       element: '[data-tour="layout"]',
       popover: { title: t('tour.layout.title'), description: t('tour.layout.body'), side: 'bottom', align: 'start' },
     },
-    centered('edit'),         // click a photo → in-modal "?" tours every editing tool
-    centered('modal'),        // what the in-modal editor tour covers
+    centered('edit'),         // intro — the editor opens automatically next
+    {
+      // The tour opens the modal here (see startPhotoHelperTour) and highlights
+      // the real photo, then the controls. Reuses the in-modal tour's copy.
+      element: '[data-tour="editor-photo"]',
+      popover: { title: t('tour.editorTour.photo.title'), description: t('tour.editorTour.photo.body'), side: 'right', align: 'center' },
+    },
+    {
+      element: '[data-tour="editor"]',
+      popover: { title: t('tour.editorTour.controls.title'), description: t('tour.editorTour.controls.body') },
+    },
     centered('labels'),       // label numbering + position
     {
       // Anchored on the real candidate tray (at the top of the page).
@@ -116,16 +125,55 @@ export function startEditorModalTour(t: T): void {
   d.drive();
 }
 
-/** Start the guided tour now (used by the Help button and first-run). */
-export function startPhotoHelperTour(t: T, isPrecision = false): void {
-  const d = driver({
+export interface PhotoHelperTourOpts {
+  isPrecision?: boolean;
+  /** Open the first available photo's editor modal; returns false if none. */
+  openEditor?: () => boolean;
+  /** Dismiss the editor modal. */
+  closeEditor?: () => void;
+}
+
+/**
+ * Start the guided tour (Help button / first-run). When `openEditor`/`closeEditor`
+ * are provided, the tour OPENS the editing modal as it reaches the editor section
+ * (so its controls are highlighted on a real photo) and closes it when leaving —
+ * driven through the global `onNextClick` so no per-step hooks are needed. If no
+ * photo can be opened, the editor steps fall back to centered popovers.
+ */
+export function startPhotoHelperTour(t: T, opts: PhotoHelperTourOpts | boolean = {}): void {
+  // Back-compat: a bare boolean was the old `isPrecision` arg.
+  const o: PhotoHelperTourOpts = typeof opts === 'boolean' ? { isPrecision: opts } : opts;
+  const { isPrecision = false, openEditor, closeEditor } = o;
+  const steps = buildTourSteps(t, isPrecision);
+  const photoIdx = steps.findIndex((s) => s.element === '[data-tour="editor-photo"]');
+  const controlsIdx = steps.findIndex((s) => s.element === '[data-tour="editor"]');
+
+  let d: ReturnType<typeof driver>;
+  d = driver({
     showProgress: true,
     allowClose: true,
     overlayOpacity: 0.6,
     nextBtnText: t('tour.next'),
     prevBtnText: t('tour.prev'),
     doneBtnText: t('tour.done'),
-    steps: buildTourSteps(t, isPrecision),
+    onDestroyed: () => { closeEditor?.(); },
+    onNextClick: () => {
+      const i = d.getActiveIndex() ?? -1;
+      // Entering the editor section → open the modal, let it render, then advance.
+      if (openEditor && photoIdx > 0 && i === photoIdx - 1) {
+        const opened = openEditor();
+        window.setTimeout(() => d.moveNext(), opened ? 450 : 0);
+        return;
+      }
+      // Leaving the editor section → close the modal, then advance.
+      if (closeEditor && controlsIdx >= 0 && i === controlsIdx) {
+        closeEditor();
+        window.setTimeout(() => d.moveNext(), 80);
+        return;
+      }
+      d.moveNext();
+    },
+    steps,
   });
   d.drive();
 }

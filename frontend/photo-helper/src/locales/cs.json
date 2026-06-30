@@ -19,7 +19,7 @@
     },
     "edit": {
       "title": "Úprava fotky",
-      "body": "Klikněte na libovolnou fotku a otevře se okno úprav. Uvnitř klikněte na tlačítko ? v rohu pro vedenou prohlídku všech nástrojů úprav. Šipkami přecházíte mezi fotkami, aniž byste okno zavírali."
+      "body": "Dále se editor automaticky otevře na jedné z vašich fotek a ukáže vám nástroje. Kdykoli klikněte na fotku a upravte ji – tlačítko ? v rohu editoru tuto prohlídku zopakuje."
     },
     "editorTour": {
       "photo": {

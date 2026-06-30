@@ -40,12 +40,13 @@ export function buildTourSteps(t: T): DriveStep[] {
     centered('split'),       // "Set 2 starts at" — where the sheets split (rally)
     centered('maptools'),    // map style, ground markers, print, export KML, answer sheet
     {
+      // The primary "Send to editor" button in the right-side panel footer.
       element: '[data-tour="send"]',
       popover: {
         title: t('app.tour.send.title'),
         description: t('app.tour.send.body'),
-        side: 'bottom',
-        align: 'start',
+        side: 'left',
+        align: 'end',
       },
     },
     {

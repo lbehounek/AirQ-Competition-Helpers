@@ -1297,7 +1297,6 @@ function App() {
                 onClick={() => window.electronAPI?.navigateToApp?.('photo-helper', competitionId)}
                 startIcon={<PhotoCamera sx={{ fontSize: 18 }} />}
                 sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 0.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
-                data-tour="send"
               >
                 {t('app.openEditor')}
               </Button>
