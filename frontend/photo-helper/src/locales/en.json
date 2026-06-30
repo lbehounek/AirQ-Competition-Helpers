@@ -1,4 +1,34 @@
 {
+  "tour": {
+    "next": "Next",
+    "prev": "Back",
+    "done": "Got it",
+    "welcome": {
+      "title": "Welcome to the Photo Editor",
+      "body": "A quick tour of how to lay your photos into the printable answer sheets. You can replay it anytime from the ? button."
+    },
+    "sets": {
+      "title": "Your answer sheets",
+      "body": "Photos sent from Map Corridors arrive pre-sorted into Set 1 and Set 2 (the two answer-sheet pages). Track and turning-point photos go to their matching sets."
+    },
+    "edit": {
+      "title": "Fine-tune a photo",
+      "body": "Click any photo to adjust brightness, contrast, sharpness, white balance and crop. For a missing turning point, use \"Insert no photo\" to keep the numbering correct."
+    },
+    "tray": {
+      "title": "Candidate tray",
+      "body": "Photos that don't fit a full sheet wait in the tray below — drag any of them into an open slot."
+    },
+    "export": {
+      "title": "Export the PDF",
+      "body": "When the sheets look right, export them to a print-ready PDF."
+    },
+    "help": {
+      "title": "Replay anytime",
+      "body": "Open this tour again whenever you need it from this ? button.",
+      "button": "Show the tour"
+    }
+  },
   "app": {
     "title": "Photo Editor",
     "subtitle": "Organize your navigation flight photos into standardized PDF layouts",

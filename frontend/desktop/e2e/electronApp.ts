@@ -40,6 +40,7 @@ export async function launchApp(): Promise<LaunchedApp> {
   await page.addInitScript(() => {
     try {
       window.localStorage.setItem('airq.mapCorridors.onboarding.v1', 'e2e');
+      window.localStorage.setItem('airq.photoHelper.onboarding.v1', 'e2e');
       window.localStorage.setItem('airq.launcher.onboarding.v1', 'e2e');
     } catch {
       /* storage unavailable — nothing to suppress */

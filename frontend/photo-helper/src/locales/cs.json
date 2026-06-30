@@ -1,4 +1,34 @@
 {
+  "tour": {
+    "next": "Další",
+    "prev": "Zpět",
+    "done": "Rozumím",
+    "welcome": {
+      "title": "Vítejte ve Foto editoru",
+      "body": "Krátká prohlídka, jak rozmístit fotky do tisknutelných odpovědních listů. Můžete ji kdykoli spustit znovu tlačítkem ?."
+    },
+    "sets": {
+      "title": "Vaše odpovědní listy",
+      "body": "Fotky odeslané z Map Corridors dorazí předtříděné do Sady 1 a Sady 2 (dvě stránky odpovědního listu). Traťové fotky a fotky otočných bodů jdou do odpovídajících sad."
+    },
+    "edit": {
+      "title": "Dolaďte fotku",
+      "body": "Klikněte na libovolnou fotku a upravte jas, kontrast, ostrost, vyvážení bílé a ořez. Pro chybějící otočný bod použijte „Vložit bez fotky“, aby zůstalo číslování správné."
+    },
+    "tray": {
+      "title": "Zásobník kandidátů",
+      "body": "Fotky, které se nevejdou na plnou stránku, čekají v zásobníku dole – přetáhněte kteroukoli do volného místa."
+    },
+    "export": {
+      "title": "Exportujte PDF",
+      "body": "Až listy vypadají správně, vyexportujte je do PDF připraveného k tisku."
+    },
+    "help": {
+      "title": "Spusťte kdykoli znovu",
+      "body": "Tuto prohlídku otevřete znovu kdykoli tímto tlačítkem ?.",
+      "button": "Zobrazit prohlídku"
+    }
+  },
   "app": {
     "title": "Foto editor",
     "subtitle": "Organizujte fotografie z navigačního letu do standardizovaných PDF rozvržení",

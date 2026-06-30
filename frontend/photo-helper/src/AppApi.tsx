@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Container,
   Typography,
@@ -20,7 +20,8 @@ import {
   DialogContentText,
   DialogActions,
   TextField,
-  Snackbar
+  Snackbar,
+  Tooltip
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -33,10 +34,12 @@ import {
   Map,
   ChevronLeft,
   ChevronRight,
+  HelpOutline,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { useClipboardPaste } from './hooks/useClipboardPaste';
 import { useMapPicksSync } from './hooks/useMapPicksSync';
+import { startPhotoHelperTour, scheduleAutoStartTour, markTourSeen } from './onboarding/photoHelperTour';
 import {
   buildEditorPicks,
   flushPendingEditorPicks,
@@ -125,6 +128,19 @@ function AppApi() {
   // useMemo that consumes it. Declaring `t` lower would put it in the temporal
   // dead zone at the callback's deps-array evaluation and crash on render.
   const { t } = useI18n();
+
+  // Onboarding tour — replay from the "?" button; auto-start once on first run.
+  // `t`'s identity changes when I18nContext re-renders, so read it via a ref and
+  // run the auto-start effect ONCE on mount (see Map Corridors review note).
+  const tRef = useRef(t);
+  tRef.current = t;
+  const handleStartTour = useCallback(() => {
+    markTourSeen();
+    startPhotoHelperTour(tRef.current);
+  }, []);
+  useEffect(() => {
+    return scheduleAutoStartTour(() => startPhotoHelperTour(tRef.current));
+  }, []);
 
   // Candidate photos — derived from session for stable rendering. The pool
   // is optional on older sessions, so default to empty.
@@ -818,6 +834,11 @@ function AppApi() {
                 <Chip label={currentCompetition.name} size="small" sx={{ ml: 2, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
               )}
             </Box>
+            <Tooltip title={t('tour.help.button')}>
+              <IconButton size="small" onClick={handleStartTour} sx={{ color: 'white' }} aria-label={t('tour.help.button')} data-tour="help">
+                <HelpOutline />
+              </IconButton>
+            </Tooltip>
           </Box>
 
           {/* White Content Section */}
@@ -1265,6 +1286,7 @@ function AppApi() {
               onClick={handleGeneratePDF}
               disabled={stats.totalPhotos === 0}
               size="large"
+              data-tour="export"
               sx={{
                 py: 1.5,
                 px: 4,

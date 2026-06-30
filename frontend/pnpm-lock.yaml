@@ -188,6 +188,9 @@ importers:
       buffer:
         specifier: ^6.0.3
         version: 6.0.3
+      driver.js:
+        specifier: 1.6.0
+        version: 1.6.0
       pica:
         specifier: ^9.0.1
         version: 9.0.1
