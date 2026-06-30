@@ -67,7 +67,8 @@
     "backToMenu": "Back to main menu",
     "openEditor": "Photo Editor",
     "loadSample": "Load sample",
-    "loadSampleFailed": "Couldn't load the sample competition."
+    "loadSampleFailed": "Couldn't load the sample competition.",
+    "sampleName": "SAMPLE – {{label}}"
   },
   "photo": {
     "import": {

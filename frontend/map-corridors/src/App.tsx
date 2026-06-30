@@ -1013,10 +1013,14 @@ function App() {
   // import pipeline: read each bundled file via Electron, rebuild File objects,
   // and route KML → onFiles, images → handlePhotoFiles (same as a manual drop).
   const loadSample = useCallback(async () => {
-    const api = (window as { electronAPI?: { sample?: {
-      manifest?: () => Promise<{ available?: boolean; files?: { name: string; type: string }[] }>
-      readFile?: (name: string) => Promise<string>
-    } } }).electronAPI?.sample
+    const electronAPI = window.electronAPI as undefined | {
+      sample?: {
+        manifest?: () => Promise<{ available?: boolean; label?: string; files?: { name: string; type: string }[] }>
+        readFile?: (name: string) => Promise<string>
+      }
+      competitions?: { rename?: (id: string, name: string) => Promise<unknown> }
+    }
+    const api = electronAPI?.sample
     if (!api?.manifest || !api?.readFile) return
     try {
       const manifest = await api.manifest()
@@ -1032,11 +1036,18 @@ function App() {
       if (kml.length) tasks.push(onFiles(kml))
       if (image.length) tasks.push(handlePhotoFiles(image))
       await Promise.all(tasks)
+      // Mark the competition as a sample/VZOR so it's clearly a demo, not a real
+      // competition. Renames the competition + refreshes the header chip.
+      const sampleName = t('app.sampleName', { label: manifest.label || 'Plasy Blue' })
+      if (electronAPI?.competitions?.rename && competitionId) {
+        await electronAPI.competitions.rename(competitionId, sampleName)
+        setCompetitionName(sampleName)
+      }
     } catch (err) {
       console.error('[sample] load failed:', err)
       setSnack({ severity: 'error', text: t('app.loadSampleFailed') })
     }
-  }, [onFiles, handlePhotoFiles, t])
+  }, [onFiles, handlePhotoFiles, t, competitionId])
 
   const handleExportKML = useCallback(async () => {
     const originalKmlText = await loadOriginalKmlText()

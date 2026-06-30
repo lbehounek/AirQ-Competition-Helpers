@@ -66,7 +66,8 @@
     "backToMenu": "Zpět do hlavního menu",
     "openEditor": "Editor fotek",
     "loadSample": "Načíst ukázku",
-    "loadSampleFailed": "Ukázkovou soutěž se nepodařilo načíst."
+    "loadSampleFailed": "Ukázkovou soutěž se nepodařilo načíst.",
+    "sampleName": "VZOR – {{label}}"
   },
   "photo": {
     "import": {
