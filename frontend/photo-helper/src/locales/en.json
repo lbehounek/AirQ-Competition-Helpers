@@ -19,7 +19,21 @@
     },
     "edit": {
       "title": "Edit a photo",
-      "body": "Click any photo to open the editing modal. Use the arrows (or Previous / Next) to move between photos without closing it."
+      "body": "Click any photo to open the editing modal. Inside, click the ? button in the corner for a guided walkthrough of every editing tool. Use the arrows to move between photos without closing it."
+    },
+    "editorTour": {
+      "photo": {
+        "title": "Your photo",
+        "body": "This is the photo you're editing. Drag it to reposition inside the frame — what you see here is exactly what prints."
+      },
+      "controls": {
+        "title": "Editing tools",
+        "body": "Around the photo: Brightness, Contrast, Sharpness, White Balance (Blue↔Yellow, Green↔Magenta), Zoom, the label position, a circle overlay and Show Original. Reset all at once or each control on its own; the arrows move to the previous / next photo."
+      },
+      "replay": {
+        "title": "Replay",
+        "body": "Open this editor walkthrough again anytime from this ? button."
+      }
     },
     "modal": {
       "title": "Editing controls",

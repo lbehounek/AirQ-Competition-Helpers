@@ -19,7 +19,21 @@
     },
     "edit": {
       "title": "Úprava fotky",
-      "body": "Klikněte na libovolnou fotku a otevře se okno úprav. Šipkami (nebo Předchozí / Další) přecházíte mezi fotkami, aniž byste okno zavírali."
+      "body": "Klikněte na libovolnou fotku a otevře se okno úprav. Uvnitř klikněte na tlačítko ? v rohu pro vedenou prohlídku všech nástrojů úprav. Šipkami přecházíte mezi fotkami, aniž byste okno zavírali."
+    },
+    "editorTour": {
+      "photo": {
+        "title": "Vaše fotka",
+        "body": "Toto je upravovaná fotka. Tažením ji posunete uvnitř rámečku – to, co vidíte zde, se přesně vytiskne."
+      },
+      "controls": {
+        "title": "Nástroje úprav",
+        "body": "Okolo fotky: Jas, Kontrast, Ostrost, Vyvážení bílé (Modrá↔Žlutá, Zelená↔Purpurová), Přiblížení, poloha štítku, kruhové překrytí a Zobrazit originál. Resetujte vše najednou nebo každý ovladač zvlášť; šipky přejdou na předchozí / další fotku."
+      },
+      "replay": {
+        "title": "Spustit znovu",
+        "body": "Tuto prohlídku editoru otevřete znovu kdykoli tímto tlačítkem ?."
+      }
     },
     "modal": {
       "title": "Ovládání úprav",

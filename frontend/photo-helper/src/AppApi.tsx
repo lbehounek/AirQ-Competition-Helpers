@@ -39,7 +39,7 @@ import {
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { useClipboardPaste } from './hooks/useClipboardPaste';
 import { useMapPicksSync } from './hooks/useMapPicksSync';
-import { startPhotoHelperTour, scheduleAutoStartTour, markTourSeen } from './onboarding/photoHelperTour';
+import { startPhotoHelperTour, startEditorModalTour, scheduleAutoStartTour, markTourSeen } from './onboarding/photoHelperTour';
 import {
   buildEditorPicks,
   flushPendingEditorPicks,
@@ -146,6 +146,10 @@ function AppApi() {
   useEffect(() => {
     return scheduleAutoStartTour(() => startPhotoHelperTour(tRef.current, isPrecisionRef.current));
   }, []);
+  // The editor modal hosts its own "?" that highlights the editing controls in
+  // place (robustly — the modal is open, so the controls exist). Declared here,
+  // populated below once `t` is captured.
+  const startEditorTour = useCallback(() => startEditorModalTour(tRef.current), []);
 
   // Candidate photos — derived from session for stable rendering. The pool
   // is optional on older sessions, so default to empty.
@@ -461,6 +465,7 @@ function AppApi() {
   const handleCandidateClick = (photo: ApiPhoto) => {
     setSelectedPhoto({ photo, setKey: 'candidates', label: '' });
   };
+
 
   // The ordered photo list the modal navigates within — the set/pool the
   // currently-open photo came from. Used by prev/next arrows + arrow keys.
@@ -885,11 +890,11 @@ function AppApi() {
                 </Box>
 
                 {/* Layout Mode (Portrait/Landscape) */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                <Box data-tour="layout" sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
                   <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
                     {t('layout.title')}
                   </Typography>
-                  <LayoutModeSelector 
+                  <LayoutModeSelector
                     compact 
                     set1Count={session?.sets.set1.photos.length || 0}
                     set2Count={session?.sets.set2.photos.length || 0}
@@ -1049,6 +1054,7 @@ function AppApi() {
             only on the truly-fresh empty state (no slots, no candidates)
             so the initial DropZone hero remains unobstructed. */}
         {(candidatePhotos.length > 0 || stats.totalPhotos > 0) && (
+          <Box data-tour="tray">
           <CandidateTray
             photos={candidatePhotos}
             onAddFiles={(files) => { void handleAddCandidates(files); }}
@@ -1063,6 +1069,7 @@ function AppApi() {
             onSlotDroppedIn={handleSlotDroppedToTray}
             hideSet2={isPrecision && session?.mode === 'track'}
           />
+          </Box>
         )}
 
         {/* Conditional Layout based on mode */}
@@ -1391,9 +1398,21 @@ function AppApi() {
               <>
 
 
+                {/* In-modal tour trigger — highlights the editor controls in place. */}
+                <Tooltip title={t('tour.help.button')}>
+                  <IconButton
+                    size="small"
+                    onClick={startEditorTour}
+                    aria-label={t('tour.help.button')}
+                    data-tour="editor-help"
+                    sx={{ position: 'absolute', top: 8, right: 48, zIndex: 2, color: 'text.secondary' }}
+                  >
+                    <HelpOutline />
+                  </IconButton>
+                </Tooltip>
                 {/* Modal Content - L-Shape Layout: Photo top-left, Controls wrapping around */}
-                <Box sx={{ 
-                  flex: 1, 
+                <Box data-tour="editor" sx={{
+                  flex: 1,
                   display: 'flex',
                   flexDirection: 'column',
                   overflow: 'hidden',
@@ -1407,7 +1426,7 @@ function AppApi() {
                     overflow: 'hidden'
                   }}>
                     {/* Photo - Top Left */}
-                    <Box sx={{
+                    <Box data-tour="editor-photo" sx={{
                       flex: '1 1 65%', // Take 65% of width
                       display: 'flex',
                       flexDirection: 'column',

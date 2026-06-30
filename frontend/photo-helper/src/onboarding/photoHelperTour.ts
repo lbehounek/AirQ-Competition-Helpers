@@ -32,11 +32,19 @@ export function buildTourSteps(t: T, isPrecision = false): DriveStep[] {
         description: t(isPrecision ? 'tour.sets.bodyPrecision' : 'tour.sets.body'),
       },
     },
-    centered('layout'),       // portrait (10/page) vs landscape (9/page)
-    centered('edit'),         // click a photo to open the editing modal
-    centered('modal'),        // the modal's controls: brightness/contrast/…/zoom
+    {
+      // Anchored on the real layout selector — "where exactly to change the sheet layout".
+      element: '[data-tour="layout"]',
+      popover: { title: t('tour.layout.title'), description: t('tour.layout.body'), side: 'bottom', align: 'start' },
+    },
+    centered('edit'),         // click a photo → in-modal "?" tours every editing tool
+    centered('modal'),        // what the in-modal editor tour covers
     centered('labels'),       // label numbering + position
-    centered('tray'),         // candidate tray at the top; drag into slots
+    {
+      // Anchored on the real candidate tray (at the top of the page).
+      element: '[data-tour="tray"]',
+      popover: { title: t('tour.tray.title'), description: t('tour.tray.body'), side: 'bottom', align: 'start' },
+    },
     centered('placeholder'),  // "Insert no photo" for a missing turning point
     {
       element: '[data-tour="export"]',
@@ -57,6 +65,55 @@ export function buildTourSteps(t: T, isPrecision = false): DriveStep[] {
       },
     },
   ];
+}
+
+/**
+ * Steps for the in-modal editor tour — runs WHILE the editing modal is open
+ * (launched from the modal's "?"), so it anchors on the real, visible editor
+ * elements. Pure + exported for tests.
+ */
+export function buildEditorTourSteps(t: T): DriveStep[] {
+  return [
+    {
+      element: '[data-tour="editor-photo"]',
+      popover: {
+        title: t('tour.editorTour.photo.title'),
+        description: t('tour.editorTour.photo.body'),
+        side: 'right',
+        align: 'center',
+      },
+    },
+    {
+      element: '[data-tour="editor"]',
+      popover: {
+        title: t('tour.editorTour.controls.title'),
+        description: t('tour.editorTour.controls.body'),
+      },
+    },
+    {
+      element: '[data-tour="editor-help"]',
+      popover: {
+        title: t('tour.editorTour.replay.title'),
+        description: t('tour.editorTour.replay.body'),
+        side: 'bottom',
+        align: 'end',
+      },
+    },
+  ];
+}
+
+/** Launch the in-modal editor tour (the modal's "?" button). */
+export function startEditorModalTour(t: T): void {
+  const d = driver({
+    showProgress: true,
+    allowClose: true,
+    overlayOpacity: 0.6,
+    nextBtnText: t('tour.next'),
+    prevBtnText: t('tour.prev'),
+    doneBtnText: t('tour.done'),
+    steps: buildEditorTourSteps(t),
+  });
+  d.drive();
 }
 
 /** Start the guided tour now (used by the Help button and first-run). */
