@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<Style id="myStyleLine">
+		<LineStyle>
+			<color>ff00ffff</color>
+			<width>2.0</width>
+		</LineStyle>
+	</Style>
+	
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>14.034499,50.140517,0 13.879178,50.219208,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>13.879178,50.219208,0 13.439564,50.120652,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>13.439564,50.120652,0 13.463876,49.952986,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>13.463876,49.952986,0 13.685683,49.93279,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>13.685683,49.93279,0 13.827516,50.108867,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>13.827516,50.108867,0 14.008967,50.108244,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>14.0425511360764,50.1470528259302,0 14.034499,50.140517,0 14.0264490619143,50.1339806185296,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>13.887243413967,50.2257438251518,0 13.879178,50.219208,0 13.8711147938093,50.2126716177517,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>13.4352365525323,50.1285036568598,0 13.439564,50.120652,0 13.4438900257057,50.1128001818197,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>13.4509892686134,49.952214409161,0 13.463876,49.952986,0 13.4767631442028,49.9537561615253,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>13.6838519948459,49.924546422028,0 13.685683,49.93279,0 13.6875146342409,49.9410335489022,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>13.8390410889548,50.1050317950681,0 13.827516,50.108867,0 13.8159890664887,50.1127010654706,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>14.0088817240811,50.0999167614067,0 14.008967,50.108244,0 14.0090523081757,50.1165712385199,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>14.0813721011083,50.1156636017108,0 14.083107924722,50.117076391709,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<Placemark>
+		<styleUrl>#myStyleLine</styleUrl>
+		<LineString>
+			<coordinates>14.0971822458341,50.1076776017117,0 14.0989177799847,50.1090903917099,0 </coordinates>
+		</LineString>
+	</Placemark>
+	<StyleMap id="msn_ylw-pushpin">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#sn_ylw-pushpin</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#sh_ylw-pushpin</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="sn_ylw-pushpin">
+		<IconStyle>
+			<color>00ffffff</color>
+			<scale>1.1</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+	</Style>
+	<Style id="sh_ylw-pushpin">
+		<IconStyle>
+			<color>00ffffff</color>
+			<scale>1.3</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+	</Style>
+	<Placemark>
+		<name>SP</name>
+		<LookAt>
+			<longitude>14.034499</longitude>
+			<latitude>50.140517</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>14.035499,50.140517,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>TP 1</name>
+		<LookAt>
+			<longitude>13.879178</longitude>
+			<latitude>50.219208</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>13.880178,50.219208,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>TP 2</name>
+		<LookAt>
+			<longitude>13.439564</longitude>
+			<latitude>50.120652</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>13.440564,50.120652,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>TP 3</name>
+		<LookAt>
+			<longitude>13.463876</longitude>
+			<latitude>49.952986</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>13.464876,49.952986,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>TP 4</name>
+		<LookAt>
+			<longitude>13.685683</longitude>
+			<latitude>49.93279</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>13.686683,49.93279,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>TP 5</name>
+		<LookAt>
+			<longitude>13.827516</longitude>
+			<latitude>50.108867</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>13.828516,50.108867,0</coordinates>
+		</Point>
+	</Placemark>
+	<Placemark>
+		<name>FP</name>
+		<LookAt>
+			<longitude>14.008967</longitude>
+			<latitude>50.108244</latitude>
+		</LookAt>
+		<styleUrl>#msn_ylw-pushpin</styleUrl>
+		<Point>
+			<coordinates>14.009967,50.108244,0</coordinates>
+		</Point>
+	</Placemark>
+</Document>
+</kml>

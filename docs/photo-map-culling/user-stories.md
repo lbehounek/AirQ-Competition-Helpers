@@ -296,3 +296,62 @@ unreliable, **so that** the new feature never traps me.
   EXIF-imported markers coexist on the same `markers[]` array.
 - A fresh competition without any photo imports renders identically to
   today's map-corridors (no extra chrome, no photo side panel).
+
+---
+
+## US-16 — Categorize a pick as a track photo or a turning-point photo
+
+**As an** organizer, **I want** to mark each picked photo as either a *track*
+(en-route) photo or a *turning-point* photo, **so that** the editor routes each
+into the correct answer-sheet print set without me sorting them by hand.
+
+**Acceptance criteria**
+
+- The marker popup offers **Track photo** (blue) and **Turning-point photo**
+  (purple) as distinct pick actions; the active one is highlighted.
+- The right-side photo list shows two separate pick groups: **"Turning points –
+  selected"** and **"Track photos – selected"**, each counted.
+- Dragging a row from one pick group to the other re-flags the photo
+  (turning ↔ track) with no popup round-trip.
+- The category rides the handoff on `entry.flag` (`pick-track` / `pick-turning`);
+  the editor fills the matching discipline's sets by flag. A legacy bare `pick`
+  is treated as `pick-track`.
+
+## US-17 — Split the answer sheets at a route turning point
+
+**As an** organizer, **I want** to choose the route turning point where the
+answer sheet changes from page 1 to page 2, **so that** each printed sheet
+matches a contiguous section of the route instead of an arbitrary fill order.
+
+**Acceptance criteria**
+
+- The right-side panel shows a **"Set 2 starts at"** selector listing the
+  route's turning points (TP1, TP2, …), read from the loaded route — so it works
+  even when none of the imported photos are turning-point photos.
+- Choosing a TP assigns every pick whose position **along the route** is at or
+  after that TP to **set 2**, the rest to **set 1** — for both track and
+  turning-point photos. Selecting **"No split"** clears it (single-set fill).
+- The chosen TP is marked with a scissors badge on the map, and a **"Set 2"**
+  divider appears in the pick groups at the cut.
+- Rally only — the selector is hidden for precision (single-set).
+- Changing the selection re-flows already-placed photos in the editor to match,
+  preserving each photo's crop and label; photos that don't fit a full sheet
+  go to the candidate tray. A photo with no usable position falls to set 1.
+- The split is stored per competition (`setBreakWaypointName`) and survives a
+  restart; a stale name (route reloaded without that TP) degrades to no split.
+
+## US-18 — Insert a "no photo" placeholder for a missing turning point
+
+**As an** organizer, **I want** to reserve a slot for a turning point I have no
+photo of, **so that** the surrounding SP/TP/FP numbering stays correct on the
+printed sheet instead of shifting up.
+
+**Acceptance criteria**
+
+- An empty turning-point slot offers **Insert "no photo"**; it reserves that
+  position with a blank labelled cell ("No photo") in both the editor and the
+  exported PDF.
+- The placeholder counts as an occupied slot — it is never auto-evicted, and a
+  re-flow that can't fit a real photo around it sends that photo to the tray
+  rather than removing the reservation.
+- Placeholders never enter the candidate tray and never block export.

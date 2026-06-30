@@ -6,6 +6,11 @@ tmp/
 TODO.md
 
 
+# Playwright E2E artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+
 # Dependencies
 node_modules/
 package-lock.json

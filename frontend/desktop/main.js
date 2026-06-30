@@ -215,8 +215,9 @@ function createWindow() {
   // Load the landing page
   mainWindow.loadURL('app://home/index.html');
 
-  // Open DevTools in development
-  if (isDev) {
+  // Open DevTools in development — but NOT under E2E, where the DevTools window
+  // would be picked up by Playwright's firstWindow() instead of the app window.
+  if (isDev && !process.env.AIRQ_E2E) {
     mainWindow.webContents.openDevTools();
   }
 

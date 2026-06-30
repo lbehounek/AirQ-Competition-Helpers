@@ -1,7 +1,10 @@
 # Photo Map Culling — User & Developer Guide
 
-Single-file reference for the **photo-map-culling** feature as it ships
-on branch `feat/photo-map-culling`. Covers:
+Single-file **developer** reference for the **photo-map-culling** feature (merged
+to `main`; ships in the desktop 2.2x+ releases). For an end-user, task-oriented
+walkthrough of the whole app — including set-split and PDF export — see the
+[**User Manual**](../USER_MANUAL.md); this guide is the as-built technical
+reference. Covers:
 
 - [User workflow](#user-workflow): the natural locate → select → label → print flow
 - [Visual language](#visual-language): what every pin / color / shape means

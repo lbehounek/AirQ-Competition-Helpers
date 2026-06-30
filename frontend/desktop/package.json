@@ -13,7 +13,9 @@
     "package": "pnpm run build:apps && pnpm exec electron-builder --win",
     "package:dir": "pnpm run build:apps && pnpm exec electron-builder --win --dir",
     "dev": "pnpm run build:apps && electron .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:build": "pnpm run build:apps && playwright test"
   },
   "build": {
     "appId": "com.airq.competition-helpers",
@@ -59,6 +61,7 @@
     }
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "cross-env": "^7.0.3",
     "electron": "39.8.8",
     "electron-builder": "^26.0.12",
