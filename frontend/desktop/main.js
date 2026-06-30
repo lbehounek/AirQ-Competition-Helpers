@@ -442,22 +442,61 @@ function isSampleAvailable() {
 // Fixed id for the always-present sample competition (recreated if deleted).
 const SAMPLE_COMP_ID = 'sample-plasy-blue';
 
-// Ensure a sample competition exists in the index on every launch (when a sample
-// is bundled). It's a NORMAL competition the user can open/edit/delete; on first
-// open Map Corridors sees the `.sample-pending` marker and auto-imports the
-// bundled route + photos through the normal pipeline.
+// Count non-placeholder photos across a photo-helper session's sets (for the
+// launcher's photo-count badge on the preloaded sample).
+function countSessionPhotos(sessionPath) {
+  try {
+    const s = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+    const seen = new Set();
+    for (const bucket of [s.sets, s.setsTrack, s.setsTurning]) {
+      for (const key of ['set1', 'set2']) {
+        for (const p of bucket?.[key]?.photos || []) {
+          if (p && !p.isPlaceholder && p.id) seen.add(p.id);
+        }
+      }
+    }
+    return seen.size;
+  } catch {
+    return 0;
+  }
+}
+
+// Ensure the sample competition exists in the index on every launch (when a
+// sample is bundled). It's a NORMAL competition the user can open/edit/delete.
+// Preferred: copy the pre-built, FINALIZED competition (photos already in the
+// editor sets + handoff) so it shows photos from any entry point with no import.
+// Fallback (no pre-built dir): create an empty competition + a `.sample-pending`
+// marker that Map Corridors consumes on first open to import the raw sample.
 function ensureSampleCompetition() {
   try {
-    if (!isSampleAvailable()) return;
     const index = readCompetitionsIndex();
     if (index.competitions.some(c => c.id === SAMPLE_COMP_ID)) return; // already present
     const now = new Date().toISOString();
+    const name = 'VZOR – Plasy Blue';
     const competitionsDir = path.join(getPhotoSessionsPath(), 'competitions');
     ensureDir(competitionsDir);
     const compDir = validateStoragePath(path.join(competitionsDir, sanitizeFileName(SAMPLE_COMP_ID)));
+
+    const prebuilt = path.join(getSampleDataPath(), 'competition');
+    if (fs.existsSync(path.join(prebuilt, 'session.json'))) {
+      // Copy the finalized competition verbatim — corridors session, editor
+      // session.json, photos and map-picks.json. No pending marker.
+      fs.rmSync(compDir, { recursive: true, force: true });
+      fs.cpSync(prebuilt, compDir, { recursive: true });
+      const photoCount = countSessionPhotos(path.join(compDir, 'session.json'));
+      index.competitions.push({
+        id: SAMPLE_COMP_ID, name, discipline: 'rally',
+        createdAt: now, lastModified: now, photoCount, isActive: false,
+      });
+      writeCompetitionsIndex(index);
+      console.log(`[sample] preloaded finalized competition copied (${photoCount} photos)`);
+      return;
+    }
+
+    if (!isSampleAvailable()) return;
+    // Fallback: empty competition + pending marker (runtime import on first open).
     ensureDir(compDir);
     ensureDir(path.join(compDir, 'photos'));
-    const name = 'VZOR – Plasy Blue';
     const emptySession = {
       id: `session-sample-${Date.now()}`,
       version: 1, createdAt: now, updatedAt: now, mode: 'track', competition_name: name,
@@ -466,14 +505,13 @@ function ensureSampleCompetition() {
       setsTurning: { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } },
     };
     fs.writeFileSync(path.join(compDir, 'session.json'), JSON.stringify(emptySession, null, 2), 'utf8');
-    // Auto-import marker consumed by Map Corridors on first open.
     fs.writeFileSync(path.join(compDir, '.sample-pending'), '1', 'utf8');
     index.competitions.push({
       id: SAMPLE_COMP_ID, name, discipline: 'rally',
       createdAt: now, lastModified: now, photoCount: 0, isActive: false,
     });
     writeCompetitionsIndex(index);
-    console.log('[sample] preloaded competition created:', SAMPLE_COMP_ID);
+    console.log('[sample] preloaded competition created (pending import):', SAMPLE_COMP_ID);
   } catch (e) {
     console.warn('[sample] ensureSampleCompetition failed:', e);
   }
