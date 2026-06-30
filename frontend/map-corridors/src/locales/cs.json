@@ -11,19 +11,35 @@
       },
       "import": {
         "title": "1. Načtěte trať a fotky",
-        "body": "Sem přetáhněte trať KML/GPX a fotky JPG/PNG (nebo je přetáhněte přímo na mapu). Fotky s GPS se umístí na mapu; fotky bez GPS jdou do zásobníku „Bez GPS“."
+        "body": "Sem přetáhněte trať KML/GPX a fotky JPG/PNG (nebo je přetáhněte přímo na mapu). Fotky s GPS se umístí na mapu; fotky bez GPS jdou do zásobníku „Bez GPS“. Opětovné přetažení stejného souboru se automaticky přeskočí."
+      },
+      "nogps": {
+        "title": "2. Fotky bez GPS",
+        "body": "Fotka bez GPS dat se objeví v zásobníku „Bez GPS“. Přetáhněte ji ze zásobníku na její skutečné místo na mapě (nebo klikněte na její řádek a umístěte pohyblivý špendlík) – tím získá polohu. Dokud ji neumístíte, do editoru se nepřenese."
       },
       "categorize": {
-        "title": "2. Roztřiďte fotky",
-        "body": "Klikněte na fotku na mapě a označte ji jako Fotku trati (modrá) nebo Fotku otočného bodu (fialová), případně ji Odmítněte. Seskupí se v seznamu vpravo – přetažením řádku mezi skupinami je přeřadíte."
+        "title": "3. Roztřiďte fotky",
+        "body": "Klikněte na fotku na mapě a otevře se okno: označte ji jako Fotku trati (modrá), Fotku otočného bodu (fialová), Neutrální, nebo ji Odmítněte. Seskupí se v seznamu vpravo – přetažením řádku mezi oběma skupinami vybraných přepnete trať ↔ otočný bod bez znovuotevírání okna."
+      },
+      "labels": {
+        "title": "4. Štítky odpovědního listu",
+        "body": "Ve stejném okně fotky přiřadíte štítek odpovědního listu (A, B, …) používaný pro hodnocení. Štítek použitý jinde je zakázaný; opětovným kliknutím na aktuální ho zrušíte."
+      },
+      "compare": {
+        "title": "5. Porovnání variant",
+        "body": "Máte víc snímků téhož bodu? Klikněte na ně s Ctrl/Cmd (nebo Shift pro rozsah) v seznamu fotek a přes „Porovnat varianty“ je zobrazíte vedle sebe a vyberete nejlepší – vítěz zůstane, ostatní se odmítnou."
       },
       "split": {
-        "title": "3. Rozdělte sady (rally)",
-        "body": "V seznamu fotek pomocí „Sada 2 začíná od“ zvolte otočný bod trati, kde odpovědní list přechází na stránku 2. Fotky na tomto TP a za ním jdou do Sady 2, ostatní do Sady 1."
+        "title": "6. Rozdělte sady (rally)",
+        "body": "V seznamu fotek pomocí „Sada 2 začíná od“ zvolte otočný bod trati, kde odpovědní list přechází na stránku 2. Fotky na tomto TP a za ním jdou do Sady 2, ostatní do Sady 1. Přesné létání má jen jeden list, takže se nezobrazuje."
+      },
+      "maptools": {
+        "title": "7. Nástroje mapy",
+        "body": "Přepněte podkladovou mapu (Ulice / Satelit), přetáhněte na mapu fotku nebo pozemní značku, dvojklikem na značku zobrazíte náhled ve plném rozlišení, tažením značky posunete špendlík objektu a z lišty otevřete „Zobrazit odpovědní list“, „Tisk mapy“ nebo „Exportovat KML“."
       },
       "send": {
-        "title": "4. Odešlete do editoru",
-        "body": "Až je výběr hotový, odešlete ho do Photo Helperu – sady dorazí předvyplněné, připravené k doladění a exportu do PDF."
+        "title": "8. Odešlete do editoru",
+        "body": "Až je výběr hotový, odešlete ho do Foto editoru – sady dorazí předvyplněné, připravené k doladění a exportu do PDF. Neumístěné fotky bez GPS se nepřenesou (panel vás upozorní)."
       },
       "help": {
         "title": "Spusťte kdykoli znovu",

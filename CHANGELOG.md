@@ -14,10 +14,13 @@ new desktop release.
 
 ### Added
 - **Guided onboarding tour.** The launcher, Map Corridors and the Photo Editor
-  now show a short first-run walkthrough (load route & photos → sort
-  track/turning → split the sets → send to the editor → lay out & export the PDF)
-  so new organizers know where to start. It appears once automatically and can be
-  replayed anytime from the **?** button. Available in English and Czech.
+  now walk new organizers through the whole workflow — starting with the basics
+  (load route & photos → sort track/turning → split the sets → send → lay out &
+  export the PDF) and then the detailed features: placing No-GPS photos on the
+  map, answer-sheet labels, comparing variants, map tools, page layout, and the
+  photo-editing modal (brightness/contrast/sharpness/white balance/zoom/crop).
+  It appears once automatically and can be replayed anytime from the **?**
+  button. Discipline-aware (rally vs precision) and available in English and Czech.
 
 ## [2.27.1] - 2026-06-30
 

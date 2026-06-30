@@ -13,13 +13,29 @@
       "body": "Photos sent from Photo Placement arrive pre-sorted into Set 1 and Set 2 (the two answer-sheet pages, rally only). Track and turning-point photos go to their matching sets.",
       "bodyPrecision": "Photos sent from Photo Placement are laid out on a single answer sheet. Drag them into the grid in the order you want them printed."
     },
+    "layout": {
+      "title": "Page layout",
+      "body": "Choose the page orientation: landscape fits 9 photos per page, portrait fits 10. Switching to landscape hides the 10th photo of each set (it isn't deleted — it returns in portrait)."
+    },
     "edit": {
-      "title": "Fine-tune a photo",
-      "body": "Click any photo to adjust brightness, contrast, sharpness, white balance and crop. For a missing turning point, use \"Insert no photo\" to keep the numbering correct."
+      "title": "Edit a photo",
+      "body": "Click any photo to open the editing modal. Use the arrows (or Previous / Next) to move between photos without closing it."
+    },
+    "modal": {
+      "title": "Editing controls",
+      "body": "Inside the modal you can adjust Brightness, Contrast, Sharpness and White Balance (Blue↔Yellow, Green↔Magenta), Zoom and reposition (drag) the crop, toggle a Circle overlay, compare with Show Original, and Reset all — each slider has its own reset too."
+    },
+    "labels": {
+      "title": "Labels",
+      "body": "Each cell is labelled (TP numbers / SP·FP) for the answer sheet. You can set the label position; numbering stays correct around \"no photo\" placeholders."
     },
     "tray": {
       "title": "Candidate tray",
-      "body": "Photos that don't fit a full sheet wait in the candidate tray at the top — drag any of them into an open slot."
+      "body": "Photos that don't fit a full sheet wait in the candidate tray at the top — drag any of them into an open slot. Drag a slot photo back to the tray to remove it from the sheet."
+    },
+    "placeholder": {
+      "title": "Missing turning point",
+      "body": "No photo of a turning point? On an empty turning-point slot use \"Insert no photo\" to reserve the position with a blank labelled cell, so the surrounding numbering stays correct."
     },
     "export": {
       "title": "Export the PDF",

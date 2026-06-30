@@ -18,13 +18,12 @@ type T = (key: string, params?: Record<string, string | number>) => string;
  * Element-less steps render as a centered modal (driver.js behaviour).
  */
 export function buildTourSteps(t: T): DriveStep[] {
+  const centered = (key: string): DriveStep => ({
+    popover: { title: t(`app.tour.${key}.title`), description: t(`app.tour.${key}.body`) },
+  });
   return [
-    {
-      popover: {
-        title: t('app.tour.welcome.title'),
-        description: t('app.tour.welcome.body'),
-      },
-    },
+    // Basics first (most important), then the detailed features.
+    centered('welcome'),
     {
       element: '[data-tour="import"]',
       popover: {
@@ -34,18 +33,12 @@ export function buildTourSteps(t: T): DriveStep[] {
         align: 'start',
       },
     },
-    {
-      popover: {
-        title: t('app.tour.categorize.title'),
-        description: t('app.tour.categorize.body'),
-      },
-    },
-    {
-      popover: {
-        title: t('app.tour.split.title'),
-        description: t('app.tour.split.body'),
-      },
-    },
+    centered('nogps'),       // drag a no-GPS photo onto the map to give it a location
+    centered('categorize'),  // track vs turning; re-sort by dragging between groups
+    centered('labels'),      // assign answer-sheet letters in the photo popup
+    centered('compare'),     // compare variants of the same point, pick the best
+    centered('split'),       // "Set 2 starts at" — where the sheets split (rally)
+    centered('maptools'),    // map style, ground markers, print, export KML, answer sheet
     {
       element: '[data-tour="send"]',
       popover: {

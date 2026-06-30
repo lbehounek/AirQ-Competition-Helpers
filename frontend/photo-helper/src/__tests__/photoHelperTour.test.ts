@@ -16,8 +16,12 @@ const ALL_TOUR_KEYS = [
   'tour.welcome.title', 'tour.welcome.body',
   'tour.sets.title', 'tour.sets.body',
   'tour.sets.titlePrecision', 'tour.sets.bodyPrecision',
+  'tour.layout.title', 'tour.layout.body',
   'tour.edit.title', 'tour.edit.body',
+  'tour.modal.title', 'tour.modal.body',
+  'tour.labels.title', 'tour.labels.body',
   'tour.tray.title', 'tour.tray.body',
+  'tour.placeholder.title', 'tour.placeholder.body',
   'tour.export.title', 'tour.export.body',
   'tour.help.title', 'tour.help.body', 'tour.help.button',
 ];
@@ -33,16 +37,15 @@ function lookup(dict: Record<string, unknown>) {
 }
 
 describe('photoHelper buildTourSteps', () => {
-  it('produces the 6 ordered steps with the expected element anchors', () => {
+  it('produces the ordered steps with the expected element anchors', () => {
     const steps = buildTourSteps(echo);
-    expect(steps).toHaveLength(6);
-    expect(steps[4].element).toBe('[data-tour="export"]');
-    expect(steps[5].element).toBe('[data-tour="help"]');
-    // welcome / sets / edit / tray are centered (data-dependent → no element).
-    expect(steps[0].element).toBeUndefined();
-    expect(steps[1].element).toBeUndefined();
-    expect(steps[2].element).toBeUndefined();
-    expect(steps[3].element).toBeUndefined();
+    expect(steps).toHaveLength(10);
+    expect(steps[8].element).toBe('[data-tour="export"]');
+    expect(steps[9].element).toBe('[data-tour="help"]');
+    // The detailed/data-dependent steps are centered (no element).
+    for (const i of [0, 1, 2, 3, 4, 5, 6, 7]) {
+      expect(steps[i].element, `step ${i} should be centered`).toBeUndefined();
+    }
   });
 
   it('the answer-sheets step is discipline-aware (rally vs precision keys)', () => {

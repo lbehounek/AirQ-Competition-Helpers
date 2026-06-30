@@ -16,8 +16,12 @@ const ALL_TOUR_KEYS = [
   'app.tour.next', 'app.tour.prev', 'app.tour.done',
   'app.tour.welcome.title', 'app.tour.welcome.body',
   'app.tour.import.title', 'app.tour.import.body',
+  'app.tour.nogps.title', 'app.tour.nogps.body',
   'app.tour.categorize.title', 'app.tour.categorize.body',
+  'app.tour.labels.title', 'app.tour.labels.body',
+  'app.tour.compare.title', 'app.tour.compare.body',
   'app.tour.split.title', 'app.tour.split.body',
+  'app.tour.maptools.title', 'app.tour.maptools.body',
   'app.tour.send.title', 'app.tour.send.body',
   'app.tour.help.title', 'app.tour.help.body', 'app.tour.help.button',
 ];
@@ -35,17 +39,17 @@ function lookup(dict: Record<string, unknown>) {
 }
 
 describe('buildTourSteps', () => {
-  it('produces the 6 ordered steps with the expected element anchors', () => {
+  it('produces the ordered steps with the expected element anchors', () => {
     const steps = buildTourSteps(echo);
-    expect(steps).toHaveLength(6);
+    expect(steps).toHaveLength(10);
     // Anchored steps target stable [data-tour] selectors present at load.
     expect(steps[1].element).toBe('[data-tour="import"]');
-    expect(steps[4].element).toBe('[data-tour="send"]');
-    expect(steps[5].element).toBe('[data-tour="help"]');
-    // Data-dependent steps (welcome/categorize/split) are centered (no element).
-    expect(steps[0].element).toBeUndefined();
-    expect(steps[2].element).toBeUndefined();
-    expect(steps[3].element).toBeUndefined();
+    expect(steps[8].element).toBe('[data-tour="send"]');
+    expect(steps[9].element).toBe('[data-tour="help"]');
+    // The detailed/data-dependent steps are centered (no element).
+    for (const i of [0, 2, 3, 4, 5, 6, 7]) {
+      expect(steps[i].element, `step ${i} should be centered`).toBeUndefined();
+    }
   });
 
   it('every key the tour references resolves in EN', () => {

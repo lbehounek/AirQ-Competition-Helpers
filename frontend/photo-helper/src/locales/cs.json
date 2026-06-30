@@ -13,13 +13,29 @@
       "body": "Fotky odeslané z aplikace Umístění fotek dorazí předtříděné do Sady 1 a Sady 2 (dvě stránky odpovědního listu, pouze rally). Traťové fotky a fotky otočných bodů jdou do odpovídajících sad.",
       "bodyPrecision": "Fotky odeslané z aplikace Umístění fotek se rozmístí na jeden odpovědní list. Přetáhněte je do mřížky v pořadí, ve kterém se mají vytisknout."
     },
+    "layout": {
+      "title": "Rozvržení stránky",
+      "body": "Zvolte orientaci stránky: na šířku se vejde 9 fotek na stránku, na výšku 10. Přepnutí na šířku skryje 10. fotku každé sady (nesmaže se – vrátí se na výšku)."
+    },
     "edit": {
-      "title": "Dolaďte fotku",
-      "body": "Klikněte na libovolnou fotku a upravte jas, kontrast, ostrost, vyvážení bílé a ořez. Pro chybějící otočný bod použijte „Vložit bez fotky“, aby zůstalo číslování správné."
+      "title": "Úprava fotky",
+      "body": "Klikněte na libovolnou fotku a otevře se okno úprav. Šipkami (nebo Předchozí / Další) přecházíte mezi fotkami, aniž byste okno zavírali."
+    },
+    "modal": {
+      "title": "Ovládání úprav",
+      "body": "V okně upravíte Jas, Kontrast, Ostrost a Vyvážení bílé (Modrá↔Žlutá, Zelená↔Purpurová), Přiblížení a posun ořezu (tažením), zapnete Kruhové překrytí, porovnáte přes Zobrazit originál a vše vrátíte přes Resetovat vše – každý posuvník má i vlastní reset."
+    },
+    "labels": {
+      "title": "Štítky",
+      "body": "Každé políčko je označené (čísla OB / SP·FP) pro odpovědní list. Můžete nastavit polohu štítku; číslování zůstává správné i kolem zástupných míst „bez fotky“."
     },
     "tray": {
       "title": "Zásobník kandidátů",
-      "body": "Fotky, které se nevejdou na plnou stránku, čekají v zásobníku kandidátů nahoře – přetáhněte kteroukoli do volného místa."
+      "body": "Fotky, které se nevejdou na plnou stránku, čekají v zásobníku kandidátů nahoře – přetáhněte kteroukoli do volného místa. Přetažením fotky z políčka zpět do zásobníku ji z listu odeberete."
+    },
+    "placeholder": {
+      "title": "Chybějící otočný bod",
+      "body": "Nemáte fotku otočného bodu? Na prázdném políčku otočného bodu použijte „Vložit bez fotky“ a rezervujte pozici prázdnou označenou buňkou, aby zůstalo okolní číslování správné."
     },
     "export": {
       "title": "Exportujte PDF",

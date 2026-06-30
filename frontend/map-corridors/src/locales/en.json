@@ -11,19 +11,35 @@
       },
       "import": {
         "title": "1. Load the route & photos",
-        "body": "Drop a KML/GPX route and your JPG/PNG photos here (or drag them straight onto the map). Photos with GPS land on the map; photos without GPS go to the \"No GPS\" tray."
+        "body": "Drop a KML/GPX route and your JPG/PNG photos here (or drag them straight onto the map). Photos with GPS land on the map; photos without GPS go to the \"No GPS\" tray. Re-dropping the same file is skipped automatically."
+      },
+      "nogps": {
+        "title": "2. Photos without GPS",
+        "body": "A photo with no GPS data appears in the \"No GPS\" tray. Drag it from the tray onto its real location on the map (or click its row to drop a movable pin) — that gives it a position. Until you place it, it won't transfer to the editor."
       },
       "categorize": {
-        "title": "2. Sort your photos",
-        "body": "Click a photo on the map to mark it as a Track photo (blue) or a Turning-point photo (purple), or Reject it. They group in the list on the right — drag a row between groups to re-sort."
+        "title": "3. Sort your photos",
+        "body": "Click a photo on the map to open its popup: mark it as a Track photo (blue), a Turning-point photo (purple), Neutral, or Reject it. They group in the list on the right — drag a row between the two pick groups to switch track ↔ turning without reopening the popup."
+      },
+      "labels": {
+        "title": "4. Answer-sheet labels",
+        "body": "In the same photo popup you can assign the answer-sheet label (A, B, …) used for scoring. A label already used elsewhere is disabled; click the current one again to clear it."
+      },
+      "compare": {
+        "title": "5. Compare variants",
+        "body": "Have several shots of the same point? Ctrl/Cmd-click them (or Shift-click a range) in the photo list, then \"Compare variants\" to view them side by side and pick the best — the winner is kept, the rest are rejected."
       },
       "split": {
-        "title": "3. Split the sets (rally)",
-        "body": "In the photo list, use \"Set 2 starts at\" to pick the route turning point where the answer sheet changes to page 2. Photos at/after that TP go to Set 2, the rest to Set 1."
+        "title": "6. Split the sets (rally)",
+        "body": "In the photo list, use \"Set 2 starts at\" to pick the route turning point where the answer sheet changes to page 2. Photos at/after that TP go to Set 2, the rest to Set 1. Precision is a single sheet, so this is hidden."
+      },
+      "maptools": {
+        "title": "7. Map tools",
+        "body": "Switch the base map (Streets / Satellite), drag a photo or ground marker onto the map, double-click a marker for a full-resolution preview, drag a marker to move the subject pin, and open \"Show Answer Sheet\", \"Print Map\" or \"Export KML\" from the toolbar."
       },
       "send": {
-        "title": "4. Send to the editor",
-        "body": "When your selection is ready, send it to Photo Helper — the sets arrive pre-filled, ready to fine-tune and export to PDF."
+        "title": "8. Send to the editor",
+        "body": "When your selection is ready, send it to Photo Helper — the sets arrive pre-filled, ready to fine-tune and export to PDF. Unplaced No-GPS photos won't transfer (the panel warns you)."
       },
       "help": {
         "title": "Replay anytime",

@@ -19,31 +19,25 @@ type T = (key: string, params?: Record<string, string | number>) => string;
  * Pure + exported so the step set is unit-testable without a DOM.
  */
 export function buildTourSteps(t: T, isPrecision = false): DriveStep[] {
+  const centered = (key: string): DriveStep => ({
+    popover: { title: t(`tour.${key}.title`), description: t(`tour.${key}.body`) },
+  });
   return [
+    // Basics first (most important), then the detailed editor features.
+    centered('welcome'),
     {
-      popover: {
-        title: t('tour.welcome.title'),
-        description: t('tour.welcome.body'),
-      },
-    },
-    {
+      // Discipline-aware: rally has Set 1 / Set 2; precision a single sheet.
       popover: {
         title: t(isPrecision ? 'tour.sets.titlePrecision' : 'tour.sets.title'),
         description: t(isPrecision ? 'tour.sets.bodyPrecision' : 'tour.sets.body'),
       },
     },
-    {
-      popover: {
-        title: t('tour.edit.title'),
-        description: t('tour.edit.body'),
-      },
-    },
-    {
-      popover: {
-        title: t('tour.tray.title'),
-        description: t('tour.tray.body'),
-      },
-    },
+    centered('layout'),       // portrait (10/page) vs landscape (9/page)
+    centered('edit'),         // click a photo to open the editing modal
+    centered('modal'),        // the modal's controls: brightness/contrast/…/zoom
+    centered('labels'),       // label numbering + position
+    centered('tray'),         // candidate tray at the top; drag into slots
+    centered('placeholder'),  // "Insert no photo" for a missing turning point
     {
       element: '[data-tour="export"]',
       popover: {
