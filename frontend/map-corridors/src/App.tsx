@@ -1036,6 +1036,14 @@ function App() {
       if (kml.length) tasks.push(onFiles(kml))
       if (image.length) tasks.push(handlePhotoFiles(image))
       await Promise.all(tasks)
+      // Auto-pick the imported sample photos as TRACK photos so the demo is
+      // complete end to end: the picks cross the handoff and the Photo Editor
+      // shows them (otherwise the editor stays empty — feedback). Only flags
+      // un-categorised GPS markers (the freshly-imported sample); operates on the
+      // latest markers via the updater, not the closure snapshot.
+      await persistMarkers((prev) =>
+        prev.map(m => (m.photoId && !m.flag) ? { ...m, flag: 'pick-track' as const } : m)
+      )
       // Mark the competition as a sample/VZOR so it's clearly a demo, not a real
       // competition. Renames the competition + refreshes the header chip.
       const sampleName = t('app.sampleName', { label: manifest.label || 'Plasy Blue' })
@@ -1047,7 +1055,7 @@ function App() {
       console.error('[sample] load failed:', err)
       setSnack({ severity: 'error', text: t('app.loadSampleFailed') })
     }
-  }, [onFiles, handlePhotoFiles, t, competitionId])
+  }, [onFiles, handlePhotoFiles, persistMarkers, t, competitionId])
 
   // Auto-import the bundled sample into the preloaded "VZOR – Plasy Blue"
   // competition the first time it's opened (main.js marks it `.sample-pending`).
