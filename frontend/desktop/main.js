@@ -391,6 +391,44 @@ function safeHandle(channel, fn) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Bundled sample competition (optional; present only in local builds — the
+// photos are gitignored). When packed, a "Load sample" button in Map Corridors
+// imports BLUE.kml + the track photos through the normal import pipeline.
+// ---------------------------------------------------------------------------
+function getSampleDataPath() {
+  return isDev ? path.join(__dirname, 'sample-data') : path.join(process.resourcesPath, 'sample-data');
+}
+const SAMPLE_EXT_TYPE = {
+  '.kml': 'application/vnd.google-earth.kml+xml',
+  '.gpx': 'application/gpx+xml',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+};
+safeHandle('sample-manifest', async () => {
+  try {
+    const dir = getSampleDataPath();
+    if (!fs.existsSync(dir)) return { available: false, files: [] };
+    const files = fs.readdirSync(dir)
+      .filter(n => SAMPLE_EXT_TYPE[path.extname(n).toLowerCase()])
+      .map(n => ({ name: n, type: SAMPLE_EXT_TYPE[path.extname(n).toLowerCase()] }));
+    return { available: files.length > 0, label: 'Plasy Blue', files };
+  } catch (e) {
+    console.warn('[sample-manifest] failed:', e);
+    return { available: false, files: [] };
+  }
+});
+safeHandle('sample-read-file', async (_event, name) => {
+  if (typeof name !== 'string' || name.includes('/') || name.includes('\\') || name.includes('..')) {
+    throw new Error('sample-read-file: invalid name');
+  }
+  const dir = getSampleDataPath();
+  const filePath = path.join(dir, path.basename(name));
+  if (!filePath.startsWith(dir)) throw new Error('sample-read-file: traversal');
+  return fs.readFileSync(filePath).toString('base64');
+});
+
 // Allowlist for `read-photo-file`: paths the user explicitly chose in a
 // preceding `open-photos` dialog. Without this, a compromised renderer
 // (XSS via untrusted KML, image EXIF, or Mapbox-injected content) could

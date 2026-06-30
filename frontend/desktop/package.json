@@ -43,6 +43,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "sample-data",
+        "to": "sample-data",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {

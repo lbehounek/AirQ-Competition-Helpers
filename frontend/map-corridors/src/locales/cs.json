@@ -62,10 +62,11 @@
       "precision": "Precision",
       "rally": "Rally"
     },
-    "printMap": "Tisk mapy",
     "dragToPlaceGround": "Přetáhni pro umístění znaku",
     "backToMenu": "Zpět do hlavního menu",
-    "openEditor": "Editor fotek"
+    "openEditor": "Editor fotek",
+    "loadSample": "Načíst ukázku",
+    "loadSampleFailed": "Ukázkovou soutěž se nepodařilo načíst."
   },
   "photo": {
     "import": {
@@ -215,11 +216,8 @@
     "exportFailed": "Export KML selhal",
     "printFailed": "Tisk mapy selhal",
     "someGroundMarkersFailed": "Některé tvary pozemních značek nešlo exportovat do KML a zobrazí se jako výchozí žluté body: {{types}}"
-  }
-  ,
+  },
   "opfs": {
     "warning": "Váš prohlížeč nepodporuje plně lokální úložiště (OPFS). Změny se po obnovení ztratí. Zvažte použití Chrome nebo Edge."
   }
 }
-
-

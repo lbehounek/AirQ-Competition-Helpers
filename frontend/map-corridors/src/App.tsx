@@ -237,6 +237,14 @@ function App() {
   const tokenVersion = useSyncExternalStore(subscribeToProvider, getProviderSnapshot, getProviderSnapshot)
   const resolvedStyle = useMemo(() => getStyleForId(mapStyleId), [mapStyleId, tokenVersion])
   const [isDragOver, setIsDragOver] = useState(false)
+  // Whether a sample competition is bundled (local demo builds only).
+  const [sampleAvailable, setSampleAvailable] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    const api = (window as { electronAPI?: { sample?: { manifest?: () => Promise<{ available?: boolean }> } } }).electronAPI?.sample
+    api?.manifest?.().then(m => { if (!cancelled) setSampleAvailable(!!m?.available) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const mapRef = useRef<MapProviderViewHandle | null>(null)
   const markers = session?.markers ?? []
@@ -1001,6 +1009,35 @@ function App() {
     e.target.value = ''
   }, [onFiles, handlePhotoFiles, t])
 
+  // Load the bundled sample competition (local demo builds) through the normal
+  // import pipeline: read each bundled file via Electron, rebuild File objects,
+  // and route KML → onFiles, images → handlePhotoFiles (same as a manual drop).
+  const loadSample = useCallback(async () => {
+    const api = (window as { electronAPI?: { sample?: {
+      manifest?: () => Promise<{ available?: boolean; files?: { name: string; type: string }[] }>
+      readFile?: (name: string) => Promise<string>
+    } } }).electronAPI?.sample
+    if (!api?.manifest || !api?.readFile) return
+    try {
+      const manifest = await api.manifest()
+      if (!manifest?.available || !manifest.files?.length) return
+      const files: File[] = []
+      for (const f of manifest.files) {
+        const b64 = await api.readFile(f.name)
+        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+        files.push(new File([bytes], f.name, { type: f.type }))
+      }
+      const { kml, image } = classifyDroppedFiles(files)
+      const tasks: Promise<unknown>[] = []
+      if (kml.length) tasks.push(onFiles(kml))
+      if (image.length) tasks.push(handlePhotoFiles(image))
+      await Promise.all(tasks)
+    } catch (err) {
+      console.error('[sample] load failed:', err)
+      setSnack({ severity: 'error', text: t('app.loadSampleFailed') })
+    }
+  }, [onFiles, handlePhotoFiles, t])
+
   const handleExportKML = useCallback(async () => {
     const originalKmlText = await loadOriginalKmlText()
     if (!originalKmlText) {
@@ -1326,6 +1363,9 @@ function App() {
         }}>
           <input type="file" multiple ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,.jpg,.jpeg,.png,application/vnd.google-earth.kml+xml,application/gpx+xml,image/jpeg,image/png" style={{ display: 'none' }} />
           <Button variant="contained" size="small" onClick={onClickSelectFile} data-tour="import">{t('app.selectKml')}</Button>
+          {sampleAvailable && (
+            <Button variant="outlined" size="small" onClick={loadSample}>{t('app.loadSample')}</Button>
+          )}
           {(session?.leftSegments || session?.rightSegments || session?.gates) && (
             <Button variant="outlined" size="small" onClick={handleExportKML} startIcon={<Download sx={{ fontSize: 16 }} />}>{t('app.exportKml')}</Button>
           )}

@@ -65,7 +65,9 @@
     "printMap": "Print Map",
     "dragToPlaceGround": "Drag to place ground marker",
     "backToMenu": "Back to main menu",
-    "openEditor": "Photo Editor"
+    "openEditor": "Photo Editor",
+    "loadSample": "Load sample",
+    "loadSampleFailed": "Couldn't load the sample competition."
   },
   "photo": {
     "import": {
