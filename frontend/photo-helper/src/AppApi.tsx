@@ -120,6 +120,12 @@ function AppApi() {
     deleteCandidates,
   } = sessionHookResult;
 
+  // i18n — declared near the top because `handleReflowError` (below) reads `t`
+  // in its body + deps, and that callback must precede the `pmcSessionApi`
+  // useMemo that consumes it. Declaring `t` lower would put it in the temporal
+  // dead zone at the callback's deps-array evaluation and crash on render.
+  const { t } = useI18n();
+
   // Candidate photos — derived from session for stable rendering. The pool
   // is optional on older sessions, so default to empty.
   const candidatePhotos: ApiPhoto[] = session?.candidates?.photos ?? [];
@@ -267,7 +273,6 @@ function AppApi() {
   
   const { currentRatio } = useAspectRatio();
   const { generateLabel } = useLabeling();
-  const { t } = useI18n();
   const { setLayoutMode, layoutMode } = useLayoutMode();
   const theme = useTheme();
   const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg')); // lg = 1200px by default
