@@ -424,8 +424,17 @@ safeHandle('sample-read-file', async (_event, name) => {
     throw new Error('sample-read-file: invalid name');
   }
   const dir = getSampleDataPath();
+  // Only allow the bundled sample file types (defence in depth — the bundle is
+  // dev-controlled, but this keeps the handler from ever reading an unexpected
+  // top-level file).
+  if (!SAMPLE_EXT_TYPE[path.extname(name).toLowerCase()]) {
+    throw new Error('sample-read-file: unsupported type');
+  }
   const filePath = path.join(dir, path.basename(name));
-  if (!filePath.startsWith(dir)) throw new Error('sample-read-file: traversal');
+  // Trailing-separator guard so the prefix match can't pass a sibling dir.
+  if (filePath !== dir && !filePath.startsWith(dir + path.sep)) {
+    throw new Error('sample-read-file: traversal');
+  }
   return fs.readFileSync(filePath).toString('base64');
 });
 

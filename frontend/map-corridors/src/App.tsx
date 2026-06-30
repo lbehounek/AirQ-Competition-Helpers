@@ -1012,7 +1012,11 @@ function App() {
   // Load the bundled sample competition (local demo builds) through the normal
   // import pipeline: read each bundled file via Electron, rebuild File objects,
   // and route KML → onFiles, images → handlePhotoFiles (same as a manual drop).
-  const loadSample = useCallback(async () => {
+  // Returns true only if the sample actually imported — the auto-import effect
+  // uses this to decide whether to consume the `.sample-pending` marker, so a
+  // failed/early-returned import is retried on the next open instead of being
+  // permanently cleared.
+  const loadSample = useCallback(async (): Promise<boolean> => {
     const electronAPI = window.electronAPI as undefined | {
       sample?: {
         manifest?: () => Promise<{ available?: boolean; label?: string; files?: { name: string; type: string }[] }>
@@ -1021,10 +1025,10 @@ function App() {
       competitions?: { rename?: (id: string, name: string) => Promise<unknown> }
     }
     const api = electronAPI?.sample
-    if (!api?.manifest || !api?.readFile) return
+    if (!api?.manifest || !api?.readFile) return false
     try {
       const manifest = await api.manifest()
-      if (!manifest?.available || !manifest.files?.length) return
+      if (!manifest?.available || !manifest.files?.length) return false
       const files: File[] = []
       for (const f of manifest.files) {
         const b64 = await api.readFile(f.name)
@@ -1063,9 +1067,11 @@ function App() {
         await electronAPI.competitions.rename(competitionId, sampleName)
         setCompetitionName(sampleName)
       }
+      return true
     } catch (err) {
       console.error('[sample] load failed:', err)
       setSnack({ severity: 'error', text: t('app.loadSampleFailed') })
+      return false
     }
   }, [onFiles, handlePhotoFiles, persistMarkers, t, competitionId, storage, competitionDir, routeWaypoints, effectiveDiscipline, session?.setBreakWaypointName])
 
@@ -1085,8 +1091,14 @@ function App() {
     void (async () => {
       try {
         if (!(await api.isPending!(competitionId))) return
-        await loadSample()
-        await api.clearPending?.(competitionId)
+        // Only consume the pending marker if the import actually succeeded —
+        // otherwise leave it so the next open retries (loadSample swallows its
+        // own errors and resolves either way).
+        if (await loadSample()) {
+          await api.clearPending?.(competitionId)
+        } else {
+          sampleAutoImportRef.current = false
+        }
       } catch (e) {
         console.warn('[sample] auto-import failed:', e)
         sampleAutoImportRef.current = false
