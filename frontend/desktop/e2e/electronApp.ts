@@ -34,6 +34,20 @@ export async function launchApp(): Promise<LaunchedApp> {
   const page = await app.firstWindow();
   const pageErrors: Error[] = [];
   page.on('pageerror', (err) => pageErrors.push(err));
+  // Suppress the first-run onboarding tours so they can't cover the UI and flake
+  // the deterministic tests. Runs in every page (incl. each sub-app origin)
+  // before app code, so the auto-start gate sees the flags already set.
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem('airq.mapCorridors.onboarding.v1', 'e2e');
+      window.localStorage.setItem('airq.launcher.onboarding.v1', 'e2e');
+    } catch {
+      /* storage unavailable — nothing to suppress */
+    }
+  });
+  // The init script applies to future loads; reload home so it also takes effect
+  // on the already-loaded launcher (suppresses its first-run tour deterministically).
+  await page.reload();
   await page.waitForLoadState('domcontentloaded');
   return { app, page, pageErrors, userDataDir };
 }

@@ -1,6 +1,36 @@
 {
   "app": {
     "title": "Photo Placement",
+    "tour": {
+      "next": "Next",
+      "prev": "Back",
+      "done": "Got it",
+      "welcome": {
+        "title": "Welcome to Map Corridors",
+        "body": "A quick tour of how to get your photos from the map into the printable answer sheets. You can replay it anytime from the ? button."
+      },
+      "import": {
+        "title": "1. Load the route & photos",
+        "body": "Drop a KML/GPX route and your JPG/PNG photos here (or drag them straight onto the map). Photos with GPS land on the map; photos without GPS go to the \"No GPS\" tray."
+      },
+      "categorize": {
+        "title": "2. Sort your photos",
+        "body": "Click a photo on the map to mark it as a Track photo (blue) or a Turning-point photo (purple), or Reject it. They group in the list on the right — drag a row between groups to re-sort."
+      },
+      "split": {
+        "title": "3. Split the sets (rally)",
+        "body": "In the photo list, use \"Set 2 starts at\" to pick the route turning point where the answer sheet changes to page 2. Photos at/after that TP go to Set 2, the rest to Set 1."
+      },
+      "send": {
+        "title": "4. Send to the editor",
+        "body": "When your selection is ready, send it to Photo Helper — the sets arrive pre-filled, ready to fine-tune and export to PDF."
+      },
+      "help": {
+        "title": "Replay anytime",
+        "body": "Open this tour again whenever you need it from this ? button.",
+        "button": "Show the tour"
+      }
+    },
     "selectKml": "Select KML or photos",
     "exportKml": "Export KML",
     "printMap": "Print Map",

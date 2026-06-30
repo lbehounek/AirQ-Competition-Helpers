@@ -10,7 +10,8 @@ import { buildPreciseCorridorsAndGates, DISCIPLINE_CONFIGS } from './corridors/p
 import type { Discipline } from './corridors/preciseCorridor'
 
 import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert, Snackbar, LinearProgress } from '@mui/material'
-import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-material'
+import { Download, Place, Print, Home, PhotoCamera, Flag, HelpOutline } from '@mui/icons-material'
+import { startMapCorridorsTour, shouldAutoStartTour, markTourSeen } from './onboarding/mapCorridorsTour'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
@@ -799,6 +800,19 @@ function App() {
     await persistMarkers((prev) => resolveVariantFlags(prev, winnerId, loserIds))
   }, [persistMarkers])
 
+  // Onboarding tour — replay from the "?" button; auto-start once on first run.
+  const handleStartTour = useCallback(() => {
+    markTourSeen()
+    startMapCorridorsTour(t)
+  }, [t])
+  useEffect(() => {
+    if (!shouldAutoStartTour()) return
+    markTourSeen()
+    // Defer one tick so the toolbar (the tour's anchors) is mounted.
+    const id = window.setTimeout(() => startMapCorridorsTour(t), 600)
+    return () => window.clearTimeout(id)
+  }, [t])
+
   const handleCompareVariants = useCallback((selected: readonly PhotoMarker[]) => {
     if (selected.length < 2) return
     setCompareVariants(selected)
@@ -1279,6 +1293,7 @@ function App() {
                 onClick={() => window.electronAPI?.navigateToApp?.('photo-helper', competitionId)}
                 startIcon={<PhotoCamera sx={{ fontSize: 18 }} />}
                 sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 0.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
+                data-tour="send"
               >
                 {t('app.openEditor')}
               </Button>
@@ -1288,6 +1303,11 @@ function App() {
               <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
             )}
           </Box>
+          <Tooltip title={t('app.tour.help.button')}>
+            <IconButton size="small" onClick={handleStartTour} sx={{ color: 'white' }} aria-label={t('app.tour.help.button')} data-tour="help">
+              <HelpOutline />
+            </IconButton>
+          </Tooltip>
         </Box>
         {/* Controls row */}
         <Box sx={{
@@ -1302,7 +1322,7 @@ function App() {
           '& .MuiCheckbox-root': { color: 'rgba(255,255,255,0.7)', '&.Mui-checked': { color: 'white' } },
         }}>
           <input type="file" multiple ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,.jpg,.jpeg,.png,application/vnd.google-earth.kml+xml,application/gpx+xml,image/jpeg,image/png" style={{ display: 'none' }} />
-          <Button variant="contained" size="small" onClick={onClickSelectFile}>{t('app.selectKml')}</Button>
+          <Button variant="contained" size="small" onClick={onClickSelectFile} data-tour="import">{t('app.selectKml')}</Button>
           {(session?.leftSegments || session?.rightSegments || session?.gates) && (
             <Button variant="outlined" size="small" onClick={handleExportKML} startIcon={<Download sx={{ fontSize: 16 }} />}>{t('app.exportKml')}</Button>
           )}

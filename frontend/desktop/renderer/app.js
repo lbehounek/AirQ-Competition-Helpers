@@ -7,6 +7,18 @@ const translations = {
     'corridors.desc': 'Určení polohy soutěžních fotek na trati',
     'helper.title': 'Foto editor',
     'helper.desc': 'Organizace a označování soutěžních fotek',
+    'tour.next': 'Další',
+    'tour.prev': 'Zpět',
+    'tour.done': 'Rozumím',
+    'tour.welcome.title': 'Vítejte',
+    'tour.welcome.body': 'Krátká prohlídka rozcestníku. Spustit ji můžete kdykoli tlačítkem ? vpravo nahoře.',
+    'tour.competition.title': '1. Vyberte soutěž',
+    'tour.competition.body': 'Vyberte existující soutěž, nebo vytvořte novou tlačítkem „+ Nová soutěž“. Každá soutěž má vlastní fotky, trať a nastavení.',
+    'tour.discipline.title': '2. Zvolte disciplínu',
+    'tour.discipline.body': 'Přepněte mezi Rally a Přesným létáním. Disciplína určuje, kolik odpovědních listů se použije.',
+    'tour.tools.title': '3. Otevřete nástroj',
+    'tour.tools.body': 'Začněte v Map Corridors (trať a mapa), pak pokračujte do Foto editoru. Data se mezi nimi předávají automaticky.',
+    'tour.help.button': 'Zobrazit prohlídku',
     'competition.label': 'Soutěž',
     'competition.new': '+ Nová soutěž',
     'competition.loading': 'Načítání...',
@@ -50,6 +62,18 @@ const translations = {
     'corridors.desc': 'Locate competition photos on the track',
     'helper.title': 'Photo Editor',
     'helper.desc': 'Organize and label competition photos',
+    'tour.next': 'Next',
+    'tour.prev': 'Back',
+    'tour.done': 'Got it',
+    'tour.welcome.title': 'Welcome',
+    'tour.welcome.body': 'A quick tour of this launcher. You can replay it anytime from the ? button at the top right.',
+    'tour.competition.title': '1. Pick a competition',
+    'tour.competition.body': 'Select an existing competition or create one with "+ New Competition". Each competition keeps its own photos, route and settings.',
+    'tour.discipline.title': '2. Choose the discipline',
+    'tour.discipline.body': 'Switch between Rally and Precision. The discipline decides how many answer sheets are used.',
+    'tour.tools.title': '3. Open a tool',
+    'tour.tools.body': 'Start in Map Corridors (route & map), then move to the Photo Editor. Data passes between them automatically.',
+    'tour.help.button': 'Show the tour',
     'competition.label': 'Competition',
     'competition.new': '+ New Competition',
     'competition.loading': 'Loading...',
@@ -141,6 +165,12 @@ function applyTranslations(locale) {
     const key = el.dataset.i18n;
     if (dict[key]) {
       el.textContent = dict[key];
+    }
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const key = el.dataset.i18nTitle;
+    if (dict[key]) {
+      el.title = dict[key];
     }
   });
 }
@@ -683,9 +713,49 @@ document.querySelectorAll('.card').forEach(card => {
 
 document.querySelectorAll('.lang-btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    if (!btn.dataset.lang) return; // skip the help-tour button (shares the style)
     setLocale(btn.dataset.lang);
   });
 });
+
+// ============================================================================
+// Onboarding tour (driver.js, vendored — global `window.driver.js.driver`)
+// ============================================================================
+
+const LAUNCHER_TOUR_KEY = 'airq.launcher.onboarding.v1';
+
+function startLauncherTour() {
+  const driverFn = window.driver && window.driver.js && window.driver.js.driver;
+  if (typeof driverFn !== 'function') return;
+  const d = driverFn({
+    showProgress: true,
+    allowClose: true,
+    overlayOpacity: 0.6,
+    nextBtnText: t('tour.next'),
+    prevBtnText: t('tour.prev'),
+    doneBtnText: t('tour.done'),
+    steps: [
+      { popover: { title: t('tour.welcome.title'), description: t('tour.welcome.body') } },
+      { element: '#competition-bar-select', popover: { title: t('tour.competition.title'), description: t('tour.competition.body'), side: 'bottom', align: 'start' } },
+      { element: '#discipline-toggle', popover: { title: t('tour.discipline.title'), description: t('tour.discipline.body'), side: 'bottom', align: 'start' } },
+      { element: '[data-app="map-corridors"]', popover: { title: t('tour.tools.title'), description: t('tour.tools.body'), side: 'top', align: 'start' } },
+      { element: '#help-tour-btn', popover: { title: t('tour.help.button'), description: t('tour.welcome.body'), side: 'left', align: 'start' } },
+    ],
+  });
+  d.drive();
+}
+
+function markLauncherTourSeen() {
+  try { localStorage.setItem(LAUNCHER_TOUR_KEY, new Date().toISOString()); } catch { /* best-effort */ }
+}
+
+const helpTourBtn = document.getElementById('help-tour-btn');
+if (helpTourBtn) {
+  helpTourBtn.addEventListener('click', () => {
+    markLauncherTourSeen();
+    startLauncherTour();
+  });
+}
 
 // ============================================================================
 // Initialize
@@ -704,4 +774,11 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
   }
   // Load competitions
   await loadCompetitions();
+  // First-run onboarding tour (once; replayable from the ? button).
+  let tourSeen = false;
+  try { tourSeen = localStorage.getItem(LAUNCHER_TOUR_KEY) !== null; } catch { tourSeen = true; }
+  if (!tourSeen) {
+    markLauncherTourSeen();
+    setTimeout(startLauncherTour, 500);
+  }
 })();

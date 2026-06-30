@@ -1,6 +1,36 @@
 {
   "app": {
     "title": "Umístění fotek",
+    "tour": {
+      "next": "Další",
+      "prev": "Zpět",
+      "done": "Rozumím",
+      "welcome": {
+        "title": "Vítejte v Map Corridors",
+        "body": "Krátká prohlídka, jak dostat fotky z mapy do tisknutelných odpovědních listů. Můžete ji kdykoli spustit znovu tlačítkem ?."
+      },
+      "import": {
+        "title": "1. Načtěte trať a fotky",
+        "body": "Sem přetáhněte trať KML/GPX a fotky JPG/PNG (nebo je přetáhněte přímo na mapu). Fotky s GPS se umístí na mapu; fotky bez GPS jdou do zásobníku „Bez GPS“."
+      },
+      "categorize": {
+        "title": "2. Roztřiďte fotky",
+        "body": "Klikněte na fotku na mapě a označte ji jako Fotku trati (modrá) nebo Fotku otočného bodu (fialová), případně ji Odmítněte. Seskupí se v seznamu vpravo – přetažením řádku mezi skupinami je přeřadíte."
+      },
+      "split": {
+        "title": "3. Rozdělte sady (rally)",
+        "body": "V seznamu fotek pomocí „Sada 2 začíná od“ zvolte otočný bod trati, kde odpovědní list přechází na stránku 2. Fotky na tomto TP a za ním jdou do Sady 2, ostatní do Sady 1."
+      },
+      "send": {
+        "title": "4. Odešlete do editoru",
+        "body": "Až je výběr hotový, odešlete ho do Photo Helperu – sady dorazí předvyplněné, připravené k doladění a exportu do PDF."
+      },
+      "help": {
+        "title": "Spusťte kdykoli znovu",
+        "body": "Tuto prohlídku otevřete znovu kdykoli tímto tlačítkem ?.",
+        "button": "Zobrazit prohlídku"
+      }
+    },
     "selectKml": "Načíst KML nebo fotky",
     "exportKml": "Exportovat KML",
     "printMap": "Tisk mapy",
