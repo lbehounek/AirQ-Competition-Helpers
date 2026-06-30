@@ -105,6 +105,52 @@ describe('partitionPicksByRouteTP', () => {
     )
     expect(m.get('pid-v')).toBe('set2')
   })
+
+  // Documents the known projection limitation (review Gap 1): on a route that
+  // doubles back, a pick is assigned by its nearest point ALONG the route, which
+  // can be the wrong limb. Here SP→TP1 (out) and TP1→TP2 (back) overlap on the
+  // same line; a photo physically near the start but slightly past the midpoint
+  // can project onto the return limb and land in set2. This is inherent to
+  // chainage-by-nearest-point; the test pins the behavior so a future mitigation
+  // (e.g. vertex-proximity tie-break) is a visible, deliberate change.
+  it('out-and-back route: assignment is by nearest point along the route (documents the limb ambiguity)', () => {
+    // SP at 0 → TP1 at 2 (out) → TP2 at 0 (back to start) → FP at -1.
+    const uTurn: RouteWaypoint[] = [
+      { name: 'SP', coord: [0, 0] },
+      { name: 'TP1', coord: [2, 0] },
+      { name: 'TP2', coord: [0, 0] },
+      { name: 'FP', coord: [-1, 0] },
+    ]
+    // Break "Set 2 starts at TP2" → breakChainage = 2 (out) + 2 (back) = 4 km.
+    // A pick at lng 1 sits on BOTH the out leg (chainage 1) and the back leg
+    // (chainage 3); nearestPointOnLine picks the smaller → chainage 1 < 4 → set1.
+    const m = partitionPicksByRouteTP(
+      [pm({ id: 'p', photoId: 'pid-p', flag: 'pick-track', lng: 1, lat: 0 })],
+      uTurn,
+      'TP2',
+    )
+    expect(m.get('pid-p')).toBe('set1') // nearest-along-route chainage wins
+  })
+
+  it('degenerate route (all waypoints coincident) does not throw — assigns deterministically', () => {
+    const coincident: RouteWaypoint[] = [
+      { name: 'SP', coord: [5, 5] },
+      { name: 'TP1', coord: [5, 5] },
+      { name: 'TP2', coord: [5, 5] },
+    ]
+    // breakChainage is 0 (zero-length line); a pick at the same point projects to
+    // location 0, and `0 < 0` is false → set2. The contract we pin is "no throw,
+    // deterministic", not a specific sheet for a degenerate route.
+    let m!: Map<string, SetKey>
+    expect(() => {
+      m = partitionPicksByRouteTP(
+        [pm({ id: 'p', photoId: 'pid-p', flag: 'pick-track', lng: 5, lat: 5 })],
+        coincident,
+        'TP2',
+      )
+    }).not.toThrow()
+    expect(m.get('pid-p')).toBe('set2')
+  })
 })
 
 describe('listRouteTpOptions', () => {
@@ -144,6 +190,22 @@ describe('setBreakDividerIndex', () => {
 
   it('ignores ids missing from the set map', () => {
     const m = setMap({ a: 'set1', c: 'set2' })
+    expect(setBreakDividerIndex(['a', 'b', 'c'], m)).toBe(2)
+  })
+
+  // Documents the best-effort behavior (review Gap 4): when the panel's filename
+  // order disagrees with route order (a route that doubles back), the set1/set2
+  // membership can interleave. The divider marks the FIRST set2 row that follows
+  // a set1 row; a trailing set1 row then renders below the divider. This is
+  // cosmetic — the editor obeys the per-photo `set`, not the divider — and the
+  // test pins the "first boundary" rule so it can't silently regress.
+  it('interleaved order: divider marks the first set2-after-set1, even with a trailing set1', () => {
+    const m = setMap({ a: 'set1', b: 'set2', c: 'set1', d: 'set2' })
+    expect(setBreakDividerIndex(['a', 'b', 'c', 'd'], m)).toBe(1)
+  })
+
+  it('leading set2 then set1 then set2: no divider until a set1 has been seen', () => {
+    const m = setMap({ a: 'set2', b: 'set1', c: 'set2' })
     expect(setBreakDividerIndex(['a', 'b', 'c'], m)).toBe(2)
   })
 })
