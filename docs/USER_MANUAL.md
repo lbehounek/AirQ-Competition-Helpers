@@ -12,6 +12,8 @@ The two tools share data automatically, so the natural flow is **Map Corridors �
 Photo Helper**. Everything is stored on your computer (no account, no internet
 required); see [Data & persistence](#data--persistence).
 
+> 🇨🇿 Česká verze: [USER_MANUAL.cs.md](./USER_MANUAL.cs.md).
+
 > For the design rationale and developer internals, see
 > [`photo-map-culling/guide.md`](./photo-map-culling/guide.md) and the ADRs in
 > [`photo-map-culling/decisions.md`](./photo-map-culling/decisions.md). For the

@@ -78,8 +78,9 @@ Make sure to configure `deploy.conf` based on your environment.
 
 ## Documentation
 
-- **[User Manual](./docs/USER_MANUAL.md)** — end-to-end guide for competition
-  organizers (load route → cull on the map → categorize → split sets → export PDF).
+- **User Manual** — end-to-end guide for competition organizers (load route →
+  cull on the map → categorize → split sets → export PDF):
+  [🇬🇧 English](./docs/USER_MANUAL.md) · [🇨🇿 Česky](./docs/USER_MANUAL.cs.md).
 - [Photo Map Culling — guide](./docs/photo-map-culling/guide.md) — as-built
   developer reference for the map ↔ editor feature.
 - [User stories](./docs/photo-map-culling/user-stories.md) ·
