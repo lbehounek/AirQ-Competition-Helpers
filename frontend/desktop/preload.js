@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sample: {
     manifest: () => ipcRenderer.invoke('sample-manifest'),
     readFile: (name) => ipcRenderer.invoke('sample-read-file', name),
+    isPending: (competitionId) => ipcRenderer.invoke('sample-is-pending', competitionId),
+    clearPending: (competitionId) => ipcRenderer.invoke('sample-clear-pending', competitionId),
   },
 
   // Go back to the home/landing page

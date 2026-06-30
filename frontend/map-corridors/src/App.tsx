@@ -1049,6 +1049,31 @@ function App() {
     }
   }, [onFiles, handlePhotoFiles, t, competitionId])
 
+  // Auto-import the bundled sample into the preloaded "VZOR – Plasy Blue"
+  // competition the first time it's opened (main.js marks it `.sample-pending`).
+  // Runs once when the competition storage is ready.
+  const sampleAutoImportRef = useRef(false)
+  useEffect(() => {
+    if (sampleAutoImportRef.current) return
+    if (!competitionId || !storage || !competitionDir) return
+    const api = (window as { electronAPI?: { sample?: {
+      isPending?: (id: string) => Promise<boolean>
+      clearPending?: (id: string) => Promise<void>
+    } } }).electronAPI?.sample
+    if (!api?.isPending) return
+    sampleAutoImportRef.current = true
+    void (async () => {
+      try {
+        if (!(await api.isPending!(competitionId))) return
+        await loadSample()
+        await api.clearPending?.(competitionId)
+      } catch (e) {
+        console.warn('[sample] auto-import failed:', e)
+        sampleAutoImportRef.current = false
+      }
+    })()
+  }, [competitionId, storage, competitionDir, loadSample])
+
   const handleExportKML = useCallback(async () => {
     const originalKmlText = await loadOriginalKmlText()
     if (!originalKmlText) {

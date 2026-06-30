@@ -429,6 +429,78 @@ safeHandle('sample-read-file', async (_event, name) => {
   return fs.readFileSync(filePath).toString('base64');
 });
 
+function isSampleAvailable() {
+  try {
+    const dir = getSampleDataPath();
+    if (!fs.existsSync(dir)) return false;
+    return fs.readdirSync(dir).some(n => SAMPLE_EXT_TYPE[path.extname(n).toLowerCase()]);
+  } catch {
+    return false;
+  }
+}
+
+// Fixed id for the always-present sample competition (recreated if deleted).
+const SAMPLE_COMP_ID = 'sample-plasy-blue';
+
+// Ensure a sample competition exists in the index on every launch (when a sample
+// is bundled). It's a NORMAL competition the user can open/edit/delete; on first
+// open Map Corridors sees the `.sample-pending` marker and auto-imports the
+// bundled route + photos through the normal pipeline.
+function ensureSampleCompetition() {
+  try {
+    if (!isSampleAvailable()) return;
+    const index = readCompetitionsIndex();
+    if (index.competitions.some(c => c.id === SAMPLE_COMP_ID)) return; // already present
+    const now = new Date().toISOString();
+    const competitionsDir = path.join(getPhotoSessionsPath(), 'competitions');
+    ensureDir(competitionsDir);
+    const compDir = validateStoragePath(path.join(competitionsDir, sanitizeFileName(SAMPLE_COMP_ID)));
+    ensureDir(compDir);
+    ensureDir(path.join(compDir, 'photos'));
+    const name = 'VZOR – Plasy Blue';
+    const emptySession = {
+      id: `session-sample-${Date.now()}`,
+      version: 1, createdAt: now, updatedAt: now, mode: 'track', competition_name: name,
+      sets: { set1: { title: 'SP - TPX', photos: [] }, set2: { title: 'TPX - FP', photos: [] } },
+      setsTrack: { set1: { title: 'SP - TPX', photos: [] }, set2: { title: 'TPX - FP', photos: [] } },
+      setsTurning: { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } },
+    };
+    fs.writeFileSync(path.join(compDir, 'session.json'), JSON.stringify(emptySession, null, 2), 'utf8');
+    // Auto-import marker consumed by Map Corridors on first open.
+    fs.writeFileSync(path.join(compDir, '.sample-pending'), '1', 'utf8');
+    index.competitions.push({
+      id: SAMPLE_COMP_ID, name, discipline: 'rally',
+      createdAt: now, lastModified: now, photoCount: 0, isActive: false,
+    });
+    writeCompetitionsIndex(index);
+    console.log('[sample] preloaded competition created:', SAMPLE_COMP_ID);
+  } catch (e) {
+    console.warn('[sample] ensureSampleCompetition failed:', e);
+  }
+}
+
+// Is the given competition still waiting for its bundled sample to be imported?
+safeHandle('sample-is-pending', async (_event, competitionId) => {
+  try {
+    if (typeof competitionId !== 'string') return false;
+    const compDir = validateStoragePath(path.join(getPhotoSessionsPath(), 'competitions', sanitizeFileName(competitionId)));
+    return fs.existsSync(path.join(compDir, '.sample-pending'));
+  } catch {
+    return false;
+  }
+});
+
+// Clear the marker once the sample has been imported (so it won't re-import).
+safeHandle('sample-clear-pending', async (_event, competitionId) => {
+  try {
+    if (typeof competitionId !== 'string') return;
+    const compDir = validateStoragePath(path.join(getPhotoSessionsPath(), 'competitions', sanitizeFileName(competitionId)));
+    fs.rmSync(path.join(compDir, '.sample-pending'), { force: true });
+  } catch (e) {
+    console.warn('[sample] clear-pending failed:', e);
+  }
+});
+
 // Allowlist for `read-photo-file`: paths the user explicitly chose in a
 // preceding `open-photos` dialog. Without this, a compromised renderer
 // (XSS via untrusted KML, image EXIF, or Mapbox-injected content) could
@@ -1770,6 +1842,7 @@ app.whenReady().then(async () => {
     await session.defaultSession.clearCache();
   }
   setupProtocol();
+  ensureSampleCompetition();
   createMenu();
   createWindow();
 
