@@ -1,0 +1,54 @@
+name: E2E (Electron)
+
+# Runs the Playwright end-to-end suite against the real Electron build. Electron
+# needs a desktop session, which the windows-latest runner provides. The sub-apps
+# are built first (served via the app:// protocol).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: 'frontend/pnpm-lock.yaml'
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build sub-apps (served via app:// in the Electron build)
+        working-directory: frontend/desktop
+        run: pnpm run build:apps
+
+      - name: Run Playwright E2E
+        working-directory: frontend/desktop
+        run: pnpm run test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/desktop/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
