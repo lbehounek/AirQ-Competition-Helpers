@@ -13,11 +13,11 @@ new desktop release.
 ## [Unreleased]
 
 ### Added
-- **Guided onboarding tour.** The launcher and Map Corridors now show a short
-  first-run walkthrough (load route & photos → sort track/turning → split the
-  sets → send to the editor) so new organizers know where to start. It appears
-  once automatically and can be replayed anytime from the **?** button. Available
-  in English and Czech.
+- **Guided onboarding tour.** The launcher, Map Corridors and the Photo Editor
+  now show a short first-run walkthrough (load route & photos → sort
+  track/turning → split the sets → send to the editor → lay out & export the PDF)
+  so new organizers know where to start. It appears once automatically and can be
+  replayed anytime from the **?** button. Available in English and Czech.
 
 ## [2.27.1] - 2026-06-30
 
