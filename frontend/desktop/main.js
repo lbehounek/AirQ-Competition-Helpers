@@ -391,6 +391,163 @@ function safeHandle(channel, fn) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Bundled sample competition (optional; present only in local builds — the
+// photos are gitignored). When packed, a "Load sample" button in Map Corridors
+// imports BLUE.kml + the track photos through the normal import pipeline.
+// ---------------------------------------------------------------------------
+function getSampleDataPath() {
+  return isDev ? path.join(__dirname, 'sample-data') : path.join(process.resourcesPath, 'sample-data');
+}
+const SAMPLE_EXT_TYPE = {
+  '.kml': 'application/vnd.google-earth.kml+xml',
+  '.gpx': 'application/gpx+xml',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+};
+safeHandle('sample-manifest', async () => {
+  try {
+    const dir = getSampleDataPath();
+    if (!fs.existsSync(dir)) return { available: false, files: [] };
+    const files = fs.readdirSync(dir)
+      .filter(n => SAMPLE_EXT_TYPE[path.extname(n).toLowerCase()])
+      .map(n => ({ name: n, type: SAMPLE_EXT_TYPE[path.extname(n).toLowerCase()] }));
+    return { available: files.length > 0, label: 'Plasy Blue', files };
+  } catch (e) {
+    console.warn('[sample-manifest] failed:', e);
+    return { available: false, files: [] };
+  }
+});
+safeHandle('sample-read-file', async (_event, name) => {
+  if (typeof name !== 'string' || name.includes('/') || name.includes('\\') || name.includes('..')) {
+    throw new Error('sample-read-file: invalid name');
+  }
+  const dir = getSampleDataPath();
+  // Only allow the bundled sample file types (defence in depth — the bundle is
+  // dev-controlled, but this keeps the handler from ever reading an unexpected
+  // top-level file).
+  if (!SAMPLE_EXT_TYPE[path.extname(name).toLowerCase()]) {
+    throw new Error('sample-read-file: unsupported type');
+  }
+  const filePath = path.join(dir, path.basename(name));
+  // Trailing-separator guard so the prefix match can't pass a sibling dir.
+  if (filePath !== dir && !filePath.startsWith(dir + path.sep)) {
+    throw new Error('sample-read-file: traversal');
+  }
+  return fs.readFileSync(filePath).toString('base64');
+});
+
+function isSampleAvailable() {
+  try {
+    const dir = getSampleDataPath();
+    if (!fs.existsSync(dir)) return false;
+    return fs.readdirSync(dir).some(n => SAMPLE_EXT_TYPE[path.extname(n).toLowerCase()]);
+  } catch {
+    return false;
+  }
+}
+
+// Fixed id for the always-present sample competition (recreated if deleted).
+const SAMPLE_COMP_ID = 'sample-plasy-blue';
+
+// Count non-placeholder photos across a photo-helper session's sets (for the
+// launcher's photo-count badge on the preloaded sample).
+function countSessionPhotos(sessionPath) {
+  try {
+    const s = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
+    const seen = new Set();
+    for (const bucket of [s.sets, s.setsTrack, s.setsTurning]) {
+      for (const key of ['set1', 'set2']) {
+        for (const p of bucket?.[key]?.photos || []) {
+          if (p && !p.isPlaceholder && p.id) seen.add(p.id);
+        }
+      }
+    }
+    return seen.size;
+  } catch {
+    return 0;
+  }
+}
+
+// Ensure the sample competition exists in the index on every launch (when a
+// sample is bundled). It's a NORMAL competition the user can open/edit/delete.
+// Preferred: copy the pre-built, FINALIZED competition (photos already in the
+// editor sets + handoff) so it shows photos from any entry point with no import.
+// Fallback (no pre-built dir): create an empty competition + a `.sample-pending`
+// marker that Map Corridors consumes on first open to import the raw sample.
+function ensureSampleCompetition() {
+  try {
+    const index = readCompetitionsIndex();
+    if (index.competitions.some(c => c.id === SAMPLE_COMP_ID)) return; // already present
+    const now = new Date().toISOString();
+    const name = 'VZOR – Plasy Blue';
+    const competitionsDir = path.join(getPhotoSessionsPath(), 'competitions');
+    ensureDir(competitionsDir);
+    const compDir = validateStoragePath(path.join(competitionsDir, sanitizeFileName(SAMPLE_COMP_ID)));
+
+    const prebuilt = path.join(getSampleDataPath(), 'competition');
+    if (fs.existsSync(path.join(prebuilt, 'session.json'))) {
+      // Copy the finalized competition verbatim — corridors session, editor
+      // session.json, photos and map-picks.json. No pending marker.
+      fs.rmSync(compDir, { recursive: true, force: true });
+      fs.cpSync(prebuilt, compDir, { recursive: true });
+      const photoCount = countSessionPhotos(path.join(compDir, 'session.json'));
+      index.competitions.push({
+        id: SAMPLE_COMP_ID, name, discipline: 'rally',
+        createdAt: now, lastModified: now, photoCount, isActive: false,
+      });
+      writeCompetitionsIndex(index);
+      console.log(`[sample] preloaded finalized competition copied (${photoCount} photos)`);
+      return;
+    }
+
+    if (!isSampleAvailable()) return;
+    // Fallback: empty competition + pending marker (runtime import on first open).
+    ensureDir(compDir);
+    ensureDir(path.join(compDir, 'photos'));
+    const emptySession = {
+      id: `session-sample-${Date.now()}`,
+      version: 1, createdAt: now, updatedAt: now, mode: 'track', competition_name: name,
+      sets: { set1: { title: 'SP - TPX', photos: [] }, set2: { title: 'TPX - FP', photos: [] } },
+      setsTrack: { set1: { title: 'SP - TPX', photos: [] }, set2: { title: 'TPX - FP', photos: [] } },
+      setsTurning: { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } },
+    };
+    fs.writeFileSync(path.join(compDir, 'session.json'), JSON.stringify(emptySession, null, 2), 'utf8');
+    fs.writeFileSync(path.join(compDir, '.sample-pending'), '1', 'utf8');
+    index.competitions.push({
+      id: SAMPLE_COMP_ID, name, discipline: 'rally',
+      createdAt: now, lastModified: now, photoCount: 0, isActive: false,
+    });
+    writeCompetitionsIndex(index);
+    console.log('[sample] preloaded competition created (pending import):', SAMPLE_COMP_ID);
+  } catch (e) {
+    console.warn('[sample] ensureSampleCompetition failed:', e);
+  }
+}
+
+// Is the given competition still waiting for its bundled sample to be imported?
+safeHandle('sample-is-pending', async (_event, competitionId) => {
+  try {
+    if (typeof competitionId !== 'string') return false;
+    const compDir = validateStoragePath(path.join(getPhotoSessionsPath(), 'competitions', sanitizeFileName(competitionId)));
+    return fs.existsSync(path.join(compDir, '.sample-pending'));
+  } catch {
+    return false;
+  }
+});
+
+// Clear the marker once the sample has been imported (so it won't re-import).
+safeHandle('sample-clear-pending', async (_event, competitionId) => {
+  try {
+    if (typeof competitionId !== 'string') return;
+    const compDir = validateStoragePath(path.join(getPhotoSessionsPath(), 'competitions', sanitizeFileName(competitionId)));
+    fs.rmSync(path.join(compDir, '.sample-pending'), { force: true });
+  } catch (e) {
+    console.warn('[sample] clear-pending failed:', e);
+  }
+});
+
 // Allowlist for `read-photo-file`: paths the user explicitly chose in a
 // preceding `open-photos` dialog. Without this, a compromised renderer
 // (XSS via untrusted KML, image EXIF, or Mapbox-injected content) could
@@ -1732,6 +1889,7 @@ app.whenReady().then(async () => {
     await session.defaultSession.clearCache();
   }
   setupProtocol();
+  ensureSampleCompetition();
   createMenu();
   createWindow();
 

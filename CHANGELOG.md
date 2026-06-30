@@ -10,6 +10,18 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [Unreleased]
+
+### Added
+- **Guided onboarding tour.** The launcher, Map Corridors and the Photo Editor
+  now walk new organizers through the whole workflow — starting with the basics
+  (load route & photos → sort track/turning → split the sets → send → lay out &
+  export the PDF) and then the detailed features: placing No-GPS photos on the
+  map, answer-sheet labels, comparing variants, map tools, page layout, and the
+  photo-editing modal (brightness/contrast/sharpness/white balance/zoom/crop).
+  It appears once automatically and can be replayed anytime from the **?**
+  button. Discipline-aware (rally vs precision) and available in English and Czech.
+
 ## [2.27.1] - 2026-06-30
 
 ### Fixed

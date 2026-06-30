@@ -10,7 +10,8 @@ import { buildPreciseCorridorsAndGates, DISCIPLINE_CONFIGS } from './corridors/p
 import type { Discipline } from './corridors/preciseCorridor'
 
 import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert, Snackbar, LinearProgress } from '@mui/material'
-import { Download, Place, Print, Home, PhotoCamera, Flag } from '@mui/icons-material'
+import { Download, Place, Print, Home, PhotoCamera, Flag, HelpOutline } from '@mui/icons-material'
+import { startMapCorridorsTour, scheduleAutoStartTour, markTourSeen } from './onboarding/mapCorridorsTour'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
@@ -236,6 +237,14 @@ function App() {
   const tokenVersion = useSyncExternalStore(subscribeToProvider, getProviderSnapshot, getProviderSnapshot)
   const resolvedStyle = useMemo(() => getStyleForId(mapStyleId), [mapStyleId, tokenVersion])
   const [isDragOver, setIsDragOver] = useState(false)
+  // Whether a sample competition is bundled (local demo builds only).
+  const [sampleAvailable, setSampleAvailable] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    const api = (window as { electronAPI?: { sample?: { manifest?: () => Promise<{ available?: boolean }> } } }).electronAPI?.sample
+    api?.manifest?.().then(m => { if (!cancelled) setSampleAvailable(!!m?.available) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const mapRef = useRef<MapProviderViewHandle | null>(null)
   const markers = session?.markers ?? []
@@ -799,6 +808,23 @@ function App() {
     await persistMarkers((prev) => resolveVariantFlags(prev, winnerId, loserIds))
   }, [persistMarkers])
 
+  // Onboarding tour — replay from the "?" button; auto-start once on first run.
+  const handleStartTour = useCallback(() => {
+    markTourSeen()
+    startMapCorridorsTour(t)
+  }, [t])
+  // `t`'s identity changes when I18nContext re-renders (e.g. after its async
+  // init), so we read it through a ref and run the auto-start effect ONCE on
+  // mount — otherwise a re-render would clear the timer and the re-run would
+  // see the just-set "seen" flag and never fire (PR #109 review bug).
+  const tRef = useRef(t)
+  tRef.current = t
+  useEffect(() => {
+    // Deferred inside scheduleAutoStartTour so the toolbar (the tour's anchors)
+    // is mounted, and "seen" is marked only when it actually fires.
+    return scheduleAutoStartTour(() => startMapCorridorsTour(tRef.current))
+  }, [])
+
   const handleCompareVariants = useCallback((selected: readonly PhotoMarker[]) => {
     if (selected.length < 2) return
     setCompareVariants(selected)
@@ -982,6 +1008,103 @@ function App() {
     // allow selecting the same file again later
     e.target.value = ''
   }, [onFiles, handlePhotoFiles, t])
+
+  // Load the bundled sample competition (local demo builds) through the normal
+  // import pipeline: read each bundled file via Electron, rebuild File objects,
+  // and route KML → onFiles, images → handlePhotoFiles (same as a manual drop).
+  // Returns true only if the sample actually imported — the auto-import effect
+  // uses this to decide whether to consume the `.sample-pending` marker, so a
+  // failed/early-returned import is retried on the next open instead of being
+  // permanently cleared.
+  const loadSample = useCallback(async (): Promise<boolean> => {
+    const electronAPI = window.electronAPI as undefined | {
+      sample?: {
+        manifest?: () => Promise<{ available?: boolean; label?: string; files?: { name: string; type: string }[] }>
+        readFile?: (name: string) => Promise<string>
+      }
+      competitions?: { rename?: (id: string, name: string) => Promise<unknown> }
+    }
+    const api = electronAPI?.sample
+    if (!api?.manifest || !api?.readFile) return false
+    try {
+      const manifest = await api.manifest()
+      if (!manifest?.available || !manifest.files?.length) return false
+      const files: File[] = []
+      for (const f of manifest.files) {
+        const b64 = await api.readFile(f.name)
+        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+        files.push(new File([bytes], f.name, { type: f.type }))
+      }
+      const { kml, image } = classifyDroppedFiles(files)
+      const tasks: Promise<unknown>[] = []
+      if (kml.length) tasks.push(onFiles(kml))
+      if (image.length) tasks.push(handlePhotoFiles(image))
+      await Promise.all(tasks)
+      // Auto-pick the imported sample photos as TRACK photos so the demo is
+      // complete end to end: the picks cross the handoff and the Photo Editor
+      // shows them (otherwise the editor stays empty — feedback). Only flags
+      // un-categorised GPS markers (the freshly-imported sample); operates on the
+      // latest markers via the updater, not the closure snapshot.
+      let flaggedMarkers: typeof markers = []
+      await persistMarkers((prev) => {
+        const next = prev.map(m => (m.photoId && !m.flag) ? { ...m, flag: 'pick-track' as const } : m)
+        flaggedMarkers = next
+        return next
+      })
+      // Write ALL picks to the handoff file synchronously and flush, rather than
+      // waiting for the debounced [markers] effect. Without this, opening the
+      // editor right after import races the 300ms debounce and lands on a
+      // partial/empty map-picks.json — the "editor shows only one photo" bug.
+      if (storage && competitionDir) {
+        const breakName = resolveSetBreakName(effectiveDiscipline, session?.setBreakWaypointName)
+        scheduleWriteMapPicks(storage, competitionDir, buildMapPicks(flaggedMarkers, routeWaypoints, breakName))
+        await flushPendingMapPicks()
+      }
+      // Mark the competition as a sample/VZOR so it's clearly a demo, not a real
+      // competition. Renames the competition + refreshes the header chip.
+      const sampleName = t('app.sampleName', { label: manifest.label || 'Plasy Blue' })
+      if (electronAPI?.competitions?.rename && competitionId) {
+        await electronAPI.competitions.rename(competitionId, sampleName)
+        setCompetitionName(sampleName)
+      }
+      return true
+    } catch (err) {
+      console.error('[sample] load failed:', err)
+      setSnack({ severity: 'error', text: t('app.loadSampleFailed') })
+      return false
+    }
+  }, [onFiles, handlePhotoFiles, persistMarkers, t, competitionId, storage, competitionDir, routeWaypoints, effectiveDiscipline, session?.setBreakWaypointName])
+
+  // Auto-import the bundled sample into the preloaded "VZOR – Plasy Blue"
+  // competition the first time it's opened (main.js marks it `.sample-pending`).
+  // Runs once when the competition storage is ready.
+  const sampleAutoImportRef = useRef(false)
+  useEffect(() => {
+    if (sampleAutoImportRef.current) return
+    if (!competitionId || !storage || !competitionDir) return
+    const api = (window as { electronAPI?: { sample?: {
+      isPending?: (id: string) => Promise<boolean>
+      clearPending?: (id: string) => Promise<void>
+    } } }).electronAPI?.sample
+    if (!api?.isPending) return
+    sampleAutoImportRef.current = true
+    void (async () => {
+      try {
+        if (!(await api.isPending!(competitionId))) return
+        // Only consume the pending marker if the import actually succeeded —
+        // otherwise leave it so the next open retries (loadSample swallows its
+        // own errors and resolves either way).
+        if (await loadSample()) {
+          await api.clearPending?.(competitionId)
+        } else {
+          sampleAutoImportRef.current = false
+        }
+      } catch (e) {
+        console.warn('[sample] auto-import failed:', e)
+        sampleAutoImportRef.current = false
+      }
+    })()
+  }, [competitionId, storage, competitionDir, loadSample])
 
   const handleExportKML = useCallback(async () => {
     const originalKmlText = await loadOriginalKmlText()
@@ -1288,6 +1411,11 @@ function App() {
               <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
             )}
           </Box>
+          <Tooltip title={t('app.tour.help.button')}>
+            <IconButton size="small" onClick={handleStartTour} sx={{ color: 'white' }} aria-label={t('app.tour.help.button')} data-tour="help">
+              <HelpOutline />
+            </IconButton>
+          </Tooltip>
         </Box>
         {/* Controls row */}
         <Box sx={{
@@ -1302,7 +1430,10 @@ function App() {
           '& .MuiCheckbox-root': { color: 'rgba(255,255,255,0.7)', '&.Mui-checked': { color: 'white' } },
         }}>
           <input type="file" multiple ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,.jpg,.jpeg,.png,application/vnd.google-earth.kml+xml,application/gpx+xml,image/jpeg,image/png" style={{ display: 'none' }} />
-          <Button variant="contained" size="small" onClick={onClickSelectFile}>{t('app.selectKml')}</Button>
+          <Button variant="contained" size="small" onClick={onClickSelectFile} data-tour="import">{t('app.selectKml')}</Button>
+          {sampleAvailable && (
+            <Button variant="outlined" size="small" onClick={loadSample}>{t('app.loadSample')}</Button>
+          )}
           {(session?.leftSegments || session?.rightSegments || session?.gates) && (
             <Button variant="outlined" size="small" onClick={handleExportKML} startIcon={<Download sx={{ fontSize: 16 }} />}>{t('app.exportKml')}</Button>
           )}

@@ -6,6 +6,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Navigate to a specific app (with optional competition context)
   navigateToApp: (appName, competitionId) => ipcRenderer.invoke('navigate-to-app', appName, competitionId),
 
+  // Bundled sample competition (local builds only). manifest() → {available,
+  // label, files:[{name,type}]}; readFile(name) → base64 string.
+  sample: {
+    manifest: () => ipcRenderer.invoke('sample-manifest'),
+    readFile: (name) => ipcRenderer.invoke('sample-read-file', name),
+    isPending: (competitionId) => ipcRenderer.invoke('sample-is-pending', competitionId),
+    clearPending: (competitionId) => ipcRenderer.invoke('sample-clear-pending', competitionId),
+  },
+
   // Go back to the home/landing page
   goHome: () => ipcRenderer.invoke('go-home'),
 

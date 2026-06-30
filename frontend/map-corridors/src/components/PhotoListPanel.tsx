@@ -422,6 +422,7 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
             startIcon={<SendOutlined fontSize="small" />}
             disabled={pickCount === 0}
             onClick={() => { void onSendToEditor() }}
+            data-tour="send"
           >
             {t('photo.list.sendToEditor', { count: pickCount })}
           </Button>

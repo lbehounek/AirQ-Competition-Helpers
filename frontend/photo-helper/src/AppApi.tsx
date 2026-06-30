@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Container,
   Typography,
@@ -20,7 +20,8 @@ import {
   DialogContentText,
   DialogActions,
   TextField,
-  Snackbar
+  Snackbar,
+  Tooltip
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -33,10 +34,12 @@ import {
   Map,
   ChevronLeft,
   ChevronRight,
+  HelpOutline,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { useClipboardPaste } from './hooks/useClipboardPaste';
 import { useMapPicksSync } from './hooks/useMapPicksSync';
+import { startPhotoHelperTour, startEditorModalTour, scheduleAutoStartTour, markTourSeen } from './onboarding/photoHelperTour';
 import {
   buildEditorPicks,
   flushPendingEditorPicks,
@@ -125,6 +128,36 @@ function AppApi() {
   // useMemo that consumes it. Declaring `t` lower would put it in the temporal
   // dead zone at the callback's deps-array evaluation and crash on render.
   const { t } = useI18n();
+
+  // Onboarding tour — replay from the "?" button; auto-start once on first run.
+  // `t`'s identity changes when I18nContext re-renders, so read it via a ref and
+  // run the auto-start effect ONCE on mount (see Map Corridors review note).
+  const tRef = useRef(t);
+  tRef.current = t;
+  // The "answer sheets" step differs by discipline (rally: Set 1/Set 2;
+  // precision: a single sheet). `discipline` is parsed once at mount (above),
+  // so a ref keeps the once-on-mount effect stable.
+  const isPrecisionRef = useRef(false);
+  isPrecisionRef.current = discipline === 'precision';
+  // The editor onboarding can OPEN the modal on a real photo and demonstrate the
+  // controls (not just describe them). These refs are populated lower down (once
+  // the photo sources + setSelectedPhoto exist); the tour reads them at runtime.
+  const openEditorForTourRef = useRef<() => boolean>(() => false);
+  const closeEditorForTourRef = useRef<() => void>(() => {});
+  const tourOpts = () => ({
+    isPrecision: isPrecisionRef.current,
+    openEditor: () => openEditorForTourRef.current(),
+    closeEditor: () => closeEditorForTourRef.current(),
+  });
+  const handleStartTour = useCallback(() => {
+    markTourSeen();
+    startPhotoHelperTour(tRef.current, tourOpts());
+  }, []);
+  useEffect(() => {
+    return scheduleAutoStartTour(() => startPhotoHelperTour(tRef.current, tourOpts()));
+  }, []);
+  // The editor modal also hosts its own "?" that highlights the controls in place.
+  const startEditorTour = useCallback(() => startEditorModalTour(tRef.current), []);
 
   // Candidate photos — derived from session for stable rendering. The pool
   // is optional on older sessions, so default to empty.
@@ -440,6 +473,21 @@ function AppApi() {
   const handleCandidateClick = (photo: ApiPhoto) => {
     setSelectedPhoto({ photo, setKey: 'candidates', label: '' });
   };
+
+  // Tour hooks: open the first available photo (set1 → set2 → tray) so the editor
+  // onboarding can demonstrate on a real photo; false if there's nothing to open
+  // (the editor steps then fall back to centered descriptions). Close = dismiss.
+  openEditorForTourRef.current = () => {
+    const s1 = session?.sets.set1.photos[0];
+    if (s1) { handlePhotoClick(s1, 'set1'); return true; }
+    const s2 = !isPrecision ? session?.sets.set2.photos[0] : undefined;
+    if (s2) { handlePhotoClick(s2, 'set2'); return true; }
+    const tray = candidatePhotos[0];
+    if (tray) { handleCandidateClick(tray); return true; }
+    return false;
+  };
+  closeEditorForTourRef.current = () => setSelectedPhoto(null);
+
 
   // The ordered photo list the modal navigates within — the set/pool the
   // currently-open photo came from. Used by prev/next arrows + arrow keys.
@@ -818,6 +866,11 @@ function AppApi() {
                 <Chip label={currentCompetition.name} size="small" sx={{ ml: 2, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
               )}
             </Box>
+            <Tooltip title={t('tour.help.button')}>
+              <IconButton size="small" onClick={handleStartTour} sx={{ color: 'white' }} aria-label={t('tour.help.button')} data-tour="help">
+                <HelpOutline />
+              </IconButton>
+            </Tooltip>
           </Box>
 
           {/* White Content Section */}
@@ -859,11 +912,11 @@ function AppApi() {
                 </Box>
 
                 {/* Layout Mode (Portrait/Landscape) */}
-                <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
+                <Box data-tour="layout" sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
                   <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
                     {t('layout.title')}
                   </Typography>
-                  <LayoutModeSelector 
+                  <LayoutModeSelector
                     compact 
                     set1Count={session?.sets.set1.photos.length || 0}
                     set2Count={session?.sets.set2.photos.length || 0}
@@ -1023,6 +1076,7 @@ function AppApi() {
             only on the truly-fresh empty state (no slots, no candidates)
             so the initial DropZone hero remains unobstructed. */}
         {(candidatePhotos.length > 0 || stats.totalPhotos > 0) && (
+          <Box data-tour="tray">
           <CandidateTray
             photos={candidatePhotos}
             onAddFiles={(files) => { void handleAddCandidates(files); }}
@@ -1037,6 +1091,7 @@ function AppApi() {
             onSlotDroppedIn={handleSlotDroppedToTray}
             hideSet2={isPrecision && session?.mode === 'track'}
           />
+          </Box>
         )}
 
         {/* Conditional Layout based on mode */}
@@ -1265,6 +1320,7 @@ function AppApi() {
               onClick={handleGeneratePDF}
               disabled={stats.totalPhotos === 0}
               size="large"
+              data-tour="export"
               sx={{
                 py: 1.5,
                 px: 4,
@@ -1364,9 +1420,21 @@ function AppApi() {
               <>
 
 
+                {/* In-modal tour trigger — highlights the editor controls in place. */}
+                <Tooltip title={t('tour.help.button')}>
+                  <IconButton
+                    size="small"
+                    onClick={startEditorTour}
+                    aria-label={t('tour.help.button')}
+                    data-tour="editor-help"
+                    sx={{ position: 'absolute', top: 8, right: 48, zIndex: 2, color: 'text.secondary' }}
+                  >
+                    <HelpOutline />
+                  </IconButton>
+                </Tooltip>
                 {/* Modal Content - L-Shape Layout: Photo top-left, Controls wrapping around */}
-                <Box sx={{ 
-                  flex: 1, 
+                <Box data-tour="editor" sx={{
+                  flex: 1,
                   display: 'flex',
                   flexDirection: 'column',
                   overflow: 'hidden',
@@ -1380,7 +1448,7 @@ function AppApi() {
                     overflow: 'hidden'
                   }}>
                     {/* Photo - Top Left */}
-                    <Box sx={{
+                    <Box data-tour="editor-photo" sx={{
                       flex: '1 1 65%', // Take 65% of width
                       display: 'flex',
                       flexDirection: 'column',

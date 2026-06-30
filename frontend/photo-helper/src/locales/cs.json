@@ -1,4 +1,66 @@
 {
+  "tour": {
+    "next": "Další",
+    "prev": "Zpět",
+    "done": "Rozumím",
+    "welcome": {
+      "title": "Vítejte ve Foto editoru",
+      "body": "Krátká prohlídka, jak rozmístit fotky do tisknutelných odpovědních listů. Můžete ji kdykoli spustit znovu tlačítkem ?."
+    },
+    "sets": {
+      "title": "Vaše odpovědní listy",
+      "titlePrecision": "Váš odpovědní list",
+      "body": "Fotky odeslané z aplikace Umístění fotek dorazí předtříděné do Sady 1 a Sady 2 (dvě stránky odpovědního listu, pouze rally). Traťové fotky a fotky otočných bodů jdou do odpovídajících sad.",
+      "bodyPrecision": "Fotky odeslané z aplikace Umístění fotek se rozmístí na jeden odpovědní list. Přetáhněte je do mřížky v pořadí, ve kterém se mají vytisknout."
+    },
+    "layout": {
+      "title": "Rozvržení stránky",
+      "body": "Zvolte orientaci stránky: na šířku se vejde 9 fotek na stránku, na výšku 10. Přepnutí na šířku skryje 10. fotku každé sady (nesmaže se – vrátí se na výšku)."
+    },
+    "edit": {
+      "title": "Úprava fotky",
+      "body": "Dále se editor automaticky otevře na jedné z vašich fotek a ukáže vám nástroje. Kdykoli klikněte na fotku a upravte ji – tlačítko ? v rohu editoru tuto prohlídku zopakuje."
+    },
+    "editorTour": {
+      "photo": {
+        "title": "Vaše fotka",
+        "body": "Toto je upravovaná fotka. Tažením ji posunete uvnitř rámečku – to, co vidíte zde, se přesně vytiskne."
+      },
+      "controls": {
+        "title": "Nástroje úprav",
+        "body": "Okolo fotky: Jas, Kontrast, Ostrost, Vyvážení bílé (Modrá↔Žlutá, Zelená↔Purpurová), Přiblížení, poloha štítku, kruhové překrytí a Zobrazit originál. Resetujte vše najednou nebo každý ovladač zvlášť; šipky přejdou na předchozí / další fotku."
+      },
+      "replay": {
+        "title": "Spustit znovu",
+        "body": "Tuto prohlídku editoru otevřete znovu kdykoli tímto tlačítkem ?."
+      }
+    },
+    "modal": {
+      "title": "Ovládání úprav",
+      "body": "V okně upravíte Jas, Kontrast, Ostrost a Vyvážení bílé (Modrá↔Žlutá, Zelená↔Purpurová), Přiblížení a posun ořezu (tažením), zapnete Kruhové překrytí, porovnáte přes Zobrazit originál a vše vrátíte přes Resetovat vše – každý posuvník má i vlastní reset."
+    },
+    "labels": {
+      "title": "Štítky",
+      "body": "Každé políčko je označené (čísla OB / SP·FP) pro odpovědní list. Můžete nastavit polohu štítku; číslování zůstává správné i kolem zástupných míst „bez fotky“."
+    },
+    "tray": {
+      "title": "Zásobník kandidátů",
+      "body": "Fotky, které se nevejdou na plnou stránku, čekají v zásobníku kandidátů nahoře – přetáhněte kteroukoli do volného místa. Přetažením fotky z políčka zpět do zásobníku ji z listu odeberete."
+    },
+    "placeholder": {
+      "title": "Chybějící otočný bod",
+      "body": "Nemáte fotku otočného bodu? Na prázdném políčku otočného bodu použijte „Vložit bez fotky“ a rezervujte pozici prázdnou označenou buňkou, aby zůstalo okolní číslování správné."
+    },
+    "export": {
+      "title": "Exportujte PDF",
+      "body": "Až listy vypadají správně, vyexportujte je do PDF připraveného k tisku."
+    },
+    "help": {
+      "title": "Spusťte kdykoli znovu",
+      "body": "Tuto prohlídku otevřete znovu kdykoli tímto tlačítkem ?.",
+      "button": "Zobrazit prohlídku"
+    }
+  },
   "app": {
     "title": "Foto editor",
     "subtitle": "Organizujte fotografie z navigačního letu do standardizovaných PDF rozvržení",

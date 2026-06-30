@@ -137,3 +137,6 @@ public_html
 # Backend photo-helper specific
 backend/photo-helper/venv/
 backend/photo-helper/.deps_installed
+# Local sample competition (bundled into local builds, never committed)
+frontend/desktop/sample-data/*
+!frontend/desktop/sample-data/.gitkeep
