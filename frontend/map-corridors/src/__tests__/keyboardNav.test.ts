@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { interpretMapKey, applyMapKeyAction } from '../map/keyboardNav'
+import { interpretMapKey, applyMapKeyAction, shouldIgnoreMapKey } from '../map/keyboardNav'
 import type { MapCamera, MapKeyAction } from '../map/keyboardNav'
 
 // ---------------------------------------------------------------------------
@@ -50,6 +50,63 @@ describe('interpretMapKey', () => {
     for (const k of ['a', 'Escape', 'Enter', ' ', 'Tab', 'Home', 'End', '1', 'F5']) {
       expect(key(k)).toBeNull()
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// shouldIgnoreMapKey — the gate that keeps the map from stealing keys that
+// belong to another interaction (PR #111 review findings F1/F2)
+// ---------------------------------------------------------------------------
+describe('shouldIgnoreMapKey', () => {
+  // Build a realistic event-shaped object around a DOM target (jsdom).
+  const evt = (target: EventTarget | null, over: Partial<KeyboardEvent> = {}) => ({
+    defaultPrevented: false,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    target,
+    ...over,
+  })
+
+  it('ignores keys another component already claimed (defaultPrevented)', () => {
+    // MUI Select/MenuList preventDefault arrows without stopPropagation —
+    // the event still bubbles to window and must be dropped there.
+    expect(shouldIgnoreMapKey(evt(document.body, { defaultPrevented: true }))).toBe(true)
+  })
+
+  it('ignores browser/system shortcut modifiers', () => {
+    expect(shouldIgnoreMapKey(evt(document.body, { ctrlKey: true }))).toBe(true)
+    expect(shouldIgnoreMapKey(evt(document.body, { metaKey: true }))).toBe(true)
+    expect(shouldIgnoreMapKey(evt(document.body, { altKey: true }))).toBe(true)
+  })
+
+  it('ignores typing targets', () => {
+    for (const tag of ['input', 'textarea', 'select']) {
+      expect(shouldIgnoreMapKey(evt(document.createElement(tag)))).toBe(true)
+    }
+    const editable = document.createElement('div')
+    // jsdom doesn't compute isContentEditable from the attribute; set the
+    // property the code reads.
+    Object.defineProperty(editable, 'isContentEditable', { value: true })
+    expect(shouldIgnoreMapKey(evt(editable))).toBe(true)
+  })
+
+  it('ignores targets inside open MUI popups (dialog / menu / listbox / combobox)', () => {
+    for (const role of ['dialog', 'menu', 'listbox', 'combobox']) {
+      const popup = document.createElement('div')
+      popup.setAttribute('role', role)
+      const button = document.createElement('button')
+      popup.appendChild(button)
+      // Target is a descendant, not the role element itself — closest() case.
+      expect(shouldIgnoreMapKey(evt(button))).toBe(true)
+    }
+  })
+
+  it('allows plain targets: body, buttons, and non-element targets', () => {
+    expect(shouldIgnoreMapKey(evt(document.body))).toBe(false)
+    expect(shouldIgnoreMapKey(evt(document.createElement('button')))).toBe(false)
+    // window/document targets (not HTMLElement) must not crash and not block
+    expect(shouldIgnoreMapKey(evt(null))).toBe(false)
   })
 })
 

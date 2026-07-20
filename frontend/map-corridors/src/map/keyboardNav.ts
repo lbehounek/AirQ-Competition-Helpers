@@ -30,6 +30,34 @@ const BEARING_STEP_DEG = 15
 const PITCH_STEP_DEG = 10
 const ZOOM_STEP = 1
 
+/**
+ * True when a keydown must NOT drive the map. Checked before interpretMapKey
+ * so the map never steals keys that belong to another interaction (PR #111
+ * review findings F1/F2):
+ *
+ * - `defaultPrevented` — some component already claimed the key (MUI Select/
+ *   MenuList call preventDefault on arrows/Enter/Space but do NOT stop
+ *   propagation, so the event still reaches our window listener);
+ * - Ctrl/Cmd/Alt combos — browser & system shortcuts (Ctrl+N, Alt+arrows, …);
+ * - typing targets — inputs, textareas, selects, contentEditable;
+ * - open MUI popups — Select dropdowns, menus, and dialogs render as
+ *   divs/lis with ARIA roles (never native <select>/<dialog> elements), and
+ *   their type-ahead letters (n/u/r would re-orient the map!) and
+ *   focus-trapped arrow keys must win over map navigation while open.
+ */
+export function shouldIgnoreMapKey(
+  e: Pick<KeyboardEvent, 'defaultPrevented' | 'ctrlKey' | 'metaKey' | 'altKey' | 'target'>,
+): boolean {
+  if (e.defaultPrevented) return true
+  if (e.ctrlKey || e.metaKey || e.altKey) return true
+  const el = e.target instanceof HTMLElement ? e.target : null
+  if (!el) return false
+  const tag = el.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) return true
+  if (el.closest('[role="dialog"], [role="menu"], [role="listbox"], [role="combobox"]')) return true
+  return false
+}
+
 export type MapKeyAction =
   | { type: 'pan'; dx: number; dy: number }
   | { type: 'zoom'; delta: number }

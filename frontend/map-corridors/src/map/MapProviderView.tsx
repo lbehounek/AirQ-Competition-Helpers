@@ -9,7 +9,7 @@ import { shouldClearActivePhoto } from '../activePhoto/activePhoto'
 import { isPhotoMarkerVisible, isMarkerVisibleOnMap } from './photoLayers/markerVisibility'
 import { captureMapForPrint } from '../utils/mapCapture'
 import type { PrintCaptureResult } from '../utils/mapCapture'
-import { applyMapKeyAction, interpretMapKey } from './keyboardNav'
+import { applyMapKeyAction, interpretMapKey, shouldIgnoreMapKey } from './keyboardNav'
 import type { PhotoFlag, PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
@@ -146,8 +146,8 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   const [bearing, setBearing] = useState(0)
   const isRotated = Math.abs(((bearing % 360) + 360) % 360) > 0.5
   // Google-Earth-style "reset to north": animate bearing back to 0. easeTo
-  // picks the shortest rotation path automatically. Shared by the compass
-  // button and the `N` shortcut below.
+  // picks the shortest rotation path automatically. Used by the compass
+  // button; the `N` shortcut goes through keyboardNav's equivalent action.
   const resetNorth = useCallback(() => {
     mapRef.current?.getMap()?.easeTo({ bearing: 0, duration: 400 })
   }, [])
@@ -262,10 +262,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   // matching Google Earth.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      const el = e.target as HTMLElement | null
-      const tag = el?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return
+      // Full gate (typing, modifiers, defaultPrevented, open MUI popups /
+      // dialogs) lives in keyboardNav.ts so it's unit-testable — see
+      // shouldIgnoreMapKey's doc comment for why each case exists.
+      if (shouldIgnoreMapKey(e)) return
       const action = interpretMapKey({ key: e.key, shiftKey: e.shiftKey })
       if (!action) return
       const map = mapRef.current?.getMap()
