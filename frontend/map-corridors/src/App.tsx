@@ -1219,18 +1219,13 @@ function App() {
         : `map-print-${printDate}.png`
 
       if (electronAPI?.saveMapImage) {
-        // Electron: save via native dialog
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => {
-            const result = reader.result as string
-            resolve(result.split(',')[1]) // strip data:image/png;base64, prefix
-          }
-          reader.onerror = () => reject(reader.error)
-          reader.readAsDataURL(blob)
-        })
+        // Electron: save via native dialog. Raw bytes over structured-clone
+        // IPC — the previous FileReader→base64 path inflated the payload by
+        // 33% and materialized a giant string, tripping the main-process
+        // size cap on high-DPI machines ("Image data too large").
+        const imageData = new Uint8Array(await blob.arrayBuffer())
         // Round-5: chosen folder is no longer auto-promoted to workingDir.
-        await electronAPI.saveMapImage(base64, importedKmlDir || undefined, printFileName)
+        await electronAPI.saveMapImage(imageData, importedKmlDir || undefined, printFileName)
       } else {
         // Browser: download via anchor
         const url = URL.createObjectURL(blob)

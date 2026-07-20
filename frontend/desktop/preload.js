@@ -60,11 +60,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   //   • { canceled: false, path: '<abs>' }                  — picked and validated
   pickDirectory: (defaultDir, title) => ipcRenderer.invoke('pick-directory', defaultDir, title),
 
-  // Save map print image via native save dialog. `fileName` is optional —
-  // when provided the renderer's slug-based name (e.g. map-print-plzen-2026-…)
+  // Save map print image via native save dialog. `imageData` is a Uint8Array
+  // of raw PNG bytes — binary IPC avoids the 33% base64 inflation that pushed
+  // high-DPI A4 captures over the old 50 MB string cap. `fileName` is optional
+  // — when provided the renderer's slug-based name (e.g. map-print-plzen-2026-…)
   // is used; otherwise the main-process handler falls back to the legacy
   // date-only default.
-  saveMapImage: (base64Data, defaultDir, fileName) => ipcRenderer.invoke('save-map-image', base64Data, defaultDir, fileName),
+  saveMapImage: (imageData, defaultDir, fileName) => ipcRenderer.invoke('save-map-image', imageData, defaultDir, fileName),
 
   // Save a photo-sheet PDF via native save dialog. defaultDir is the
   // competition's working folder (set when the user imports a KML).
