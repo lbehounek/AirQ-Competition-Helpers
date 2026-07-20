@@ -13,6 +13,11 @@ new desktop release.
 ## [Unreleased]
 
 ### Added
+- **Map Corridors:** the map now answers **Google Earth keyboard controls**
+  regardless of where you last clicked — arrow keys pan, **Shift+←/→** rotates,
+  **Shift+↑/↓** tilts, **Page Up/Page Down** and **+/−** zoom, **N** faces
+  north, **U** looks straight down, **R** resets the view. Hold a key to keep
+  moving.
 - **Guided onboarding tour.** The launcher, Map Corridors and the Photo Editor
   now walk new organizers through the whole workflow — starting with the basics
   (load route & photos → sort track/turning → split the sets → send → lay out &

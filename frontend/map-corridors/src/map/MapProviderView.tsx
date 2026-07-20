@@ -9,6 +9,7 @@ import { shouldClearActivePhoto } from '../activePhoto/activePhoto'
 import { isPhotoMarkerVisible, isMarkerVisibleOnMap } from './photoLayers/markerVisibility'
 import { captureMapForPrint } from '../utils/mapCapture'
 import type { PrintCaptureResult } from '../utils/mapCapture'
+import { applyMapKeyAction, interpretMapKey } from './keyboardNav'
 import type { PhotoFlag, PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
 import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
@@ -249,22 +250,34 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     }
   }, [onCompareVariants, clearPhotoSelection])
 
-  // `N` resets the map to north (Google-Earth style). Suppressed while typing
-  // in a field (marker-name inputs live in popups) and for modifier combos
-  // (e.g. Ctrl/Cmd+N "new window").
+  // Google-Earth-style keyboard navigation (client request 2026-07): arrows
+  // pan, Shift+arrows rotate/tilt, PageUp/PageDown and +/− zoom, N north-up,
+  // U top-down, R reset — full key map in keyboardNav.ts. Window-level (not
+  // the built-in canvas handler, which is disabled below via keyboard={false})
+  // so it works no matter where focus sits — users click side panels
+  // constantly and Google Earth keys "just work" without clicking the map
+  // first. Suppressed while typing in a field (marker-name inputs live in
+  // popups) and for modifier combos (e.g. Ctrl/Cmd+N "new window"). Key
+  // auto-repeat is intentionally allowed — holding an arrow keeps panning,
+  // matching Google Earth.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'n' && e.key !== 'N') return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const el = e.target as HTMLElement | null
       const tag = el?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || el?.isContentEditable) return
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return
+      const action = interpretMapKey({ key: e.key, shiftKey: e.shiftKey })
+      if (!action) return
+      const map = mapRef.current?.getMap()
+      if (!map) return
+      // Claim the key only once we know we'll act on it — stops the browser
+      // from also scrolling a panel on PageUp/PageDown or arrows.
       e.preventDefault()
-      resetNorth()
+      applyMapKeyAction(map, action)
     }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
-  }, [resetNorth])
+  }, [])
 
   // Attach native DnD listeners on the canvas to support custom marker drops
   useEffect(() => {
@@ -541,6 +554,10 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       mapStyle={mapStyle}
       mapboxAccessToken={mapboxAccessToken}
       preserveDrawingBuffer
+      // Built-in keyboard handler off: it only works while the canvas has
+      // focus and would double-handle keys next to our window-level
+      // Google-Earth-style handler above (see keyboardNav.ts).
+      keyboard={false}
       initialViewState={{ longitude: 14.42076, latitude: 50.08804, zoom: 6 }}
       style={{ width: '100%', height: '100%' }}
       onLoad={() => setIsMapLoaded(true)}

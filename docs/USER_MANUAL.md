@@ -101,7 +101,26 @@ selected**, **Neutral**, **Rejected**, **No GPS**. You can:
   follows it into the editor without touching the original filename.
 - **Delete** a photo from the competition (✕).
 
-### 3.5 Choose where the sheets split (Rally)
+### 3.5 Map keyboard controls
+
+The map answers the same keys as Google Earth, no matter where you last
+clicked (only typing in a text field takes priority):
+
+| Key | Action |
+|-----|--------|
+| **← ↑ ↓ →** | Pan the map |
+| **Shift + ← / →** | Rotate (compass turns with the map) |
+| **Shift + ↑ / ↓** | Tilt the view |
+| **Page Up / Page Down** | Zoom in / out |
+| **+ / −** | Zoom in / out |
+| **N** | Face north |
+| **U** | Look straight down |
+| **R** | Reset the view (north + straight down) |
+
+Hold a key to keep moving. The compass button in the top-left corner also
+resets to north whenever the map is rotated.
+
+### 3.6 Choose where the sheets split (Rally)
 
 Use the **"Set 2 starts at"** selector at the top of the list and pick a route
 turning point (TP1, TP2, …):
@@ -116,7 +135,7 @@ The turning points come from the **route**, so this works even if none of your
 photos are turning-point photos. Precision competitions are single-set and don't
 show this control.
 
-### 3.6 Send to the editor
+### 3.7 Send to the editor
 
 Click **Send to editor (N)** — N is the number of picked photos. The selections
 (and the split) cross to Photo Helper, which opens with the sets pre-filled. If

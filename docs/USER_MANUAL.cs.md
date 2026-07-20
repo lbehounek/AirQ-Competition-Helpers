@@ -102,7 +102,26 @@ Fotky jsou seskupené podle rozhodnutí: **Otočné body – vybrané**,
   doprovází do editoru, aniž by se měnil původní název souboru.
 - **Smazat** fotku ze soutěže (✕).
 
-### 3.5 Volba, kde se sady rozdělí (Rally)
+### 3.5 Ovládání mapy klávesnicí
+
+Mapa reaguje na stejné klávesy jako Google Earth, ať jste naposledy klikli
+kamkoli (přednost má jen psaní do textového pole):
+
+| Klávesa | Akce |
+|---------|------|
+| **← ↑ ↓ →** | Posun mapy |
+| **Shift + ← / →** | Otáčení (kompas se otáčí s mapou) |
+| **Shift + ↑ / ↓** | Naklonění pohledu |
+| **Page Up / Page Down** | Přiblížení / oddálení |
+| **+ / −** | Přiblížení / oddálení |
+| **N** | Natočit na sever |
+| **U** | Pohled kolmo dolů |
+| **R** | Obnovit pohled (sever + kolmo dolů) |
+
+Podržením klávesy se pohyb opakuje. Kompas v levém horním rohu také vrátí
+mapu na sever, kdykoli je otočená.
+
+### 3.6 Volba, kde se sady rozdělí (Rally)
 
 Použijte výběr **„Sada 2 začíná od"** v horní části seznamu a zvolte otočný bod
 trati (TP1, TP2, …):
@@ -118,7 +137,7 @@ Otočné body pocházejí z **trati**, takže to funguje, i když žádná z va�
 není fotkou otočného bodu. Soutěže v přesném létání mají jednu sadu a tento
 ovládací prvek nezobrazují.
 
-### 3.6 Odeslání do editoru
+### 3.7 Odeslání do editoru
 
 Klikněte na **Poslat do editoru (N)** — N je počet vybraných fotek. Výběr
 (i rozdělení) přejde do Photo Helperu, který se otevře s předvyplněnými sadami.
