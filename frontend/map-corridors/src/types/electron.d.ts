@@ -16,7 +16,9 @@ declare module '@airq/shared-storage' {
     goHome?: () => void
     navigateToApp?: (app: string, competitionId: string) => void
     openMapboxSettings?: () => void
-    saveMapImage?: (base64: string, defaultDir?: string, fileName?: string) => Promise<string | null>
+    // Raw PNG bytes — binary IPC (base64 string transport was retired after
+    // its 33% inflation pushed high-DPI captures over the main-process cap).
+    saveMapImage?: (imageData: Uint8Array, defaultDir?: string, fileName?: string) => Promise<string | null>
     savePdf?: (base64: string, fileName: string, defaultDir?: string) => Promise<string | null>
     getConfig?: (key: string) => Promise<string | undefined>
     setConfig?: (key: string, value: string) => Promise<void>

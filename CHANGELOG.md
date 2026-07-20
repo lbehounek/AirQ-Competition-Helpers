@@ -12,6 +12,15 @@ new desktop release.
 
 ## [Unreleased]
 
+### Fixed
+- **Map Corridors:** fixed **Print map** failing with *"Image data too large"*
+  on machines with Windows display scaling above 100 %. The A4 print capture
+  rendered at the display's pixel ratio (up to 4× the pixels at 200 % scaling)
+  and the resulting PNG blew past the desktop app's transfer limit. The
+  exported image is now always exactly A4 at 300 DPI regardless of display
+  scaling, and it travels to the save dialog as raw bytes instead of an
+  inflated base64 string.
+
 ### Added
 - **Guided onboarding tour.** The launcher, Map Corridors and the Photo Editor
   now walk new organizers through the whole workflow — starting with the basics

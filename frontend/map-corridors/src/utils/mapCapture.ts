@@ -81,6 +81,11 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     mapboxgl.accessToken = accessToken
   }
 
+  // NOTE: mapbox-gl has no `pixelRatio` MapOption (that's MapLibre-only), so
+  // the WebGL canvas backing store is always `dims × window.devicePixelRatio`.
+  // On Windows display scaling >100% that's up to 2× per axis. We can't stop
+  // the oversized render, but the capture below normalizes the exported PNG
+  // back to exactly `dims`, so the output size is machine-independent.
   const map = new mapboxgl.Map({
     container,
     style,
@@ -88,8 +93,7 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     interactive: false,
     fadeDuration: 0,
     attributionControl: false,
-    pixelRatio: 1,
-  } as mapboxgl.MapOptions)
+  })
 
   try {
     // Wait for style to load
@@ -160,18 +164,27 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
       'Map tile rendering timed out'
     )
 
-    // Capture the WebGL canvas
+    // Capture the WebGL canvas, normalized to exactly `dims` (A4 @ 300 DPI).
+    // The backing store may be devicePixelRatio× larger (see the Map options
+    // note above); drawing it scaled into a dims-sized canvas keeps the PNG
+    // byte size machine-independent. The old canvas-sized export produced a
+    // 4× -pixel PNG on 200% Windows scaling, blowing past the desktop app's
+    // IPC size cap ("Image data too large") — and when the store IS larger,
+    // this is supersampling, so print quality doesn't suffer.
     const mapCanvas = map.getCanvas()
     const offscreen = document.createElement('canvas')
-    offscreen.width = mapCanvas.width
-    offscreen.height = mapCanvas.height
+    offscreen.width = dims.width
+    offscreen.height = dims.height
     const ctx = offscreen.getContext('2d')
     if (!ctx) throw new Error('Failed to create 2D canvas context — image may be too large for this device')
-    ctx.drawImage(mapCanvas, 0, 0)
+    ctx.drawImage(mapCanvas, 0, 0, dims.width, dims.height)
 
-    // Scale factor: canvas pixels may differ from CSS pixels
-    const scaleX = mapCanvas.width / dims.width
-    const scaleY = mapCanvas.height / dims.height
+    // With the output normalized to `dims`, `map.project()` CSS-pixel coords
+    // map 1:1 onto the offscreen canvas. Kept as named constants because the
+    // marker/label math below was originally written against a variable
+    // canvas-to-CSS ratio and reads better with the factor visible.
+    const scaleX = 1
+    const scaleY = 1
 
     // Composite photo markers. Screen now uses 12px diameter (was 8); print
     // was originally tuned to 20px (10px radius) after the 2026-04-18 round

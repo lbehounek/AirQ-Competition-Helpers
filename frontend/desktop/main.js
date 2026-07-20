@@ -1100,11 +1100,19 @@ safeHandle('competition-delete', async (event, id) => {
 // Save map print image via native save dialog. Prefers the directory the
 // source KML was imported from (feedback 2026-04-23: every export dialog
 // should land in the user's race folder, not our internal storage).
-safeHandle('save-map-image', async (event, base64Data, defaultDir, fileNameArg) => {
-  if (typeof base64Data !== 'string' || base64Data.length === 0) {
+safeHandle('save-map-image', async (event, imageData, defaultDir, fileNameArg) => {
+  // Binary transport (Uint8Array of raw PNG bytes) — was a base64 string.
+  // The 33% base64 inflation pushed legitimate A4 captures from high-DPI
+  // machines over the old 50 MB string cap ("Image data too large" reported
+  // 2026-07 by a client on Windows display scaling >100%). Structured-clone
+  // IPC hands us the bytes directly, so the cap is now on real byte length.
+  // Buffer passes the instanceof check too (it subclasses Uint8Array).
+  if (!(imageData instanceof Uint8Array) || imageData.byteLength === 0) {
     throw new Error('Invalid image data');
   }
-  if (base64Data.length > 50 * 1024 * 1024) {
+  // A normalized A4-at-300DPI PNG tops out ≈35 MB even for incompressible
+  // satellite imagery; 64 MB bounds a malicious renderer with ~2× headroom.
+  if (imageData.byteLength > 64 * 1024 * 1024) {
     throw new Error('Image data too large');
   }
   // Apply the same UNC + length + existence checks as `save-kml`. A
@@ -1127,8 +1135,7 @@ safeHandle('save-map-image', async (event, base64Data, defaultDir, fileNameArg) 
     filters: [{ name: 'PNG Images', extensions: ['png'] }]
   });
   if (!filePath) return null;
-  const buffer = Buffer.from(base64Data, 'base64');
-  fs.writeFileSync(filePath, buffer);
+  fs.writeFileSync(filePath, imageData);
   return filePath;
 });
 
