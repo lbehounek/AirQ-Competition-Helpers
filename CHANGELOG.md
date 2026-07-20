@@ -10,7 +10,7 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
-## [Unreleased]
+## [2.29.0] - 2026-07-20
 
 ### Fixed
 - **Map Corridors:** fixed **Print map** failing with *"Image data too large"*
@@ -19,14 +19,21 @@ new desktop release.
   and the resulting PNG blew past the desktop app's transfer limit. The
   exported image is now always exactly A4 at 300 DPI regardless of display
   scaling, and it travels to the save dialog as raw bytes instead of an
-  inflated base64 string.
+  inflated base64 string. ([#110])
 
 ### Added
 - **Map Corridors:** the map now answers **Google Earth keyboard controls**
   regardless of where you last clicked — arrow keys pan, **Shift+←/→** rotates,
   **Shift+↑/↓** tilts, **Page Up/Page Down** and **+/−** zoom, **N** faces
   north, **U** looks straight down, **R** resets the view. Hold a key to keep
-  moving.
+  moving. Keys never interfere with typing or open dialogs/dropdowns. ([#111])
+
+[#110]: https://github.com/lbehounek/AirQ-Competition-Helpers/pull/110
+[#111]: https://github.com/lbehounek/AirQ-Competition-Helpers/pull/111
+
+## [2.28.0] - 2026-06-30
+
+### Added
 - **Guided onboarding tour.** The launcher, Map Corridors and the Photo Editor
   now walk new organizers through the whole workflow — starting with the basics
   (load route & photos → sort track/turning → split the sets → send → lay out &
