@@ -46,7 +46,7 @@ import { resolveVariantFlags } from './photoVariants/resolveVariantFlags'
 import { resolveActivePhotoId } from './activePhoto/activePhoto'
 import { isProvisionalValid, type ProvisionalPlacement } from './provisionalPlacement/provisionalPlacement'
 import { isMarkerVisibleOnMap } from './map/photoLayers/markerVisibility'
-import type { PhotoMarker } from './types/markers'
+import type { NoGpsPhoto, PhotoMarker } from './types/markers'
 import {
   buildMapPicks,
   flushPendingMapPicks,
@@ -215,8 +215,8 @@ function App() {
     setSetBreakWaypointName,
     setMarkers: persistMarkers,
     setGroundMarkers: persistGroundMarkers,
-    setNoGpsPhotos: persistNoGpsPhotos,
     setNoGpsTrayOpen: persistNoGpsTrayOpen,
+    commitImportedPhotos,
     placeNoGpsPhoto,
     removePhoto,
     renamePhoto,
@@ -611,43 +611,34 @@ function App() {
       if (result.ok.length > 0) {
         const withGps = result.ok.filter(p => p.exif.capturedAt !== undefined)
         const withoutGps = result.ok.filter(p => p.exif.capturedAt === undefined)
-        if (withGps.length > 0) {
-          await persistMarkers((prev) => {
-            const next = [...prev]
-            for (const p of withGps) {
-              const captured = p.exif.capturedAt!
-              next.push({
-                id: p.photoId,
-                photoId: p.photoId,
-                lng: captured.lng,
-                lat: captured.lat,
-                name: p.file.name,
-                contentHash: p.contentHash,
-                capturedAt: {
-                  lng: captured.lng,
-                  lat: captured.lat,
-                  ...(captured.altitude !== undefined ? { altitude: captured.altitude } : {}),
-                  ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
-                },
-              })
-            }
-            return next
-          })
-        }
-        if (withoutGps.length > 0) {
-          await persistNoGpsPhotos((prev) => {
-            const next = [...prev]
-            for (const p of withoutGps) {
-              next.push({
-                photoId: p.photoId,
-                filename: p.file.name,
-                contentHash: p.contentHash,
-                ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
-              })
-            }
-            return next
-          })
-        }
+        // ONE session write for both lists. As two sequential writes, the
+        // second rebuilt the session from a snapshot taken before the first,
+        // so a mixed batch (any photo lacking GPS) could discard the entire
+        // marker batch and leave only the tray entries.
+        const newMarkers: PhotoMarker[] = withGps.map((p) => {
+          const captured = p.exif.capturedAt!
+          return {
+            id: p.photoId,
+            photoId: p.photoId,
+            lng: captured.lng,
+            lat: captured.lat,
+            name: p.file.name,
+            contentHash: p.contentHash,
+            capturedAt: {
+              lng: captured.lng,
+              lat: captured.lat,
+              ...(captured.altitude !== undefined ? { altitude: captured.altitude } : {}),
+              ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
+            },
+          }
+        })
+        const newNoGps: NoGpsPhoto[] = withoutGps.map((p) => ({
+          photoId: p.photoId,
+          filename: p.file.name,
+          contentHash: p.contentHash,
+          ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
+        }))
+        await commitImportedPhotos(newMarkers, newNoGps)
       }
       const dupCount = result.duplicates?.length ?? 0
       const dupSuffix = dupCount > 0 ? ` ${t('photo.import.duplicatesSkipped', { count: dupCount })}` : ''
@@ -684,7 +675,7 @@ function App() {
     } finally {
       setImportProgress(null)
     }
-  }, [storage, photosDir, t, persistMarkers, persistNoGpsPhotos, markers, session?.noGpsPhotos])
+  }, [storage, photosDir, t, commitImportedPhotos, markers, session?.noGpsPhotos])
 
   // Phase 9 — Send-to-editor button handler. Flushes the pending
   // map-picks write FIRST (ADR-009 navigation-flush requirement) so a

@@ -15,10 +15,9 @@ const HEIC_FTYP_BRANDS: ReadonlySet<string> = new Set([
 // HEIC/HEIF detection by content (ADR-006). Filename extension is not
 // trusted — Apple Photos export sometimes writes `.jpg` over HEIC bytes.
 // Layout: bytes 0..3 = box size, 4..7 = "ftyp", 8..11 = brand.
-async function isHeicContent(file: File | Blob): Promise<boolean> {
-  if (file.size < 12) return false
-  const head = await file.slice(0, 12).arrayBuffer()
-  const b = new Uint8Array(head)
+// Takes already-read bytes so the file is read exactly once per import.
+function isHeicContent(b: Uint8Array): boolean {
+  if (b.length < 12) return false
   if (b[4] !== 0x66 || b[5] !== 0x74 || b[6] !== 0x79 || b[7] !== 0x70) return false
   const brand = String.fromCharCode(b[8], b[9], b[10], b[11]).toLowerCase()
   return HEIC_FTYP_BRANDS.has(brand)
@@ -44,31 +43,43 @@ function isValidGps(g: { latitude?: unknown; longitude?: unknown } | null | unde
  * mutation, no UI.
  *
  * @throws HeicNotSupportedError if the file's content is HEIC/HEIF.
- * @throws DOMException if the file's bytes cannot be read at all — see
- *   {@link isUnreadableFileError}. Rethrown rather than swallowed so the file
- *   is reported as an import failure; treating it as "no EXIF" would file a
- *   GPS-tagged photo under "Bez GPS" with no explanation.
+ * @throws DOMException if the file's bytes cannot be read at all. Propagated
+ *   rather than swallowed so the file is reported as an import failure;
+ *   treating it as "no EXIF" would file a GPS-tagged photo under "Bez GPS"
+ *   with no explanation, and — because the content hash comes from a separate,
+ *   working read — the photo could never be re-imported to fix it: dedup
+ *   would report it as an already-imported duplicate forever.
  *   Genuine parse failures (corrupt JPEG, missing EXIF segment) still resolve
  *   to an empty result so importPhotoFiles keeps going on the rest of the batch.
  */
 export async function extractExif(file: File): Promise<ExifData> {
-  if (await isHeicContent(file)) {
+  // Read the bytes ourselves rather than handing exifr the File. `arrayBuffer()`
+  // rejects with a real DOMException when the file can't be read, whereas
+  // exifr reads via FileReader and its `onerror` rejects with a ProgressEvent
+  // whose DOMException is discarded — arriving here as something a catch-all
+  // treats as "no EXIF found". That is exactly how a photo with perfectly good
+  // GPS lands in the no-GPS tray. It also collapses the previous two reads
+  // (HEIC sniff + exifr) into one.
+  const bytes = new Uint8Array(await file.arrayBuffer())
+
+  if (isHeicContent(bytes)) {
     throw new HeicNotSupportedError(file.name)
   }
 
   const result: ExifData = {}
 
-  // A failed READ must not masquerade as "this photo has no GPS" — rethrow it
-  // and let the import report the file. Only parse failures degrade to null.
+  // Parsing from bytes can no longer fail for I/O reasons, so anything thrown
+  // here is a genuine parse failure — except that the guard stays in place as
+  // defense in depth if this ever goes back to passing a File/Blob.
   const swallowParseErrors = (err: unknown) => {
     if (isUnreadableFileError(err)) throw err
     return null
   }
 
-  const gps = await exifr.gps(file).catch(swallowParseErrors)
+  const gps = await exifr.gps(bytes).catch(swallowParseErrors)
   // `translateValues: false` keeps Orientation as a 1..8 integer instead
   // of exifr's human-readable string ("Horizontal (normal)" etc.).
-  const meta = await exifr.parse(file, {
+  const meta = await exifr.parse(bytes, {
     pick: ['DateTimeOriginal', 'GPSAltitude', 'Orientation'],
     translateValues: false,
   }).catch(swallowParseErrors) as Record<string, unknown> | null

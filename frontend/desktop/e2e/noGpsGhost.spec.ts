@@ -223,3 +223,32 @@ test('overlapping imports of DIFFERENT files keep every photo exactly once', asy
 
   expect(pageErrors, `renderer threw: ${pageErrors.map((e) => e.message).join('; ')}`).toEqual([]);
 });
+
+test('a MIXED batch keeps both the markers and the tray entries', async () => {
+  const { page, pageErrors } = launched;
+  const compId = 'e2e-ghost-6';
+  await navigateToApp(page, 'map-corridors', compId);
+
+  // The regression this guards: markers and tray entries used to be written in
+  // two sequential whole-session writes, and the second rebuilt the session
+  // from a snapshot taken before the first. A batch containing even one
+  // photo without GPS could therefore discard EVERY marker in the import,
+  // leaving the organizer with just the tray entries — photos they had just
+  // watched land on the map. Both lists now move in one write.
+  const noGps = [
+    writeGpsJpeg(path.join(photoDir, 'NOGPS_1.JPG'), { dateTimeOriginal: '2026:07:20 12:00:00' }),
+    writeGpsJpeg(path.join(photoDir, 'NOGPS_2.JPG'), { dateTimeOriginal: '2026:07:20 12:01:00' }),
+  ];
+
+  await page.locator('input[type="file"]').setInputFiles([ROUTE_KML, ...photos, ...noGps]);
+  await expect(page.getByText(/Imported 5 photos/i)).toBeVisible();
+
+  const session = readSession(launched.userDataDir, compId);
+  expect(session!.markers, 'the GPS photos must survive the mixed import').toHaveLength(3);
+  expect(session!.noGpsPhotos, 'the GPS-less photos belong in the tray').toHaveLength(2);
+  expect(ghostPhotoIds(session!)).toEqual([]);
+  // The tray warning SHOULD show here — two photos really are unplaced.
+  await expect(page.getByText(NO_GPS_WARNING)).toBeVisible();
+
+  expect(pageErrors, `renderer threw: ${pageErrors.map((e) => e.message).join('; ')}`).toEqual([]);
+});

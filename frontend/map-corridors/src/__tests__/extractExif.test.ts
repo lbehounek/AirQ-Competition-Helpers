@@ -235,8 +235,23 @@ describe('extractExif — error resilience', () => {
     const file = makeFile(jpegBytes())
     await extractExif(file)
     expect(parseMock).toHaveBeenCalledWith(
-      file,
+      // Bytes, not the File: extractExif reads the file itself so that an
+      // unreadable file rejects with a real DOMException instead of exifr's
+      // FileReader ProgressEvent, which was indistinguishable from "no EXIF".
+      expect.any(Uint8Array),
       expect.objectContaining({ translateValues: false }),
     )
+  })
+
+  it('hands exifr the file BYTES, never the File — the read is ours', async () => {
+    // Pins the fix at the seam: if this ever goes back to passing the File,
+    // exifr resumes reading via FileReader and a failed read silently becomes
+    // "this photo has no coordinates" again.
+    gpsMock.mockResolvedValue(null)
+    parseMock.mockResolvedValue({})
+    const bytes = jpegBytes()
+    await extractExif(makeFile(bytes))
+    expect(gpsMock).toHaveBeenCalledWith(expect.any(Uint8Array))
+    expect(gpsMock.mock.calls[0][0]).toEqual(new Uint8Array(bytes))
   })
 })

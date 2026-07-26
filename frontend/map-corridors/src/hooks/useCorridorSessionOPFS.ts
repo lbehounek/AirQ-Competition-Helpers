@@ -360,6 +360,14 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
   }, [competitionId])
 
   const persistSession = useCallback(async (next: CorridorsSession) => {
+    // Update the ref SYNCHRONOUSLY, not just via the effect below. Every setter
+    // read-modify-writes the whole session from `sessionRef.current`, so two
+    // setters called back-to-back (`await setMarkers(…)` then
+    // `await setNoGpsPhotos(…)`, as a mixed photo import does) would both read
+    // the pre-import snapshot if React hasn't committed in between — and the
+    // second write would silently roll the first one back. The window is only
+    // a few milliseconds, which is exactly why it survived so long.
+    sessionRef.current = next
     setSession(next)
     const storage = storageRef.current
     const dir = sessionDirRef.current
@@ -440,6 +448,33 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     const current = sessionRef.current
     if (!current) return
     await persistSession({ ...current, noGpsPhotos: updater(current.noGpsPhotos || []), version: current.version + 1, updatedAt: new Date().toISOString() })
+  }, [persistSession])
+
+  /**
+   * Commit one photo import in a SINGLE session write: append the GPS-tagged
+   * photos as markers and the rest as no-GPS tray entries at the same time.
+   *
+   * Same reasoning as `placeNoGpsPhoto` below — two sequential whole-session
+   * writes are not safe. Here the failure was worse than a duplicate: the
+   * second write rebuilt the session from a snapshot taken before the first,
+   * so importing a folder where even one photo lacked GPS could discard the
+   * entire marker batch, leaving the organizer with only the tray entry.
+   * Both lists move together or neither does.
+   */
+  const commitImportedPhotos = useCallback(async (
+    newMarkers: readonly PhotoMarker[],
+    newNoGps: readonly NoGpsPhoto[],
+  ): Promise<void> => {
+    if (newMarkers.length === 0 && newNoGps.length === 0) return
+    const current = sessionRef.current
+    if (!current) return
+    await persistSession({
+      ...current,
+      markers: [...current.markers, ...newMarkers],
+      noGpsPhotos: [...(current.noGpsPhotos || []), ...newNoGps],
+      version: current.version + 1,
+      updatedAt: new Date().toISOString(),
+    })
   }, [persistSession])
 
   // Atomic placement of a no-GPS photo onto the map: in one persistSession
@@ -615,6 +650,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setGroundMarkers,
     setNoGpsPhotos,
     setNoGpsTrayOpen,
+    commitImportedPhotos,
     placeNoGpsPhoto,
     removePhoto,
     renamePhoto,

@@ -21,14 +21,22 @@ new desktop release.
   label when one is set (`A - TP1`). Names that would land on top of each other
   — photos shot at the same turning point, which the print draws without the
   on-screen marker fan — are stacked downwards so they stay readable.
+- **Map Corridors:** importing a folder where **some** photos have GPS and some
+  don't could **lose every photo that landed on the map**, leaving only the
+  no-GPS ones in the tray. The map pins and the "Bez GPS" list were saved as two
+  separate writes, and the second one could be built from a copy of the
+  competition taken before the first — silently undoing it. Both are now saved
+  together, so either the whole import lands or none of it does. An import where
+  every photo has GPS was never affected, which is why this went unnoticed.
 - **Map Corridors:** a photo whose file could not be **read** during import is
   now reported as a failed import ("could not be opened — check it is still
-  available") instead of being silently filed under **Bez GPS**. A read that
-  failed looks exactly like "this photo has no coordinates" to the EXIF parser,
-  so a GPS-tagged photo could quietly land in the no-GPS tray.
+  available") instead of being silently filed under **Bez GPS**. A failed read
+  looks exactly like "this photo has no coordinates" to the EXIF reader, so a
+  GPS-tagged photo could quietly land in the no-GPS tray — and stay there for
+  good, since re-importing the file was then rejected as a duplicate.
 - **Map Corridors:** a photo can no longer appear **both** on the map and in the
-  **Bez GPS** list. Sessions carrying that state had a permanent ghost tray row
-  duplicating a photo that was already placed, and the photo-count badge
+  **Bez GPS** list. A session carrying that state showed a permanent ghost tray
+  row duplicating a photo that was already placed, and the photo-count badge
   double-counted it; the tray entry is now dropped when the session loads.
 
 ### Added

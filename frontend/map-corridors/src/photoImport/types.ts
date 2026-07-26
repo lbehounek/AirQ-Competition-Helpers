@@ -28,17 +28,30 @@ export class HeicNotSupportedError extends Error {
  *
  * The distinction matters because the two are silently interchangeable
  * otherwise: a photo whose read failed has no GPS *as far as the parser can
- * tell*, so it used to be filed under "Bez GPS" next to photos that genuinely
+ * tell*, so it would be filed under "Bez GPS" next to photos that genuinely
  * carry no coordinates — the organizer sees a GPS-tagged photo land in the
  * no-GPS tray with no explanation (client feedback 2026-07-23).
  *
- * Browser File/Blob reads reject with a `DOMException` (`NotReadableError` when
- * the OS handle went away — a file moved or locked mid-import, a flaky network
- * drive, an ejected SD card); exifr's own parse failures are plain `Error`s.
- * That split is the discriminator.
+ * Two shapes count, because the platform reports the same failure two ways:
+ *  - `DOMException` — what `Blob.arrayBuffer()` / `Blob.text()` reject with
+ *    (`NotReadableError` when the OS handle went away: a file moved or locked
+ *    mid-import, a flaky network drive, an ejected SD card). This is the path
+ *    `extractExif` now takes deliberately.
+ *  - a `FileReader` error `ProgressEvent` — what `FileReader.onerror` hands to
+ *    a promise `reject`. The `DOMException` is left on `reader.error` and the
+ *    event carries it only via `target`. Libraries that read with `FileReader`
+ *    (exifr does, in `readBlobAsArrayBuffer`) surface failures this way, so
+ *    matching only `DOMException` here silently misses them.
+ *
+ * Genuine parse failures — corrupt JPEG, no EXIF segment — are plain `Error`s
+ * and must NOT match.
  */
 export function isUnreadableFileError(err: unknown): boolean {
-  return typeof DOMException !== 'undefined' && err instanceof DOMException
+  if (typeof DOMException !== 'undefined' && err instanceof DOMException) return true
+  // Duck-typed rather than `instanceof ProgressEvent`: the event may come from
+  // another realm, and jsdom/test doubles don't always provide the global.
+  const evt = err as { type?: unknown; target?: { error?: unknown } } | null
+  return !!evt && evt.type === 'error' && !!evt.target && 'error' in evt.target
 }
 
 export interface ImportedPhoto {
