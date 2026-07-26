@@ -11,7 +11,7 @@ import { captureMapForPrint } from '../utils/mapCapture'
 import type { PrintCaptureResult } from '../utils/mapCapture'
 import { applyMapKeyAction, interpretMapKey, shouldIgnoreMapKey } from './keyboardNav'
 import type { PhotoFlag, PhotoLabel, PhotoMarker, GroundMarkerCallbacks } from '../types/markers'
-import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES } from '../types/markers'
+import { ALL_PHOTO_LABELS, GROUND_MARKER_TYPES, buildPhotoMarkerPrintLabel } from '../types/markers'
 import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
 import { useMarkerFan } from './photoLayers/useMarkerFan'
 import { resolveFanOffset } from './photoLayers/markerOffset'
@@ -251,22 +251,22 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   }, [onCompareVariants, clearPhotoSelection])
 
   // Google-Earth-style keyboard navigation (client request 2026-07): arrows
-  // pan, Shift+arrows rotate/tilt, PageUp/PageDown and +/− zoom, N north-up,
-  // U top-down, R reset — full key map in keyboardNav.ts. Window-level (not
-  // the built-in canvas handler, which is disabled below via keyboard={false})
-  // so it works no matter where focus sits — users click side panels
-  // constantly and Google Earth keys "just work" without clicking the map
-  // first. Suppressed while typing in a field (marker-name inputs live in
-  // popups) and for modifier combos (e.g. Ctrl/Cmd+N "new window"). Key
-  // auto-repeat is intentionally allowed — holding an arrow keeps panning,
-  // matching Google Earth.
+  // pan, Shift+arrows or Ctrl+arrows rotate/tilt, PageUp/PageDown and +/− zoom,
+  // N north-up, U top-down, R reset — full key map in keyboardNav.ts.
+  // Window-level (not the built-in canvas handler, which is disabled below via
+  // keyboard={false}) so it works no matter where focus sits — users click side
+  // panels constantly and Google Earth keys "just work" without clicking the
+  // map first. Suppressed while typing in a field (marker-name inputs live in
+  // popups) and for modifier combos we don't own (e.g. Cmd/Ctrl+N "new
+  // window"). Key auto-repeat is intentionally allowed — holding an arrow keeps
+  // panning, matching Google Earth.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Full gate (typing, modifiers, defaultPrevented, open MUI popups /
       // dialogs) lives in keyboardNav.ts so it's unit-testable — see
       // shouldIgnoreMapKey's doc comment for why each case exists.
       if (shouldIgnoreMapKey(e)) return
-      const action = interpretMapKey({ key: e.key, shiftKey: e.shiftKey })
+      const action = interpretMapKey({ key: e.key, shiftKey: e.shiftKey, ctrlKey: e.ctrlKey })
       if (!action) return
       const map = mapRef.current?.getMap()
       if (!map) return
@@ -447,12 +447,16 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       // must skip them too — otherwise a rejected co-located variant prints a
       // stray dot at its original EXIF location next to the kept photo the user
       // dragged into place, looking like a duplicate. (isMarkerVisibleOnMap.)
+      // Photo names must reach the print, not just the answer-sheet label —
+      // before this the print only ever drew `m.label`, which is unset unless
+      // the organizer clicked through the popup grid, so renamed photos (TP1,
+      // …) printed as anonymous dots (client feedback 2026-07-23).
       const printMarkers = (props.markers || [])
         .filter(isMarkerVisibleOnMap)
         .map(m => ({
           lng: m.lng,
           lat: m.lat,
-          label: m.label,
+          text: buildPhotoMarkerPrintLabel(m),
         }))
 
       const printGroundMarkers = (props.groundMarkerProps?.groundMarkers || []).map(gm => ({

@@ -6,14 +6,21 @@
  * Key map (mirrors Google Earth Pro, with step sizes borrowed from
  * mapbox-gl's built-in KeyboardHandler so the feel matches other GL maps):
  *
- *   Arrows              pan 100 px
- *   Shift + Left/Right  rotate bearing ∓15° (counter-clockwise / clockwise)
- *   Shift + Up/Down     tilt pitch +10° / −10°
- *   PageUp / PageDown   zoom in / out by 1 level
- *   + / −               zoom in / out by 1 level
- *   N                   face north (bearing → 0)
- *   U                   look top-down (pitch → 0)
- *   R                   reset view (north + top-down)
+ *   Arrows                    pan 100 px
+ *   Shift|Ctrl + Left/Right   rotate bearing ∓15° (counter-clockwise / clockwise)
+ *   Shift|Ctrl + Up/Down      tilt pitch +10° / −10°
+ *   PageUp / PageDown         zoom in / out by 1 level
+ *   + / −                     zoom in / out by 1 level
+ *   N                         face north (bearing → 0)
+ *   U                         look top-down (pitch → 0)
+ *   R                         reset view (north + top-down)
+ *
+ * Ctrl+arrows are an alias for Shift+arrows (client request 2026-07-23:
+ * "Ctrl + arrow for rotating the map does not work"). Google Earth documents
+ * Shift+arrows for keyboard rotate/tilt — which is what we shipped — but it
+ * also uses Ctrl+drag as the mouse look-around gesture, so organizers reach
+ * for Ctrl first. Both work now. Shift stays the primary binding because
+ * macOS swallows Ctrl+←/→ for Mission Control space switching.
  *
  * Split into a pure `interpretMapKey` (key event → action) and
  * `applyMapKeyAction` (action → camera call) so the key map is unit-testable
@@ -31,6 +38,14 @@ const PITCH_STEP_DEG = 10
 const ZOOM_STEP = 1
 
 /**
+ * The only keys Ctrl may modify (Ctrl+arrows = rotate/tilt). Every other Ctrl
+ * combo stays reserved for the browser/Electron — Ctrl+R reload, Ctrl+N new
+ * window, Ctrl+U view-source, Ctrl+PageUp/PageDown tab switching, Ctrl +/−/0
+ * zoom — several of which collide with our own single-letter map keys.
+ */
+const CTRL_ELIGIBLE_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
+
+/**
  * True when a keydown must NOT drive the map. Checked before interpretMapKey
  * so the map never steals keys that belong to another interaction (PR #111
  * review findings F1/F2):
@@ -38,18 +53,24 @@ const ZOOM_STEP = 1
  * - `defaultPrevented` — some component already claimed the key (MUI Select/
  *   MenuList call preventDefault on arrows/Enter/Space but do NOT stop
  *   propagation, so the event still reaches our window listener);
- * - Ctrl/Cmd/Alt combos — browser & system shortcuts (Ctrl+N, Alt+arrows, …);
- * - typing targets — inputs, textareas, selects, contentEditable;
+ * - Cmd/Alt combos — browser & system shortcuts (Alt+arrows are the app's own
+ *   back/forward menu accelerators). Alt is checked unconditionally on
+ *   purpose: AltGr reports ctrlKey+altKey together on Czech/EU layouts, so
+ *   typing an AltGr character must never rotate the map;
+ * - Ctrl combos other than Ctrl+arrows — see CTRL_ELIGIBLE_KEYS;
+ * - typing targets — inputs, textareas, selects, contentEditable (this is what
+ *   keeps Ctrl+←/→ working as word-wise caret movement while renaming a photo);
  * - open MUI popups — Select dropdowns, menus, and dialogs render as
  *   divs/lis with ARIA roles (never native <select>/<dialog> elements), and
  *   their type-ahead letters (n/u/r would re-orient the map!) and
  *   focus-trapped arrow keys must win over map navigation while open.
  */
 export function shouldIgnoreMapKey(
-  e: Pick<KeyboardEvent, 'defaultPrevented' | 'ctrlKey' | 'metaKey' | 'altKey' | 'target'>,
+  e: Pick<KeyboardEvent, 'defaultPrevented' | 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'target'>,
 ): boolean {
   if (e.defaultPrevented) return true
-  if (e.ctrlKey || e.metaKey || e.altKey) return true
+  if (e.metaKey || e.altKey) return true
+  if (e.ctrlKey && !CTRL_ELIGIBLE_KEYS.has(e.key)) return true
   const el = e.target instanceof HTMLElement ? e.target : null
   if (!el) return false
   const tag = el.tagName
@@ -71,29 +92,35 @@ export type MapKeyAction =
 export type MapKeyInput = {
   key: string
   shiftKey: boolean
+  ctrlKey: boolean
 }
 
 /**
  * Map a key press to a camera action, or null when the key isn't ours.
  * Returns null (never throws) for unknown keys so the caller can fall through
  * without preventDefault-ing keys that belong to the browser or other UI.
- * Modifier gating (Ctrl/Cmd/Alt combos, typing in inputs) is the caller's
- * job — this function only sees keys that are already eligible.
+ * Modifier gating (Cmd/Alt combos, non-arrow Ctrl combos, typing in inputs) is
+ * the caller's job via shouldIgnoreMapKey — this function only sees keys that
+ * are already eligible.
  */
 export function interpretMapKey(input: MapKeyInput): MapKeyAction | null {
-  const { key, shiftKey } = input
+  const { key, shiftKey, ctrlKey } = input
+  // Either modifier turns an arrow from "pan" into "rotate/tilt" — Shift is the
+  // Google Earth keyboard convention, Ctrl is the alias organizers expect from
+  // Google Earth's Ctrl+drag look-around gesture.
+  const orbits = shiftKey || ctrlKey
 
   switch (key) {
-    // Shift+arrows rotate/tilt (Google Earth & mapbox-gl convention);
-    // plain arrows pan. Screen-space pan: dy < 0 moves the view north.
+    // Modified arrows rotate/tilt; plain arrows pan.
+    // Screen-space pan: dy < 0 moves the view north.
     case 'ArrowUp':
-      return shiftKey ? { type: 'pitch', delta: PITCH_STEP_DEG } : { type: 'pan', dx: 0, dy: -PAN_STEP_PX }
+      return orbits ? { type: 'pitch', delta: PITCH_STEP_DEG } : { type: 'pan', dx: 0, dy: -PAN_STEP_PX }
     case 'ArrowDown':
-      return shiftKey ? { type: 'pitch', delta: -PITCH_STEP_DEG } : { type: 'pan', dx: 0, dy: PAN_STEP_PX }
+      return orbits ? { type: 'pitch', delta: -PITCH_STEP_DEG } : { type: 'pan', dx: 0, dy: PAN_STEP_PX }
     case 'ArrowLeft':
-      return shiftKey ? { type: 'rotate', delta: -BEARING_STEP_DEG } : { type: 'pan', dx: -PAN_STEP_PX, dy: 0 }
+      return orbits ? { type: 'rotate', delta: -BEARING_STEP_DEG } : { type: 'pan', dx: -PAN_STEP_PX, dy: 0 }
     case 'ArrowRight':
-      return shiftKey ? { type: 'rotate', delta: BEARING_STEP_DEG } : { type: 'pan', dx: PAN_STEP_PX, dy: 0 }
+      return orbits ? { type: 'rotate', delta: BEARING_STEP_DEG } : { type: 'pan', dx: PAN_STEP_PX, dy: 0 }
 
     case 'PageUp':
       return { type: 'zoom', delta: ZOOM_STEP }

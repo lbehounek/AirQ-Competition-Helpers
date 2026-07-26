@@ -109,8 +109,8 @@ clicked (only typing in a text field takes priority):
 | Key | Action |
 |-----|--------|
 | **← ↑ ↓ →** | Pan the map |
-| **Shift + ← / →** | Rotate (compass turns with the map) |
-| **Shift + ↑ / ↓** | Tilt the view |
+| **Shift + ← / →** (or **Ctrl + ← / →**) | Rotate (compass turns with the map) |
+| **Shift + ↑ / ↓** (or **Ctrl + ↑ / ↓**) | Tilt the view |
 | **Page Up / Page Down** | Zoom in / out |
 | **+ / −** | Zoom in / out |
 | **N** | Face north |
@@ -135,7 +135,38 @@ The turning points come from the **route**, so this works even if none of your
 photos are turning-point photos. Precision competitions are single-set and don't
 show this control.
 
-### 3.7 Send to the editor
+### 3.7 Print the map or export it to Google Earth
+
+Two toolbar actions turn what's on screen into something you can hand out:
+
+- **Print Map** saves the current view as an A4 image at 300 DPI. It always
+  comes out exactly A4 regardless of your Windows display scaling.
+- **Export KML** writes the route, corridors, ground markers and photo pins to a
+  `.kml` you can open in Google Earth.
+
+**Both carry each photo's name**, so what you call a photo decides how readable
+the export is. The printed map always shows the most useful identifier a photo
+has:
+
+| What the photo has | What prints next to its dot |
+|--------------------|------------------------------|
+| A custom name (renamed in the list) | `TP1` |
+| A custom name **and** an answer-sheet label | `A - TP1` |
+| Only an answer-sheet label | `A` |
+| Neither | the camera filename, e.g. `DSC_0123.JPG` |
+
+A labelled photo prints its label alone: the camera filename is left off,
+because `A` is what the competitor looks for and `A - DSC_0123.JPG` would only
+eat space on the sheet. A photo with neither still prints its filename, so no
+dot is ever anonymous — but rename the photos you care about (pencil icon in
+the photo list) before exporting, otherwise the sheet is a wall of camera
+filenames. The **KML** additionally keeps the original filename in parentheses
+(`A - TP1 (DSC_0123.JPG)`), so a pin in Google Earth always leads back to the
+file on disk. Rejected photos are left out of both exports, matching what you
+see on the map. Where several photos sit on the same spot, their names are
+stacked one under another so they stay readable.
+
+### 3.8 Send to the editor
 
 Click **Send to editor (N)** — N is the number of picked photos. The selections
 (and the split) cross to Photo Helper, which opens with the sets pre-filled. If
@@ -206,6 +237,8 @@ than a raw error.
 | *"Windows protected your PC"* on launch | Click **More info → Run anyway** (the app is unsigned by design). |
 | Map background is blank | Set your **Mapbox token** in settings. |
 | A no-GPS photo didn't reach the editor | It's still in the **No GPS tray** — drag it onto the map to place it, then re-send. |
+| A photo you know has GPS landed under **No GPS** | Most often it's a *copy* of the original (from a messaging app, or an export) — those are stripped of GPS on the way and import as a separate photo. Check the filename against the one on the map. If the import instead reported *"could not be opened"*, the file wasn't readable at that moment (moved, or on a card/network drive that dropped out) — put it back and import it again. |
+| The printed map shows only camera filenames | Nothing was renamed or labelled. Rename the photos in the list (pencil icon), or give them answer-sheet labels — either one replaces the filename on the print. See [3.7](#37-print-the-map-or-export-it-to-google-earth). |
 | "Set 2 starts at" selector is missing | You're in **Precision** (single-set), or the **route has no turning points** loaded. |
 | Fewer photos arrived than expected | Check the panel's no-GPS warning; only **picked** photos transfer. |
 | PDF export reports missing images | Re-import the affected photos in the editor, or remove those cells, then export again. |

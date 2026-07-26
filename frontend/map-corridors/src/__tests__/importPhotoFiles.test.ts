@@ -251,3 +251,92 @@ describe('importPhotoFiles — edge cases', () => {
     expect(generateThumbMock).toHaveBeenCalledTimes(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Unreadable files are reported, not silently filed as "no GPS".
+// Client feedback 2026-07-23: a GPS-tagged photo showed up under "Bez GPS".
+// A failed READ is indistinguishable from "this photo has no coordinates"
+// unless the pipeline keeps them apart — that's what `reason: 'read'` is for.
+// ---------------------------------------------------------------------------
+describe('importPhotoFiles — unreadable files', () => {
+  it('treats a DOMException raised AFTER the read as corrupt, not as a read failure', async () => {
+    // The reason is decided by ORIGIN, not by exception class. Once the bytes
+    // are in memory, nothing downstream can be a read failure — and several
+    // decode APIs throw DOMExceptions (`createImageBitmap` rejects with
+    // InvalidStateError on a truncated JPEG). Classifying those as "read" told
+    // the organizer to re-import a file that was never missing.
+    extractExifMock.mockRejectedValueOnce(
+      new DOMException('The source image could not be decoded', 'InvalidStateError'),
+    )
+    const result = await importPhotoFiles([makeFile('damaged.jpg')])
+    expect(result.ok).toHaveLength(0)
+    expect(result.failed).toHaveLength(1)
+    expect(result.failed[0]).toMatchObject({ filename: 'damaged.jpg', reason: 'corrupt' })
+  })
+
+  it('still classifies a plain parse error as "corrupt"', async () => {
+    extractExifMock.mockRejectedValueOnce(new Error('Invalid JPEG structure'))
+    const result = await importPhotoFiles([makeFile('bad.jpg')])
+    expect(result.failed[0]).toMatchObject({ filename: 'bad.jpg', reason: 'corrupt' })
+  })
+
+  it('keeps HEIC classification ahead of the read check', async () => {
+    extractExifMock.mockRejectedValueOnce(new HeicNotSupportedError('x.heic'))
+    const result = await importPhotoFiles([makeFile('x.heic')])
+    expect(result.failed[0].reason).toBe('heic')
+  })
+
+  it('isolates one unreadable file — the rest of the batch still imports', async () => {
+    extractExifMock
+      .mockRejectedValueOnce(new DOMException('gone', 'NotReadableError'))
+      .mockResolvedValue({})
+    const result = await importPhotoFiles([makeFile('a.jpg'), makeFile('b.jpg')], { concurrency: 1 })
+    expect(result.failed).toHaveLength(1)
+    expect(result.ok).toHaveLength(1)
+    expect(result.ok[0].file.name).toBe('b.jpg')
+  })
+})
+
+describe('importPhotoFiles — decode failures are "corrupt", not "read"', () => {
+  it('classifies an undecodable image as corrupt even though it throws a DOMException', () => {
+    // Regression guard (PR #113 review F1). `createImageBitmap` rejects with a
+    // DOMException (InvalidStateError) for bytes it cannot DECODE — a truncated
+    // JPEG from an interrupted card copy. Classifying by exception class routed
+    // that to `read`, telling the organizer to "check it is still available and
+    // import it again": advice that can never work, because the file is right
+    // there and the bytes are damaged. The reason is now known by origin.
+    generateThumbMock.mockRejectedValueOnce(
+      new DOMException('The source image could not be decoded', 'InvalidStateError'),
+    )
+    return importPhotoFiles([makeFile('truncated.jpg')]).then((result) => {
+      expect(result.failed[0]).toMatchObject({ filename: 'truncated.jpg', reason: 'corrupt' })
+    })
+  })
+
+  it('still reports a genuinely unreadable file as "read"', async () => {
+    // The other half of the same split: the file itself cannot be opened, so
+    // the retry advice IS correct here.
+    const file = makeFile('gone.jpg')
+    Object.defineProperty(file, 'arrayBuffer', {
+      value: () => Promise.reject(new DOMException('could not be read', 'NotReadableError')),
+    })
+    const result = await importPhotoFiles([file])
+    expect(result.failed[0]).toMatchObject({ filename: 'gone.jpg', reason: 'read' })
+    // EXIF/thumb/hash must never have run — the bytes were never obtained.
+    expect(generateThumbMock).not.toHaveBeenCalled()
+  })
+
+  it('hands extractExif the already-read bytes instead of the File', async () => {
+    // EXIF and the content hash used to read the whole file independently,
+    // doubling peak memory at concurrency 8 — and the EXIF read went through
+    // exifr's FileReader, whose ProgressEvent rejection is what made an
+    // unreadable photo look like "no GPS". Asserting the file is read once is
+    // NOT enough to pin that: extractExif is module-mocked here, so it never
+    // read the file in either version. Assert the seam itself instead.
+    const file = makeFile('a.jpg')
+    const spy = vi.spyOn(file, 'arrayBuffer')
+    await importPhotoFiles([file])
+    expect(extractExifMock).toHaveBeenCalledWith(file, expect.any(Uint8Array))
+    expect(spy, 'the worker should be the only reader').toHaveBeenCalledTimes(1)
+  })
+})

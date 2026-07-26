@@ -140,3 +140,6 @@ backend/photo-helper/.deps_installed
 # Local sample competition (bundled into local builds, never committed)
 frontend/desktop/sample-data/*
 !frontend/desktop/sample-data/.gitkeep
+
+# Real competition photos used for manual/E2E testing — large binaries, never committed
+/Plasy Red/

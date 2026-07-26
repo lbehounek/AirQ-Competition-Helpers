@@ -255,6 +255,14 @@ export function normalizeDisplayName(displayName: string | undefined, original: 
  * so the list row, KML export and loader can never drift — so we never emit
  * `DSC_0123.JPG (DSC_0123.JPG)`. Returns the raw text; XML escaping happens
  * downstream at the serializer (`textContent`).
+ *
+ * Deliberately NOT harmonised with {@link buildPhotoMarkerPrintLabel}: a photo
+ * that is labelled but never renamed prints as a bare `A` on paper yet still
+ * exports as `A - DSC_0123.JPG` here. The two surfaces have different jobs —
+ * Google Earth is the traceability surface, where a pin must always lead back
+ * to a file on disk, while the printed sheet is read at arm's length in a
+ * cockpit and pays for every extra character in pill width. Do not "simplify"
+ * the two into one composer; `markersDisplay.test.ts` pins both forms.
  */
 export function buildPhotoMarkerKmlName(
   m: Pick<PhotoMarker, 'name' | 'displayName' | 'label'>,
@@ -264,6 +272,81 @@ export function buildPhotoMarkerKmlName(
   return m.label && namePart
     ? `${m.label} - ${namePart}`
     : (m.label || namePart || '')
+}
+
+/**
+ * Enforce the invariant that a photo is EITHER placed on the map (a
+ * `PhotoMarker`) OR waiting in the no-GPS tray — never both. Returns the tray
+ * list with any entry that already has a marker removed.
+ *
+ * Nothing should ever produce that state, but when it happens the app has no
+ * way out of it: the tray row renders unconditionally and the photo-count badge
+ * sums both lists, so the organizer sees a permanent ghost "Bez GPS" duplicate
+ * of a photo that is sitting on the map with perfectly good coordinates
+ * (client feedback 2026-07-23). Self-healing on load is the cheap fix — the
+ * marker is the authoritative record, since it carries the placement.
+ *
+ * Must run AFTER `sanitizePhotoMarkers`: a photo whose marker was just dropped
+ * as invalid has to keep its tray entry, otherwise it vanishes from the app
+ * entirely. Provisional placements (a pin but no marker yet) are unaffected —
+ * they have no marker, so nothing is dropped.
+ */
+export function dropNoGpsPhotosWithMarkers(
+  noGpsPhotos: readonly NoGpsPhoto[],
+  markers: readonly Pick<PhotoMarker, 'photoId'>[],
+): NoGpsPhoto[] {
+  if (noGpsPhotos.length === 0 || markers.length === 0) return [...noGpsPhotos]
+  // Click-placed markers carry no photoId — they are not imported photos and
+  // can never correspond to a tray entry, so they must not enter the lookup.
+  const placed = new Set(
+    markers.map(m => m.photoId).filter((id): id is string => typeof id === 'string' && id.length > 0),
+  )
+  return noGpsPhotos.filter(p => !placed.has(p.photoId))
+}
+
+/**
+ * Compose the text drawn next to a photo dot on the printed / exported A4 map.
+ * Sibling of {@link buildPhotoMarkerKmlName}, deliberately terser: KML keeps the
+ * original filename in parentheses for traceability in Google Earth, but on
+ * paper that doubles the width of every pill for no benefit.
+ *
+ * The rule is "print the most meaningful identifier the photo has", so a dot
+ * never prints nothing and never prints redundant noise:
+ *  - custom name + label → `A - TP1`
+ *  - custom name only    → `TP1`
+ *  - label only          → `A`
+ *  - neither             → `DSC_0123.JPG`
+ *
+ * The raw filename is dropped ONLY when a label exists (2026-07-26). Both ends
+ * of that rule are load-bearing and pull in opposite directions:
+ *  - Keep it when there is nothing else. The client's original complaint
+ *    (2026-07-23) was that photo names were MISSING from the export, so an
+ *    anonymous dot is the one outcome this function must never produce.
+ *  - Drop it once a label is set. `A` is the identifier the competitor reads
+ *    off the answer sheet; appending the camera serial number restates nothing
+ *    and costs ~300 px of pill width at the print font — on a 20-photo rally
+ *    where the organizer labelled but never renamed, that is 20 filename pills
+ *    strewn across the track, each one a collision candidate for the packer in
+ *    `mapCapture.ts` (`resolveLabelCollisions`).
+ *
+ * Turning-point photos are treated exactly like track photos — no
+ * special-casing — so the rule stays explainable to an organizer.
+ *
+ * Blank / redundant `displayName`s route through {@link normalizeDisplayName}
+ * so the print can never disagree with the list row or the KML about whether a
+ * photo has a real custom name.
+ */
+export function buildPhotoMarkerPrintLabel(
+  m: Pick<PhotoMarker, 'name' | 'displayName' | 'label'>,
+): string {
+  const custom = normalizeDisplayName(m.displayName, m.name)
+  // Label branch first: with a label present the filename is never the best
+  // identifier available, so it is not even considered as a fallback.
+  if (m.label) return custom ? `${m.label} - ${custom}` : m.label
+  // No label — the custom name if there is one, else the filename. `name` is
+  // '' for click-placed markers, which correctly yields '' (a bare dot; see
+  // the `.filter(p => p.text)` guard in mapCapture.ts).
+  return custom ?? m.name
 }
 
 /**

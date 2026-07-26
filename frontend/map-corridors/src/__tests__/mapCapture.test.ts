@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { detectOrientation, withTimeout } from '../utils/mapCapture'
+import { detectOrientation, withTimeout, resolveLabelCollisions } from '../utils/mapCapture'
+import type { PrintLabelBox } from '../utils/mapCapture'
 
 // ---------------------------------------------------------------------------
 // detectOrientation
@@ -86,5 +87,88 @@ describe('withTimeout', () => {
     await expect(p).rejects.toThrow('timeout')
     // Late resolve — should not throw or cause issues
     resolve('late')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// resolveLabelCollisions — pill packing for the printed A4.
+// The print projects raw coordinates with no marker fan, so photos taken at the
+// same turning point land on one pixel; without this their names would render
+// as an unreadable pile (client feedback 2026-07-23).
+// ---------------------------------------------------------------------------
+describe('resolveLabelCollisions', () => {
+  const box = (x: number, y: number, w = 100, h = 40): PrintLabelBox => ({ x, y, w, h })
+
+  it('leaves well-separated pills exactly where they were', () => {
+    expect(resolveLabelCollisions([box(0, 100), box(0, 500), box(0, 900)]))
+      .toEqual([100, 500, 900])
+  })
+
+  it('pushes an exactly co-located pill below the first', () => {
+    // Same point: second drops one pill height + gap (40 + 4).
+    expect(resolveLabelCollisions([box(0, 100), box(0, 100)], 4)).toEqual([100, 144])
+  })
+
+  it('stacks a whole cluster without any pair overlapping', () => {
+    const ys = resolveLabelCollisions(Array.from({ length: 5 }, () => box(0, 200)), 4)
+    expect(ys).toEqual([200, 244, 288, 332, 376])
+    // Pairwise check rather than trusting the literal above.
+    for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBeGreaterThanOrEqual(40)
+  })
+
+  it('does not move pills that merely share a row but not a column', () => {
+    // Far apart horizontally — no overlap, so no nudge.
+    expect(resolveLabelCollisions([box(0, 100), box(500, 100)])).toEqual([100, 100])
+  })
+
+  it('nudges on partial overlap, not just exact coincidence', () => {
+    // 50px apart with 100px-wide pills → they overlap horizontally, and share y.
+    expect(resolveLabelCollisions([box(0, 100), box(50, 110)], 4)).toEqual([100, 154])
+  })
+
+  it('preserves input order and keeps earlier markers in their natural spot', () => {
+    // Stability matters: two prints of the same map must lay out identically.
+    const boxes = [box(0, 300), box(0, 300), box(0, 300)]
+    expect(resolveLabelCollisions(boxes)[0]).toBe(300)
+    expect(resolveLabelCollisions(boxes)).toEqual(resolveLabelCollisions(boxes))
+  })
+
+  it('only ever moves pills down, never up or sideways', () => {
+    const ys = resolveLabelCollisions([box(0, 100), box(0, 100), box(0, 100)])
+    for (const y of ys) expect(y).toBeGreaterThanOrEqual(100)
+  })
+
+  it('terminates on a large degenerate cluster (every pill on one pixel)', () => {
+    const ys = resolveLabelCollisions(Array.from({ length: 60 }, () => box(0, 0)))
+    expect(ys).toHaveLength(60)
+    expect(new Set(ys).size).toBe(60) // all distinct — nothing left stacked
+  })
+
+  it('handles an empty list', () => {
+    expect(resolveLabelCollisions([])).toEqual([])
+  })
+})
+
+describe('resolveLabelCollisions — page bound', () => {
+  const box = (x: number, y: number, w = 100, h = 46): PrintLabelBox => ({ x, y, w, h })
+
+  it('never pushes a pill past the bottom of the page', () => {
+    // PR #113 review F2: the southernmost turning point projects to y ~2380 on
+    // a 2480px A4, and each nudge is ~50px. Four photos of that one point would
+    // walk the 3rd and 4th clean off the sheet — losing exactly the names this
+    // packer exists to preserve. Overlapping at the edge is the lesser evil.
+    const ys = resolveLabelCollisions(Array.from({ length: 5 }, () => box(0, 2380)), 4, 2480)
+    for (const y of ys) {
+      expect(y + 23, `pill centre ${y} spills past the page`).toBeLessThanOrEqual(2480)
+    }
+  })
+
+  it('still stacks normally when there is room below', () => {
+    // The bound must not disturb the common case.
+    expect(resolveLabelCollisions([box(0, 100), box(0, 100)], 4, 2480)).toEqual([100, 150])
+  })
+
+  it('defaults to unbounded so existing callers are unaffected', () => {
+    expect(resolveLabelCollisions([box(0, 100), box(0, 100)], 4)).toEqual([100, 150])
   })
 })

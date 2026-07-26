@@ -17,7 +17,7 @@ import { useI18n } from '../contexts/I18nContext';
 import { applyLabelPositionToAllInSession, applySettingToAllInSession, type CanvasSetting, type LabelPosition } from '../utils/canvasStatePatch';
 import { distributeRallyDrop } from '../utils/distributeRallyDrop';
 import { getGridCapacity } from '../utils/getGridCapacity';
-import { parseDiscipline } from '../utils/parseDiscipline';
+import { resolveDiscipline } from '../utils/parseDiscipline';
 import { routeDrop } from '../utils/smartDropRoute';
 import { isPhotoReferencedInSession } from '../utils/sessionRefs';
 import {
@@ -199,7 +199,11 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   // "SP - FP" because set2 is hidden; rally splits via "SP - TPX" /
   // "TPX - FP"). Read once at hook init — the URL doesn't change at
   // runtime in the desktop launcher.
-  const isPrecisionDiscipline = parseDiscipline(typeof window !== 'undefined' ? window.location.search : '') === 'precision';
+  // NOTE: this value is not merely cosmetic — `migrateLegacyPrecisionTitles`
+  // below PERSISTS track-set titles based on it, so a wrong default corrupts
+  // the competition rather than just mislabelling it. That is why the fallback
+  // is resolved before React mounts (see utils/resolveBootDiscipline).
+  const isPrecisionDiscipline = resolveDiscipline(typeof window !== 'undefined' ? window.location.search : '') === 'precision';
 
   // One-shot migration for precision sessions persisted before feedback
   // 2026-04-26 #1: their track-set titles still carry the legacy rally

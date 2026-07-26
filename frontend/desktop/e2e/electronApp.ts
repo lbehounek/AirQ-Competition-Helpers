@@ -37,11 +37,20 @@ export async function launchApp(): Promise<LaunchedApp> {
   // Suppress the first-run onboarding tours so they can't cover the UI and flake
   // the deterministic tests. Runs in every page (incl. each sub-app origin)
   // before app code, so the auto-start gate sees the flags already set.
+  //
+  // Every version of each key is set, not just the current one: the tour keys
+  // are deliberately bumped (`…onboarding.v2`) whenever the tour changes
+  // materially so returning users see it once, and a bump that forgot to update
+  // this list would silently un-suppress the tour and flake every spec here.
   await page.addInitScript(() => {
+    const keys = [
+      'airq.mapCorridors.onboarding.v1',
+      'airq.mapCorridors.onboarding.v2',
+      'airq.photoHelper.onboarding.v1',
+      'airq.launcher.onboarding.v1',
+    ];
     try {
-      window.localStorage.setItem('airq.mapCorridors.onboarding.v1', 'e2e');
-      window.localStorage.setItem('airq.photoHelper.onboarding.v1', 'e2e');
-      window.localStorage.setItem('airq.launcher.onboarding.v1', 'e2e');
+      for (const key of keys) window.localStorage.setItem(key, 'e2e');
     } catch {
       /* storage unavailable — nothing to suppress */
     }

@@ -16,7 +16,8 @@ import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
 import { rasterizeGroundMarkerSet } from './utils/groundMarkerPng'
 import { parseDisciplineFromSearch } from './utils/parseDiscipline'
-import { slugifyForFilename } from '@airq/shared-storage'
+import { buildEditorHref } from './utils/buildEditorHref'
+import { slugifyForFilename, type StorageInterface, type DirectoryHandle } from '@airq/shared-storage'
 import { MapStyleSelector } from './components/MapStyleSelector'
 import { GROUND_MARKER_ICON } from './components/GroundMarkerIcons'
 import { useMapStyle } from './hooks/useMapStyle'
@@ -37,6 +38,7 @@ import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
 import type { PhotoFlag, PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
 import { DEFAULT_GROUND_MARKER_TYPE, getLabelsForDiscipline, buildPhotoMarkerKmlName, noGpsPhotoDisplayName, photoMarkerDisplayName } from './types/markers'
 import { importPhotosToStorage } from './photoImport/importPhotosToStorage'
+import { createImportQueue } from './photoImport/importQueue'
 import type { ImportFailureReason, ImportFailure } from './photoImport/types'
 import { NoGpsTray } from './components/NoGpsTray'
 import { PhotoListPanel } from './components/PhotoListPanel'
@@ -46,7 +48,7 @@ import { resolveVariantFlags } from './photoVariants/resolveVariantFlags'
 import { resolveActivePhotoId } from './activePhoto/activePhoto'
 import { isProvisionalValid, type ProvisionalPlacement } from './provisionalPlacement/provisionalPlacement'
 import { isMarkerVisibleOnMap } from './map/photoLayers/markerVisibility'
-import type { PhotoMarker } from './types/markers'
+import type { NoGpsPhoto, PhotoMarker } from './types/markers'
 import {
   buildMapPicks,
   flushPendingMapPicks,
@@ -90,7 +92,7 @@ function summarizeFailures(
   t: (key: string, params?: Record<string, string | number>) => string,
 ): { severity: 'error'; text: string } {
   const counts: Record<ImportFailureReason, number> = {
-    heic: 0, corrupt: 0, unsupported: 0, storage: 0,
+    heic: 0, corrupt: 0, unsupported: 0, storage: 0, read: 0,
   }
   for (const f of failed) counts[f.reason]++
 
@@ -108,6 +110,17 @@ function summarizeFailures(
       text: counts.storage === 1
         ? t('photo.import.failureStorageOne')
         : t('photo.import.failureStorage', { count: counts.storage }),
+    }
+  }
+  // Ranked above "corrupt": an unreadable file is worth retrying (the card was
+  // pulled, the file moved), whereas a corrupt one never will be. Reporting it
+  // at all is the point — these used to land silently in the no-GPS tray.
+  if (counts.read > 0) {
+    return {
+      severity: 'error',
+      text: counts.read === 1
+        ? t('photo.import.failureReadOne')
+        : t('photo.import.failureRead', { count: counts.read }),
     }
   }
   return {
@@ -204,8 +217,9 @@ function App() {
     setSetBreakWaypointName,
     setMarkers: persistMarkers,
     setGroundMarkers: persistGroundMarkers,
-    setNoGpsPhotos: persistNoGpsPhotos,
     setNoGpsTrayOpen: persistNoGpsTrayOpen,
+    getExistingContentHashes,
+    commitImportedPhotos,
     placeNoGpsPhoto,
     removePhoto,
     renamePhoto,
@@ -476,6 +490,13 @@ function App() {
   // hints. Severity drives the MUI Alert color.
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
   const [snack, setSnack] = useState<{ severity: 'success' | 'info' | 'warning' | 'error'; text: string } | null>(null)
+  // One serialized import queue per mounted App. Lazy `useState` initializer
+  // rather than `useRef(createImportQueue(...))` so the queue is constructed
+  // exactly once — the ref form would allocate (and throw away) a queue on every
+  // render. It drives `importProgress` directly; `setImportProgress` is a stable
+  // setState, so capturing it once here is safe. See `createImportQueue` for why
+  // a second drop must be QUEUED rather than run in parallel or dropped.
+  const [importQueue] = useState(() => createImportQueue(setImportProgress))
 
   // Hydrate from the competition's persisted working dir on mount so that
   // re-opening map-corridors later (without a fresh KML import) still
@@ -573,23 +594,43 @@ function App() {
     }
   }, [session?.geojson, effectiveDiscipline, use1NmAfterSp, effectiveConfig])
 
-  const handlePhotoFiles = useCallback(async (files: File[]) => {
-    if (files.length === 0) return
-    if (!storage || !photosDir) {
-      setSnack({ severity: 'warning', text: t('photo.import.noCompetition') })
-      return
-    }
-    setImportProgress({ done: 0, total: files.length })
-    // ADR-020 re-import dedup: collect the content hashes already in this
-    // competition (placed markers + no-GPS tray) so importPhotosToStorage skips
-    // re-importing the same photo and leaves the original (and its placement /
-    // flag / edits) untouched.
-    const existingContentHashes = new Set<string>()
-    for (const m of markers) if (m.contentHash) existingContentHashes.add(m.contentHash)
-    for (const p of (session?.noGpsPhotos ?? [])) if (p.contentHash) existingContentHashes.add(p.contentHash)
+  /**
+   * Run ONE photo-import batch to completion. ALWAYS resolves — every failure is
+   * turned into a snackbar here — because the import queue chains the next batch
+   * on this promise and a rejection would also surface as an unhandled rejection
+   * inside the React drop handler.
+   *
+   * Never call directly: `handlePhotoFiles` below is the entry point that
+   * serializes batches. `storage` / `photosDir` arrive as parameters (already
+   * null-checked by the caller) so this callback does not have to re-run every
+   * time those handles are re-published by the session hook.
+   *
+   * `report(done)` is the queue's progress sink for THIS batch; the queue turns
+   * it into the burst-wide aggregate shown on the bar.
+   */
+  const runPhotoImport = useCallback(async (
+    storage: StorageInterface,
+    photosDir: DirectoryHandle,
+    files: File[],
+    report: (done: number) => void,
+  ): Promise<void> => {
+    // ADR-020 re-import dedup: the content hashes already in this competition
+    // (placed markers + no-GPS tray) so importPhotosToStorage skips re-importing
+    // the same photo and leaves the original (and its placement / flag / edits)
+    // untouched.
+    //
+    // Read at RUN time from the session hook's live ref — NEVER from this
+    // component's render closure. The closure snapshot is frozen at the render
+    // that created the callback, so a drop arriving while an earlier import was
+    // still hashing captured a set that predated that import's commit: no
+    // duplicate was detected and every file was imported a second time under a
+    // fresh random `pm-` id.
+    const existingContentHashes = getExistingContentHashes()
     try {
       const result = await importPhotosToStorage(storage, photosDir, files, {
-        onProgress: (done, total) => setImportProgress({ done, total }),
+        // The queue owns the bar and aggregates across queued batches, so it only
+        // needs this batch's running count — it already knows the batch size.
+        onProgress: report,
         existingContentHashes,
       })
       // Phase 4/6: surface imported photos. Photos WITH EXIF GPS become
@@ -600,43 +641,34 @@ function App() {
       if (result.ok.length > 0) {
         const withGps = result.ok.filter(p => p.exif.capturedAt !== undefined)
         const withoutGps = result.ok.filter(p => p.exif.capturedAt === undefined)
-        if (withGps.length > 0) {
-          await persistMarkers((prev) => {
-            const next = [...prev]
-            for (const p of withGps) {
-              const captured = p.exif.capturedAt!
-              next.push({
-                id: p.photoId,
-                photoId: p.photoId,
-                lng: captured.lng,
-                lat: captured.lat,
-                name: p.file.name,
-                contentHash: p.contentHash,
-                capturedAt: {
-                  lng: captured.lng,
-                  lat: captured.lat,
-                  ...(captured.altitude !== undefined ? { altitude: captured.altitude } : {}),
-                  ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
-                },
-              })
-            }
-            return next
-          })
-        }
-        if (withoutGps.length > 0) {
-          await persistNoGpsPhotos((prev) => {
-            const next = [...prev]
-            for (const p of withoutGps) {
-              next.push({
-                photoId: p.photoId,
-                filename: p.file.name,
-                contentHash: p.contentHash,
-                ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
-              })
-            }
-            return next
-          })
-        }
+        // ONE session write for both lists. As two sequential writes, the
+        // second rebuilt the session from a snapshot taken before the first,
+        // so a mixed batch (any photo lacking GPS) could discard the entire
+        // marker batch and leave only the tray entries.
+        const newMarkers: PhotoMarker[] = withGps.map((p) => {
+          const captured = p.exif.capturedAt!
+          return {
+            id: p.photoId,
+            photoId: p.photoId,
+            lng: captured.lng,
+            lat: captured.lat,
+            name: p.file.name,
+            contentHash: p.contentHash,
+            capturedAt: {
+              lng: captured.lng,
+              lat: captured.lat,
+              ...(captured.altitude !== undefined ? { altitude: captured.altitude } : {}),
+              ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
+            },
+          }
+        })
+        const newNoGps: NoGpsPhoto[] = withoutGps.map((p) => ({
+          photoId: p.photoId,
+          filename: p.file.name,
+          contentHash: p.contentHash,
+          ...(p.exif.timestamp ? { timestamp: p.exif.timestamp } : {}),
+        }))
+        await commitImportedPhotos(newMarkers, newNoGps)
       }
       const dupCount = result.duplicates?.length ?? 0
       const dupSuffix = dupCount > 0 ? ` ${t('photo.import.duplicatesSkipped', { count: dupCount })}` : ''
@@ -668,12 +700,41 @@ function App() {
       // importPhotosToStorage shouldn't throw — per-file failures land in
       // result.failed. A top-level throw means something foundational broke
       // (storage init, etc.). Surface it generically.
+      // Deliberately swallowed and not rethrown: the queue has to keep draining,
+      // and the batches the user dropped behind this one must still import.
       console.error('photo import failed:', err)
       setSnack({ severity: 'error', text: err instanceof Error ? err.message : String(err) })
-    } finally {
-      setImportProgress(null)
     }
-  }, [storage, photosDir, t, persistMarkers, persistNoGpsPhotos, markers, session?.noGpsPhotos])
+    // No `finally { setImportProgress(null) }` any more — the queue owns the bar
+    // and clears it only once EVERY queued batch has drained. Clearing it here
+    // would blank the bar the moment the first of two queued imports finished,
+    // leaving the second running with no visible feedback at all.
+  }, [t, commitImportedPhotos, getExistingContentHashes])
+
+  /**
+   * Entry point for every photo import (drag-drop, file picker, bundled sample).
+   *
+   * QUEUES the batch instead of running it immediately. The dropzone
+   * (`onDrop`, below) and the hidden file input both stay live during an import,
+   * so a second drop lands here while the first is still hashing — and used to
+   * run fully concurrently, with both runs reading a dedup set built before
+   * either had committed. Queueing rather than rejecting the second drop is
+   * deliberate: discarding it would trade a duplicate for a silent data loss,
+   * the worse failure for an organizer who just dropped 200 photos and gets no
+   * error to explain the missing ones.
+   *
+   * Returns a promise settling when THIS batch has finished, so the existing
+   * `Promise.all` call sites (mixed KML+photo drop, file input, `loadSample`)
+   * still learn when the photos are actually committed.
+   */
+  const handlePhotoFiles = useCallback((files: File[]): Promise<void> => {
+    if (files.length === 0) return Promise.resolve()
+    if (!storage || !photosDir) {
+      setSnack({ severity: 'warning', text: t('photo.import.noCompetition') })
+      return Promise.resolve()
+    }
+    return importQueue.enqueue(files.length, (report) => runPhotoImport(storage, photosDir, files, report))
+  }, [storage, photosDir, t, importQueue, runPhotoImport])
 
   // Phase 9 — Send-to-editor button handler. Flushes the pending
   // map-picks write FIRST (ADR-009 navigation-flush requirement) so a
@@ -711,7 +772,15 @@ function App() {
     if (api?.navigateToApp) {
       api.navigateToApp('photo-helper', competitionId)
     } else {
-      window.location.href = `/photo-helper/?competitionId=${competitionId}`
+      // Browser fallback (no Electron shell). We must stamp `discipline`
+      // ourselves: the desktop path gets it from main.js' 'navigate-to-app',
+      // which reads it out of the competitions index, but the web build has no
+      // launcher in between. Without it the editor booted with no ?discipline=
+      // and silently defaulted to rally, so a precision competition printed
+      // letter labels and a spurious second answer sheet. `effectiveDiscipline`
+      // (URL -> persisted session -> rally) is the exact value this app is
+      // rendering with, so the two apps can never disagree.
+      window.location.href = buildEditorHref(competitionId, effectiveDiscipline)
     }
   }, [competitionId, storage, competitionDir, markers, routeWaypoints, session?.setBreakWaypointName, effectiveDiscipline, t])
 
