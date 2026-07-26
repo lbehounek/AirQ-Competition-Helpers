@@ -37,20 +37,29 @@ function makePhotoId(): string {
   return `pm-${crypto.randomUUID()}`
 }
 
-async function computeContentHash(file: File): Promise<string> {
-  const buf = await file.arrayBuffer()
-  const hash = await crypto.subtle.digest('SHA-1', buf)
-  const bytes = new Uint8Array(hash)
+// `Uint8Array<ArrayBuffer>` (not the default `ArrayBufferLike`) because
+// `crypto.subtle.digest` refuses a view that might sit on a SharedArrayBuffer.
+async function computeContentHash(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-1', bytes)
+  const digest = new Uint8Array(hash)
   let hex = ''
-  for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0')
+  for (let i = 0; i < digest.length; i++) hex += digest[i].toString(16).padStart(2, '0')
   return hex
 }
 
+/**
+ * Classify a failure raised AFTER the file's bytes were successfully read.
+ *
+ * Deliberately has no read-failure branch: an unreadable file is caught at the
+ * one place it can actually happen (the `arrayBuffer()` call in `worker`), so
+ * the reason is known by origin rather than inferred from the exception class.
+ * Inferring it was wrong — `createImageBitmap` rejects with a `DOMException`
+ * (`InvalidStateError`) for an image it cannot DECODE, which is the corrupt
+ * case, so a truncated JPEG was being reported as "could not be opened, check
+ * it is still available and import it again" — advice that can never work.
+ */
 function classifyFailure(err: unknown): ImportFailure['reason'] {
   if (err instanceof HeicNotSupportedError) return 'heic'
-  // Covers every read in the pool — EXIF, thumbnail and content hash all touch
-  // the same File — so a vanished/locked file reads as "retry", not "corrupt".
-  if (isUnreadableFileError(err)) return 'read'
   return 'corrupt'
 }
 
@@ -99,11 +108,32 @@ export async function importPhotoFiles(
       const idx = nextIdx++
       if (idx >= queue.length) return
       const file = queue[idx]
+
+      // Read the bytes ONCE, here. This is the only point where a failure
+      // unambiguously means "these bytes could not be read" (file moved or
+      // locked mid-import, card pulled, network drive blip) — everything after
+      // it operates on bytes already in memory, so a later throw is always a
+      // decode/parse problem. It also removes a duplicate full read: EXIF and
+      // the content hash previously each read the whole file.
+      let bytes: Uint8Array<ArrayBuffer>
+      try {
+        bytes = new Uint8Array(await file.arrayBuffer())
+      } catch (err) {
+        failed.push({
+          filename: file.name,
+          reason: isUnreadableFileError(err) ? 'read' : 'corrupt',
+          message: err instanceof Error ? err.message : String(err),
+        })
+        reportProgress()
+        continue
+      }
+
       try {
         const [exif, thumbnail, contentHash] = await Promise.all([
-          extractExif(file),
+          extractExif(file, bytes),
+          // Keeps the File: createImageBitmap needs a Blob to decode.
           generateThumb(file),
-          computeContentHash(file),
+          computeContentHash(bytes),
         ])
         ok.push({
           photoId: makePhotoId(),

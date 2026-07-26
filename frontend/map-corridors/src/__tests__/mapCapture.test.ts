@@ -148,3 +148,27 @@ describe('resolveLabelCollisions', () => {
     expect(resolveLabelCollisions([])).toEqual([])
   })
 })
+
+describe('resolveLabelCollisions — page bound', () => {
+  const box = (x: number, y: number, w = 100, h = 46): PrintLabelBox => ({ x, y, w, h })
+
+  it('never pushes a pill past the bottom of the page', () => {
+    // PR #113 review F2: the southernmost turning point projects to y ~2380 on
+    // a 2480px A4, and each nudge is ~50px. Four photos of that one point would
+    // walk the 3rd and 4th clean off the sheet — losing exactly the names this
+    // packer exists to preserve. Overlapping at the edge is the lesser evil.
+    const ys = resolveLabelCollisions(Array.from({ length: 5 }, () => box(0, 2380)), 4, 2480)
+    for (const y of ys) {
+      expect(y + 23, `pill centre ${y} spills past the page`).toBeLessThanOrEqual(2480)
+    }
+  })
+
+  it('still stacks normally when there is room below', () => {
+    // The bound must not disturb the common case.
+    expect(resolveLabelCollisions([box(0, 100), box(0, 100)], 4, 2480)).toEqual([100, 150])
+  })
+
+  it('defaults to unbounded so existing callers are unaffected', () => {
+    expect(resolveLabelCollisions([box(0, 100), box(0, 100)], 4)).toEqual([100, 150])
+  })
+})

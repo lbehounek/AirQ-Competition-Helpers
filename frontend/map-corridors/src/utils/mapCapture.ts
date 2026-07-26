@@ -57,6 +57,15 @@ const A4_PORTRAIT = { width: 2480, height: 3508 }
 const TIMEOUT_MS = 15_000
 const PADDING = 100 // pixels padding around track in print
 
+/**
+ * Keep-out band at the page edges for label pills, in canvas px (~2 mm at 300
+ * DPI). Clamping to the exact edge is not enough: consumer printers have an
+ * unprintable margin of several millimetres, so a name flush against the edge
+ * survives the PNG and is then guillotined by the printer — the same photo
+ * ends up nameless on the sheet that actually reaches the competitor.
+ */
+const PRINT_EDGE_MARGIN_PX = 24
+
 /** A label pill's box: `y` is its CENTRE line, `x` its left text origin. */
 export type PrintLabelBox = { x: number; y: number; w: number; h: number }
 
@@ -78,8 +87,19 @@ export type PrintLabelBox = { x: number; y: number; w: number; h: number }
  * to its dot, and horizontal drift breaks that association faster than a
  * vertical offset does. Nothing is dropped — a missing name on a competition
  * map is worse than a slightly displaced one.
+ *
+ * @param maxY Bottom edge of the page in canvas pixels. A pill is never nudged
+ *   past it. Photos clustered at the southernmost turning point sit near y ≈
+ *   2380 on a 2480 px A4, and each nudge is ~50 px — so without this bound the
+ *   third and fourth variants of one point walk straight off the sheet, losing
+ *   exactly the names this function exists to keep. Overlapping at the page
+ *   edge is the lesser evil: still readable, still there.
  */
-export function resolveLabelCollisions(boxes: PrintLabelBox[], gap = 4): number[] {
+export function resolveLabelCollisions(
+  boxes: PrintLabelBox[],
+  gap = 4,
+  maxY = Infinity,
+): number[] {
   const placed: PrintLabelBox[] = []
   return boxes.map(box => {
     let y = box.y
@@ -91,7 +111,9 @@ export function resolveLabelCollisions(boxes: PrintLabelBox[], gap = 4): number[
         y - box.h / 2 < p.y + p.h / 2 && y + box.h / 2 > p.y - p.h / 2,
       )
       if (!hits) break
-      y += box.h + gap
+      const nextY = y + box.h + gap
+      if (nextY + box.h / 2 > maxY) break
+      y = nextY
     }
     placed.push({ ...box, y })
     return y
@@ -273,14 +295,27 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     // unreadable pile, so pills that collide get pushed down the page.
     const pills = projected
       .filter(p => p.text)
-      .map(p => ({
-        text: p.text as string,
-        x: p.x + markerRadius + 4 * scaleX,
-        y: p.y,
-        w: ctx.measureText(p.text as string).width + padX * 2,
-        h: pillH,
-      }))
-    const pillYs = resolveLabelCollisions(pills, Math.round(4 * scaleY))
+      .map(p => {
+        const text = p.text as string
+        const w = ctx.measureText(text).width + padX * 2
+        return {
+          text,
+          // Clamped inside the printable area: renames allow 200 characters,
+          // and even a plain `DSC_0123.JPG` is ~300 px wide at this font — a
+          // photo near the right edge would otherwise print its name off the
+          // sheet, which loses it just as completely as never drawing it.
+          x: Math.min(
+            p.x + markerRadius + 4 * scaleX,
+            dims.width - w - padX - PRINT_EDGE_MARGIN_PX,
+          ),
+          y: p.y,
+          w,
+          h: pillH,
+        }
+      })
+    const pillYs = resolveLabelCollisions(
+      pills, Math.round(4 * scaleY), dims.height - PRINT_EDGE_MARGIN_PX,
+    )
 
     pills.forEach((pill, i) => {
       const y = pillYs[i]

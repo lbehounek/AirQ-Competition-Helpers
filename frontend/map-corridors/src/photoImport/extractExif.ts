@@ -52,15 +52,17 @@ function isValidGps(g: { latitude?: unknown; longitude?: unknown } | null | unde
  *   Genuine parse failures (corrupt JPEG, missing EXIF segment) still resolve
  *   to an empty result so importPhotoFiles keeps going on the rest of the batch.
  */
-export async function extractExif(file: File): Promise<ExifData> {
-  // Read the bytes ourselves rather than handing exifr the File. `arrayBuffer()`
-  // rejects with a real DOMException when the file can't be read, whereas
-  // exifr reads via FileReader and its `onerror` rejects with a ProgressEvent
-  // whose DOMException is discarded — arriving here as something a catch-all
-  // treats as "no EXIF found". That is exactly how a photo with perfectly good
-  // GPS lands in the no-GPS tray. It also collapses the previous two reads
-  // (HEIC sniff + exifr) into one.
-  const bytes = new Uint8Array(await file.arrayBuffer())
+export async function extractExif(file: File, preRead?: Uint8Array): Promise<ExifData> {
+  // Parse from BYTES, never from the File. Handing exifr a File makes it read
+  // via FileReader, whose `onerror` rejects with a ProgressEvent that discards
+  // the underlying DOMException — arriving here as something a catch-all reads
+  // as "no EXIF found". That is exactly how a photo with perfectly good GPS
+  // lands in the no-GPS tray.
+  //
+  // `importPhotoFiles` passes bytes it already read for the content hash, so
+  // one read serves EXIF, hashing and the HEIC sniff. The self-read fallback
+  // keeps this callable standalone (and is what the unit tests exercise).
+  const bytes = preRead ?? new Uint8Array(await file.arrayBuffer())
 
   if (isHeicContent(bytes)) {
     throw new HeicNotSupportedError(file.name)

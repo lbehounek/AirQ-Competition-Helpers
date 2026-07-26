@@ -444,3 +444,47 @@ describe('interleaving fuzz over every noGpsPhotos/markers mutation', () => {
     }
   }, 60_000)
 })
+
+// ---------------------------------------------------------------------------
+// commitImportedPhotos — the contract that replaced the two-write sequence
+// ---------------------------------------------------------------------------
+
+describe('commitImportedPhotos', () => {
+  it('writes markers AND tray entries in exactly ONE session write', async () => {
+    // Without this, someone can "simplify" commitImportedPhotos back into two
+    // sequential setters and every other test still passes — the lost update
+    // only appears under a timing window the suite does not force.
+    const api = await mountSession()
+    const before = storage.sessionWrites.length
+
+    await outsideAct(async () => {
+      await api.current.commitImportedPhotos([marker(1), marker(2)] as any, [trayEntry(3)] as any)
+    })
+
+    expect(storage.sessionWrites.length - before, 'the import must be one atomic write').toBe(1)
+    const disk = storage.disk('comp-1')
+    expect(disk.markers.map((m: any) => m.photoId)).toEqual(['pm-1', 'pm-2'])
+    expect(disk.noGpsPhotos.map((p: any) => p.photoId)).toEqual(['pm-3'])
+    expectNoGhostEver()
+  })
+
+  it('is a no-op when the batch is empty (no pointless session version bump)', async () => {
+    const api = await mountSession()
+    const before = storage.sessionWrites.length
+    await outsideAct(async () => {
+      await api.current.commitImportedPhotos([] as any, [] as any)
+    })
+    expect(storage.sessionWrites.length).toBe(before)
+  })
+
+  it('appends to existing photos rather than replacing them', async () => {
+    const api = await mountSession()
+    await outsideAct(async () => {
+      await api.current.commitImportedPhotos([marker(1)] as any, [] as any)
+      await api.current.commitImportedPhotos([marker(2)] as any, [trayEntry(3)] as any)
+    })
+    const disk = storage.disk('comp-1')
+    expect(disk.markers.map((m: any) => m.photoId)).toEqual(['pm-1', 'pm-2'])
+    expect(disk.noGpsPhotos.map((p: any) => p.photoId)).toEqual(['pm-3'])
+  })
+})
