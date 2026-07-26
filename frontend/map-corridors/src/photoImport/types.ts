@@ -22,6 +22,25 @@ export class HeicNotSupportedError extends Error {
   }
 }
 
+/**
+ * True when an error means "these bytes could not be READ", as opposed to
+ * "these bytes are not parseable EXIF".
+ *
+ * The distinction matters because the two are silently interchangeable
+ * otherwise: a photo whose read failed has no GPS *as far as the parser can
+ * tell*, so it used to be filed under "Bez GPS" next to photos that genuinely
+ * carry no coordinates — the organizer sees a GPS-tagged photo land in the
+ * no-GPS tray with no explanation (client feedback 2026-07-23).
+ *
+ * Browser File/Blob reads reject with a `DOMException` (`NotReadableError` when
+ * the OS handle went away — a file moved or locked mid-import, a flaky network
+ * drive, an ejected SD card); exifr's own parse failures are plain `Error`s.
+ * That split is the discriminator.
+ */
+export function isUnreadableFileError(err: unknown): boolean {
+  return typeof DOMException !== 'undefined' && err instanceof DOMException
+}
+
 export interface ImportedPhoto {
   photoId: string
   file: File
@@ -32,7 +51,7 @@ export interface ImportedPhoto {
   contentHash: string
 }
 
-export type ImportFailureReason = 'heic' | 'corrupt' | 'unsupported' | 'storage'
+export type ImportFailureReason = 'heic' | 'corrupt' | 'unsupported' | 'storage' | 'read'
 
 export interface ImportFailure {
   filename: string

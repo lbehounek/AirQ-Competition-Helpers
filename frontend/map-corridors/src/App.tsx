@@ -90,7 +90,7 @@ function summarizeFailures(
   t: (key: string, params?: Record<string, string | number>) => string,
 ): { severity: 'error'; text: string } {
   const counts: Record<ImportFailureReason, number> = {
-    heic: 0, corrupt: 0, unsupported: 0, storage: 0,
+    heic: 0, corrupt: 0, unsupported: 0, storage: 0, read: 0,
   }
   for (const f of failed) counts[f.reason]++
 
@@ -108,6 +108,17 @@ function summarizeFailures(
       text: counts.storage === 1
         ? t('photo.import.failureStorageOne')
         : t('photo.import.failureStorage', { count: counts.storage }),
+    }
+  }
+  // Ranked above "corrupt": an unreadable file is worth retrying (the card was
+  // pulled, the file moved), whereas a corrupt one never will be. Reporting it
+  // at all is the point — these used to land silently in the no-GPS tray.
+  if (counts.read > 0) {
+    return {
+      severity: 'error',
+      text: counts.read === 1
+        ? t('photo.import.failureReadOne')
+        : t('photo.import.failureRead', { count: counts.read }),
     }
   }
   return {

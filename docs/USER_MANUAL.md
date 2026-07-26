@@ -109,8 +109,8 @@ clicked (only typing in a text field takes priority):
 | Key | Action |
 |-----|--------|
 | **← ↑ ↓ →** | Pan the map |
-| **Shift + ← / →** | Rotate (compass turns with the map) |
-| **Shift + ↑ / ↓** | Tilt the view |
+| **Shift + ← / →** (or **Ctrl + ← / →**) | Rotate (compass turns with the map) |
+| **Shift + ↑ / ↓** (or **Ctrl + ↑ / ↓**) | Tilt the view |
 | **Page Up / Page Down** | Zoom in / out |
 | **+ / −** | Zoom in / out |
 | **N** | Face north |

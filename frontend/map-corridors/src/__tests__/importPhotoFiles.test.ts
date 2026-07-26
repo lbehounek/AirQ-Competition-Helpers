@@ -251,3 +251,45 @@ describe('importPhotoFiles — edge cases', () => {
     expect(generateThumbMock).toHaveBeenCalledTimes(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Unreadable files are reported, not silently filed as "no GPS".
+// Client feedback 2026-07-23: a GPS-tagged photo showed up under "Bez GPS".
+// A failed READ is indistinguishable from "this photo has no coordinates"
+// unless the pipeline keeps them apart — that's what `reason: 'read'` is for.
+// ---------------------------------------------------------------------------
+describe('importPhotoFiles — unreadable files', () => {
+  it('classifies a DOMException as "read", not "corrupt"', async () => {
+    // NotReadableError is what the browser throws when the OS handle is gone:
+    // the file moved mid-import, the SD card was pulled, a network drive blipped.
+    extractExifMock.mockRejectedValueOnce(
+      new DOMException('The requested file could not be read', 'NotReadableError'),
+    )
+    const result = await importPhotoFiles([makeFile('gone.jpg')])
+    expect(result.ok).toHaveLength(0)
+    expect(result.failed).toHaveLength(1)
+    expect(result.failed[0]).toMatchObject({ filename: 'gone.jpg', reason: 'read' })
+  })
+
+  it('still classifies a plain parse error as "corrupt"', async () => {
+    extractExifMock.mockRejectedValueOnce(new Error('Invalid JPEG structure'))
+    const result = await importPhotoFiles([makeFile('bad.jpg')])
+    expect(result.failed[0]).toMatchObject({ filename: 'bad.jpg', reason: 'corrupt' })
+  })
+
+  it('keeps HEIC classification ahead of the read check', async () => {
+    extractExifMock.mockRejectedValueOnce(new HeicNotSupportedError('x.heic'))
+    const result = await importPhotoFiles([makeFile('x.heic')])
+    expect(result.failed[0].reason).toBe('heic')
+  })
+
+  it('isolates one unreadable file — the rest of the batch still imports', async () => {
+    extractExifMock
+      .mockRejectedValueOnce(new DOMException('gone', 'NotReadableError'))
+      .mockResolvedValue({})
+    const result = await importPhotoFiles([makeFile('a.jpg'), makeFile('b.jpg')], { concurrency: 1 })
+    expect(result.failed).toHaveLength(1)
+    expect(result.ok).toHaveLength(1)
+    expect(result.ok[0].file.name).toBe('b.jpg')
+  })
+})

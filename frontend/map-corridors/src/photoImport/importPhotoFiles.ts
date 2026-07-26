@@ -8,7 +8,7 @@ import type {
   ImportFailure,
   ImportResult,
 } from './types'
-import { HeicNotSupportedError } from './types'
+import { HeicNotSupportedError, isUnreadableFileError } from './types'
 
 export interface ImportPhotoFilesOpts {
   /** Max parallel files. Default 8 per ADR-014. */
@@ -48,6 +48,9 @@ async function computeContentHash(file: File): Promise<string> {
 
 function classifyFailure(err: unknown): ImportFailure['reason'] {
   if (err instanceof HeicNotSupportedError) return 'heic'
+  // Covers every read in the pool — EXIF, thumbnail and content hash all touch
+  // the same File — so a vanished/locked file reads as "retry", not "corrupt".
+  if (isUnreadableFileError(err)) return 'read'
   return 'corrupt'
 }
 

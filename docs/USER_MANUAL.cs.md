@@ -110,8 +110,8 @@ kamkoli (přednost má jen psaní do textového pole):
 | Klávesa | Akce |
 |---------|------|
 | **← ↑ ↓ →** | Posun mapy |
-| **Shift + ← / →** | Otáčení (kompas se otáčí s mapou) |
-| **Shift + ↑ / ↓** | Naklonění pohledu |
+| **Shift + ← / →** (nebo **Ctrl + ← / →**) | Otáčení (kompas se otáčí s mapou) |
+| **Shift + ↑ / ↓** (nebo **Ctrl + ↑ / ↓**) | Naklonění pohledu |
 | **Page Up / Page Down** | Přiblížení / oddálení |
 | **+ / −** | Přiblížení / oddálení |
 | **N** | Natočit na sever |

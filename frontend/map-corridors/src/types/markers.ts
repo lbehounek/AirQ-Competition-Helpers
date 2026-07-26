@@ -267,6 +267,61 @@ export function buildPhotoMarkerKmlName(
 }
 
 /**
+ * Enforce the invariant that a photo is EITHER placed on the map (a
+ * `PhotoMarker`) OR waiting in the no-GPS tray — never both. Returns the tray
+ * list with any entry that already has a marker removed.
+ *
+ * Nothing should ever produce that state, but when it happens the app has no
+ * way out of it: the tray row renders unconditionally and the photo-count badge
+ * sums both lists, so the organizer sees a permanent ghost "Bez GPS" duplicate
+ * of a photo that is sitting on the map with perfectly good coordinates
+ * (client feedback 2026-07-23). Self-healing on load is the cheap fix — the
+ * marker is the authoritative record, since it carries the placement.
+ *
+ * Must run AFTER `sanitizePhotoMarkers`: a photo whose marker was just dropped
+ * as invalid has to keep its tray entry, otherwise it vanishes from the app
+ * entirely. Provisional placements (a pin but no marker yet) are unaffected —
+ * they have no marker, so nothing is dropped.
+ */
+export function dropNoGpsPhotosWithMarkers(
+  noGpsPhotos: readonly NoGpsPhoto[],
+  markers: readonly Pick<PhotoMarker, 'photoId'>[],
+): NoGpsPhoto[] {
+  if (noGpsPhotos.length === 0 || markers.length === 0) return [...noGpsPhotos]
+  // Click-placed markers carry no photoId — they are not imported photos and
+  // can never correspond to a tray entry, so they must not enter the lookup.
+  const placed = new Set(
+    markers.map(m => m.photoId).filter((id): id is string => typeof id === 'string' && id.length > 0),
+  )
+  return noGpsPhotos.filter(p => !placed.has(p.photoId))
+}
+
+/**
+ * Compose the text drawn next to a photo dot on the printed / exported A4 map.
+ * Sibling of {@link buildPhotoMarkerKmlName}, deliberately terser: KML keeps the
+ * original filename in parentheses for traceability in Google Earth, but on
+ * paper that doubles the width of every pill for no benefit.
+ *  - custom name + label → `A - TP1`
+ *  - custom name only    → `TP1`
+ *  - label only          → `A - DSC_0123.JPG`
+ *  - neither             → `DSC_0123.JPG`
+ *
+ * Every marker gets text (client feedback 2026-07-23: photo names were missing
+ * from the map export entirely). Turning-point photos are treated exactly like
+ * track photos — no special-casing — so the rule stays explainable.
+ *
+ * Blank / redundant `displayName`s route through {@link normalizeDisplayName}
+ * so the print can never disagree with the list row or the KML.
+ */
+export function buildPhotoMarkerPrintLabel(
+  m: Pick<PhotoMarker, 'name' | 'displayName' | 'label'>,
+): string {
+  const namePart = normalizeDisplayName(m.displayName, m.name) ?? m.name
+  if (!namePart) return m.label ?? ''
+  return m.label ? `${m.label} - ${namePart}` : namePart
+}
+
+/**
  * Numeric-aware filename comparator for list/tray ordering. `numeric: true`
  * makes `DSC_0009 < DSC_0010 < DSC_0100` (a plain lexical sort would put
  * `DSC_0010` before `DSC_0009`). `sensitivity: 'base'` keeps the order stable

@@ -10,6 +10,35 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [Unreleased]
+
+### Fixed
+- **Map Corridors:** **photo names now appear on the exported / printed map.**
+  Previously the print drew only the answer-sheet label (A…T / 1…20), which is
+  set only by clicking through the marker popup grid — so a photo you renamed
+  to *TP1* printed as an anonymous yellow dot, and so did every un-labelled
+  track photo. Each dot now carries its name, prefixed by the answer-sheet
+  label when one is set (`A - TP1`). Names that would land on top of each other
+  — photos shot at the same turning point, which the print draws without the
+  on-screen marker fan — are stacked downwards so they stay readable.
+- **Map Corridors:** a photo whose file could not be **read** during import is
+  now reported as a failed import ("could not be opened — check it is still
+  available") instead of being silently filed under **Bez GPS**. A read that
+  failed looks exactly like "this photo has no coordinates" to the EXIF parser,
+  so a GPS-tagged photo could quietly land in the no-GPS tray.
+- **Map Corridors:** a photo can no longer appear **both** on the map and in the
+  **Bez GPS** list. Sessions carrying that state had a permanent ghost tray row
+  duplicating a photo that was already placed, and the photo-count badge
+  double-counted it; the tray entry is now dropped when the session loads.
+
+### Added
+- **Map Corridors:** **Ctrl + arrow keys** now rotate and tilt the map, matching
+  what organizers expect from Google Earth's Ctrl+drag look-around. `Shift +
+  arrows` continues to work and remains the documented binding (macOS reserves
+  Ctrl+←/→ for switching desktops). Every other Ctrl combination stays with the
+  browser — Ctrl+R still reloads, Ctrl+←/→ still moves the caret while renaming
+  a photo.
+
 ## [2.29.0] - 2026-07-20
 
 ### Fixed

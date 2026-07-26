@@ -2,7 +2,7 @@ import mapboxgl from 'mapbox-gl'
 import type { LngLatBoundsLike, StyleSpecification } from 'mapbox-gl'
 import type { GeoJSON } from 'geojson'
 import { groundMarkerSvgString } from '../components/GroundMarkerIcons'
-import type { GroundMarkerType, PhotoLabel } from '../types/markers'
+import type { GroundMarkerType } from '../types/markers'
 import { PRINT_GROUND_ICON_SIZE, PRINT_MARKER_DOT_RADIUS } from './markerSizes'
 
 type OverlayConfig = {
@@ -18,7 +18,13 @@ type OverlayConfig = {
 type MarkerConfig = {
   lng: number
   lat: number
-  label?: PhotoLabel
+  /**
+   * Pre-composed pill text (answer-sheet label and/or photo name) — built by
+   * `buildPhotoMarkerPrintLabel` at the call site rather than here, so the
+   * naming rule stays in one place next to the KML one. Empty/undefined draws
+   * a bare dot.
+   */
+  text?: string
 }
 
 type GroundMarkerPrintConfig = {
@@ -50,6 +56,47 @@ const A4_LANDSCAPE = { width: 3508, height: 2480 }
 const A4_PORTRAIT = { width: 2480, height: 3508 }
 const TIMEOUT_MS = 15_000
 const PADDING = 100 // pixels padding around track in print
+
+/** A label pill's box: `y` is its CENTRE line, `x` its left text origin. */
+export type PrintLabelBox = { x: number; y: number; w: number; h: number }
+
+/**
+ * Push overlapping label pills down the page so co-located photos stay legible,
+ * returning the resolved centre-`y` for each box **in input order**.
+ *
+ * Greedy and order-preserving: each pill keeps its natural position unless it
+ * would collide with one already placed, in which case it drops by one pill
+ * height (+ `gap`) until it is clear. Earlier markers therefore win their spot,
+ * which keeps the output stable across prints of the same map — a layout that
+ * reshuffled between two prints of one competition would be worse than the
+ * overlap it fixes.
+ *
+ * Pure (no canvas, no DOM) so the packing rule is unit-testable; the caller
+ * supplies widths already measured against the print font.
+ *
+ * Only ever moves pills DOWN, never sideways: the pill must stay visually tied
+ * to its dot, and horizontal drift breaks that association faster than a
+ * vertical offset does. Nothing is dropped — a missing name on a competition
+ * map is worse than a slightly displaced one.
+ */
+export function resolveLabelCollisions(boxes: PrintLabelBox[], gap = 4): number[] {
+  const placed: PrintLabelBox[] = []
+  return boxes.map(box => {
+    let y = box.y
+    // Each nudge clears at least one already-placed pill, so the worst case is
+    // one step per prior box — bounded, no runaway on pathological input.
+    for (let step = 0; step <= placed.length; step++) {
+      const hits = placed.some(p =>
+        box.x < p.x + p.w && box.x + box.w > p.x &&
+        y - box.h / 2 < p.y + p.h / 2 && y + box.h / 2 > p.y - p.h / 2,
+      )
+      if (!hits) break
+      y += box.h + gap
+    }
+    placed.push({ ...box, y })
+    return y
+  })
+}
 
 /**
  * Render a high-resolution offscreen map at A4 300 DPI.
@@ -194,42 +241,59 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     const markerRadius = PRINT_MARKER_DOT_RADIUS * scaleX
     const fontSize = Math.round(42 * scaleX)
 
-    for (const m of markers) {
+    // Dots first, then every pill on top — otherwise a nudged pill belonging to
+    // one photo can be overdrawn by a later photo's dot.
+    const projected = markers.map(m => {
       const px = map.project([m.lng, m.lat])
-      const x = px.x * scaleX
-      const y = px.y * scaleY
+      return { text: m.text, x: px.x * scaleX, y: px.y * scaleY }
+    })
 
+    for (const p of projected) {
       // Yellow circle with dark border
       ctx.beginPath()
-      ctx.arc(x, y, markerRadius, 0, Math.PI * 2)
+      ctx.arc(p.x, p.y, markerRadius, 0, Math.PI * 2)
       ctx.fillStyle = '#FFFF00'
       ctx.fill()
       ctx.strokeStyle = '#333333'
       ctx.lineWidth = 1.5 * scaleX
       ctx.stroke()
-
-      // Label pill
-      if (m.label) {
-        ctx.font = `bold ${fontSize}px Arial, sans-serif`
-        ctx.textAlign = 'left'
-        ctx.textBaseline = 'middle'
-        const labelX = x + markerRadius + 4 * scaleX
-        const metrics = ctx.measureText(m.label)
-        const padX = 4 * scaleX
-        const padY = 2 * scaleY
-        const bgW = metrics.width + padX * 2
-        const bgH = fontSize + padY * 2
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
-        ctx.beginPath()
-        ctx.roundRect(labelX - padX, y - bgH / 2, bgW, bgH, 4 * scaleX)
-        ctx.fill()
-        ctx.strokeStyle = '#e5e7eb'
-        ctx.lineWidth = 1 * scaleX
-        ctx.stroke()
-        ctx.fillStyle = '#111111'
-        ctx.fillText(m.label, labelX, y)
-      }
     }
+
+    // Label pills. Measuring needs the final font set on the context.
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    const padX = 4 * scaleX
+    const padY = 2 * scaleY
+    const pillH = fontSize + padY * 2
+
+    // Unlike the live map, the print projects raw coordinates with no marker
+    // fan (markerFan.ts), so photos shot at the same turning point land on the
+    // same pixel. Bare dots merely overlapped; text would render as an
+    // unreadable pile, so pills that collide get pushed down the page.
+    const pills = projected
+      .filter(p => p.text)
+      .map(p => ({
+        text: p.text as string,
+        x: p.x + markerRadius + 4 * scaleX,
+        y: p.y,
+        w: ctx.measureText(p.text as string).width + padX * 2,
+        h: pillH,
+      }))
+    const pillYs = resolveLabelCollisions(pills, Math.round(4 * scaleY))
+
+    pills.forEach((pill, i) => {
+      const y = pillYs[i]
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
+      ctx.beginPath()
+      ctx.roundRect(pill.x - padX, y - pill.h / 2, pill.w, pill.h, 4 * scaleX)
+      ctx.fill()
+      ctx.strokeStyle = '#e5e7eb'
+      ctx.lineWidth = 1 * scaleX
+      ctx.stroke()
+      ctx.fillStyle = '#111111'
+      ctx.fillText(pill.text, pill.x, y)
+    })
 
     // Composite ground markers (SVG icons).
     // SVG load failures are collected into `warnings` so the caller can surface them —

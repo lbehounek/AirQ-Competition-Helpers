@@ -1,6 +1,6 @@
 import exifr from 'exifr'
 import type { ExifData } from './types'
-import { HeicNotSupportedError } from './types'
+import { HeicNotSupportedError, isUnreadableFileError } from './types'
 
 // ISO base-media-file-format brands that exifr/photo-helper cannot decode.
 // Apple HEIC and its HEVC-derived codec brands all share the `ftyp` box
@@ -44,8 +44,12 @@ function isValidGps(g: { latitude?: unknown; longitude?: unknown } | null | unde
  * mutation, no UI.
  *
  * @throws HeicNotSupportedError if the file's content is HEIC/HEIF.
- *   Any other parse failure (corrupt JPEG, missing EXIF) resolves to an
- *   empty result so importPhotoFiles can keep going on the rest of the batch.
+ * @throws DOMException if the file's bytes cannot be read at all — see
+ *   {@link isUnreadableFileError}. Rethrown rather than swallowed so the file
+ *   is reported as an import failure; treating it as "no EXIF" would file a
+ *   GPS-tagged photo under "Bez GPS" with no explanation.
+ *   Genuine parse failures (corrupt JPEG, missing EXIF segment) still resolve
+ *   to an empty result so importPhotoFiles keeps going on the rest of the batch.
  */
 export async function extractExif(file: File): Promise<ExifData> {
   if (await isHeicContent(file)) {
@@ -54,13 +58,20 @@ export async function extractExif(file: File): Promise<ExifData> {
 
   const result: ExifData = {}
 
-  const gps = await exifr.gps(file).catch(() => null)
+  // A failed READ must not masquerade as "this photo has no GPS" — rethrow it
+  // and let the import report the file. Only parse failures degrade to null.
+  const swallowParseErrors = (err: unknown) => {
+    if (isUnreadableFileError(err)) throw err
+    return null
+  }
+
+  const gps = await exifr.gps(file).catch(swallowParseErrors)
   // `translateValues: false` keeps Orientation as a 1..8 integer instead
   // of exifr's human-readable string ("Horizontal (normal)" etc.).
   const meta = await exifr.parse(file, {
     pick: ['DateTimeOriginal', 'GPSAltitude', 'Orientation'],
     translateValues: false,
-  }).catch(() => null) as Record<string, unknown> | null
+  }).catch(swallowParseErrors) as Record<string, unknown> | null
 
   if (isValidGps(gps)) {
     const altitude = meta?.GPSAltitude

@@ -6,7 +6,8 @@ import type { MapCamera, MapKeyAction } from '../map/keyboardNav'
 // interpretMapKey — the Google-Earth key map (see keyboardNav.ts header)
 // ---------------------------------------------------------------------------
 describe('interpretMapKey', () => {
-  const key = (k: string, shift = false) => interpretMapKey({ key: k, shiftKey: shift })
+  const key = (k: string, shift = false, ctrl = false) =>
+    interpretMapKey({ key: k, shiftKey: shift, ctrlKey: ctrl })
 
   it('plain arrows pan by 100px in screen space', () => {
     expect(key('ArrowUp')).toEqual({ type: 'pan', dx: 0, dy: -100 })
@@ -23,6 +24,20 @@ describe('interpretMapKey', () => {
   it('shift+up/down tilts pitch by 10°', () => {
     expect(key('ArrowUp', true)).toEqual({ type: 'pitch', delta: 10 })
     expect(key('ArrowDown', true)).toEqual({ type: 'pitch', delta: -10 })
+  })
+
+  // Client 2026-07-23: "Ctrl + arrow for rotating the map does not work."
+  // Ctrl is an alias for Shift on the four arrows — same actions, same steps.
+  it('ctrl+arrows rotate/tilt exactly like shift+arrows', () => {
+    expect(key('ArrowLeft', false, true)).toEqual({ type: 'rotate', delta: -15 })
+    expect(key('ArrowRight', false, true)).toEqual({ type: 'rotate', delta: 15 })
+    expect(key('ArrowUp', false, true)).toEqual({ type: 'pitch', delta: 10 })
+    expect(key('ArrowDown', false, true)).toEqual({ type: 'pitch', delta: -10 })
+  })
+
+  it('ctrl+shift+arrow orbits once, not twice (modifiers are an OR, not additive)', () => {
+    expect(key('ArrowLeft', true, true)).toEqual({ type: 'rotate', delta: -15 })
+    expect(key('ArrowUp', true, true)).toEqual({ type: 'pitch', delta: 10 })
   })
 
   it('PageUp/PageDown zoom by one level', () => {
@@ -59,8 +74,11 @@ describe('interpretMapKey', () => {
 // ---------------------------------------------------------------------------
 describe('shouldIgnoreMapKey', () => {
   // Build a realistic event-shaped object around a DOM target (jsdom).
+  // `key` defaults to a non-arrow map key so modifier cases below describe the
+  // general rule; arrow cases pass `key` explicitly.
   const evt = (target: EventTarget | null, over: Partial<KeyboardEvent> = {}) => ({
     defaultPrevented: false,
+    key: 'n',
     ctrlKey: false,
     metaKey: false,
     altKey: false,
@@ -78,6 +96,36 @@ describe('shouldIgnoreMapKey', () => {
     expect(shouldIgnoreMapKey(evt(document.body, { ctrlKey: true }))).toBe(true)
     expect(shouldIgnoreMapKey(evt(document.body, { metaKey: true }))).toBe(true)
     expect(shouldIgnoreMapKey(evt(document.body, { altKey: true }))).toBe(true)
+  })
+
+  it('lets Ctrl+arrows through — they are the rotate/tilt alias', () => {
+    for (const k of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+      expect(shouldIgnoreMapKey(evt(document.body, { key: k, ctrlKey: true }))).toBe(false)
+    }
+  })
+
+  it('still blocks every other Ctrl combo the browser/Electron owns', () => {
+    // Ctrl+R reload, Ctrl+N new window, Ctrl+U view-source — all collide with
+    // our single-letter map keys; Ctrl+PageUp/PageDown switch browser tabs;
+    // Ctrl +/− is the Electron zoom accelerator.
+    for (const k of ['r', 'n', 'u', 'PageUp', 'PageDown', '+', '-', 'w', 'F5']) {
+      expect(shouldIgnoreMapKey(evt(document.body, { key: k, ctrlKey: true }))).toBe(true)
+    }
+  })
+
+  it('ignores AltGr (reported as ctrl+alt on Czech/EU layouts) even on arrows', () => {
+    // Typing an AltGr character must never rotate the map.
+    expect(
+      shouldIgnoreMapKey(evt(document.body, { key: 'ArrowLeft', ctrlKey: true, altKey: true })),
+    ).toBe(true)
+  })
+
+  it('leaves Ctrl+arrow to the caret while renaming a photo in a text field', () => {
+    // Ctrl+←/→ is word-wise caret movement; the typing-target gate must win
+    // over the new arrow allowance.
+    expect(
+      shouldIgnoreMapKey(evt(document.createElement('input'), { key: 'ArrowLeft', ctrlKey: true })),
+    ).toBe(true)
   })
 
   it('ignores typing targets', () => {

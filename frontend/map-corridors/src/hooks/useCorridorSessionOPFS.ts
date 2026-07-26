@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GeoJSON } from 'geojson'
 import type { Discipline } from '../corridors/preciseCorridor'
 import type { NoGpsPhoto, PhotoMarker, GroundMarker, PhotoFlag } from '../types/markers'
-import { sanitizeGroundMarkers, sanitizeNoGpsPhotos, sanitizePhotoMarkers } from '../types/markers'
+import { dropNoGpsPhotosWithMarkers, sanitizeGroundMarkers, sanitizeNoGpsPhotos, sanitizePhotoMarkers } from '../types/markers'
 import {
   deletePhotoThumb,
   initStorage,
@@ -298,7 +298,17 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
           const cleanGm = sanitizeGroundMarkers(rawGm)
           const cleanPm = sanitizePhotoMarkers(rawPm)
           const rawNoGps = asRec.noGpsPhotos
-          const cleanNoGps = sanitizeNoGpsPhotos(rawNoGps)
+          // Runs after sanitizePhotoMarkers on purpose — see
+          // dropNoGpsPhotosWithMarkers. A photo can be on the map or in the
+          // tray, never both; if a session ever carries both, the ghost tray
+          // row is otherwise permanent and double-counts in the badge.
+          const sanitizedNoGps = sanitizeNoGpsPhotos(rawNoGps)
+          const cleanNoGps = dropNoGpsPhotosWithMarkers(sanitizedNoGps, cleanPm)
+          if (cleanNoGps.length !== sanitizedNoGps.length) {
+            console.warn(
+              `[session] Dropped ${sanitizedNoGps.length - cleanNoGps.length} no-GPS entr(ies) that are already placed as photo markers`,
+            )
+          }
           if (Array.isArray(rawGm) && cleanGm.length !== rawGm.length) {
             console.warn(`[session] Dropped ${rawGm.length - cleanGm.length} invalid ground marker(s) from persisted session`)
           } else if (rawGm !== undefined && !Array.isArray(rawGm)) {
