@@ -182,4 +182,131 @@ test.describe('Plasy Red — real competition photos', () => {
 
     expect(pageErrors, `renderer threw: ${pageErrors.map((e) => e.message).join('; ')}`).toEqual([]);
   });
+
+  test('precision end to end: categorize → send to editor → numeric labels → PDF', async () => {
+    // The full organizer workflow for a PRECISION competition, on real photos:
+    // create the competition, import route + track photos, mark each photo as a
+    // track pick, hand them to the editor, and export the printable PDF.
+    //
+    // Precision is the discipline the client reported problems with, and it
+    // differs from rally in ways only this path exercises: numeric answer-sheet
+    // labels (1..N) instead of letters, a single set (no "Set 2 starts at"), and
+    // a 9-slot landscape sheet. FAI precision rules allow 8-10 photos.
+    test.setTimeout(600_000);
+
+    const { page, app, pageErrors } = launched;
+    const outPdf = path.join(SHOTS, 'plasy-red-precision.pdf');
+    if (fs.existsSync(outPdf)) fs.unlinkSync(outPdf);
+    await app.evaluate(async ({ dialog }, target) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: target });
+    }, outPdf);
+
+    // Discipline lives in the competitions index, not the URL — `navigate-to-app`
+    // reads it from there and appends `?discipline=`. Creating through the real
+    // IPC is what the launcher's New-competition flow does.
+    const compId: string = await page.evaluate(async () => {
+      const api = (window as unknown as { electronAPI: any }).electronAPI;
+      const comp = await api.competitions.create('Plasy Red Precision');
+      await api.competitions.setDiscipline(comp.id, 'precision');
+      return comp.id as string;
+    });
+
+    await navigateToApp(page, 'map-corridors', compId);
+    expect(page.url(), 'the sub-app must be told it is precision').toContain('discipline=precision');
+
+    await page.locator('input[type="file"]').setInputFiles([ROUTE_KML, ...TRACK]);
+    await expect(page.getByText(/Imported \d+ photos/i)).toBeVisible({ timeout: 240_000 });
+
+    // Precision is single-set, so the rally-only split selector must be absent.
+    await expect(page.getByRole('combobox', { name: /Set 2 starts at/i })).toHaveCount(0);
+
+    // Categorize every photo as a track pick. Clicking a list row flies the map
+    // to that marker and centres it, so a click at the canvas centre lands on
+    // the marker and opens its popup — no coordinate projection needed.
+    const canvas = page.locator('canvas').first();
+    const panel = page.locator('[data-tour="send"]').locator('xpath=ancestor::*[3]');
+    for (let i = 0; i < TRACK.length; i++) {
+      const label = `red ${i + 1}.JPG`;
+      await panel.getByText(label, { exact: true }).first().click();
+      await page.waitForTimeout(900); // flyTo duration is 700ms
+      const box = await canvas.boundingBox();
+      if (!box) throw new Error('map canvas has no bounding box');
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await page.getByRole('button', { name: /^Track photo$/i }).click({ timeout: 15_000 });
+      await page.keyboard.press('Escape');
+    }
+
+    await page.screenshot({ path: path.join(SHOTS, '02-precision-categorized.png') });
+
+    // All nine picked → the send button carries the count.
+    const send = page.locator('[data-tour="send"]');
+    await expect(send).toContainText(`(${TRACK.length})`);
+    await send.click();
+
+    // Land in the editor with the sets pre-filled.
+    await page.waitForURL((u) => u.toString().includes('/photo-helper/'), { timeout: 60_000 });
+    await expect(page.locator('#root')).not.toBeEmpty();
+
+    // Poll the editor's own session on disk until the handoff import settles.
+    // A fixed sleep would silently accept a partial transfer — the count is the
+    // thing under test, so wait on the count itself.
+    const editorSession = () => {
+      const f = path.join(
+        launched.userDataDir, 'photo-sessions', 'competitions', compId, 'session.json',
+      );
+      if (!fs.existsSync(f)) return null;
+      return JSON.parse(fs.readFileSync(f, 'utf-8'));
+    };
+    const setCounts = () => {
+      const s = editorSession();
+      if (!s) return null;
+      return {
+        set1: s.sets?.set1?.photos?.length ?? 0,
+        set2: s.sets?.set2?.photos?.length ?? 0,
+        candidates: s.candidates?.length ?? s.candidatePool?.length ?? 0,
+      };
+    };
+    await expect
+      .poll(() => setCounts()?.set1 ?? -1, { timeout: 60_000, intervals: [500] })
+      .toBe(TRACK.length);
+    // eslint-disable-next-line no-console
+    console.log('[plasy-red] editor sets after handoff:', JSON.stringify(setCounts()));
+
+    // ...and wait until they are actually RENDERED, not just persisted. The
+    // session file leads the canvas by a beat, so asserting only on disk would
+    // screenshot (and export) a half-drawn sheet.
+    await expect(page.getByText(/^red \d+\.JPG$/)).toHaveCount(TRACK.length, { timeout: 60_000 });
+    // Single-set precision sheet. The answer-sheet labels themselves (1..N for
+    // precision, A.. for rally) are drawn ONTO each photo's canvas rather than
+    // into the DOM, so they are verified by the committed screenshot and by
+    // labelsForDiscipline's unit tests — not assertable here. What IS in the
+    // DOM is the set title: precision runs SP - FP as one sheet, where rally
+    // would show the SP - TPX / TPX - FP pair.
+    await expect(page.getByText('SP - FP')).toBeVisible();
+    await expect(page.getByText('TPX - FP')).toHaveCount(0);
+
+    await page.screenshot({ path: path.join(SHOTS, '03-precision-editor.png'), fullPage: true });
+
+    await page.getByRole('button', { name: /Generate PDF/i }).click();
+    await expect.poll(() => fs.existsSync(outPdf), { timeout: 240_000, intervals: [1000] }).toBe(true);
+
+    const pdf = fs.readFileSync(outPdf);
+    expect(pdf.subarray(0, 5).toString('latin1'), 'must be a real PDF').toBe('%PDF-');
+    expect(pdf.byteLength, 'a sheet of 9 photos should not be a stub PDF').toBeGreaterThan(100_000);
+    // Precision is a SINGLE answer sheet — a second page would mean the rally
+    // set-2 path leaked in (the web build's discipline downgrade does exactly that).
+    const raw = pdf.toString('latin1');
+    const pageCount = (raw.match(/\/Type\s*\/Page[^s]/g) || []).length;
+    expect(pageCount, 'precision must export exactly one sheet').toBe(1);
+    // Every photo must be embedded. A silent truncation (the class of bug this
+    // whole branch is about) would show up here as a missing image XObject.
+    const imageCount = (raw.match(/\/Subtype\s*\/Image/g) || []).length;
+    expect(imageCount, `expected ${TRACK.length} photos embedded, found ${imageCount}`)
+      .toBeGreaterThanOrEqual(TRACK.length);
+
+    // eslint-disable-next-line no-console
+    console.log(`[plasy-red] precision PDF: ${(pdf.byteLength / 1048576).toFixed(1)} MB, ${pageCount} page`);
+
+    expect(pageErrors, `renderer threw: ${pageErrors.map((e) => e.message).join('; ')}`).toEqual([]);
+  });
 });
