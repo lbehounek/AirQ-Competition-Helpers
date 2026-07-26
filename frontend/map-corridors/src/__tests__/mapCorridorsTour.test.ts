@@ -22,6 +22,7 @@ const ALL_TOUR_KEYS = [
   'app.tour.compare.title', 'app.tour.compare.body',
   'app.tour.split.title', 'app.tour.split.body',
   'app.tour.maptools.title', 'app.tour.maptools.body',
+  'app.tour.keyboard.title', 'app.tour.keyboard.body',
   'app.tour.send.title', 'app.tour.send.body',
   'app.tour.help.title', 'app.tour.help.body', 'app.tour.help.button',
 ];
@@ -41,14 +42,31 @@ function lookup(dict: Record<string, unknown>) {
 describe('buildTourSteps', () => {
   it('produces the ordered steps with the expected element anchors', () => {
     const steps = buildTourSteps(echo);
-    expect(steps).toHaveLength(10);
+    expect(steps).toHaveLength(11);
     // Anchored steps target stable [data-tour] selectors present at load.
     expect(steps[1].element).toBe('[data-tour="import"]');
-    expect(steps[8].element).toBe('[data-tour="send"]');
-    expect(steps[9].element).toBe('[data-tour="help"]');
+    expect(steps[9].element).toBe('[data-tour="send"]');
+    expect(steps[10].element).toBe('[data-tour="help"]');
     // The detailed/data-dependent steps are centered (no element).
-    for (const i of [0, 2, 3, 4, 5, 6, 7]) {
+    for (const i of [0, 2, 3, 4, 5, 6, 7, 8]) {
       expect(steps[i].element, `step ${i} should be centered`).toBeUndefined();
+    }
+  })
+
+  it('teaches the keyboard controls (they exist but nothing else surfaces them)', () => {
+    const steps = buildTourSteps(echo);
+    expect(steps[8].popover?.title).toBe('app.tour.keyboard.title');
+  })
+
+  it('numbers the visible steps consecutively in both locales', () => {
+    // A renumbering slip ("7." twice, or a skipped "8.") is invisible in code
+    // review but glaring to the user stepping through the tour.
+    for (const dict of [en, cs]) {
+      const numbers = buildTourSteps(lookup(dict))
+        .map(s => /^(\d+)\./.exec(s.popover?.title ?? '')?.[1])
+        .filter((n): n is string => n !== undefined)
+        .map(Number);
+      expect(numbers).toEqual(Array.from({ length: numbers.length }, (_, i) => i + 1));
     }
   });
 

@@ -35,10 +35,14 @@
       },
       "maptools": {
         "title": "7. Nástroje mapy",
-        "body": "Přepněte podkladovou mapu (Ulice / Satelit), přetáhněte na mapu fotku nebo pozemní značku, dvojklikem na značku zobrazíte náhled ve plném rozlišení, tažením značky posunete špendlík objektu a z lišty otevřete „Zobrazit odpovědní list“, „Tisk mapy“ nebo „Exportovat KML“."
+        "body": "Přepněte podkladovou mapu (Ulice / Satelit), přetáhněte na mapu fotku nebo pozemní značku, dvojklikem na značku zobrazíte náhled ve plném rozlišení, tažením značky posunete špendlík objektu a z lišty otevřete „Zobrazit odpovědní list“, „Tisk mapy“ nebo „Exportovat KML“. Vytisknutá mapa i exportované KML nesou název každé fotky — přejmenování fotky v seznamu (nebo přiřazení štítku odpovědního listu) proto rozhoduje o tom, jak bude export čitelný."
+      },
+      "keyboard": {
+        "title": "8. Ovládání mapy klávesnicí",
+        "body": "Šipky posouvají mapu. Se Shiftem (nebo Ctrl) šipky ← / → mapu otáčejí a ↑ / ↓ ji naklánějí — stejně jako v Google Earth. Page Up / Page Down nebo + / − přibližují a oddalují, N natočí mapu na sever, U přepne na pohled kolmo dolů a R obnoví výchozí pohled. Podržením klávesy se pohyb opakuje. Klávesy fungují bez ohledu na to, kam jste naposledy klikli, a nikdy nezasahují do psaní do textového pole."
       },
       "send": {
-        "title": "8. Odešlete do editoru",
+        "title": "9. Odešlete do editoru",
         "body": "Až je výběr hotový, odešlete ho do Foto editoru – sady dorazí předvyplněné, připravené k doladění a exportu do PDF. Neumístěné fotky bez GPS se nepřenesou (panel vás upozorní)."
       },
       "help": {

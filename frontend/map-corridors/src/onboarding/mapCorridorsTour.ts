@@ -7,8 +7,10 @@
 import { driver, type DriveStep } from 'driver.js';
 import 'driver.js/dist/driver.css';
 
-/** Bumped if the tour changes materially → re-shows once for returning users. */
-export const ONBOARDING_KEY = 'airq.mapCorridors.onboarding.v1';
+/** Bumped if the tour changes materially → re-shows once for returning users.
+ *  v2: added the keyboard-navigation step (client asked for the map rotation
+ *  controls twice — they were shipped but nothing in the app taught them). */
+export const ONBOARDING_KEY = 'airq.mapCorridors.onboarding.v2';
 
 type T = (key: string, params?: Record<string, string | number>) => string;
 
@@ -39,6 +41,7 @@ export function buildTourSteps(t: T): DriveStep[] {
     centered('compare'),     // compare variants of the same point, pick the best
     centered('split'),       // "Set 2 starts at" — where the sheets split (rally)
     centered('maptools'),    // map style, ground markers, print, export KML, answer sheet
+    centered('keyboard'),    // arrows pan, Shift|Ctrl+arrows rotate/tilt, N/U/R
     {
       // The primary "Send to editor" button in the right-side panel footer.
       element: '[data-tour="send"]',

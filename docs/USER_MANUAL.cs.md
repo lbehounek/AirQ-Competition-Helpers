@@ -137,7 +137,31 @@ Otočné body pocházejí z **trati**, takže to funguje, i když žádná z va�
 není fotkou otočného bodu. Soutěže v přesném létání mají jednu sadu a tento
 ovládací prvek nezobrazují.
 
-### 3.7 Odeslání do editoru
+### 3.7 Tisk mapy a export do Google Earth
+
+Dvě tlačítka v liště promění to, co je na obrazovce, v podklad k rozdání:
+
+- **Tisk mapy** uloží aktuální pohled jako obrázek A4 v rozlišení 300 DPI.
+  Výsledek je vždy přesně A4 bez ohledu na nastavené měřítko zobrazení
+  ve Windows.
+- **Exportovat KML** zapíše trať, koridory, pozemní značky a špendlíky fotek do
+  souboru `.kml`, který otevřete v Google Earth.
+
+**Obojí nese název každé fotky**, takže na pojmenování fotek záleží:
+
+| Co má fotka nastaveno | Co se vytiskne u jejího bodu |
+|-----------------------|------------------------------|
+| Vlastní název (přejmenovaná v seznamu) | `TP1` |
+| Navíc štítek odpovědního listu | `A - TP1` |
+| Ani jedno | název souboru z fotoaparátu, např. `DSC_0123.JPG` |
+
+Fotky, na kterých vám záleží, proto před exportem přejmenujte (ikona tužky
+v seznamu fotek) — jinak bude výstup jen změtí názvů souborů z fotoaparátu.
+Odmítnuté fotky se do obou exportů nedostanou, stejně jako je nevidíte na mapě.
+Tam, kde leží několik fotek na stejném místě, se jejich názvy poskládají pod
+sebe, aby zůstaly čitelné.
+
+### 3.8 Odeslání do editoru
 
 Klikněte na **Poslat do editoru (N)** — N je počet vybraných fotek. Výběr
 (i rozdělení) přejde do Photo Helperu, který se otevře s předvyplněnými sadami.
@@ -208,6 +232,8 @@ nebo odebrat dotčené buňky) místo nesrozumitelné chyby.
 | *„Windows protected your PC"* při spuštění | Klikněte na **More info → Run anyway** (aplikace záměrně není podepsaná). |
 | Mapový podklad je prázdný | Nastavte svůj **Mapbox token** v nastavení. |
 | Fotka bez GPS nedorazila do editoru | Je stále v **zásobníku Bez GPS** — přetáhněte ji na mapu a odešlete znovu. |
+| Fotka, o které víte, že má GPS, skončila v **Bez GPS** | Nejčastěji jde o *kopii* originálu (z messengeru nebo z exportu) — té se cestou GPS odstraní a naimportuje se jako samostatná fotka. Porovnejte název souboru s tím na mapě. Pokud import místo toho hlásil *„nepodařilo se otevřít"*, soubor v tu chvíli nešel přečíst (byl přesunutý, nebo na kartě či síťovém disku, který vypadl) — vraťte ho na místo a naimportujte znovu. |
+| Vytisknutá mapa ukazuje jen názvy souborů z fotoaparátu | Nic není přejmenované ani oštítkované. Přejmenujte fotky v seznamu (ikona tužky) — viz [3.7](#37-tisk-mapy-a-export-do-google-earth). |
 | Chybí výběr „Sada 2 začíná od" | Jste v **přesném létání** (jedna sada), nebo **trať nemá načtené otočné body**. |
 | Dorazilo méně fotek, než jste čekali | Zkontrolujte upozornění na fotky bez GPS; přenášejí se jen **vybrané** fotky. |
 | Export PDF hlásí chybějící snímky | Znovu naimportujte dotčené fotky v editoru, nebo odeberte tyto buňky, a exportujte znovu. |
