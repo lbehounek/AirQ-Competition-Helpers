@@ -16,6 +16,13 @@
 // `handoff/mapPicksWriter.ts:143-167` still carries an inline copy of this
 // idiom. Migrating it is a deliberate follow-up (it has its own debounce
 // semantics and test suite), not part of this change.
+//
+// NOTE ON THROUGHPUT: this serializes, it does not coalesce. Callers whose
+// payload is a whole-file snapshot (the session writer) issue writes that are
+// each redundant with the next, so a burst costs N sequential writes where one
+// would do. Correctness is unaffected — the last-issued value always wins —
+// but see TODO.md for the coalescing follow-up if a backlog ever shows up in
+// the UI.
 
 /** Enqueue `task`; the returned promise carries THAT task's own outcome. */
 export type SerialQueue = <T>(task: () => Promise<T>) => Promise<T>

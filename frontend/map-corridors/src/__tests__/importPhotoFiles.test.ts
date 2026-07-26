@@ -326,12 +326,17 @@ describe('importPhotoFiles — decode failures are "corrupt", not "read"', () =>
     expect(generateThumbMock).not.toHaveBeenCalled()
   })
 
-  it('reads each file exactly once for EXIF and the content hash', async () => {
-    // The two used to read the whole file independently, doubling peak memory
-    // at concurrency 8. One read now feeds both.
+  it('hands extractExif the already-read bytes instead of the File', async () => {
+    // EXIF and the content hash used to read the whole file independently,
+    // doubling peak memory at concurrency 8 — and the EXIF read went through
+    // exifr's FileReader, whose ProgressEvent rejection is what made an
+    // unreadable photo look like "no GPS". Asserting the file is read once is
+    // NOT enough to pin that: extractExif is module-mocked here, so it never
+    // read the file in either version. Assert the seam itself instead.
     const file = makeFile('a.jpg')
     const spy = vi.spyOn(file, 'arrayBuffer')
     await importPhotoFiles([file])
-    expect(spy).toHaveBeenCalledTimes(1)
+    expect(extractExifMock).toHaveBeenCalledWith(file, expect.any(Uint8Array))
+    expect(spy, 'the worker should be the only reader').toHaveBeenCalledTimes(1)
   })
 })

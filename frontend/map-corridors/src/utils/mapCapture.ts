@@ -58,13 +58,15 @@ const TIMEOUT_MS = 15_000
 const PADDING = 100 // pixels padding around track in print
 
 /**
- * Keep-out band at the page edges for label pills, in canvas px (~2 mm at 300
- * DPI). Clamping to the exact edge is not enough: consumer printers have an
- * unprintable margin of several millimetres, so a name flush against the edge
- * survives the PNG and is then guillotined by the printer — the same photo
- * ends up nameless on the sheet that actually reaches the competitor.
+ * Keep-out band at the page edges for label pills: 36 px ≈ 3 mm at 300 DPI.
+ * Clamping to the exact edge is not enough — consumer printers have an
+ * unprintable margin of roughly 3-5 mm, so a name flush against the edge
+ * survives the PNG and is then guillotined by the printer, and the photo ends
+ * up nameless on the sheet that actually reaches the competitor. Sized to the
+ * low end of that range: enough to clear a typical printer, small enough not
+ * to shove pills away from their dots.
  */
-const PRINT_EDGE_MARGIN_PX = 24
+const PRINT_EDGE_MARGIN_PX = 36
 
 /** A label pill's box: `y` is its CENTRE line, `x` its left text origin. */
 export type PrintLabelBox = { x: number; y: number; w: number; h: number }
@@ -102,7 +104,11 @@ export function resolveLabelCollisions(
 ): number[] {
   const placed: PrintLabelBox[] = []
   return boxes.map(box => {
-    let y = box.y
+    // Clamp the natural position too, not just the nudge: a dot sitting within
+    // half a pill of the bottom edge would otherwise start out already
+    // overhanging the page and never be corrected, since the loop below only
+    // ever moves pills DOWN.
+    let y = Math.min(box.y, maxY - box.h / 2)
     // Each nudge clears at least one already-placed pill, so the worst case is
     // one step per prior box — bounded, no runaway on pathological input.
     for (let step = 0; step <= placed.length; step++) {
@@ -304,9 +310,20 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
           // and even a plain `DSC_0123.JPG` is ~300 px wide at this font — a
           // photo near the right edge would otherwise print its name off the
           // sheet, which loses it just as completely as never drawing it.
-          x: Math.min(
-            p.x + markerRadius + 4 * scaleX,
-            dims.width - w - padX - PRINT_EDGE_MARGIN_PX,
+          //
+          // The outer Math.max is the floor, and it is not redundant: a name
+          // WIDER than the page makes the right-edge term negative, and
+          // without the floor the pill is drawn far off the left edge and
+          // disappears entirely — a worse outcome than the overflow it was
+          // meant to prevent, and the very failure this feature exists to fix.
+          // A too-wide name now starts at the margin and runs off the right,
+          // so the first ~80 characters stay readable.
+          x: Math.max(
+            padX + PRINT_EDGE_MARGIN_PX,
+            Math.min(
+              p.x + markerRadius + 4 * scaleX,
+              dims.width - w - padX - PRINT_EDGE_MARGIN_PX,
+            ),
           ),
           y: p.y,
           w,

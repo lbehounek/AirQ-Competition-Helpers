@@ -265,7 +265,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
   // that only surfaces on the next reload, i.e. the worst kind to debug. It is
   // reachable today with no exotic timing: the marker-name field persists the
   // whole session on EVERY keystroke (MapProviderView.tsx:733 ->
-  // App.tsx:1323-1325), so typing "TP1" issues three overlapping writes and
+  // App.tsx:1390-1392), so typing "TP1" issues three overlapping writes and
   // the file can settle on "TP".
   //
   // Scope is per hook INSTANCE — not per file, not per directory — because

@@ -10,7 +10,7 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
-## [Unreleased]
+## [2.30.0] - 2026-07-26
 
 ### Fixed
 - **Photo Helper:** in a **precision** competition, a set holding **10 photos**

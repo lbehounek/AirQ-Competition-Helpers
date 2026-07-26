@@ -43,9 +43,23 @@ function mount() {
 // `finally` guarantees we mount whatever happens — an unresolvable discipline
 // just means the historical rally default, and a blank page would be far worse
 // than a wrong default.
+//
+// The deadline covers the case `finally` cannot: `finally` only runs once the
+// promise SETTLES, and the resolution chain (initStorage -> init -> three
+// getDirectoryHandle hops -> readJSON) has no timeout anywhere. If OPFS wedges
+// under storage pressure, or an Electron IPC round-trip never replies, the app
+// would never mount at all — a white page with no error, which is strictly
+// worse than the wrong default this gate exists to prevent. Racing the rally
+// default in costs nothing, because that is already the documented fallback.
+const BOOT_DISCIPLINE_TIMEOUT_MS = 1500
+
 void (async () => {
   try {
-    setBootDiscipline(await resolveBootDiscipline(window.location.search))
+    const resolved = await Promise.race([
+      resolveBootDiscipline(window.location.search),
+      new Promise<null>((r) => setTimeout(() => r(null), BOOT_DISCIPLINE_TIMEOUT_MS)),
+    ])
+    setBootDiscipline(resolved)
   } catch {
     setBootDiscipline(null)
   } finally {

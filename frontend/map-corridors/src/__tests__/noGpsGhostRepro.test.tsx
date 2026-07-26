@@ -544,8 +544,13 @@ describe('session writes land on disk in issue order', () => {
     }) as typeof storage.writeJSON
 
     await outsideAct(async () => {
-      await api.current.setMarkers(() => [marker(1)] as any)
-      await api.current.setMarkers(() => [marker(1), marker(2)] as any)
+      // Issued CONCURRENTLY, with the failing (first) write also the slowest —
+      // awaiting them in sequence would order them even without the queue, so
+      // the test would pass against the pre-fix code and pin nothing.
+      await Promise.all([
+        api.current.setMarkers(() => [marker(1)] as any),
+        api.current.setMarkers(() => [marker(1), marker(2)] as any),
+      ])
     })
 
     // The second write must still have reached disk.
