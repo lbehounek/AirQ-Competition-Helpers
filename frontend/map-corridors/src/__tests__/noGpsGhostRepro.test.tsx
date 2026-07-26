@@ -103,7 +103,7 @@ vi.mock('@airq/shared-storage', () => ({
 }))
 
 // Imported after the mock is registered so the hook binds to the double.
-const { useCorridorSessionOPFS } = await import('../hooks/useCorridorSessionOPFS')
+const { useCorridorSessionOPFS, collectContentHashes } = await import('../hooks/useCorridorSessionOPFS')
 type SessionApi = ReturnType<typeof useCorridorSessionOPFS>
 
 // ---------------------------------------------------------------------------
@@ -137,12 +137,17 @@ async function mountSession(competitionId = 'comp-1', strict = false) {
   const tree = (
     <Harness competitionId={competitionId} apiRef={apiRef as Ref<SessionApi>} />
   )
+  let unmount: () => void = () => {}
   await act(async () => {
-    render(strict ? <StrictMode>{tree}</StrictMode> : tree)
+    ;({ unmount } = render(strict ? <StrictMode>{tree}</StrictMode> : tree))
   })
   // Init is a chain of awaits; give it a couple of macrotask turns to settle.
   await act(async () => { await new Promise(r => setTimeout(r, 0)) })
-  return apiRef as { current: SessionApi }
+  // `unmount` is hung off the ref rather than returned as a tuple so the many
+  // existing `const api = await mountSession()` call sites keep working.
+  const handle = apiRef as { current: SessionApi; unmount: () => void }
+  handle.unmount = unmount
+  return handle
 }
 
 /**
@@ -486,5 +491,112 @@ describe('commitImportedPhotos', () => {
     const disk = storage.disk('comp-1')
     expect(disk.markers.map((m: any) => m.photoId)).toEqual(['pm-1', 'pm-2'])
     expect(disk.noGpsPhotos.map((p: any) => p.photoId)).toEqual(['pm-3'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Write ORDER on disk (2026-07-26). persistSession updates `sessionRef`
+// synchronously, so composition in MEMORY is correct — but each write is its
+// own async round-trip and `writeJSON` guarantees no ordering, so the file
+// could still settle on an older snapshot than the one last issued. These live
+// here rather than in a new file because the FakeStorage harness above (with
+// its file-scoped `vi.mock`) is exactly what they need.
+// ---------------------------------------------------------------------------
+
+describe('session writes land on disk in issue order', () => {
+  it('a burst of renames settles on the LAST value typed, not the last to finish', async () => {
+    const api = await mountSession()
+    // Model the marker-name field: every keystroke persists the whole session
+    // (MapProviderView onChange -> App.persistMarkers). Writes get FASTER as
+    // they go, so without serialization the first-issued write lands last and
+    // the file keeps "T" while the user sees "TP1".
+    const latencies = [12, 6, 0]
+    let i = 0
+    const realWrite = storage.writeJSON.bind(storage)
+    storage.writeJSON = (async (dir: any, name: string, data: any) => {
+      const delay = name === 'session.json' ? (latencies[i++] ?? 0) : 0
+      if (delay > 0) await new Promise(r => setTimeout(r, delay))
+      return realWrite(dir, name, data)
+    }) as typeof storage.writeJSON
+
+    await outsideAct(async () => {
+      await Promise.all([
+        api.current.setMarkers(() => [marker(1, { displayName: 'T' })] as any),
+        api.current.setMarkers(() => [marker(1, { displayName: 'TP' })] as any),
+        api.current.setMarkers(() => [marker(1, { displayName: 'TP1' })] as any),
+      ])
+    })
+
+    const disk = storage.disk('comp-1')
+    expect(disk.markers[0].displayName, 'the file rolled backwards').toBe('TP1')
+  })
+
+  it('a failed write neither blocks nor hides the writes queued behind it', async () => {
+    const api = await mountSession()
+    const realWrite = storage.writeJSON.bind(storage)
+    let failNext = true
+    storage.writeJSON = (async (dir: any, name: string, data: any) => {
+      if (name === 'session.json' && failNext) {
+        failNext = false
+        throw new Error('quota exceeded')
+      }
+      return realWrite(dir, name, data)
+    }) as typeof storage.writeJSON
+
+    await outsideAct(async () => {
+      await api.current.setMarkers(() => [marker(1)] as any)
+      await api.current.setMarkers(() => [marker(1), marker(2)] as any)
+    })
+
+    // The second write must still have reached disk.
+    const disk = storage.disk('comp-1')
+    expect(disk.markers.map((m: any) => m.photoId)).toEqual(['pm-1', 'pm-2'])
+  })
+
+  it('a write queued before unmount still reaches disk', async () => {
+    // Queued work deliberately outlives the component — the bytes matter more
+    // than the React state update that can no longer be delivered.
+    const api = await mountSession('comp-unmount')
+    const pending = outsideAct(async () => {
+      await api.current.setMarkers(() => [marker(7)] as any)
+    })
+    api.unmount()
+    await pending
+    expect(storage.disk('comp-unmount').markers[0].photoId).toBe('pm-7')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// collectContentHashes — the pure union behind getExistingContentHashes.
+// ---------------------------------------------------------------------------
+
+describe('collectContentHashes', () => {
+  it('unions marker and tray hashes', () => {
+    const set = collectContentHashes({
+      markers: [{ contentHash: 'a' }, { contentHash: 'b' }],
+      noGpsPhotos: [{ contentHash: 'c' }],
+    } as any)
+    expect([...set].sort()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('skips entries with no hash instead of adding undefined', () => {
+    // Pre-ADR-020 records carry no contentHash; an `undefined` member would make
+    // every hash-less photo look like a duplicate of every other one.
+    const set = collectContentHashes({
+      markers: [{ contentHash: 'a' }, {}],
+      noGpsPhotos: [{}],
+    } as any)
+    expect([...set]).toEqual(['a'])
+    expect(set.has(undefined as never)).toBe(false)
+  })
+
+  it('tolerates a null session and missing lists', () => {
+    expect(collectContentHashes(null).size).toBe(0)
+    expect(collectContentHashes({} as any).size).toBe(0)
+  })
+
+  it('returns a fresh set each call, so callers cannot cache a stale snapshot', () => {
+    const session = { markers: [{ contentHash: 'a' }], noGpsPhotos: [] } as any
+    expect(collectContentHashes(session)).not.toBe(collectContentHashes(session))
   })
 })

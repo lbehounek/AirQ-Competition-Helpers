@@ -67,7 +67,7 @@ import { useI18n } from './contexts/I18nContext';
 import { useLayoutMode } from './contexts/LayoutModeContext';
 import { generatePDF } from './utils/pdfGenerator';
 import { generateTurningPointLabels } from './utils/imageProcessing';
-import { parseDiscipline } from './utils/parseDiscipline';
+import { resolveDiscipline } from './utils/parseDiscipline';
 import type { Discipline } from './utils/parseDiscipline';
 import { buildPdfSets } from './utils/buildPdfSets';
 import { gridShapeFor } from './utils/gridShapeFor';
@@ -79,7 +79,10 @@ import type { ApiPhoto } from './types/api';
 function AppApi() {
   // Desktop launcher passes `?discipline=precision|rally` when opening this app
   // (desktop/main.js:205). Default to rally for web / legacy sessions.
-  const discipline: Discipline = useMemo(() => parseDiscipline(window.location.search), []);
+  // Resolved once at mount, and stable for the page's lifetime: the URL param
+  // if present, else the discipline map-corridors persisted for this
+  // competition (settled by the boot gate in main.tsx), else rally.
+  const discipline: Discipline = useMemo(() => resolveDiscipline(window.location.search), []);
   const isPrecision = discipline === 'precision';
 
   const sessionHookResult = useCompetitionSystem() as any;

@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useState } from 'react';
 import {
-  parseDisciplineFromSearch,
   getLabelingMode,
   generateLabelForMode,
   type Discipline,
 } from '@airq/shared-discipline';
+import { resolveDiscipline } from '../utils/parseDiscipline';
 
 export interface LabelingOption {
   id: 'letters' | 'numbers';
@@ -36,7 +36,10 @@ const NUMBERS_OPTION = LABELING_OPTIONS[1];
  * that picks labels by discipline.
  */
 export const resolveDefaultLabeling = (search: string): LabelingOption => {
-  const discipline: Discipline = parseDisciplineFromSearch(search) ?? 'rally';
+  // Full chain (URL -> boot-resolved persisted value -> rally), not the raw
+  // URL parser: a precision competition opened without ?discipline= must not
+  // fall back to letters.
+  const discipline: Discipline = resolveDiscipline(search);
   return getLabelingMode(discipline) === 'numbers' ? NUMBERS_OPTION : LETTERS_OPTION;
 };
 
@@ -57,7 +60,7 @@ const LabelingContext = createContext<LabelingContextType | null>(null);
 
 export const LabelingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const search = typeof window !== 'undefined' ? window.location.search : '';
-  const isPrecision = parseDisciplineFromSearch(search) === 'precision';
+  const isPrecision = resolveDiscipline(search) === 'precision';
   const [currentLabeling, setCurrentLabeling] = useState<LabelingOption>(() => resolveDefaultLabeling(search));
 
   const setLabeling = (labeling: LabelingOption) => {

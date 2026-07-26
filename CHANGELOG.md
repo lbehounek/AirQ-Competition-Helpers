@@ -24,10 +24,33 @@ new desktop release.
   Previously the print drew only the answer-sheet label (A…T / 1…20), which is
   set only by clicking through the marker popup grid — so a photo you renamed
   to *TP1* printed as an anonymous yellow dot, and so did every un-labelled
-  track photo. Each dot now carries its name, prefixed by the answer-sheet
-  label when one is set (`A - TP1`). Names that would land on top of each other
-  — photos shot at the same turning point, which the print draws without the
-  on-screen marker fan — are stacked downwards so they stay readable.
+  track photo. Each dot now carries the most useful identifier it has: the
+  custom name with the answer-sheet label in front when both are set
+  (`A - TP1`), the custom name on its own, the label on its own when the photo
+  was labelled but never renamed (`A`), and the camera filename when it has
+  neither. So no dot stays anonymous, and a labelled dot is not padded out with
+  a camera serial number nobody reads — a 20-photo rally where nothing was
+  renamed no longer prints a wall of `DSC_…` pills across the track. (The
+  **KML** export additionally keeps the original filename in parentheses;
+  Google Earth is where you trace a pin back to a file.) Names that would land
+  on top of each other — photos shot at the same turning point, which the print
+  draws without the on-screen marker fan — are stacked downwards so they stay
+  readable.
+- **Map Corridors:** renaming a photo or marker quickly could save a **truncated
+  name**. Each keystroke saved the whole competition, and on the web build those
+  saves could finish out of order — so the file ended up holding whichever one
+  happened to land last, not the one you typed last. Saves are now written
+  strictly in order.
+- **Map Corridors:** dropping a second batch of photos **while the first import
+  was still running** could import the same files twice, as two blobs and two
+  markers. The second batch now waits for the first to finish, so re-dropping a
+  folder mid-import is correctly reported as duplicates instead of doubling
+  them. Photos are never discarded — they queue, and the progress bar counts the
+  whole burst.
+- **Photo Helper (web build only):** opening the editor from Map Corridors in a
+  browser lost the **discipline**, so a precision competition was laid out as a
+  rally — letter labels instead of numbers, and a spurious second answer sheet.
+  The desktop app was never affected.
 - **Map Corridors:** importing a folder where **some** photos have GPS and some
   don't could **lose every photo that landed on the map**, leaving only the
   no-GPS ones in the tray. The map pins and the "Bez GPS" list were saved as two

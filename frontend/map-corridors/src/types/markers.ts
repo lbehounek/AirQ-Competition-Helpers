@@ -255,6 +255,14 @@ export function normalizeDisplayName(displayName: string | undefined, original: 
  * so the list row, KML export and loader can never drift — so we never emit
  * `DSC_0123.JPG (DSC_0123.JPG)`. Returns the raw text; XML escaping happens
  * downstream at the serializer (`textContent`).
+ *
+ * Deliberately NOT harmonised with {@link buildPhotoMarkerPrintLabel}: a photo
+ * that is labelled but never renamed prints as a bare `A` on paper yet still
+ * exports as `A - DSC_0123.JPG` here. The two surfaces have different jobs —
+ * Google Earth is the traceability surface, where a pin must always lead back
+ * to a file on disk, while the printed sheet is read at arm's length in a
+ * cockpit and pays for every extra character in pill width. Do not "simplify"
+ * the two into one composer; `markersDisplay.test.ts` pins both forms.
  */
 export function buildPhotoMarkerKmlName(
   m: Pick<PhotoMarker, 'name' | 'displayName' | 'label'>,
@@ -301,24 +309,44 @@ export function dropNoGpsPhotosWithMarkers(
  * Sibling of {@link buildPhotoMarkerKmlName}, deliberately terser: KML keeps the
  * original filename in parentheses for traceability in Google Earth, but on
  * paper that doubles the width of every pill for no benefit.
+ *
+ * The rule is "print the most meaningful identifier the photo has", so a dot
+ * never prints nothing and never prints redundant noise:
  *  - custom name + label → `A - TP1`
  *  - custom name only    → `TP1`
- *  - label only          → `A - DSC_0123.JPG`
+ *  - label only          → `A`
  *  - neither             → `DSC_0123.JPG`
  *
- * Every marker gets text (client feedback 2026-07-23: photo names were missing
- * from the map export entirely). Turning-point photos are treated exactly like
- * track photos — no special-casing — so the rule stays explainable.
+ * The raw filename is dropped ONLY when a label exists (2026-07-26). Both ends
+ * of that rule are load-bearing and pull in opposite directions:
+ *  - Keep it when there is nothing else. The client's original complaint
+ *    (2026-07-23) was that photo names were MISSING from the export, so an
+ *    anonymous dot is the one outcome this function must never produce.
+ *  - Drop it once a label is set. `A` is the identifier the competitor reads
+ *    off the answer sheet; appending the camera serial number restates nothing
+ *    and costs ~300 px of pill width at the print font — on a 20-photo rally
+ *    where the organizer labelled but never renamed, that is 20 filename pills
+ *    strewn across the track, each one a collision candidate for the packer in
+ *    `mapCapture.ts` (`resolveLabelCollisions`).
+ *
+ * Turning-point photos are treated exactly like track photos — no
+ * special-casing — so the rule stays explainable to an organizer.
  *
  * Blank / redundant `displayName`s route through {@link normalizeDisplayName}
- * so the print can never disagree with the list row or the KML.
+ * so the print can never disagree with the list row or the KML about whether a
+ * photo has a real custom name.
  */
 export function buildPhotoMarkerPrintLabel(
   m: Pick<PhotoMarker, 'name' | 'displayName' | 'label'>,
 ): string {
-  const namePart = normalizeDisplayName(m.displayName, m.name) ?? m.name
-  if (!namePart) return m.label ?? ''
-  return m.label ? `${m.label} - ${namePart}` : namePart
+  const custom = normalizeDisplayName(m.displayName, m.name)
+  // Label branch first: with a label present the filename is never the best
+  // identifier available, so it is not even considered as a fallback.
+  if (m.label) return custom ? `${m.label} - ${custom}` : m.label
+  // No label — the custom name if there is one, else the filename. `name` is
+  // '' for click-placed markers, which correctly yields '' (a bare dot; see
+  // the `.filter(p => p.text)` guard in mapCapture.ts).
+  return custom ?? m.name
 }
 
 /**

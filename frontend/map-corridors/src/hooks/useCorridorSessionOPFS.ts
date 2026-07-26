@@ -11,6 +11,7 @@ import {
   type StorageInterface,
   type DirectoryHandle,
 } from '@airq/shared-storage'
+import { useSerialQueue } from './useSerialQueue'
 
 /**
  * Legacy two-value base style. New sessions use the richer `mapStyleId`
@@ -192,6 +193,31 @@ export function computeRenamedPhoto(
   return { markers: nextMarkers, noGpsPhotos: nextNoGps }
 }
 
+/**
+ * Collect every SHA-1 content hash this session already owns — placed markers
+ * PLUS no-GPS tray entries — as the `existingContentHashes` set that
+ * `importPhotosToStorage` consumes for ADR-020 re-import dedup.
+ *
+ * Pure and exported so the union rule can be pinned without rendering the hook
+ * (same reasoning as `computeRenamedPhoto` above). Entries written before
+ * ADR-020 carry no `contentHash`; they are skipped rather than contributing an
+ * `undefined` member, which would otherwise make every hash-less photo look
+ * like a duplicate of every other hash-less photo.
+ *
+ * Returns a FRESH set on every call by design: the caller must snapshot at the
+ * moment the import actually runs, never at render time — see
+ * `getExistingContentHashes`.
+ */
+export function collectContentHashes(
+  session: Pick<CorridorsSession, 'markers' | 'noGpsPhotos'> | null,
+): ReadonlySet<string> {
+  const hashes = new Set<string>()
+  if (!session) return hashes
+  for (const m of session.markers ?? []) if (m.contentHash) hashes.add(m.contentHash)
+  for (const p of session.noGpsPhotos ?? []) if (p.contentHash) hashes.add(p.contentHash)
+  return hashes
+}
+
 const defaultSession = (id: string): CorridorsSession => ({
   id,
   version: 1,
@@ -228,6 +254,42 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
   // session with the captured one and silently drop intermediate edits.
   const sessionRef = useRef<CorridorsSession | null>(null)
   useEffect(() => { sessionRef.current = session }, [session])
+  // One serial write queue per hook instance. `persistSession` updates memory
+  // synchronously and then hands the disk write to this queue, so session.json
+  // is written in the order the callers ISSUED their writes rather than in
+  // whatever order the storage backend happens to finish them.
+  //
+  // Why that matters: writeJSON offers no ordering guarantee (see
+  // useSerialQueue for the per-backend detail). If an older write lands last,
+  // the FILE rolls backwards while `sessionRef` stays correct — a divergence
+  // that only surfaces on the next reload, i.e. the worst kind to debug. It is
+  // reachable today with no exotic timing: the marker-name field persists the
+  // whole session on EVERY keystroke (MapProviderView.tsx:733 ->
+  // App.tsx:1323-1325), so typing "TP1" issues three overlapping writes and
+  // the file can settle on "TP".
+  //
+  // Scope is per hook INSTANCE — not per file, not per directory — because
+  // this hook is the only writer of `corridors/session.json`: the desktop main
+  // process deliberately never pre-creates it (desktop/main.js:846-849) and no
+  // other renderer module writes that name. Both of the hook's write sites
+  // (the first-run `fresh` write during init and every `persistSession`) share
+  // the chain, so a competition switch also drains the old competition's
+  // writes before the new one's land. `original-kml.json` stays OFF the queue:
+  // different file, no ordering relationship to the session, and chaining it
+  // would let a slow KML write delay a session write for no benefit.
+  const enqueueSessionWrite = useSerialQueue()
+  // Live-ness flag for writes that settle after the component is gone — a
+  // queued write can outlive the unmount by design (we still want its bytes on
+  // disk), and `setError` on a dead tree is at best a no-op. Armed in the
+  // effect BODY rather than at declaration so React 19 StrictMode's
+  // mount -> unmount -> remount cycle re-arms it; with only a cleanup, the
+  // second mount would run with `false` forever and write failures would
+  // silently stop reaching the error banner.
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => { isMountedRef.current = false }
+  }, [])
   // Photos directory for the active competition. Resolved alongside the
   // corridors session dir during init when `competitionId` is provided —
   // otherwise null. Phase 3 of photo-map-culling uses it as the write
@@ -337,7 +399,13 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
           })
         } else {
           const fresh = defaultSession(id)
-          await storage.writeJSON(corridorsDir, 'session.json', fresh)
+          // Through the SAME queue as persistSession, so "every session.json
+          // write from this hook is ordered" is an invariant rather than a
+          // property of one code path. Concretely: on a competition switch the
+          // setters are still bound and still hold the previous competition's
+          // session, so a persist that fires while init is in flight must not
+          // overtake this file.
+          await enqueueSessionWrite(() => storage.writeJSON(corridorsDir, 'session.json', fresh))
           setSession(fresh)
         }
         // Publish the per-competition dirs ONLY after the session is in
@@ -357,7 +425,10 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
         // handles. The user sees the error banner instead.
       }
     })()
-  }, [competitionId])
+    // `enqueueSessionWrite` is ref-backed and stable for the component's
+    // lifetime, so listing it satisfies exhaustive-deps without ever
+    // re-running init (which would re-read and re-publish the session dirs).
+  }, [competitionId, enqueueSessionWrite])
 
   const persistSession = useCallback(async (next: CorridorsSession) => {
     // Update the ref SYNCHRONOUSLY, not just via the effect below. Every setter
@@ -367,19 +438,33 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     // the pre-import snapshot if React hasn't committed in between — and the
     // second write would silently roll the first one back. The window is only
     // a few milliseconds, which is exactly why it survived so long.
+    //
+    // That fixes composition IN MEMORY. Ordering ON DISK is the queue's job
+    // below: memory is correct the instant this line runs, but each write is a
+    // separate async round-trip and nothing in the storage layer makes them
+    // land in issue order.
     sessionRef.current = next
     setSession(next)
     const storage = storageRef.current
     const dir = sessionDirRef.current
     if (storage && dir) {
       try {
-        await storage.writeJSON(dir, 'session.json', next)
+        // Awaiting the queue now also waits for writes queued BEFORE ours. The
+        // UI never pays for that — the state update above already happened;
+        // only callers that explicitly await the persist do, and they are the
+        // ones that care that the bytes are down (import, KML load, export).
+        // A prior write that FAILED does not block ours: the queue continues
+        // past rejections and hands each caller only its own outcome.
+        await enqueueSessionWrite(() => storage.writeJSON(dir, 'session.json', next))
       } catch (e) {
         console.error('Failed to persist corridors session', e)
-        setError('Failed to persist session')
+        // A queued write can settle after this component is gone (competition
+        // switch, window close). The console error is still worth emitting;
+        // the React state update is not.
+        if (isMountedRef.current) setError('Failed to persist session')
       }
     }
-  }, [])
+  }, [enqueueSessionWrite])
 
   // All setters below read the live session from `sessionRef` rather than
   // closing over `session`. This makes them stable across renders, which
@@ -449,6 +534,26 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     if (!current) return
     await persistSession({ ...current, noGpsPhotos: updater(current.noGpsPhotos || []), version: current.version + 1, updatedAt: new Date().toISOString() })
   }, [persistSession])
+
+  /**
+   * Snapshot the content hashes already imported into this competition, read
+   * from the LIVE session (`sessionRef`) at CALL time.
+   *
+   * Exists so callers physically cannot build the ADR-020 dedup set from a React
+   * render closure. `App.handlePhotoFiles` used to do exactly that, and the set
+   * it captured belonged to the render that created the callback — so a second
+   * drop arriving while the first import was still hashing files saw the
+   * PRE-import lists, found no duplicates, and re-imported every file under a
+   * fresh random `pm-` id (second blob, second thumb, second marker). Photo ids
+   * are `pm-${crypto.randomUUID()}`, so nothing downstream can recover from it.
+   *
+   * Stable identity (empty deps), matching every setter above: a getter that
+   * changed on each session write would drag `handlePhotoFiles` — and every drop
+   * handler closing over it — into being re-created on every marker edit.
+   */
+  const getExistingContentHashes = useCallback((): ReadonlySet<string> => {
+    return collectContentHashes(sessionRef.current)
+  }, [])
 
   /**
    * Commit one photo import in a SINGLE session write: append the GPS-tagged
@@ -650,6 +755,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     setGroundMarkers,
     setNoGpsPhotos,
     setNoGpsTrayOpen,
+    getExistingContentHashes,
     commitImportedPhotos,
     placeNoGpsPhoto,
     removePhoto,

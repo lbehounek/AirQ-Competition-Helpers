@@ -46,6 +46,12 @@ vi.mock('../hooks/useCorridorSessionOPFS', () => ({
     setGroundMarkers: vi.fn(),
     setNoGpsPhotos: vi.fn(),
     setNoGpsTrayOpen: vi.fn(),
+    // Both are called by the import path. They are absent from this double
+    // only because a smoke render never imports a photo — kept in sync anyway
+    // so a future assertion here fails loudly instead of on `undefined is not
+    // a function`.
+    getExistingContentHashes: () => new Set<string>(),
+    commitImportedPhotos: vi.fn(),
     placeNoGpsPhoto: vi.fn(),
     removePhoto: vi.fn(),
     renamePhoto: vi.fn(),

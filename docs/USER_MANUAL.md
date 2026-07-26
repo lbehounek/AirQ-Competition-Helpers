@@ -145,19 +145,26 @@ Two toolbar actions turn what's on screen into something you can hand out:
   `.kml` you can open in Google Earth.
 
 **Both carry each photo's name**, so what you call a photo decides how readable
-the export is:
+the export is. The printed map always shows the most useful identifier a photo
+has:
 
 | What the photo has | What prints next to its dot |
 |--------------------|------------------------------|
 | A custom name (renamed in the list) | `TP1` |
-| An answer-sheet label as well | `A - TP1` |
+| A custom name **and** an answer-sheet label | `A - TP1` |
+| Only an answer-sheet label | `A` |
 | Neither | the camera filename, e.g. `DSC_0123.JPG` |
 
-So rename the photos you care about (pencil icon in the photo list) before
-exporting — otherwise the sheet is a wall of camera filenames. Rejected photos
-are left out of both exports, matching what you see on the map. Where several
-photos sit on the same spot, their names are stacked one under another so they
-stay readable.
+A labelled photo prints its label alone: the camera filename is left off,
+because `A` is what the competitor looks for and `A - DSC_0123.JPG` would only
+eat space on the sheet. A photo with neither still prints its filename, so no
+dot is ever anonymous — but rename the photos you care about (pencil icon in
+the photo list) before exporting, otherwise the sheet is a wall of camera
+filenames. The **KML** additionally keeps the original filename in parentheses
+(`A - TP1 (DSC_0123.JPG)`), so a pin in Google Earth always leads back to the
+file on disk. Rejected photos are left out of both exports, matching what you
+see on the map. Where several photos sit on the same spot, their names are
+stacked one under another so they stay readable.
 
 ### 3.8 Send to the editor
 
@@ -231,7 +238,7 @@ than a raw error.
 | Map background is blank | Set your **Mapbox token** in settings. |
 | A no-GPS photo didn't reach the editor | It's still in the **No GPS tray** — drag it onto the map to place it, then re-send. |
 | A photo you know has GPS landed under **No GPS** | Most often it's a *copy* of the original (from a messaging app, or an export) — those are stripped of GPS on the way and import as a separate photo. Check the filename against the one on the map. If the import instead reported *"could not be opened"*, the file wasn't readable at that moment (moved, or on a card/network drive that dropped out) — put it back and import it again. |
-| The printed map shows only camera filenames | Nothing was renamed or labelled. Rename the photos in the list (pencil icon) — see [3.7](#37-print-the-map-or-export-it-to-google-earth). |
+| The printed map shows only camera filenames | Nothing was renamed or labelled. Rename the photos in the list (pencil icon), or give them answer-sheet labels — either one replaces the filename on the print. See [3.7](#37-print-the-map-or-export-it-to-google-earth). |
 | "Set 2 starts at" selector is missing | You're in **Precision** (single-set), or the **route has no turning points** loaded. |
 | Fewer photos arrived than expected | Check the panel's no-GPS warning; only **picked** photos transfer. |
 | PDF export reports missing images | Re-import the affected photos in the editor, or remove those cells, then export again. |
