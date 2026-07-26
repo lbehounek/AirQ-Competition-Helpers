@@ -70,6 +70,7 @@ import { generateTurningPointLabels } from './utils/imageProcessing';
 import { parseDiscipline } from './utils/parseDiscipline';
 import type { Discipline } from './utils/parseDiscipline';
 import { buildPdfSets } from './utils/buildPdfSets';
+import { gridShapeFor } from './utils/gridShapeFor';
 import { pickEffectiveLayout } from './utils/pickEffectiveLayout';
 import { deriveSet2FromSet1 } from './utils/autoPrefillSetTitle';
 import { getGridCapacity } from './utils/getGridCapacity';
@@ -1125,6 +1126,11 @@ function AppApi() {
             // Determine if we should show side-by-side layout
             const shouldShowSideBySide = isLargeScreen && layoutMode === 'portrait';
 
+            // Grid shape per set, so a set holding 10 photos in landscape
+            // renders 5×2 exactly as the PDF prints it (see gridShapeFor).
+            const set1Grid = gridShapeFor(session?.sets.set1.photos.length ?? 0, layoutMode);
+            const set2Grid = gridShapeFor(session?.sets.set2.photos.length ?? 0, layoutMode);
+
             // Create reusable set components
             const Set1Component = (
               <Box sx={{ width: '100%' }}>
@@ -1139,10 +1145,13 @@ function AppApi() {
                     <GridSizedDropZone
                       onFilesDropped={(files) => handleAddToSet(files, 'set1')}
                       setName={t('sets.set1')}
-                      // Precision track allows up to 10 regardless of current
-                      // layoutMode — a fresh 10-photo drop will switch the
-                      // layout via the effect above (feedback 2026-04-18).
-                      maxPhotos={isPrecision && session?.mode === 'track' ? 10 : (layoutMode === 'portrait' ? 10 : 9)}
+                      // Cap follows the layout, for precision too. The old
+                      // precision-track exception advertised 10 in landscape on
+                      // the strength of an auto-flip to portrait that was
+                      // removed with feedback 2026-05-12 ("layout choice is now
+                      // fully manual") — leaving the dropzone promising a slot
+                      // the router would send to the candidate tray instead.
+                      maxPhotos={layoutMode === 'portrait' ? 10 : 9}
                       loading={loading}
                       error={error}
                       setKey="set1"
@@ -1175,7 +1184,13 @@ function AppApi() {
                         onFilesDropped={(files) => handleAddToSet(files, 'set1')}
                         onCandidateDropped={handleCandidateDropped('set1')}
                         onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
-                        maxPhotosOverride={isPrecision && session.mode === 'track' ? 10 : undefined}
+                        // Render every photo the set actually holds. A set can
+                        // legitimately carry 10 in landscape (the layout switch
+                        // warns, then permits it), and the PDF prints all 10 as
+                        // 5×2 — so a fixed 3×3 here hid the 10th photo on screen
+                        // right up until it appeared on the printed sheet.
+                        slotsOverride={set1Grid.slots}
+                        columnsOverride={set1Grid.columns}
                       />
                     </Paper>
                   )
@@ -1230,6 +1245,8 @@ function AppApi() {
                         onFilesDropped={(files) => handleAddToSet(files, 'set2')}
                         onCandidateDropped={handleCandidateDropped('set2')}
                         onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
+                        slotsOverride={set2Grid.slots}
+                        columnsOverride={set2Grid.columns}
                       />
                     </Paper>
                   )

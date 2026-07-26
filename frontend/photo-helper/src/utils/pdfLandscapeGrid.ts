@@ -20,6 +20,9 @@
  *     height-constrained 4:3 grid leaves on the sides, reclaiming the
  *     ~22pt the top band would otherwise eat (feedback 2026-05-12).
  */
+
+import { LANDSCAPE_WIDE_AT } from './gridShapeFor';
+
 export const A4_LANDSCAPE_WIDTH_PT = 842;
 export const A4_LANDSCAPE_HEIGHT_PT = 595;
 export const PDF_LANDSCAPE_GAP_PT = 2.83; // ~1mm in points
@@ -53,11 +56,17 @@ export function calculateLandscapeGrid(
   const headerSize = Math.max(0, headerExtent || 0);
   const gap = PDF_LANDSCAPE_GAP_PT;
 
-  // pageCount >= 10 → 5×2; else 3×3. Trigger purely on `pageCount` so the
-  // selection is per-page — set1 with 10 photos can render 5×2 even when
-  // set2 has 7 (renders 3×3 with 2 empty trailing tiles).
-  const cols = pageCount >= 10 ? 5 : 3;
-  const rows = pageCount >= 10 ? 2 : 3;
+  // pageCount >= LANDSCAPE_WIDE_AT → 5×2; else 3×3. Trigger purely on
+  // `pageCount` so the selection is per-page — set1 with 10 photos can render
+  // 5×2 even when set2 has 7 (renders 3×3 with 2 empty trailing tiles).
+  //
+  // Threshold shared with the on-screen grid (`gridShapeFor`) rather than
+  // duplicated: the two are the paper and screen halves of one behaviour, and
+  // they drifted once already — precision printed 5×2 while the screen kept a
+  // fixed 3×3, hiding the 10th photo until it turned up on the sheet.
+  const wide = pageCount >= LANDSCAPE_WIDE_AT;
+  const cols = wide ? 5 : 3;
+  const rows = wide ? 2 : 3;
 
   // Header eats width when on the left, height when on top. The opposite
   // axis is left untouched so the grid can reclaim it.

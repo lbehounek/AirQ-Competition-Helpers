@@ -6,7 +6,7 @@ import { useI18n } from '../contexts/I18nContext';
 import { generateTurningPointLabels } from '../utils/imageProcessing';
 import type { ApiPhoto, ApiPhotoSet } from '../types/api';
 import { useLayoutMode } from '../contexts/LayoutModeContext';
-import { rallyGridFor } from '../utils/rallyGridFor';
+import { gridShapeFor } from '../utils/gridShapeFor';
 
 interface TurningPointLayoutProps {
   set1: ApiPhotoSet;
@@ -76,11 +76,13 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   const turningPointLabels = generateTurningPointLabels(set1.photos.length, effectiveSet2Count, layoutMode);
   const initialDropMax = isPrecision ? PRECISION_TURNING_MAX_PHOTOS : RALLY_TURNING_MAX_PHOTOS;
 
-  // Rally turning-point: per-set cap is 10 in both orientations. Logic
-  // is in `utils/rallyGridFor.ts` so the boundary at count === 10 is
-  // unit-testable (round-5 follow-up to feedback 2026-05-03).
-  const set1Grid = rallyGridFor(set1.photos.length, layoutMode, isPrecision);
-  const set2Grid = rallyGridFor(set2.photos.length, layoutMode, isPrecision);
+  // Per-set cap is 10 in both orientations. Logic is in `utils/gridShapeFor.ts`
+  // so the boundary at count === 10 is unit-testable (round-5 follow-up to
+  // feedback 2026-05-03). Applied to precision too: the PDF switches a
+  // landscape page to 5×2 on photo count alone, so excluding precision here
+  // made a 10-photo set show 9 on screen and print 10.
+  const set1Grid = gridShapeFor(set1.photos.length, layoutMode);
+  const set2Grid = gridShapeFor(set2.photos.length, layoutMode);
   const rallyMaxPerSet = isPrecision ? undefined : 10;
 
   return (

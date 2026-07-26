@@ -13,6 +13,13 @@ new desktop release.
 ## [Unreleased]
 
 ### Fixed
+- **Photo Helper:** in a **precision** competition, a set holding **10 photos**
+  in landscape showed only **9 on screen** — the 10th was hidden behind the 3×3
+  grid, then appeared on the exported PDF, which lays 10 photos out as 5×2. The
+  screen now uses the same grid as the printed sheet, so what you arrange is
+  what you get. (Precision sheets can hold 10; the layout switch warns before
+  moving a full portrait set to landscape.) The empty-set drop zone also no
+  longer advertises room for 10 photos in landscape when only 9 fit.
 - **Map Corridors:** **photo names now appear on the exported / printed map.**
   Previously the print drew only the answer-sheet label (A…T / 1…20), which is
   set only by clicking through the marker popup grid — so a photo you renamed
