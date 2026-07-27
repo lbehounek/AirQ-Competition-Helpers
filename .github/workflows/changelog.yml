@@ -24,6 +24,8 @@ concurrency:
 jobs:
   require-changelog:
     runs-on: ubuntu-latest
+    # Pure API calls — anything longer than this is a hang, not slow work.
+    timeout-minutes: 5
     steps:
       - name: Require CHANGELOG.md update
         env:
