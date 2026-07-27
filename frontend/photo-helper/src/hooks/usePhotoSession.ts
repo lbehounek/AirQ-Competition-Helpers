@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { PhotoSession, Photo, PhotoSet } from '../types';
+import type { PhotoSession, Photo } from '../types';
 import { useDebouncedLocalStorage } from './useLocalStorage';
 import { 
   createNewSession, 

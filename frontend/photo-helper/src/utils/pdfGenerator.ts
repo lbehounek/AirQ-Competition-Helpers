@@ -132,15 +132,14 @@ const createMultilineTextImage = (lines: string[], fontSize: number = 12): TextI
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#000000';
     
-    // Measure text dimensions
+    // Measure text dimensions. Only the widest line matters — the per-line
+    // widths were collected into an array that nothing ever read (drawing is
+    // right-aligned, so each line positions itself off `rightX`).
     let maxWidth = 0;
-    const lineMetrics = lines.map(line => {
-      const metrics = ctx.measureText(line);
-      const width = Math.ceil(metrics.width);
-      maxWidth = Math.max(maxWidth, width);
-      return { text: line, width };
-    });
-    
+    for (const line of lines) {
+      maxWidth = Math.max(maxWidth, Math.ceil(ctx.measureText(line).width));
+    }
+
     const lineHeight = Math.ceil(FONT_SIZE * 1.2);
     const totalHeight = (lineHeight * lines.length) + (LINE_SPACING * (lines.length - 1));
     
@@ -186,7 +185,9 @@ const createMultilineTextImage = (lines: string[], fontSize: number = 12): TextI
 export const generatePDF = async (
   set1: ApiPhotoSet,
   set2: ApiPhotoSet,
-  sessionId: string,
+  // Unused: photos arrive fully resolved in `set1`/`set2`, so nothing here
+  // needs to look anything up by session. Kept positionally for the call sites.
+  _sessionId: string,
   aspectRatio = 4/3,
   competitionName?: string,
   layoutMode: 'landscape' | 'portrait' = 'landscape',
@@ -479,7 +480,13 @@ export const generatePDF = async (
       if (headerImage) {
         const headerTopPad = 2.83; // ~1mm from the left edge
         const measuredGutter = Math.max(15, Math.ceil(headerImage.width));
-        localLayout = calculateLayout(15, measuredGutter, headerTopPad, pageCount, 'left');
+        // Call the landscape grid directly rather than via `calculateLayout`:
+        // that wrapper's return type is the portrait|landscape union, and only
+        // the landscape arm carries `headerX`/`headerY`. We are provably in the
+        // landscape branch here, so binding the concrete result keeps the
+        // header coordinates visible without a cast.
+        const landscapeLayout = calculateLandscapeGrid(aspectRatio, measuredGutter, headerTopPad, pageCount, 'left');
+        localLayout = landscapeLayout;
         // Center the rasterised header image vertically within the page —
         // the image is taller than its text (MIN_ROTATED_HEIGHT=400) but
         // the text is drawn at the image's centre, so centering the
@@ -492,7 +499,7 @@ export const generatePDF = async (
             src: headerImage.dataUrl,
             style: {
               position: 'absolute',
-              left: localLayout.headerX,
+              left: landscapeLayout.headerX,
               top: topPosition,
               width: headerImage.width,
               height: headerImage.height,
@@ -531,7 +538,10 @@ export const generatePDF = async (
         mergedTitleImage?.height || 0,
         promotionalImage?.height || 0
       );
-      localLayout = calculateLayout(15, measuredHeaderHeight, headerTopPad, pageCount);
+      // Same reason as the 'left'-placement branch above: bind the concrete
+      // landscape layout so `headerY` survives the union.
+      const landscapeLayout = calculateLandscapeGrid(aspectRatio, measuredHeaderHeight, headerTopPad, pageCount, 'top');
+      localLayout = landscapeLayout;
 
       if (mergedTitleImage) {
         // Place merged title at top-left
@@ -542,7 +552,7 @@ export const generatePDF = async (
             style: {
               position: 'absolute',
               left: headerTopPad, // ~1mm from left edge
-              top: localLayout.headerY,
+              top: landscapeLayout.headerY,
               width: mergedTitleImage.width,
               height: mergedTitleImage.height,
             }
@@ -559,7 +569,7 @@ export const generatePDF = async (
             style: {
               position: 'absolute',
               right: headerTopPad, // ~1mm from right edge
-              top: localLayout.headerY,
+              top: landscapeLayout.headerY,
               width: promotionalImage.width,
               height: promotionalImage.height,
             }

@@ -10,7 +10,6 @@ import {
   drawImageOnCanvas,
   drawLabel,
   getCanvasMousePosition,
-  constrainPosition,
   constrainPositionForViewport,
   CANVAS_SETTINGS
 } from '../utils/canvasUtils';
@@ -19,7 +18,8 @@ interface PhotoEditorProps {
   photo: Photo;
   label: string;
   onUpdate: (canvasState: Photo['canvasState']) => void;
-  onRemove: () => void;
+  // No `onRemove`: removal is a grid-level action (see `PhotoGrid`), and this
+  // component renders no delete control.
   size?: 'grid' | 'large';
 }
 
@@ -27,7 +27,6 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
   photo,
   label,
   onUpdate,
-  onRemove,
   size = 'grid'
 }) => {
   // Early return if photo data is invalid
@@ -184,68 +183,10 @@ export const PhotoEditor: React.FC<PhotoEditorProps> = ({
     setIsDragging(false);
   };
 
-  /**
-   * Handle zoom/scale changes
-   */
-  const handleScaleChange = (newScale: number) => {
-    if (!croppedImage || !photo?.canvasState) return;
-
-    const clampedScale = Math.min(3, Math.max(0.1, newScale));
-    
-    // Adjust position to keep image centered when scaling
-    const scaleDelta = clampedScale - photo.canvasState.scale;
-    const centerOffsetX = (croppedImage.width * scaleDelta) / 2;
-    const centerOffsetY = (croppedImage.height * scaleDelta) / 2;
-    
-    const newPosition = {
-      x: photo.canvasState.position.x - centerOffsetX,
-      y: photo.canvasState.position.y - centerOffsetY
-    };
-
-    const constrainedPosition = constrainPositionForViewport(
-      newPosition,
-      { width: photo.originalImage!.width, height: photo.originalImage!.height },
-      canvasSize,
-      clampedScale
-    );
-
-    onUpdate({
-      ...photo.canvasState,
-      position: constrainedPosition,
-      scale: clampedScale
-    });
-  };
-
-  /**
-   * Handle brightness/contrast adjustments
-   */
-  const handleBrightnessChange = (brightness: number) => {
-    onUpdate({
-      ...photo.canvasState,
-      brightness: Math.min(100, Math.max(-100, brightness))
-    });
-  };
-
-  const handleContrastChange = (contrast: number) => {
-    onUpdate({
-      ...photo.canvasState,
-      contrast: Math.min(2, Math.max(0.5, contrast))
-    });
-  };
-
-  /**
-   * Reset to default state
-   */
-  const handleReset = () => {
-    if (!photo?.canvasState) return;
-    onUpdate({
-      ...photo.canvasState,
-      position: { x: 0, y: 0 },
-      scale: 1,
-      brightness: 0,
-      contrast: 1
-    });
-  };
+  // NOTE: the scale / brightness / contrast / reset handlers that used to live
+  // here were removed. This component only renders the canvas and its drag
+  // interaction — every adjustment control moved to `PhotoControls`, which
+  // calls `onUpdate` itself (see the comment further down in the JSX).
 
   return (
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>

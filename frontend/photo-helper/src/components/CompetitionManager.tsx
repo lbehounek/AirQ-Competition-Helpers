@@ -3,7 +3,7 @@
  * This component can be used in place of or alongside existing photo session management
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Box, Alert, Typography, Grid, Paper } from '@mui/material';
 import { CompetitionSelector } from './CompetitionSelector';
 import { CreateCompetitionButton } from './CreateCompetitionButton';
@@ -70,7 +70,7 @@ export const CompetitionManager: React.FC<CompetitionManagerProps> = ({
         </Typography>
         
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={8}>
+          <Grid size={{ xs: 12, sm: 8 }}>
             <CompetitionSelector
               competitions={competitions}
               currentCompetitionId={currentCompetition?.id || null}
@@ -79,7 +79,7 @@ export const CompetitionManager: React.FC<CompetitionManagerProps> = ({
             />
           </Grid>
           
-          <Grid item xs={12} sm={4}>
+          <Grid size={{ xs: 12, sm: 4 }}>
             <CreateCompetitionButton
               onCreateCompetition={createNewCompetition}
               storageStats={storageStats}

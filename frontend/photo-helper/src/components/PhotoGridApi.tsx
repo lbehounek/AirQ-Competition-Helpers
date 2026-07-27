@@ -348,7 +348,6 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
                     photo={slot.photo}
                     label={slot.label}
                     onUpdate={(canvasState) => onPhotoUpdate(slot.photo!.id, canvasState)}
-                    onRemove={() => onPhotoRemove(slot.photo!.id)}
                     size="grid" // Small size for grid view
                     setKey={setKey} // Pass setKey for PDF generation
                     mode={labelMode}

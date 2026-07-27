@@ -1,24 +1,25 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Box, Tooltip } from '@mui/material';
 import type { Photo } from '../types';
-import { 
-  applyWebGLEffects, 
-  isWebGLSupported,
+import {
+  applyWebGLEffects,
   type WebGLContext,
-  type ImageAdjustments 
+  type ImageAdjustments
 } from '../utils/webglUtils';
 import { useWebGLContext } from '../utils/webglContextManager';
 import { drawLabel, getCanvasContext } from '../utils/canvasUtils';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useCachedImage } from '../utils/imageCache';
-import { intelligentResize, resizeImageHighQuality } from '../utils/highQualityResize';
+import { intelligentResize } from '../utils/highQualityResize';
 import type { ApiPhoto } from '../types/api';
 
 interface PhotoEditorApiProps {
   photo: ApiPhoto;
   label: string;
   onUpdate: (canvasState: Photo['canvasState']) => void;
-  onRemove: () => void;
+  // NB: no `onRemove`. Deleting a photo is a grid/tray action (PhotoGridApi's
+  // slot delete button, the candidate-tray toolbar) — the editor itself has no
+  // delete control, so the prop that used to be threaded here was never called.
   size?: 'grid' | 'large';
   // `'candidates'` is accepted but never reaches PDF generation —
   // `buildPdfSets` only reads `session.sets.{set1,set2}`. The attribute is
@@ -110,7 +111,11 @@ export const renderPhotoOnCanvas = async (
   isDragging = false,
   webglContext?: WebGLContext | null,
   webglManager?: { requestContext: () => WebGLContext | null; releaseContext: (ctx: WebGLContext) => void; isAvailable: boolean },
-  aspectRatio = 4/3,
+  // Positional parameter kept (callers pass it) but unused: the render is
+  // driven entirely by BASE_WIDTH + `baseHeight`, which already encode the
+  // target aspect. Underscore-prefixed so it stays in the signature without
+  // tripping noUnusedParameters.
+  _aspectRatio = 4/3,
   baseHeight = 225,
   showOriginal = false,
   useHighQuality = false,
@@ -131,10 +136,6 @@ export const renderPhotoOnCanvas = async (
   
   // For viewport-style aspect ratio, we work with the original image dimensions
   // and use canvas clipping to show only the desired aspect ratio portion
-  
-  // Calculate the minimum scale needed to fill the canvas (based on target aspect ratio)
-  const canvasAspect = canvas.width / canvas.height;
-  const imageAspect = image.width / image.height;
   
   // Calculate scale to fit original image to base dimensions
   const baseScaleX = BASE_WIDTH / image.width;
@@ -484,7 +485,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   photo,
   label,
   onUpdate,
-  onRemove,
   size = 'grid',
   setKey,
   showOriginal = false,
@@ -504,12 +504,16 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [localCirclePosition, setLocalCirclePosition] = useState<{ x: number; y: number } | null>(null);  // Local circle position for smooth dragging
   const pendingUpdateRef = useRef<number | null>(null);
   const lastMoveTimeRef = useRef<number>(0);
-  const dragRafRef = useRef<number | null>(null);
   const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [dragScaleFactor, setDragScaleFactor] = useState(1);
   // Idle-based high quality rendering control
   const [isIdleHQ, setIsIdleHQ] = useState(false);
-  const idleTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  // `number`, not `ReturnType<typeof setTimeout>`: @types/node is in this
+  // program (vite.config.ts) and its global `setTimeout` overload returns
+  // `NodeJS.Timeout`, so the inferred alias disagreed with what the DOM
+  // `window.setTimeout` below actually returns. Every timer in this file goes
+  // through `window.*` for the same reason.
+  const idleTimerRef = useRef<number | null>(null);
 
   const markInteraction = useCallback(() => {
     setIsIdleHQ(false);
@@ -533,8 +537,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [localLabelPosition, setLocalLabelPosition] = useState(photo?.canvasState?.labelPosition || { x: 0, y: 0 });
   
   // WebGL context management
+  // Capability detection lives entirely inside `useWebGLContext` /
+  // `applyWebGLEffects` (they fall back to the 2D path on their own), so this
+  // component keeps no `webglSupported` flag of its own — nothing here ever
+  // branched on it.
   const webglManager = useWebGLContext();
-  const [webglSupported, setWebglSupported] = useState<boolean>(false);
   const [lowPerformanceMode, setLowPerformanceMode] = useState<boolean>(false);
 
   // Dynamic canvas sizes based on aspect ratio
@@ -775,12 +782,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     });
   }, [renderCanvas]);
 
-  // Initialize WebGL support detection
-  useEffect(() => {
-    const supported = isWebGLSupported();
-    setWebglSupported(supported);
-  }, []);
-
   // Detect device capability and enable low-performance mode heuristics
   useEffect(() => {
     try {
@@ -816,26 +817,31 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
       // Handle circle dragging
       if (isDraggingCircle && photo.canvasState.circle) {
+        // Bind the narrowed circle to a local: the debounced callback below
+        // runs later, where TypeScript can no longer see this guard, and
+        // spreading the possibly-null property would drop every field to
+        // optional and violate `Photo['canvasState']['circle']`.
+        const circle = photo.canvasState.circle;
         const scaleRatio = canvas.width / BASE_WIDTH;
         const baseX = x / scaleRatio;
         const baseY = y / scaleRatio;
-        
+
         // Constrain circle to canvas bounds
-        const constrainedX = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH - photo.canvasState.circle.radius, baseX));
-        const constrainedY = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH / currentRatio.ratio - photo.canvasState.circle.radius, baseY));
+        const constrainedX = Math.max(circle.radius, Math.min(BASE_WIDTH - circle.radius, baseX));
+        const constrainedY = Math.max(circle.radius, Math.min(BASE_WIDTH / currentRatio.ratio - circle.radius, baseY));
         
         // Update local position immediately for smooth visual feedback
         setLocalCirclePosition({ x: constrainedX, y: constrainedY });
         
         // Debounce the actual state update to reduce re-renders
         if (pendingUpdateRef.current) {
-          clearTimeout(pendingUpdateRef.current);
+          window.clearTimeout(pendingUpdateRef.current);
         }
-        pendingUpdateRef.current = setTimeout(() => {
+        pendingUpdateRef.current = window.setTimeout(() => {
           onUpdate({
             ...photo.canvasState,
             circle: {
-              ...photo.canvasState.circle,
+              ...circle,
               x: constrainedX,
               y: constrainedY
             }
@@ -913,11 +919,11 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       
       // Update position with debouncing for smooth dragging
       if (pendingUpdateRef.current) {
-        clearTimeout(pendingUpdateRef.current);
+        window.clearTimeout(pendingUpdateRef.current);
       }
       
       const debounceMs = lowPerformanceMode ? 60 : 30;
-      pendingUpdateRef.current = setTimeout(() => {
+      pendingUpdateRef.current = window.setTimeout(() => {
         onUpdate({ ...photo.canvasState, position: newPosition });
       }, debounceMs);
     };
@@ -942,7 +948,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
         } else if (localCirclePosition && photo.canvasState.circle) {
           // We were dragging - apply final position
           if (pendingUpdateRef.current) {
-            clearTimeout(pendingUpdateRef.current);
+            window.clearTimeout(pendingUpdateRef.current);
           }
           onUpdate({
             ...photo.canvasState,
@@ -957,7 +963,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       
       // Handle normal photo drag
       if (isDragging && pendingUpdateRef.current) {
-        clearTimeout(pendingUpdateRef.current);
+        window.clearTimeout(pendingUpdateRef.current);
         onUpdate({ ...photo.canvasState, position: localPosition });
       }
       
@@ -1004,21 +1010,10 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     };
   }, [isDragging, isDraggingCircle, dragStart, localPosition, loadedImage, photo.canvasState, currentRatio, onUpdate, circleStartPos, localCirclePosition, markInteraction]);
 
-  // Helper function to check if click is on circle
-  const isClickOnCircle = (clickX: number, clickY: number): boolean => {
-    if (!photo.canvasState.circle) return false;
-    
-    const scaleRatio = canvasSize.width / BASE_WIDTH;
-    const circleX = photo.canvasState.circle.x * scaleRatio;
-    const circleY = photo.canvasState.circle.y * scaleRatio;
-    const circleRadius = photo.canvasState.circle.radius * scaleRatio;
-    
-    const distance = Math.sqrt(
-      Math.pow(clickX - circleX, 2) + Math.pow(clickY - circleY, 2)
-    );
-    
-    return distance <= circleRadius;
-  };
+  // NB: no circle hit-test helper. In circle mode a press anywhere on the
+  // canvas grabs the existing circle — a short click teleports it to the
+  // pointer, a drag moves it (see `handleMouseDown` / `handleDocumentMouseUp`).
+  // Requiring the press to land inside the circle would break that.
 
   // Helper function to convert canvas coordinates to base coordinates
   const canvasToBaseCoords = (canvasX: number, canvasY: number) => {
@@ -1040,7 +1035,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     
     // Clear any pending updates
     if (pendingUpdateRef.current) {
-      clearTimeout(pendingUpdateRef.current);
+      window.clearTimeout(pendingUpdateRef.current);
     }
 
     const canvas = canvasRef.current!;

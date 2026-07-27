@@ -6,7 +6,7 @@
 import Pica from 'pica';
 
 // Global Pica instance with optimized settings
-let picaInstance: Pica | null = null;
+let picaInstance: Pica.Pica | null = null;
 
 // Cache for high-quality resized images
 interface ResizeCache {
@@ -155,25 +155,16 @@ const getResizeCache = (): HighQualityResizeCache => {
   return resizeCacheInstance;
 };
 
-const getPicaInstance = (): Pica => {
+const getPicaInstance = (): Pica.Pica => {
   if (!picaInstance) {
+    // Constructor options are pool/feature settings ONLY. pica merges its own
+    // DEFAULT_RESIZE_OPTS with the per-call options inside `resize()` and never
+    // consults `this.options` for filter/unsharp/quality — so the sharpening and
+    // filter settings that used to sit here were silently ignored. They live
+    // (unchanged) on every `pica.resize()` call in this file instead.
     picaInstance = new Pica({
-      // Enable all available optimizations
-      features: ['js', 'wasm', 'ww'], // JavaScript, WebAssembly, Web Workers
-      
-      // Use high-quality settings for static rendering
-      filter: 'lanczos',  // Best quality filter for downsampling
-      
-      // Enable unsharp masking for post-sharpening
-      unsharpAmount: 80,      // Sharpening strength (0-500, default 0)
-      unsharpRadius: 0.6,     // Sharpening radius (0.5-2.0, default 0.6)
-      unsharpThreshold: 2,    // Threshold to avoid noise (0-255, default 2)
-      
-      // Quality vs performance balance for static rendering
-      quality: 3,  // 0-3, higher = better quality, slower processing
-      
-      // Alpha handling
-      alpha: true
+      // Enable all available optimizations: JavaScript, WebAssembly, Web Workers
+      features: ['js', 'wasm', 'ww'],
     });
   }
   return picaInstance;
@@ -191,7 +182,11 @@ export const resizeCanvasHighQuality = async (
     unsharpAmount?: number;
     unsharpRadius?: number;
     unsharpThreshold?: number;
-    filter?: 'lanczos' | 'box' | 'hamming' | 'catrom' | 'mitchell';
+    // pica 9's actual filter names. The previous union ('lanczos'/'catrom'/
+    // 'mitchell') matched none of them; it stayed harmless only because the
+    // legacy `quality: 3` option below makes pica overwrite `filter` with
+    // 'lanczos3' internally.
+    filter?: 'box' | 'hamming' | 'lanczos2' | 'lanczos3' | 'mks2013';
     quality?: 0 | 1 | 2 | 3;
   } = {}
 ): Promise<HTMLCanvasElement> => {
@@ -205,7 +200,7 @@ export const resizeCanvasHighQuality = async (
   try {
     // Use Pica for high-quality resizing
     await pica.resize(sourceCanvas, targetCanvas, {
-      filter: options.filter || 'lanczos',
+      filter: options.filter || 'lanczos3',
       unsharpAmount: options.unsharpAmount ?? 80,
       unsharpRadius: options.unsharpRadius ?? 0.6,
       unsharpThreshold: options.unsharpThreshold ?? 2,
@@ -240,7 +235,11 @@ export const resizeImageHighQuality = async (
     unsharpAmount?: number;
     unsharpRadius?: number;
     unsharpThreshold?: number;
-    filter?: 'lanczos' | 'box' | 'hamming' | 'catrom' | 'mitchell';
+    // pica 9's actual filter names. The previous union ('lanczos'/'catrom'/
+    // 'mitchell') matched none of them; it stayed harmless only because the
+    // legacy `quality: 3` option below makes pica overwrite `filter` with
+    // 'lanczos3' internally.
+    filter?: 'box' | 'hamming' | 'lanczos2' | 'lanczos3' | 'mks2013';
     quality?: 0 | 1 | 2 | 3;
   } = {}
 ): Promise<HTMLCanvasElement> => {
@@ -285,7 +284,7 @@ export const resizeImageMultiPass = async (
   // If reduction is small (<50%), use single pass
   if (scale >= 0.5) {
     return resizeImageHighQuality(sourceImage, targetWidth, targetHeight, {
-      filter: 'lanczos',
+      filter: 'lanczos3',
       quality: 3,
       ...options
     });
@@ -313,7 +312,7 @@ export const resizeImageMultiPass = async (
     const nextHeight = Math.max(targetHeight, Math.floor(currentHeight * 0.5));
     
     const nextCanvas = await resizeCanvasHighQuality(currentCanvas, nextWidth, nextHeight, {
-      filter: 'lanczos',
+      filter: 'lanczos3',
       quality: 3,
       unsharpAmount: 0, // No sharpening on intermediate steps
       unsharpRadius: 0.6,
@@ -328,7 +327,7 @@ export const resizeImageMultiPass = async (
   // Final resize to exact target size with sharpening
   if (currentWidth !== targetWidth || currentHeight !== targetHeight) {
     currentCanvas = await resizeCanvasHighQuality(currentCanvas, targetWidth, targetHeight, {
-      filter: 'lanczos',
+      filter: 'lanczos3',
       quality: 3,
       ...options // Apply final sharpening
     });
@@ -385,7 +384,7 @@ export const intelligentResize = async (
   } else {
     console.log(`📐 Using single-pass resize for ${sourceWidth}x${sourceHeight} → ${targetWidth}x${targetHeight} (scale: ${scale.toFixed(3)})`);
     resultCanvas = await resizeImageHighQuality(sourceImage, targetWidth, targetHeight, {
-      filter: 'lanczos',
+      filter: 'lanczos3',
       quality: 3,
       ...options
     });

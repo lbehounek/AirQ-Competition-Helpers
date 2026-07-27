@@ -19,18 +19,10 @@
 
 import { dirnameOf } from '@airq/shared-storage';
 
-declare global {
-  interface Window {
-    electronAPI?: {
-      openPhotos?: (defaultDir?: string, maxFiles?: number) => Promise<string[]>;
-      readPhotoFile?: (filePath: string) => Promise<{ name: string; mimeType: string; base64: string } | null>;
-      competitions?: {
-        getWorkingDir?: (id: string) => Promise<string | null>;
-        setWorkingDir?: (id: string, dir: string) => Promise<unknown>;
-      };
-    };
-  }
-}
+// `window.electronAPI`'s photo-import channels (openPhotos / readPhotoFile /
+// competitions) are declared in `src/types/electronApi.ts` as an augmentation
+// of shared-storage's `ElectronStorageAPI`. See that file for why they cannot
+// live in a local `declare global` block.
 
 export interface PhotoImportFailure {
   path: string;
@@ -55,7 +47,11 @@ export function getCompetitionIdFromUrl(): string | null {
   }
 }
 
-export function base64ToUint8Array(base64: string): Uint8Array {
+// Explicitly `Uint8Array<ArrayBuffer>`, not the bare `Uint8Array` (which
+// widens to `ArrayBufferLike` and therefore admits `SharedArrayBuffer`).
+// `BlobPart` / the `File` constructor only accept views over a plain
+// `ArrayBuffer`, so the wider alias would not be assignable at the call sites.
+export function base64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
   const len = binary.length;
   const bytes = new Uint8Array(len);

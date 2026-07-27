@@ -43,10 +43,12 @@ export const createEmptyPhotoSet = (): PhotoSet => {
 /**
  * Create a new photo object from file
  */
-export const createPhotoFromFile = (file: File, setIndex: number, photoIndex: number): Photo => {
+// `_setIndex` is unused: labels restart at 'A' in each set, so only the
+// within-set index selects the label. It stays in the signature (and keeps its
+// position) because every call site passes it.
+export const createPhotoFromFile = (file: File, _setIndex: number, photoIndex: number): Photo => {
   const labels = generatePhotoLabels();
-  const globalIndex = setIndex * 9 + photoIndex; // 0-17 for two sets of 9
-  
+
   return {
     id: `photo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     file,

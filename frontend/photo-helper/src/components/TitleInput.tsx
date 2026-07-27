@@ -1,5 +1,5 @@
 import React from 'react';
-import { TextField, Typography, Box } from '@mui/material';
+import { TextField, Box } from '@mui/material';
 import { Title as TitleIcon } from '@mui/icons-material';
 
 interface TitleInputProps {

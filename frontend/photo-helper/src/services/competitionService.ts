@@ -13,8 +13,9 @@ import type {
 } from '../types/competition';
 import type { ApiPhotoSession } from '../types/api';
 import {
+  // Only `initStorage` — the service caches the returned instance on
+  // `this.storage` and reads it from there; it never calls `getStorage()`.
   initStorage,
-  getStorage,
   type StorageInterface,
   type DirectoryHandle,
   type StorageHandles,

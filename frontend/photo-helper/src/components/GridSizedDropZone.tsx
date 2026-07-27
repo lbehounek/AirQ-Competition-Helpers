@@ -21,7 +21,9 @@ import { dispatchSlotDrop } from '../utils/slotDropDispatch';
 
 interface GridSizedDropZoneProps {
   onFilesDropped: (files: File[]) => void;
-  setName: string;
+  // NB: no `setName`. Unlike `DropZone` (which names the set in its
+  // "set is full" message), this zone only ever renders for an EMPTY set, so
+  // every string it shows is set-agnostic — the prop was accepted and dropped.
   maxPhotos: number;
   loading?: boolean;
   error?: string | null;
@@ -43,7 +45,6 @@ interface GridSizedDropZoneProps {
 
 export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
   onFilesDropped,
-  setName,
   maxPhotos,
   loading = false,
   error = null,

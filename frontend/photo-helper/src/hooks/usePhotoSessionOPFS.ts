@@ -42,6 +42,19 @@ export function createDefaultCanvasState(): ApiPhoto['canvasState'] {
   };
 }
 
+/**
+ * A per-mode set bucket as it may appear on disk. Current sessions store the
+ * flat `{ set1, set2 }` shape, but some early `setsTrack`/`setsTurning`
+ * records were written one level deeper as `{ sets: { set1, set2 } }`.
+ * The intersection (rather than a union) keeps both member accesses legal
+ * without a cast, which is what the original `active.sets ? … : …` guard was
+ * expressing via `any`.
+ */
+type MaybeNestedSets = ApiPhotoSession['sets'] & { sets?: ApiPhotoSession['sets'] };
+
+/** Collapse the legacy nested bucket to the flat `{ set1, set2 }` shape. */
+const unwrapSets = (v: MaybeNestedSets): ApiPhotoSession['sets'] => (v.sets ? v.sets : v);
+
 const defaultSession = (id: string): ApiPhotoSession => ({
   id,
   version: 1,
@@ -118,12 +131,13 @@ export function usePhotoSessionOPFS() {
             sAny.setsTurning = turning;
           }
           // Active sets mirror based on mode
-          const active = existing.mode === 'track' ? (sAny.setsTrack as typeof existing.sets) : (sAny.setsTurning as typeof existing.sets);
+          const active: MaybeNestedSets = existing.mode === 'track' ? sAny.setsTrack : sAny.setsTurning;
+          const activeSets = unwrapSets(active);
           const withUrls: ApiPhotoSession = {
             ...(sAny as ApiPhotoSession),
             sets: {
-              set1: { ...active.sets ? (active as any).sets.set1 : active.set1, photos: [...active.sets ? (active as any).sets.set1.photos : active.set1.photos] },
-              set2: { ...active.sets ? (active as any).sets.set2 : active.set2, photos: [...active.sets ? (active as any).sets.set2.photos : active.set2.photos] },
+              set1: { ...activeSets.set1, photos: [...activeSets.set1.photos] },
+              set2: { ...activeSets.set2, photos: [...activeSets.set2.photos] },
             },
           };
           for (const p of withUrls.sets.set1.photos) {

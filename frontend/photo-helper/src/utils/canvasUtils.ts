@@ -1,4 +1,4 @@
-import type { CanvasSettings, DragState } from '../types';
+import type { CanvasSettings } from '../types';
 
 // Validate canvas element to prevent getContext errors
 export const isValidCanvas = (canvas: any): canvas is HTMLCanvasElement => {
@@ -26,10 +26,12 @@ export const getCanvasContext = (canvas: any): CanvasRenderingContext2D | null =
 
 /**
  * Get canvas settings based on layout mode
- * @param layoutMode - 'landscape' or 'portrait'
+ * @param _layoutMode - 'landscape' or 'portrait'. Accepted for call-site
+ *   symmetry but unused: both orientations render at the same 240 px base
+ *   width, and the orientation difference is expressed by `aspectRatio`.
  * @param aspectRatio - The aspect ratio for photos
  */
-export const getCanvasSettings = (layoutMode: 'landscape' | 'portrait' = 'landscape', aspectRatio: number = 4/3): CanvasSettings => {
+export const getCanvasSettings = (_layoutMode: 'landscape' | 'portrait' = 'landscape', aspectRatio: number = 4/3): CanvasSettings => {
   // Use consistent canvas size for both modes
   const width = 240;
   return {

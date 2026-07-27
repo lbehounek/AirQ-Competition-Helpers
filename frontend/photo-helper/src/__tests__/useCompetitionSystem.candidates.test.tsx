@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { DirectoryHandle, StorageInterface } from '@airq/shared-storage';
+import {
+  savePhotoThumb as savePhotoThumbImpl,
+  getPhotoThumb as getPhotoThumbImpl,
+  deletePhotoThumb as deletePhotoThumbImpl,
+} from '@airq/shared-storage';
 import type { ApiPhoto } from '../types/api';
 
 // PR #62 review G1 / G2 / G5: the hook layer wraps the pure helpers with
@@ -81,7 +86,14 @@ class InMemoryStorage implements StorageInterface {
     const entry = this.pathToEntry.get(photosDir.path);
     if (!entry || entry.kind !== 'dir') throw new Error(`Bad dir: ${photosDir.path}`);
     const file = entry.children.get(photoId);
-    if (!file || file.kind !== 'blob') throw new Error(`Photo not found: ${photoId}`);
+    if (!file || file.kind !== 'blob') {
+      // 'NotFoundError' name, same as the missing-directory case above — the
+      // shared `getPhotoThumb` helper uses it to tell "no thumb yet" (→ null)
+      // apart from a genuine storage fault.
+      const err = new Error(`Photo not found: ${photoId}`);
+      err.name = 'NotFoundError';
+      throw err;
+    }
     return file.blob;
   }
   async deletePhotoFile(photosDir: DirectoryHandle, photoId: string) {
@@ -93,6 +105,17 @@ class InMemoryStorage implements StorageInterface {
     const entry = this.pathToEntry.get(dir.path);
     if (!entry || entry.kind !== 'dir') return;
     entry.children.clear();
+  }
+  // Delegate to the shared thumb helpers so the double reproduces the real
+  // `thumbs/` subdir + `.jpg` filename rules rather than a parallel invention.
+  async savePhotoThumb(photosDir: DirectoryHandle, photoId: string, blob: Blob) {
+    return savePhotoThumbImpl(this, photosDir, photoId, blob);
+  }
+  async getPhotoThumb(photosDir: DirectoryHandle, photoId: string) {
+    return getPhotoThumbImpl(this, photosDir, photoId);
+  }
+  async deletePhotoThumb(photosDir: DirectoryHandle, photoId: string) {
+    return deletePhotoThumbImpl(this, photosDir, photoId);
   }
   async deleteSessionDir() { /* unused */ }
   async getDirectoryHandle(parent: DirectoryHandle, name: string, options?: { create?: boolean }) {

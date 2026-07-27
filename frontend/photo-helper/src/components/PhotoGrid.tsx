@@ -177,7 +177,6 @@ export const PhotoGrid: React.FC<PhotoGridProps> = ({
                   photo={slot.photo}
                   label={slot.label}
                   onUpdate={(canvasState) => onPhotoUpdate(slot.photo!.id, canvasState)}
-                  onRemove={() => onPhotoRemove(slot.photo!.id)}
                   size="grid" // Small size for grid view
                 />
                 

@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { DirectoryHandle, StorageInterface } from '@airq/shared-storage';
+import {
+  savePhotoThumb as savePhotoThumbImpl,
+  getPhotoThumb as getPhotoThumbImpl,
+  deletePhotoThumb as deletePhotoThumbImpl,
+} from '@airq/shared-storage';
 import type { ApiPhoto, ApiPhotoSession } from '../types/api';
 // Note: competitionService is dynamic-imported inside each test so the
 // `vi.mock` hoist below takes effect before the service captures the mocked
@@ -97,7 +102,14 @@ class InMemoryStorage implements StorageInterface {
     const entry = this.pathToEntry.get(photosDir.path);
     if (!entry || entry.kind !== 'dir') throw new Error(`Bad dir: ${photosDir.path}`);
     const file = entry.children.get(photoId);
-    if (!file || file.kind !== 'blob') throw new Error(`Photo not found: ${photoId}`);
+    if (!file || file.kind !== 'blob') {
+      // Same 'NotFoundError' naming as the missing-directory case above: the
+      // shared `getPhotoThumb` helper distinguishes "no thumb yet" (→ null,
+      // caller regenerates) from a real storage fault purely by `err.name`.
+      const err = new Error(`Photo not found: ${photoId}`);
+      err.name = 'NotFoundError';
+      throw err;
+    }
     return file.blob;
   }
 
@@ -111,6 +123,21 @@ class InMemoryStorage implements StorageInterface {
     const entry = this.pathToEntry.get(dir.path);
     if (!entry || entry.kind !== 'dir') return;
     entry.children.clear();
+  }
+
+  // Thumb methods delegate to the very helpers OPFSStorage/ElectronStorage
+  // use, so the double keeps the real `thumbs/` subdir + `.jpg` naming rules
+  // instead of inventing a second, divergent thumb layout.
+  async savePhotoThumb(photosDir: DirectoryHandle, photoId: string, blob: Blob) {
+    return savePhotoThumbImpl(this, photosDir, photoId, blob);
+  }
+
+  async getPhotoThumb(photosDir: DirectoryHandle, photoId: string) {
+    return getPhotoThumbImpl(this, photosDir, photoId);
+  }
+
+  async deletePhotoThumb(photosDir: DirectoryHandle, photoId: string) {
+    return deletePhotoThumbImpl(this, photosDir, photoId);
   }
 
   async deleteSessionDir() { /* unused */ }

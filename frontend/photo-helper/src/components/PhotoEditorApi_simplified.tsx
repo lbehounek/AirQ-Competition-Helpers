@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Box, Tooltip } from '@mui/material';
+import { Box } from '@mui/material';
 import type { Photo } from '../types';
 import { drawLabel, getCanvasContext } from '../utils/canvasUtils';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
@@ -177,13 +177,13 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   photo,
   label,
   onUpdate,
-  onRemove,
   size = 'grid',
-  setKey,
-  showOriginal = false,
-  circleMode: externalCircleMode = false
+  showOriginal = false
+  // `onRemove`, `setKey` and `circleMode` are accepted for parity with the real
+  // `PhotoEditorApi` but this simplified variant renders no delete control, no
+  // per-set canvas attribute and no circle overlay, so it reads none of them.
 }) => {
-  const { currentRatio, getCanvasSize } = useAspectRatio();
+  const { getCanvasSize } = useAspectRatio();
   
   // Dynamic canvas sizes based on aspect ratio
   const gridCanvasSize = getCanvasSize(240);

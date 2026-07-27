@@ -1147,7 +1147,6 @@ function AppApi() {
                     </Box>
                     <GridSizedDropZone
                       onFilesDropped={(files) => handleAddToSet(files, 'set1')}
-                      setName={t('sets.set1')}
                       // Cap follows the layout, for precision too. The old
                       // precision-track exception advertised 10 in landscape on
                       // the strength of an auto-flip to portrait that was
@@ -1213,7 +1212,6 @@ function AppApi() {
                     </Box>
                     <GridSizedDropZone
                       onFilesDropped={(files) => handleAddToSet(files, 'set2')}
-                      setName={t('sets.set2')}
                       maxPhotos={layoutMode === 'portrait' ? 10 : 9}
                       loading={loading}
                       error={error}
@@ -1484,7 +1482,6 @@ function AppApi() {
                         onUpdate={(canvasState) =>
                           handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
                         }
-                        onRemove={() => handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id)}
                         size="large"
                         setKey={selectedPhoto.setKey}
                         showOriginal={showOriginal}
@@ -1551,7 +1548,6 @@ function AppApi() {
                         onUpdate={(canvasState) =>
                           handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
                         }
-                        onRemove={() => {}} // No-op since delete button is removed
                         onClose={() => {
                           setSelectedPhoto(null);
                           // Immediately refresh session to sync grid with modal changes
@@ -1584,7 +1580,6 @@ function AppApi() {
                       onUpdate={(canvasState) =>
                         handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
                       }
-                      onRemove={() => {}} // No-op since delete button is removed
                       onClose={() => {
                         setSelectedPhoto(null);
                         // Immediately refresh session to sync grid with modal changes

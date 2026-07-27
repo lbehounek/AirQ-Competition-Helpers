@@ -22,31 +22,11 @@ const vertexShaderSource = `
   }
 `;
 
-// Fragment shader for sharpening effect (kept for reference; combined shader below supersedes)
-const sharpenFragmentShaderSource = `
-  precision mediump float;
-  uniform sampler2D u_image;
-  uniform float u_sharpness;
-  uniform vec2 u_textureSize;
-  varying vec2 v_texCoord;
-  
-  void main() {
-    vec2 onePixel = vec2(1.0) / u_textureSize;
-    
-    vec4 color = texture2D(u_image, v_texCoord);
-    vec4 north = texture2D(u_image, v_texCoord + vec2(0.0, -onePixel.y));
-    vec4 south = texture2D(u_image, v_texCoord + vec2(0.0, onePixel.y));
-    vec4 east = texture2D(u_image, v_texCoord + vec2(onePixel.x, 0.0));
-    vec4 west = texture2D(u_image, v_texCoord + vec2(-onePixel.x, 0.0));
-    
-    float centerWeight = 1.0 + u_sharpness * 0.05;
-    float edgeWeight = -u_sharpness * 0.0125;
-    
-    vec4 sharpened = color * centerWeight + (north + south + east + west) * edgeWeight;
-    float mixAmount = u_sharpness * 0.01;
-    gl_FragColor = mix(color, sharpened, mixAmount);
-  }
-`;
+// NOTE: the standalone sharpen-only fragment shader that used to live here was
+// removed — `combinedFragmentShaderSource` below implements the same 5-tap
+// unsharp kernel alongside brightness/contrast/white-balance, and nothing ever
+// compiled the standalone one. Recover it from git history if a sharpen-only
+// pass is ever needed again.
 
 // Fragment shader for combined effects (brightness, contrast, white balance, sharpening)
 const combinedFragmentShaderSource = `
@@ -297,8 +277,10 @@ export function isWebGLSupported(): boolean {
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
     webglSupported = !!gl;
     
-    // Clean up the test context immediately
-    if (gl) {
+    // Clean up the test context immediately.
+    // `getContext` is typed as returning the whole `RenderingContext` union
+    // (2D included), so narrow on the WebGL-only method rather than casting.
+    if (gl && 'getExtension' in gl) {
       const loseContext = gl.getExtension('WEBGL_lose_context');
       if (loseContext) {
         loseContext.loseContext();
@@ -313,7 +295,9 @@ export function isWebGLSupported(): boolean {
 }
 
 // Factory function to create appropriate shader based on effects needed
-export function getFragmentShaderForEffects(includeSharpness: boolean = false): string {
-  // Use the combined shader that supports all effects (including sharpening)
+export function getFragmentShaderForEffects(_includeSharpness: boolean = false): string {
+  // Use the combined shader that supports all effects (including sharpening).
+  // The flag is retained for call-site readability only — there is a single
+  // shader now, so there is nothing to select between.
   return combinedFragmentShaderSource;
 }

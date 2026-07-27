@@ -97,7 +97,6 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
           </Box>
           <GridSizedDropZone
             onFilesDropped={(files) => (onInitialFilesDropped || ((f) => onFilesDropped('set1', f)))(files)}
-            setName={t('turningpoint.photos')}
             maxPhotos={initialDropMax}
             loading={loading}
             error={error}

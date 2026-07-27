@@ -473,7 +473,6 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
             photo={photo}
             label=""
             onUpdate={() => { /* persisted via parent's updateCandidatePhotoState */ }}
-            onRemove={() => { /* delete via toolbar */ }}
             size="grid"
           />
         </Box>

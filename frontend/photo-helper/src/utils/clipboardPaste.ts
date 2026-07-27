@@ -20,18 +20,9 @@
 
 import { base64ToUint8Array } from './electronPhotoImport';
 
-declare global {
-  interface Window {
-    electronAPI?: {
-      readPhotoFile?: (filePath: string) => Promise<{ name: string; mimeType: string; base64: string } | null>;
-      readClipboardPhotos?: (maxFiles?: number) => Promise<
-        | { kind: 'paths'; paths: string[]; rejected: Array<{ path: string; reason: string }> }
-        | { kind: 'image'; name: string; mimeType: string; base64: string }
-        | { kind: 'empty' }
-      >;
-    };
-  }
-}
+// `window.electronAPI.readClipboardPhotos` / `readPhotoFile` are declared in
+// `src/types/electronApi.ts` as an augmentation of shared-storage's
+// `ElectronStorageAPI` — a local `declare global` collides with it (TS2717).
 
 export interface ClipboardPhotoFailure {
   path: string;

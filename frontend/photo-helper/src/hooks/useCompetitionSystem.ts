@@ -7,8 +7,7 @@ import type {
   Competition, 
   CompetitionMetadata, 
   CleanupCandidate,
-  CleanupSuggestion,
-  StorageStats 
+  StorageStats
 } from '../types/competition';
 import type { ApiPhotoSession, ApiPhoto, CandidateFlag, AddPhotosResult } from '../types/api';
 import { competitionService } from '../services/competitionService';
@@ -25,7 +24,10 @@ import {
   demoteSlotToCandidate as demoteSlotToCandidatePure,
   setCandidateFlag as setCandidateFlagPure,
   removeCandidate as removeCandidatePure,
-  clearAllCandidates as clearAllCandidatesPure,
+  // NOTE: `clearAllCandidates` (the pure helper) is deliberately NOT imported.
+  // This hook's `clearAllCandidates` routes through `deleteCandidates` so the
+  // OPFS files are freed and per-id failures are rethrown (PR #62 CRIT-3);
+  // the pure session-only variant would silently orphan the photo bytes.
   updateCandidateCanvasState as updateCandidateCanvasStatePure,
   routeImportedPickIntoSets,
   insertPlaceholderIntoSet,
@@ -33,12 +35,10 @@ import {
 } from '../utils/candidateTransitions';
 import { createPlaceholderPhoto, PLACEHOLDER_ID_PREFIX } from '../utils/placeholderPhoto';
 import { collectSessionContentHashes, partitionFilesByContentHash } from '../utils/contentHash';
-import {
-  defaultTrackSetTitles,
-  DEFAULT_TRACK_SET1_TITLE_RALLY,
-  DEFAULT_TRACK_SET2_TITLE_RALLY,
-  DEFAULT_TRACK_SET1_TITLE_PRECISION,
-} from '../utils/defaultTrackSetTitles';
+// Only the resolver is needed here — it already picks the right per-discipline
+// constants internally, so importing them individually just duplicated that
+// knowledge at the call site.
+import { defaultTrackSetTitles } from '../utils/defaultTrackSetTitles';
 import { migrateLegacyPrecisionTitles } from '../utils/migrateLegacyPrecisionTitles';
 import { collectModeSwitchRevokeUrls } from '../utils/modeSwitchRevokeUrls';
 import { deriveSet2FromSet1 } from '../utils/autoPrefillSetTitle';
@@ -70,6 +70,25 @@ export interface UseCompetitionSystemResult {
   updateSessionMode: (mode: 'track' | 'turningpoint') => Promise<void>;
   updateLayoutMode: (layoutMode: 'landscape' | 'portrait') => Promise<void>;
   updateSessionCompetitionName: (competitionName: string) => Promise<void>;
+  /** Move a photo within one set (drag-and-drop reorder in the grid). */
+  reorderPhotos: (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => Promise<void>;
+  /** Fisher-Yates shuffle of one set, or both at once. */
+  shufflePhotos: (target: 'set1' | 'set2' | 'both') => Promise<void>;
+  /**
+   * No-op kept for API parity with the legacy `usePhotoSession*` hooks, whose
+   * consumers call it to force a re-read after an out-of-band mutation. This
+   * hook's state is already the React source of truth, so there is nothing to
+   * refresh — but `AppApi` feature-detects the method, so removing it would
+   * change which branch runs.
+   */
+  refreshSession: () => Promise<void>;
+  /**
+   * Apply one numeric canvas setting (brightness/contrast/…) to every photo in
+   * both sets, optionally skipping the photo the user is editing.
+   */
+  applySettingToAll: (setting: CanvasSetting, value: number, excludePhotoId?: string) => Promise<void>;
+  /** Same, for the label corner. */
+  applyLabelPositionToAll: (position: LabelPosition, excludePhotoId?: string) => Promise<void>;
 
   // Candidate pool operations (see docs/CANDIDATE_PHOTOS.md)
   addPhotosToCandidates: (files: File[]) => Promise<{ added: number; duplicates: number }>;
@@ -163,25 +182,24 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   const [cleanupCandidates, setCleanupCandidates] = useState<CleanupCandidate[]>([]);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
 
-  // Synchronous mirror of `currentCompetition`. Updated by `applyCurrentCompetition`
-  // (and the effect below for any direct setCurrentCompetition call sites) so that
-  // sequential async setters running within the same render frame each read the
-  // already-applied update from the previous call. Without this, the closure-
-  // captured `currentCompetition` is stale across awaits and last-write-wins on
+  // Synchronous mirror of `currentCompetition`, so that sequential async
+  // setters running within the same render frame each read the already-applied
+  // update from the previous call. Without it, the closure-captured
+  // `currentCompetition` is stale across awaits and last-write-wins on
   // `setCurrentCompetition` silently drops earlier updates. Repro: map-corridors
   // → editor handoff with N picks lands only the last one because
   // `syncMapPicksOnce` awaits N `addExistingCandidate` calls back-to-back without
   // React rendering between them. See useMapPicksSync.test.ts (sequential).
+  //
+  // Two writers keep it current:
+  //  • `updateCurrentCompetition` (the sequential hot path) assigns the ref
+  //    itself, immediately, before queuing the setState — and rolls it back if
+  //    the persist step throws.
+  //  • the effect below, for every other (one-shot, awaited) call site that
+  //    uses a bare `setCurrentCompetition`; those don't need synchronous
+  //    visibility because nothing re-reads the ref in the same frame.
   const currentCompetitionRef = useRef<Competition | null>(null);
   useEffect(() => { currentCompetitionRef.current = currentCompetition; }, [currentCompetition]);
-
-  // Write-through helper: updates the ref synchronously AND queues the React
-  // setState. Every call site that wants the next sequential read to see this
-  // value MUST go through here instead of bare `setCurrentCompetition`.
-  const applyCurrentCompetition = useCallback((next: Competition | null) => {
-    currentCompetitionRef.current = next;
-    setCurrentCompetition(next);
-  }, []);
 
   const migrationPerformed = useRef(false);
 
@@ -975,7 +993,6 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       // docs/CANDIDATE_PHOTOS.md swap-on-full row). Clamp out-of-range indices to
       // `capacity - 1` so the helper's swap branch fires instead.
       const capacity = getGridCapacity(session as any);
-      const slotCount = session.sets[setKey].photos.length;
       const safeIndex = slotIndex >= capacity
         ? Math.max(0, capacity - 1)
         : slotIndex < 0
@@ -1576,7 +1593,8 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       const routedTo: 'slot' | 'tray' = r1Tray || r2Tray ? 'tray' : 'slot';
       return { kind: 'ok', routedTo, count: added };
     },
-    refreshSession: (async () => {}) as any,
+    // Deliberate no-op — see `UseCompetitionSystemResult.refreshSession`.
+    refreshSession: async () => {},
     applySettingToAll,
     applyLabelPositionToAll,
 
