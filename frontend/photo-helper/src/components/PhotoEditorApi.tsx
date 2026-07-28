@@ -584,10 +584,10 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       markInteraction();
     };
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    window.addEventListener('keydown', handleKeyDown, { passive: true } as any);
+    window.addEventListener('keydown', handleKeyDown, { passive: true });
     return () => {
-      window.removeEventListener('pointermove', handlePointerMove as any);
-      window.removeEventListener('keydown', handleKeyDown as any);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [markInteraction]);
 
@@ -785,8 +785,12 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   // Detect device capability and enable low-performance mode heuristics
   useEffect(() => {
     try {
-      const cores = (navigator as any).hardwareConcurrency || 4;
-      const mem = (navigator as any).deviceMemory || 4; // GB
+      const cores = navigator.hardwareConcurrency || 4;
+      // `deviceMemory` is a Chromium-only extension (Device Memory API) and is
+      // absent from lib.dom, so it is read through a narrow structural view
+      // rather than `any`. Everywhere else it is undefined and the `|| 4`
+      // fallback keeps the heuristic on its "assume mid-range" default.
+      const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory || 4; // GB
       setLowPerformanceMode(cores <= 4 || mem <= 4);
     } catch {
       setLowPerformanceMode(false);
@@ -984,7 +988,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     document.body.style.webkitUserSelect = 'none';
     document.body.style.cursor = isDraggingCircle ? 'move' : 'grabbing';
     
-    document.addEventListener('pointermove', handleDocumentMouseMove as any);
+    document.addEventListener('pointermove', handleDocumentMouseMove);
     document.addEventListener('pointerup', handleDocumentMouseUp);
     document.addEventListener('pointercancel', handleDocumentMouseUp);
     
@@ -997,7 +1001,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Cleanup
     return () => {
-      document.removeEventListener('pointermove', handleDocumentMouseMove as any);
+      document.removeEventListener('pointermove', handleDocumentMouseMove);
       document.removeEventListener('pointerup', handleDocumentMouseUp);
       document.removeEventListener('pointercancel', handleDocumentMouseUp);
       document.removeEventListener('wheel', preventScroll);

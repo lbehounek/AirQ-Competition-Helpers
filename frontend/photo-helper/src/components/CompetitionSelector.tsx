@@ -27,8 +27,7 @@ export const CompetitionSelector: React.FC<CompetitionSelectorProps> = ({
   
   // Debug logging (development only)
   React.useEffect(() => {
-    if ((import.meta as any).env?.DEV) {
-      // eslint-disable-next-line no-console
+    if (import.meta.env.DEV) {
       console.log('CompetitionSelector render:', {
         competitions: competitions?.length || 0,
         currentCompetitionId,

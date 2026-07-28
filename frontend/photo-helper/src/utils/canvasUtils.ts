@@ -1,16 +1,24 @@
 import type { CanvasSettings } from '../types';
 
-// Validate canvas element to prevent getContext errors
-export const isValidCanvas = (canvas: any): canvas is HTMLCanvasElement => {
-  return canvas && 
-         typeof canvas === 'object' && 
-         canvas.nodeType === Node.ELEMENT_NODE && 
-         canvas.tagName === 'CANVAS' &&
-         typeof canvas.getContext === 'function';
+// Validate canvas element to prevent getContext errors.
+// Takes `unknown` because callers pass whatever a ref/DOM query handed them
+// (`null`, a detached node, a React ref's `.current`) — that is exactly the
+// case a type guard exists for. The duck-typing (`nodeType`/`tagName`/
+// `getContext`) rather than `instanceof HTMLCanvasElement` is deliberate: it
+// keeps working across the jsdom/test realm boundary, where `instanceof`
+// against the wrong window's constructor silently returns false.
+export const isValidCanvas = (canvas: unknown): canvas is HTMLCanvasElement => {
+  if (typeof canvas !== 'object' || canvas === null) return false;
+  // Viewed as a bag of unknown properties — no assertion about the real shape
+  // is made until all three checks have passed.
+  const el = canvas as Record<string, unknown>;
+  return el.nodeType === Node.ELEMENT_NODE &&
+         el.tagName === 'CANVAS' &&
+         typeof el.getContext === 'function';
 };
 
 // Safe canvas context getter with validation
-export const getCanvasContext = (canvas: any): CanvasRenderingContext2D | null => {
+export const getCanvasContext = (canvas: unknown): CanvasRenderingContext2D | null => {
   if (!isValidCanvas(canvas)) {
     console.warn('Invalid canvas element provided:', canvas);
     return null;

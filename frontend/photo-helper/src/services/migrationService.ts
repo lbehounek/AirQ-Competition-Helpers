@@ -3,7 +3,7 @@
  * Works with both OPFS (web) and native filesystem (Electron)
  */
 
-import type { ApiPhotoSession } from '../types/api';
+import type { ApiPhotoSession, ApiPhotoSet } from '../types/api';
 import type { Competition } from '../types/competition';
 import { competitionService } from './competitionService';
 import {
@@ -74,28 +74,31 @@ export class MigrationService {
    * Prepare migrated session with proper mode-specific sets structure
    */
   private prepareMigratedSession(existingSession: ApiPhotoSession): ApiPhotoSession {
-    // Deep clone to avoid mutating the original
-    const session = JSON.parse(JSON.stringify(existingSession));
+    // Deep clone to avoid mutating the original. `JSON.parse` returns `any`,
+    // so pin the result back to the input's type: the source is already an
+    // `ApiPhotoSession` and a JSON round-trip only drops `undefined`-valued
+    // (i.e. optional) keys — it never changes the shape of what remains.
+    const session: ApiPhotoSession = JSON.parse(JSON.stringify(existingSession));
 
     // Initialize mode-specific storage
     // Helpers to avoid shared references across buckets
-    const makeEmptySet = () => ({ title: '', photos: [] });
+    const makeEmptySet = (): ApiPhotoSet => ({ title: '', photos: [] });
 
     // Check if session already has mode-specific sets (from newer storage format)
-    const hasExistingModeStorage = (session as any).setsTrack || (session as any).setsTurning;
+    const hasExistingModeStorage = session.setsTrack || session.setsTurning;
 
     if (hasExistingModeStorage) {
       // Session already has mode-specific storage, preserve it
-      session.setsTrack = (session as any).setsTrack || { set1: makeEmptySet(), set2: makeEmptySet() };
-      session.setsTurning = (session as any).setsTurning || { set1: makeEmptySet(), set2: makeEmptySet() };
+      session.setsTrack = session.setsTrack || { set1: makeEmptySet(), set2: makeEmptySet() };
+      session.setsTurning = session.setsTurning || { set1: makeEmptySet(), set2: makeEmptySet() };
     } else {
       // Legacy session without mode-specific storage
       // Initialize mode-specific storage based on current mode
       if (session.mode === 'track') {
         // Current sets belong to track mode
         // Deep clone to avoid shared references
-        const clonedSet1 = JSON.parse(JSON.stringify(session.sets.set1));
-        const clonedSet2 = JSON.parse(JSON.stringify(session.sets.set2));
+        const clonedSet1: ApiPhotoSet = JSON.parse(JSON.stringify(session.sets.set1));
+        const clonedSet2: ApiPhotoSet = JSON.parse(JSON.stringify(session.sets.set2));
         session.setsTrack = { set1: clonedSet1, set2: clonedSet2 };
         session.setsTurning = { set1: makeEmptySet(), set2: makeEmptySet() };
 
@@ -111,8 +114,8 @@ export class MigrationService {
       } else {
         // Current sets belong to turning point mode
         // Deep clone to avoid shared references
-        const clonedSet1 = JSON.parse(JSON.stringify(session.sets.set1));
-        const clonedSet2 = JSON.parse(JSON.stringify(session.sets.set2));
+        const clonedSet1: ApiPhotoSet = JSON.parse(JSON.stringify(session.sets.set1));
+        const clonedSet2: ApiPhotoSet = JSON.parse(JSON.stringify(session.sets.set2));
         session.setsTurning = { set1: clonedSet1, set2: clonedSet2 };
         session.setsTrack = {
           set1: { title: 'SP - TPX', photos: [] },

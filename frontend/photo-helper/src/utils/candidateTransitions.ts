@@ -34,6 +34,23 @@ const getCandidatePhotos = (s: ApiPhotoSession): ApiPhoto[] =>
   s.candidates?.photos ?? [];
 
 /**
+ * Copy of `photo` with the tray-only `flag` key *removed* — not set to
+ * `undefined`. The distinction matters: the key is absent on every slotted
+ * photo on disk, and `JSON.stringify` would drop an explicit `undefined`
+ * anyway, so deleting keeps in-memory and persisted shapes identical.
+ *
+ * Written as an explicit `delete` on a shallow copy rather than the usual
+ * `const { flag: _flag, ...rest } = photo` idiom because that idiom needs a
+ * binding nobody reads, and this repo's `no-unused-vars` config only exempts
+ * `_`-prefixed *parameters* (`argsIgnorePattern`), not variables.
+ */
+const withoutFlag = (photo: ApiPhoto): Omit<ApiPhoto, 'flag'> => {
+  const stripped = { ...photo };
+  delete stripped.flag;
+  return stripped;
+};
+
+/**
  * Promote a candidate photo into a slot. If the slot index is currently
  * occupied, the existing slot photo is swapped back to the candidate pool as
  * a 'pick' (it was committed once, so likely a strong fallback).
@@ -55,8 +72,7 @@ export function promoteCandidateToSlot(
 
   const remainingCandidates = candidates.filter((p) => p.id !== candidateId);
   // Clear flag on entering a slot — flag is a tray-only concept.
-  const { flag: _flag, ...rest } = candidate;
-  const promoted: ApiPhoto = { ...rest };
+  const promoted: ApiPhoto = withoutFlag(candidate);
 
   const set = session.sets[setKey];
   const photos = [...set.photos];
@@ -297,7 +313,7 @@ export function routeImportedPickIntoSets(
   }
 
   // Slot placement: flag is a tray-only concept — drop it on entering a set.
-  const { flag: _flag, ...rest } = photo;
+  const rest = withoutFlag(photo);
   const slotPhoto: ApiPhoto = active
     ? { ...rest, sessionId: session.id }
     // Inactive bucket: store with empty URL like every other inactive-bucket

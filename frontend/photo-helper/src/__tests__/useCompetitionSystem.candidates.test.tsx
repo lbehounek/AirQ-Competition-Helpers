@@ -6,7 +6,8 @@ import {
   getPhotoThumb as getPhotoThumbImpl,
   deletePhotoThumb as deletePhotoThumbImpl,
 } from '@airq/shared-storage';
-import type { ApiPhoto } from '../types/api';
+import type { AddPhotosResult, ApiPhoto } from '../types/api';
+import { asErrResult, asOkResult, makeCanvasState, resetCompetitionServiceCaches } from './support/testHelpers';
 
 // PR #62 review G1 / G2 / G5: the hook layer wraps the pure helpers with
 // capacity clamps, smart-drop routing, mode-bucket mirroring, and the
@@ -138,7 +139,9 @@ class InMemoryStorage implements StorageInterface {
 let storageMock: InMemoryStorage;
 
 vi.mock('@airq/shared-storage', async () => {
-  const actual = await vi.importActual<any>('@airq/shared-storage');
+  // Typed against the real module so the spread below can't silently drop an
+  // export the hook depends on (an `any` here hid exactly that class of bug).
+  const actual = await vi.importActual<typeof import('@airq/shared-storage')>('@airq/shared-storage');
   return {
     ...actual,
     initStorage: vi.fn(async () => storageMock),
@@ -177,17 +180,21 @@ beforeEach(async () => {
     return id;
   };
   globalThis.URL.revokeObjectURL = (url: string) => { createdUrls.delete(url); };
-  globalThis.fetch = (input: any) => {
-    const url = typeof input === 'string' ? input : input.url;
+  // Returns a REAL `Response` so the stub satisfies the genuine `fetch`
+  // signature — no cast, and no risk of the code under test reaching for a
+  // response member the double never had. Bytes go in as an ArrayBuffer
+  // because undici's `Response` does not understand a jsdom `Blob` (it
+  // stringifies it to "[object Blob]"); the Content-Type header carries the
+  // MIME type that `saveSessionPhotos` copies onto the `File` it writes.
+  globalThis.fetch = async (input: RequestInfo | URL): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const blob = createdUrls.get(url);
-    if (!blob) return Promise.reject(new Error(`Mock fetch: unknown URL ${url}`));
-    return Promise.resolve({ blob: async () => blob } as any);
+    if (!blob) throw new Error(`Mock fetch: unknown URL ${url}`);
+    return new Response(await blob.arrayBuffer(), { headers: { 'Content-Type': blob.type } });
   };
   // competitionService is a module singleton — reset its caches each test.
   const { competitionService } = await import('../services/competitionService');
-  (competitionService as any).storage = null;
-  (competitionService as any).handles = null;
-  (competitionService as any).competitionsDir = null;
+  resetCompetitionServiceCaches(competitionService);
 });
 
 afterEach(() => { vi.restoreAllMocks(); });
@@ -217,7 +224,7 @@ describe('useCompetitionSystem — smart-drop integration (PR #62 review G1)', (
     // 9-slot landscape (default). Drop 12 files → over capacity → tray.
     const files = Array.from({ length: 12 }, (_, i) => makeFile(`f${i}.jpg`));
 
-    let resultValue: any;
+    let resultValue: AddPhotosResult | undefined;
     await act(async () => {
       resultValue = await result.current.addPhotosToSet(files, 'set1');
     });
@@ -231,7 +238,7 @@ describe('useCompetitionSystem — smart-drop integration (PR #62 review G1)', (
     const result = await setup();
     const files = Array.from({ length: 5 }, (_, i) => makeFile(`f${i}.jpg`));
 
-    let resultValue: any;
+    let resultValue: AddPhotosResult | undefined;
     await act(async () => {
       resultValue = await result.current.addPhotosToSet(files, 'set1');
     });
@@ -251,18 +258,21 @@ describe('useCompetitionSystem — smart-drop integration (PR #62 review G1)', (
     // Manually push the over-cap state by addressing the singleton — this
     // is a TEST-ONLY shortcut for the rare corruption path the guard covers.
     const session = result.current.currentCompetition!.session;
-    (session.sets.set1.photos as any).push(
-      ...Array.from({ length: 11 }, (_, i) => ({
-        id: `corrupt-${i}`, sessionId: session.id, url: '', filename: 'x', canvasState: {} as any, label: '',
+    session.sets.set1.photos.push(
+      ...Array.from({ length: 11 }, (_, i): ApiPhoto => ({
+        id: `corrupt-${i}`, sessionId: session.id, url: '', filename: 'x', canvasState: makeCanvasState(), label: '',
       })),
     );
 
-    let errResult: any;
+    let errResult: AddPhotosResult | undefined;
     await act(async () => {
       errResult = await result.current.addPhotosToSet([makeFile('y.jpg')], 'set1');
     });
-    expect(errResult.kind).toBe('err');
-    expect(errResult.reason).toBe('over-capacity');
+    // `asErrResult` both asserts the arm and narrows it, so the `reason` read
+    // below is type-checked instead of riding on an `any`.
+    const err = asErrResult(errResult);
+    expect(err.kind).toBe('err');
+    expect(err.reason).toBe('over-capacity');
   });
 });
 
@@ -375,7 +385,7 @@ describe('useCompetitionSystem — deleteCandidates and clearAllCandidates (PR #
     const [keepId, deleteId1, deleteId2] = ids;
 
     await act(async () => {
-      await (result.current as any).deleteCandidates([deleteId1, deleteId2]);
+      await result.current.deleteCandidates([deleteId1, deleteId2]);
     });
 
     expect(result.current.session!.candidates!.photos.map(p => p.id)).toEqual([keepId]);
@@ -395,7 +405,7 @@ describe('useCompetitionSystem — deleteCandidates and clearAllCandidates (PR #
     });
     // Try to delete an id that doesn't exist — should not throw or remove anything.
     await act(async () => {
-      await (result.current as any).deleteCandidates(['ghost-id']);
+      await result.current.deleteCandidates(['ghost-id']);
     });
     expect(result.current.session!.candidates!.photos.length).toBe(1);
   });
@@ -417,7 +427,7 @@ describe('useCompetitionSystem — deleteCandidates and clearAllCandidates (PR #
     }) as typeof storageMock.deletePhotoFile;
 
     await expect(
-      act(async () => { await (result.current as any).deleteCandidates([id]); })
+      act(async () => { await result.current.deleteCandidates([id]); })
     ).rejects.toThrow(/candidateDeletePartialFailure/);
   });
 
@@ -442,9 +452,9 @@ describe('useCompetitionSystem — addPhotosToTurningPoint overflow (PR #62 revi
     await act(async () => { await result.current.updateSessionMode('turningpoint'); });
 
     const files = Array.from({ length: 25 }, (_, i) => makeFile(`f${i}.jpg`));
-    let resultValue: any;
+    let resultValue: AddPhotosResult | undefined;
     await act(async () => {
-      resultValue = await (result.current as any).addPhotosToTurningPoint(files);
+      resultValue = await result.current.addPhotosToTurningPoint(files);
     });
 
     expect(resultValue).toEqual({ kind: 'ok', routedTo: 'tray', count: 25 });
@@ -474,14 +484,17 @@ describe('useCompetitionSystem — addPhotosToTurningPoint result aggregation (P
     // which happens to also be 8 here, but the code PATH is different and
     // a future inner clamp could diverge.
     const files = Array.from({ length: 8 }, (_, i) => makeFile(`f${i}.jpg`));
-    let aggResult: any;
+    let aggResult: AddPhotosResult | undefined;
     await act(async () => {
-      aggResult = await (result.current as any).addPhotosToTurningPoint(files);
+      aggResult = await result.current.addPhotosToTurningPoint(files);
     });
 
-    expect(aggResult.kind).toBe('ok');
-    expect(aggResult.routedTo).toBe('slot');
-    expect(aggResult.count).toBe(8);
+    // `asOkResult` asserts the arm AND narrows it, so the field reads below
+    // are type-checked rather than riding on an `any`.
+    const agg = asOkResult(aggResult);
+    expect(agg.kind).toBe('ok');
+    expect(agg.routedTo).toBe('slot');
+    expect(agg.count).toBe(8);
     expect(result.current.session!.sets.set1.photos.length).toBe(8);
     expect(result.current.session!.sets.set2.photos.length).toBe(0);
   });
@@ -499,18 +512,19 @@ describe('useCompetitionSystem — addPhotosToTurningPoint result aggregation (P
       );
     });
 
-    let aggResult: any;
+    let aggResult: AddPhotosResult | undefined;
     await act(async () => {
-      aggResult = await (result.current as any).addPhotosToTurningPoint(
+      aggResult = await result.current.addPhotosToTurningPoint(
         Array.from({ length: 5 }, (_, i) => makeFile(`new${i}.jpg`)),
       );
     });
 
-    expect(aggResult.kind).toBe('ok');
-    expect(aggResult.routedTo).toBe('slot');
+    const agg = asOkResult(aggResult);
+    expect(agg.kind).toBe('ok');
+    expect(agg.routedTo).toBe('slot');
     // The critical regression marker: count comes from r2.count via the
     // new aggregation, not from raw slice lengths.
-    expect(aggResult.count).toBe(5);
+    expect(agg.count).toBe(5);
     expect(result.current.session!.sets.set1.photos.length).toBe(10);
     expect(result.current.session!.sets.set2.photos.length).toBe(5);
   });
@@ -525,30 +539,31 @@ describe('useCompetitionSystem — over-capacity error is localised (PR #62 revi
     const result = await setup();
     // Force corruption: set1 already over the 9-slot landscape cap.
     const session = result.current.currentCompetition!.session;
-    (session.sets.set1.photos as any).push(
-      ...Array.from({ length: 11 }, (_, i) => ({
+    session.sets.set1.photos.push(
+      ...Array.from({ length: 11 }, (_, i): ApiPhoto => ({
         id: `c-${i}`,
         sessionId: session.id,
         url: '',
         filename: 'x',
-        canvasState: {} as any,
+        canvasState: makeCanvasState(),
         label: '',
       })),
     );
 
-    let errResult: any;
+    let errResult: AddPhotosResult | undefined;
     await act(async () => {
       errResult = await result.current.addPhotosToSet([makeFile('z.jpg')], 'set1');
     });
 
-    expect(errResult.kind).toBe('err');
-    expect(errResult.reason).toBe('over-capacity');
+    const err = asErrResult(errResult);
+    expect(err.kind).toBe('err');
+    expect(err.reason).toBe('over-capacity');
     // The mock `t()` echoes `key:params-json`. A localised message must
     // include the key — a hardcoded English string would NOT, so this is
     // a direct regression guard.
-    expect(errResult.message).toContain('errors.setOverCapacity');
-    expect(errResult.message).toContain('"current":11');
-    expect(errResult.message).toContain('"cap":9');
+    expect(err.message).toContain('errors.setOverCapacity');
+    expect(err.message).toContain('"current":11');
+    expect(err.message).toContain('"cap":9');
   });
 });
 
@@ -581,7 +596,7 @@ describe('useCompetitionSystem — deleteCandidates snapshot-drift result (PR #6
 
     let returnValue: { deleted: number; skipped: number } | undefined;
     await act(async () => {
-      returnValue = await (result.current as any).deleteCandidates(snapshotIds);
+      returnValue = await result.current.deleteCandidates(snapshotIds);
     });
 
     expect(returnValue).toEqual({ deleted: 0, skipped: 2 });
@@ -598,7 +613,7 @@ describe('useCompetitionSystem — deleteCandidates snapshot-drift result (PR #6
 
     let returnValue: { deleted: number; skipped: number } | undefined;
     await act(async () => {
-      returnValue = await (result.current as any).deleteCandidates(ids);
+      returnValue = await result.current.deleteCandidates(ids);
     });
 
     expect(returnValue).toEqual({ deleted: 3, skipped: 0 });
@@ -619,7 +634,7 @@ describe('useCompetitionSystem — deleteCandidates snapshot-drift result (PR #6
 
     let returnValue: { deleted: number; skipped: number } | undefined;
     await act(async () => {
-      returnValue = await (result.current as any).deleteCandidates(ids);
+      returnValue = await result.current.deleteCandidates(ids);
     });
 
     expect(returnValue).toEqual({ deleted: 2, skipped: 1 });
@@ -631,7 +646,7 @@ describe('useCompetitionSystem — deleteCandidates snapshot-drift result (PR #6
     const result = await setup();
     let returnValue: { deleted: number; skipped: number } | undefined;
     await act(async () => {
-      returnValue = await (result.current as any).deleteCandidates([]);
+      returnValue = await result.current.deleteCandidates([]);
     });
     expect(returnValue).toEqual({ deleted: 0, skipped: 0 });
   });
@@ -824,7 +839,7 @@ describe('useCompetitionSystem — addExistingCandidate sequential race (handoff
     const localId = result.current.session!.candidates!.photos.find(p => p.id !== pmId)!.id;
 
     await act(async () => {
-      await (result.current as any).deleteCandidates([pmId, localId]);
+      await result.current.deleteCandidates([pmId, localId]);
     });
 
     const remainingFiles = (await storageMock.listDirectory(photosDir)).map(e => e.name);

@@ -12,9 +12,57 @@ interface I18nContextType {
 
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
-// Helper function to get nested object values by path
-const getNestedValue = (obj: any, path: string): string => {
-  return path.split('.').reduce((current, key) => current?.[key], obj) || path;
+/**
+ * The preload channels this context uses (`frontend/desktop/preload.js`:
+ * `get-config` / `set-config` / `set-menu-locale`). They are not part of
+ * `shared-storage`'s `ElectronStorageAPI`, so reading them off the global type
+ * is an error — this file used to paper over that with `(window as any)`.
+ *
+ * They are declared by AUGMENTING the same interface, never by re-declaring
+ * `Window.electronAPI`: a second declaration of that property collides under
+ * TS2717 and hides shared-storage's own members (see the long note in
+ * `src/types/electronApi.ts`).
+ *
+ * TODO: these three belong in `src/types/electronApi.ts` next to the other
+ * preload channels — that file is now the single home for them (`savePdf`
+ * moved there out of `utils/pdfGenerator.ts`). They are declared locally only
+ * because this change could not touch `src/types/`.
+ *
+ * Optional like every other channel there: the app also ships as a plain web
+ * build with no bridge at all, and older desktop builds may predate an
+ * individual channel — hence the feature-detect at each call site below.
+ */
+declare module '@airq/shared-storage' {
+  interface ElectronStorageAPI {
+    /** Read a persisted renderer setting, shared across all `app://` origins. */
+    getConfig?: (key: string) => Promise<string | null>;
+    /** Persist a renderer setting. */
+    setConfig?: (key: string, value: string) => Promise<void>;
+    /** Re-render the native application menu in the given locale. */
+    setMenuLocale?: (locale: string) => Promise<void>;
+  }
+}
+
+/**
+ * Walk a dotted path (`'app.title'`) through the translation tree, falling
+ * back to the raw key when any segment is missing so a missing string shows up
+ * verbatim in the UI instead of as `undefined`.
+ *
+ * `unknown` rather than a recursive `Translation` walk: the tree is nested to
+ * an arbitrary depth and the intermediate values genuinely aren't known to be
+ * strings until the last hop, so each step is narrowed explicitly.
+ */
+const getNestedValue = (obj: unknown, path: string): string => {
+  const value = path.split('.').reduce<unknown>(
+    (current, key) =>
+      // Only descend through real objects; anything else (string leaf reached
+      // early, null, undefined) short-circuits to undefined → key fallback.
+      typeof current === 'object' && current !== null
+        ? (current as Record<string, unknown>)[key]
+        : undefined,
+    obj,
+  );
+  return typeof value === 'string' && value ? value : path;
 };
 
 // Helper function to replace placeholders in strings
@@ -43,8 +91,9 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
         let stored: string | null = null;
 
         // In Electron, use config storage (shared across all app:// origins)
-        if ((window as any).electronAPI?.getConfig) {
-          stored = await (window as any).electronAPI.getConfig('locale');
+        const api = window.electronAPI;
+        if (api?.getConfig) {
+          stored = await api.getConfig('locale');
         } else if (typeof window !== 'undefined' && window.localStorage) {
           stored = window.localStorage.getItem('app-locale');
         }
@@ -68,8 +117,9 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
 
   // Sync menu language on mount and when locale changes
   useEffect(() => {
-    if (initialized && (window as any).electronAPI?.setMenuLocale) {
-      (window as any).electronAPI.setMenuLocale(locale);
+    const api = window.electronAPI;
+    if (initialized && api?.setMenuLocale) {
+      api.setMenuLocale(locale);
     }
   }, [locale, initialized]);
 
@@ -80,14 +130,15 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
 
     try {
       // In Electron, use config storage
-      if ((window as any).electronAPI?.setConfig) {
-        await (window as any).electronAPI.setConfig('locale', safeLocale);
+      const api = window.electronAPI;
+      if (api?.setConfig) {
+        await api.setConfig('locale', safeLocale);
       } else if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem('app-locale', safeLocale);
       }
       // Update Electron menu language
-      if ((window as any).electronAPI?.setMenuLocale) {
-        (window as any).electronAPI.setMenuLocale(safeLocale);
+      if (api?.setMenuLocale) {
+        api.setMenuLocale(safeLocale);
       }
     } catch (e) {
       console.warn('Failed to save locale:', e);

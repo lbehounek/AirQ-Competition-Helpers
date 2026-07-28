@@ -8,6 +8,40 @@ import Pica from 'pica';
 // Global Pica instance with optimized settings
 let picaInstance: Pica.Pica | null = null;
 
+/**
+ * Unsharp-mask knobs, shared by every resize entry point in this file.
+ * Split out because the three public helpers plus the cache all need the same
+ * trio and they had drifted into four hand-copied inline literals.
+ */
+export interface ResizeSharpenOptions {
+  unsharpAmount?: number;
+  unsharpRadius?: number;
+  unsharpThreshold?: number;
+}
+
+/**
+ * Options accepted by the pica-backed single-pass resizers.
+ *
+ * `filter` lists pica 9's actual filter names. An earlier union
+ * ('lanczos'/'catrom'/'mitchell') matched none of them; it stayed harmless
+ * only because the legacy `quality: 3` option makes pica overwrite `filter`
+ * with 'lanczos3' internally.
+ */
+export interface HighQualityResizeOptions extends ResizeSharpenOptions {
+  filter?: 'box' | 'hamming' | 'lanczos2' | 'lanczos3' | 'mks2013';
+  quality?: 0 | 1 | 2 | 3;
+}
+
+/**
+ * Options for `intelligentResize`, which picks single- vs multi-pass itself.
+ * `filter`/`quality` are absent on purpose — the strategy owns those — and
+ * this whole object doubles as part of the resize cache key, so every field
+ * has to be JSON-serializable.
+ */
+export interface IntelligentResizeOptions extends ResizeSharpenOptions {
+  forceMultiPass?: boolean;
+}
+
 // Cache for high-quality resized images
 interface ResizeCache {
   canvas: HTMLCanvasElement;
@@ -30,7 +64,9 @@ class HighQualityResizeCache {
     imageKey: string,
     targetWidth: number,
     targetHeight: number,
-    options: any
+    // The cache is only ever driven by `intelligentResize`, so this is that
+    // function's option bag verbatim — serialized into the key below.
+    options: IntelligentResizeOptions
   ): string {
     const optionsKey = JSON.stringify(options);
     return `${imageKey}-${targetWidth}x${targetHeight}-${optionsKey}`;
@@ -43,7 +79,7 @@ class HighQualityResizeCache {
     imageKey: string,
     targetWidth: number,
     targetHeight: number,
-    options: any
+    options: IntelligentResizeOptions
   ): HTMLCanvasElement | null {
     const cacheKey = this.getCacheKey(imageKey, targetWidth, targetHeight, options);
     const cached = this.cache.get(cacheKey);
@@ -68,7 +104,7 @@ class HighQualityResizeCache {
     imageKey: string,
     targetWidth: number,
     targetHeight: number,
-    options: any,
+    options: IntelligentResizeOptions,
     canvas: HTMLCanvasElement
   ): void {
     const cacheKey = this.getCacheKey(imageKey, targetWidth, targetHeight, options);
@@ -147,9 +183,11 @@ const getResizeCache = (): HighQualityResizeCache => {
   if (!resizeCacheInstance) {
     resizeCacheInstance = new HighQualityResizeCache();
     
-    // Make it available globally for debugging
+    // Make it available globally for debugging. Cast to a `window` view that
+    // names exactly this one extra property instead of `any`: it is a devtools
+    // convenience, and nothing in the app reads it back.
     if (typeof window !== 'undefined') {
-      (window as any).resizeCache = resizeCacheInstance;
+      (window as Window & { resizeCache?: HighQualityResizeCache }).resizeCache = resizeCacheInstance;
     }
   }
   return resizeCacheInstance;
@@ -178,17 +216,7 @@ export const resizeCanvasHighQuality = async (
   sourceCanvas: HTMLCanvasElement,
   targetWidth: number,
   targetHeight: number,
-  options: {
-    unsharpAmount?: number;
-    unsharpRadius?: number;
-    unsharpThreshold?: number;
-    // pica 9's actual filter names. The previous union ('lanczos'/'catrom'/
-    // 'mitchell') matched none of them; it stayed harmless only because the
-    // legacy `quality: 3` option below makes pica overwrite `filter` with
-    // 'lanczos3' internally.
-    filter?: 'box' | 'hamming' | 'lanczos2' | 'lanczos3' | 'mks2013';
-    quality?: 0 | 1 | 2 | 3;
-  } = {}
+  options: HighQualityResizeOptions = {}
 ): Promise<HTMLCanvasElement> => {
   const pica = getPicaInstance();
   
@@ -231,17 +259,7 @@ export const resizeImageHighQuality = async (
   sourceImage: HTMLImageElement,
   targetWidth: number,
   targetHeight: number,
-  options: {
-    unsharpAmount?: number;
-    unsharpRadius?: number;
-    unsharpThreshold?: number;
-    // pica 9's actual filter names. The previous union ('lanczos'/'catrom'/
-    // 'mitchell') matched none of them; it stayed harmless only because the
-    // legacy `quality: 3` option below makes pica overwrite `filter` with
-    // 'lanczos3' internally.
-    filter?: 'box' | 'hamming' | 'lanczos2' | 'lanczos3' | 'mks2013';
-    quality?: 0 | 1 | 2 | 3;
-  } = {}
+  options: HighQualityResizeOptions = {}
 ): Promise<HTMLCanvasElement> => {
   // First, draw image to a source canvas at original size
   const sourceCanvas = document.createElement('canvas');
@@ -268,11 +286,7 @@ export const resizeImageMultiPass = async (
   sourceImage: HTMLImageElement,
   targetWidth: number,
   targetHeight: number,
-  options: {
-    unsharpAmount?: number;
-    unsharpRadius?: number;
-    unsharpThreshold?: number;
-  } = {}
+  options: ResizeSharpenOptions = {}
 ): Promise<HTMLCanvasElement> => {
   const sourceWidth = sourceImage.width;
   const sourceHeight = sourceImage.height;
@@ -344,12 +358,7 @@ export const intelligentResize = async (
   sourceImage: HTMLImageElement,
   targetWidth: number,
   targetHeight: number,
-  options: {
-    unsharpAmount?: number;
-    unsharpRadius?: number;
-    unsharpThreshold?: number;
-    forceMultiPass?: boolean;
-  } = {}
+  options: IntelligentResizeOptions = {}
 ): Promise<HTMLCanvasElement> => {
   const cache = getResizeCache();
   const imageKey = cache.getImageKey(sourceImage);
@@ -415,7 +424,13 @@ export const getPicaInfo = () => {
   return {
     hasWasm: isPicaWasmAvailable(),
     hasWebWorkers: typeof Worker !== 'undefined',
-    features: (pica as any).features || [],
+    // pica's *instance* carries a detected-capability map
+    // (`{ js, wasm, cib, ww }`) that `@types/pica` never declares — its
+    // `features` entry models the constructor *option*, which is an array of
+    // names. Read it through a structural view of just that member. The old
+    // `|| []` fallback was dead code and misdescribed the value as an array:
+    // pica creates the map in its constructor, so it is always an object.
+    features: (pica as unknown as { features?: Partial<Record<'js' | 'wasm' | 'cib' | 'ww', boolean>> }).features ?? {},
     version: 'pica-js'
   };
 };

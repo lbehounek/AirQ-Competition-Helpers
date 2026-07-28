@@ -9,7 +9,8 @@ import {
   routeImportedPickIntoSets,
   reconcilePlacedToDesiredSet,
 } from '../utils/candidateTransitions';
-import type { ApiPhoto, ApiPhotoSession, CandidateFlag } from '../types/api';
+import type { ApiPhoto, ApiPhotoSession, ApiPhotoSet, CandidateFlag } from '../types/api';
+import { makeCanvasState } from './support/testHelpers';
 
 // Pure-helper tests — the hook layer calls these and then writes the result.
 // If these are correct, slot↔tray UX correctness reduces to "does the hook
@@ -21,15 +22,7 @@ function makePhoto(id: string, extras: Partial<ApiPhoto> = {}): ApiPhoto {
     sessionId: 'sess-1',
     url: `blob:${id}`,
     filename: `${id}.jpg`,
-    canvasState: {
-      position: { x: 0, y: 0 },
-      scale: 1,
-      brightness: 0,
-      contrast: 1,
-      sharpness: 0,
-      whiteBalance: { temperature: 0, tint: 0, auto: false },
-      labelPosition: 'bottom-left',
-    } as any,
+    canvasState: makeCanvasState(),
     label: '',
     ...extras,
   };
@@ -95,11 +88,11 @@ describe('promoteCandidateToSlot', () => {
 
   it('preserves canvasState across promotion', () => {
     const cand = makePhoto('c1');
-    cand.canvasState = { ...cand.canvasState, brightness: 0.5 } as any;
+    cand.canvasState = { ...cand.canvasState, brightness: 0.5 };
     const session = makeSession([], [], [cand]);
 
     const next = promoteCandidateToSlot(session, 'c1', 'set1', 0);
-    expect((next.sets.set1.photos[0].canvasState as any).brightness).toBe(0.5);
+    expect(next.sets.set1.photos[0].canvasState.brightness).toBe(0.5);
   });
 
   it('no-op when candidate id is unknown', () => {
@@ -237,13 +230,13 @@ describe('clearAllCandidates', () => {
 describe('updateCandidateCanvasState', () => {
   it('merges canvasState partial without dropping other fields', () => {
     const c1 = makePhoto('c1');
-    c1.canvasState = { ...c1.canvasState, brightness: 0.2 } as any;
+    c1.canvasState = { ...c1.canvasState, brightness: 0.2 };
     const session = makeSession([], [], [c1]);
 
     const next = updateCandidateCanvasState(session, 'c1', { contrast: 1.5 });
 
-    expect((next.candidates?.photos[0].canvasState as any).brightness).toBe(0.2);
-    expect((next.candidates?.photos[0].canvasState as any).contrast).toBe(1.5);
+    expect(next.candidates!.photos[0].canvasState.brightness).toBe(0.2);
+    expect(next.candidates!.photos[0].canvasState.contrast).toBe(1.5);
   });
 
   it('no-op when id is unknown', () => {
@@ -345,22 +338,29 @@ describe('routeImportedPickIntoSets', () => {
     setsTurning?: { set1: ApiPhoto[]; set2: ApiPhoto[] };
     layoutMode?: 'portrait' | 'landscape';
   }): ApiPhotoSession {
-    const wrap = (s?: { set1: ApiPhoto[]; set2: ApiPhoto[] }) =>
-      s ? { set1: { title: '', photos: s.set1 }, set2: { title: '', photos: s.set2 } } : undefined;
-    const base: any = {
+    // Takes a REQUIRED pair so the return type is a concrete set-pair rather
+    // than `… | undefined`; callers below decide the default themselves. That
+    // is what lets `base` be a real `ApiPhotoSession` instead of `any`.
+    const wrap = (s: { set1: ApiPhoto[]; set2: ApiPhoto[] }): { set1: ApiPhotoSet; set2: ApiPhotoSet } =>
+      ({ set1: { title: '', photos: s.set1 }, set2: { title: '', photos: s.set2 } });
+    const base: ApiPhotoSession = {
       id: 'sess-1',
       version: 1,
       createdAt: '2026-05-31T00:00:00Z',
       updatedAt: '2026-05-31T00:00:00Z',
       mode: opts.mode,
       competition_name: 'Test',
-      sets: wrap(opts.sets) ?? { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } },
+      sets: opts.sets ? wrap(opts.sets) : wrap({ set1: [], set2: [] }),
       candidates: { photos: [] },
     };
+    // Assigned conditionally (not spread with `undefined`) so an absent bucket
+    // stays genuinely ABSENT — `routeImportedPickIntoSets` branches on
+    // `session.setsTurning === undefined`, and `{ setsTurning: undefined }`
+    // would still serialise a key through the JSON round-trip.
     if (opts.setsTrack) base.setsTrack = wrap(opts.setsTrack);
     if (opts.setsTurning) base.setsTurning = wrap(opts.setsTurning);
     if (opts.layoutMode) base.layoutMode = opts.layoutMode;
-    return base as ApiPhotoSession;
+    return base;
   }
 
   const fill = (n: number, prefix: string) =>
@@ -575,7 +575,7 @@ describe('reconcilePlacedToDesiredSet', () => {
     candidates?: ApiPhoto[];
     layoutMode?: 'portrait' | 'landscape';
   }): ApiPhotoSession {
-    const base: any = {
+    const base: ApiPhotoSession = {
       id: 'sess-1',
       version: 1,
       createdAt: '2026-05-31T00:00:00Z',
@@ -588,8 +588,10 @@ describe('reconcilePlacedToDesiredSet', () => {
       },
       candidates: { photos: opts.candidates ?? [] },
     };
+    // Conditional assignment keeps `layoutMode` absent (not `undefined`) when
+    // unset — `getGridCapacity` treats absent as the legacy landscape default.
     if (opts.layoutMode) base.layoutMode = opts.layoutMode;
-    return base as ApiPhotoSession;
+    return base;
   }
 
   const fillR = (n: number, prefix: string) =>
@@ -598,7 +600,7 @@ describe('reconcilePlacedToDesiredSet', () => {
   it('moves a placed pick set1 → set2 when the break says so, preserving its state', () => {
     const p = makePhoto('pm-x');
     p.label = 'TP3';
-    p.canvasState = { ...p.canvasState, brightness: 0.7 } as any;
+    p.canvasState = { ...p.canvasState, brightness: 0.7 };
     const session = makeActiveSession({ set1: [makePhoto('a'), p, makePhoto('b')], set2: [] });
 
     const { session: next, moved } = reconcilePlacedToDesiredSet(session, 'pm-x', 'set2', false);
@@ -609,7 +611,7 @@ describe('reconcilePlacedToDesiredSet', () => {
     expect(next.sets.set2.photos.map(q => q.id)).toEqual(['pm-x']);
     // Editor-owned state survives the move.
     expect(next.sets.set2.photos[0].label).toBe('TP3');
-    expect((next.sets.set2.photos[0].canvasState as any).brightness).toBe(0.7);
+    expect(next.sets.set2.photos[0].canvasState.brightness).toBe(0.7);
     // Active bucket mirrored.
     expect(next.setsTrack?.set2.photos.map(q => q.id)).toEqual(['pm-x']);
     expect(next.version).toBe(session.version + 1);

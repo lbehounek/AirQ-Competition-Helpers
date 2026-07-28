@@ -66,5 +66,19 @@ declare module '@airq/shared-storage' {
       getWorkingDir?: (id: string) => Promise<string | null>;
       setWorkingDir?: (id: string, dir: string) => Promise<unknown>;
     };
+
+    /**
+     * Save a generated PDF through the desktop save dialog. `base64Data` is the
+     * raw PDF, `defaultDir` pre-points the dialog at the competition's working
+     * folder. Resolves to the chosen path, or `null` if the user cancelled.
+     *
+     * Optional like every channel here: the web build has no bridge, and older
+     * desktop builds predate it — hence the `typeof api.savePdf === 'function'`
+     * feature-detect at the call site in `utils/pdfGenerator.ts`. Signature
+     * verified against `frontend/desktop/preload.js`, and it matches the
+     * declaration map-corridors already carries in its own `types/electron.d.ts`,
+     * so the two apps agree on the channel.
+     */
+    savePdf?: (base64Data: string, fileName: string, defaultDir?: string) => Promise<string | null>;
   }
 }

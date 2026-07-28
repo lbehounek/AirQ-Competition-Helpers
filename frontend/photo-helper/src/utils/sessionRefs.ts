@@ -15,20 +15,27 @@
  * stale reference will keep the check truthy forever and the file orphans
  * after a mode-switch round-trip.
  */
-import type { ApiPhotoSession } from '../types/api';
+import type { ApiPhotoSession, ApiPhotoSet } from '../types/api';
 
 export function isPhotoReferencedInSession(
   session: ApiPhotoSession,
   photoId: string,
 ): boolean {
-  const s = session as any;
-  const inSet = (set: any) => set?.photos?.some?.((p: any) => p.id === photoId) === true;
-  if (inSet(s.sets?.set1)) return true;
-  if (inSet(s.sets?.set2)) return true;
-  if (inSet(s.setsTrack?.set1)) return true;
-  if (inSet(s.setsTrack?.set2)) return true;
-  if (inSet(s.setsTurning?.set1)) return true;
-  if (inSet(s.setsTurning?.set2)) return true;
-  if (s.candidates?.photos?.some?.((p: any) => p.id === photoId) === true) return true;
+  // Every access below stays optional-chained even where the declared type
+  // says it can't be nullish (`sets`, `photos`). The session this runs against
+  // was read back from disk and may predate a bucket or have been written by
+  // an older build; and `some?.()` additionally survives a `photos` that
+  // deserialized as something other than an array. Losing that tolerance here
+  // means an exception on the delete path, which would strand OPFS files.
+  const inSet = (set: ApiPhotoSet | undefined): boolean =>
+    set?.photos?.some?.((p) => p.id === photoId) === true;
+
+  if (inSet(session.sets?.set1)) return true;
+  if (inSet(session.sets?.set2)) return true;
+  if (inSet(session.setsTrack?.set1)) return true;
+  if (inSet(session.setsTrack?.set2)) return true;
+  if (inSet(session.setsTurning?.set1)) return true;
+  if (inSet(session.setsTurning?.set2)) return true;
+  if (session.candidates?.photos?.some?.((p) => p.id === photoId) === true) return true;
   return false;
 }

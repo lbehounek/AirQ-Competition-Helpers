@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildPdfSets } from '../utils/buildPdfSets';
 import type { ApiPhoto, ApiPhotoSet } from '../types/api';
+import { makeCanvasState } from './support/testHelpers';
 
 // buildPdfSets is the pure core of the precision PDF correctness guarantee
 // from feedback 2026-04-18: "precision = single set". If a stale set2 from
@@ -13,7 +14,7 @@ function makePhoto(id: string, filename = `${id}.jpg`): ApiPhoto {
     sessionId: 'sess-1',
     url: `blob://${id}`,
     filename,
-    canvasState: {} as any,
+    canvasState: makeCanvasState(),
     label: '', // will be overwritten by buildPdfSets
   };
 }

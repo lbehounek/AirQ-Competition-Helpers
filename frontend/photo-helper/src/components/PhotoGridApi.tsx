@@ -18,7 +18,7 @@ import type { ApiPhoto, ApiPhotoSet } from '../types/api';
 interface PhotoGridApiProps {
   photoSet: ApiPhotoSet;
   setKey: 'set1' | 'set2';
-  onPhotoUpdate: (photoId: string, canvasState: any) => void;
+  onPhotoUpdate: (photoId: string, canvasState: ApiPhoto['canvasState']) => void;
   onPhotoRemove: (photoId: string) => void;
   onPhotoClick?: (photo: ApiPhoto) => void;
   onFilesDropped?: (files: File[]) => void; // For uploading files to empty slots
@@ -112,7 +112,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   useEffect(() => {
     if (photoSet.photos.length > 0) {
       const cache = getImageCache();
-      cache.preloadImages(photoSet.photos as any).catch(err => {
+      cache.preloadImages(photoSet.photos).catch(err => {
         console.error('Failed to preload images:', err);
       });
     }

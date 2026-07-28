@@ -22,6 +22,7 @@ if (typeof globalThis.Buffer === 'undefined') {
   globalThis.Buffer = Buffer;
 }
 
+
 // Branding (the small "created using …" line on every PDF page) is gated
 // behind this flag. The promotional site is not yet live and the app isn't
 // fully tested, so the user asked us to suppress it for the upcoming
@@ -311,7 +312,13 @@ export const generatePDF = async (
             photoId: photo.id,
           };
         }
-      } catch {/* ignore */}
+      } catch {
+        // Deliberately silent, and not a swallowed failure: the *original*
+        // error was already logged above, and falling out of this block
+        // returns `kind: 'failed'`, which `generatePDF` collects and turns
+        // into a thrown, user-visible abort. Logging the scrape failure too
+        // would just add noise for a fallback that was never guaranteed.
+      }
       return { kind: 'failed', photoId: photo.id, error };
     }
   };
@@ -405,7 +412,9 @@ export const generatePDF = async (
 
   // Create a single page (compute a local layout per page)
   const createPage = async (photoSet: ApiPhotoSet, setTitle: string, pageKey: string) => {
-    const elements: any[] = [];
+    // Every push below is a `React.createElement(Image, …)`; the array is
+    // handed to `React.createElement(Page, …, elements)` as the page children.
+    const elements: React.ReactElement[] = [];
     // Per-page count drives the landscape rally turning-point grid
     // selection (3×3 vs 5×2). Other modes ignore it.
     const pageCount = photoSet.photos.length;
@@ -696,7 +705,7 @@ export const generatePDF = async (
     // bundle so the file lands in the competition's working folder
     // (feedback 2026-04-25). Fall back to the browser download path —
     // used in the web build and as a safety net if the IPC throws.
-    const api = (typeof window !== 'undefined') ? (window as any).electronAPI : null;
+    const api = (typeof window !== 'undefined') ? window.electronAPI : null;
     if (api && typeof api.savePdf === 'function') {
       try {
         let workingDir: string | null = null;

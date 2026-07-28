@@ -105,4 +105,15 @@ export interface ApiPhotoSession {
     set1: ApiPhotoSet;
     set2: ApiPhotoSet;
   };
+  /**
+   * Page orientation for the printed answer sheet: 3x3 landscape or 2x5
+   * portrait. Written by `usePhotoSessionOPFS.updateLayoutMode` and read all
+   * over `AppApi`, but it was never declared here — `AppApi` reached it through
+   * an `as any` on the whole hook result and the writer cast the spread. Both
+   * casts are gone, so this has to be honest.
+   *
+   * Optional because sessions created before the portrait layout existed do not
+   * carry it; readers treat absent as landscape (the historical default).
+   */
+  layoutMode?: 'landscape' | 'portrait';
 }

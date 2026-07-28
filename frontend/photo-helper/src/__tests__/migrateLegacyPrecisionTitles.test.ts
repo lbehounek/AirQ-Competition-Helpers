@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { migrateLegacyPrecisionTitles } from '../utils/migrateLegacyPrecisionTitles';
 import type { ApiPhotoSession } from '../types/api';
+import { makeCanvasState } from './support/testHelpers';
 
 const baseSession = (overrides: Partial<ApiPhotoSession> = {}): ApiPhotoSession => ({
   id: 'session-test',
@@ -48,7 +49,7 @@ describe('migrateLegacyPrecisionTitles', () => {
 
     it('preserves photos arrays when rewriting titles', () => {
       const photos = [
-        { id: 'p1', sessionId: 's1', url: 'blob:a', filename: '1.jpg', canvasState: {} as any, label: 'X' },
+        { id: 'p1', sessionId: 's1', url: 'blob:a', filename: '1.jpg', canvasState: makeCanvasState(), label: 'X' },
       ];
       const session = baseSession({
         sets: {

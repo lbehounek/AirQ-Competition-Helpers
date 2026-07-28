@@ -29,9 +29,24 @@ import {
   Add,
   Remove
 } from '@mui/icons-material';
+import type { SxProps, Theme } from '@mui/material/styles';
 import type { Photo } from '../types';
 import type { CanvasSetting } from '../utils/canvasStatePatch';
 import { useI18n } from '../contexts/I18nContext';
+
+/**
+ * Just the plain-object arm of MUI's `sx`.
+ *
+ * The two local components below MERGE a caller's `sx` into their own style
+ * literal (`sx={{ ...ourStyles, ...sx }}`), which only works for an object.
+ * The callable (`theme => ({...})`) and array forms that full `SxProps` also
+ * permits would spread to nothing and be silently dropped, so accepting them
+ * would be a lie. Derived from `SxProps` rather than hand-written so it tracks
+ * MUI's own definition, and via `Exclude` rather than importing
+ * `SystemStyleObject` so we don't reach into `@mui/system` — a transitive
+ * dependency this package doesn't declare.
+ */
+type SxStyleObject = Exclude<SxProps<Theme>, ((theme: Theme) => unknown) | ReadonlyArray<unknown>>;
 
 interface PhotoControlsProps {
   // Structural (not `Photo`/`ApiPhoto`) so both photo shapes can be passed,
@@ -68,7 +83,7 @@ interface EditableValueDisplayProps {
   formatDisplay?: (value: number) => string;
   parseInput?: (input: string) => number | null;
   step?: number; // Add step prop for wheel handling
-  sx?: any;
+  sx?: SxStyleObject;
 }
 
 const EditableValueDisplay: React.FC<EditableValueDisplayProps> = ({
@@ -192,7 +207,7 @@ interface SliderWithControlsProps {
   color?: 'primary' | 'secondary';
   size?: 'small' | 'medium';
   disabled?: boolean;
-  sx?: any;
+  sx?: SxStyleObject;
   label?: React.ReactNode;
   formatDisplay?: (value: number) => string;
   parseInput?: (input: string) => number | null;

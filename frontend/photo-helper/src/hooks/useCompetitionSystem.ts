@@ -9,7 +9,7 @@ import type {
   CleanupCandidate,
   StorageStats
 } from '../types/competition';
-import type { ApiPhotoSession, ApiPhoto, CandidateFlag, AddPhotosResult } from '../types/api';
+import type { ApiPhotoSession, ApiPhoto, ApiPhotoSet, CandidateFlag, AddPhotosResult } from '../types/api';
 import { competitionService } from '../services/competitionService';
 import { migrationService } from '../services/migrationService';
 import { useI18n } from '../contexts/I18nContext';
@@ -42,6 +42,57 @@ import { defaultTrackSetTitles } from '../utils/defaultTrackSetTitles';
 import { migrateLegacyPrecisionTitles } from '../utils/migrateLegacyPrecisionTitles';
 import { collectModeSwitchRevokeUrls } from '../utils/modeSwitchRevokeUrls';
 import { deriveSet2FromSet1 } from '../utils/autoPrefillSetTitle';
+
+/**
+ * Slot-occupancy summary for the header / progress UI.
+ *
+ * `set1Available` / `set2Available` are remaining slots against the CURRENT
+ * grid capacity (`getGridCapacity`, which depends on mode AND layout), so they
+ * are NOT derivable from the photo counts alone — a portrait track sheet holds
+ * 10 per set, landscape 9, turning-point 10 in both.
+ */
+export interface SessionStats {
+  set1Photos: number;
+  set2Photos: number;
+  totalPhotos: number;
+  set1Available: number;
+  set2Available: number;
+  isComplete: boolean;
+}
+
+/**
+ * Revoke every live `blob:` URL a session holds: the active `sets`, BOTH mode
+ * buckets and the candidate tray. Call before the current competition is
+ * replaced (create / switch / delete) — each bucket carries INDEPENDENT URL
+ * strings (`loadSessionPhotos` calls `createObjectURL` once per bucket), so
+ * skipping one leaks a registration per photo per transition. Candidates are
+ * minted separately again, hence the fourth walk.
+ *
+ * Best-effort by construction and never throws: a revoke can fail (already
+ * revoked, or a non-`blob:` URL from an older session shape) and a
+ * partially-written session can be missing `sets` / `photos` entirely, which is
+ * why the runtime guards are wider than the types suggest. Freeing what we can
+ * beats aborting a competition switch.
+ *
+ * Extracted from three byte-identical copies inlined in `createNewCompetition`,
+ * `switchToCompetition` and `deleteCompetition`.
+ */
+function revokeSessionBlobUrls(session: ApiPhotoSession): void {
+  const revokePhotos = (photos: ApiPhoto[] | undefined): void => {
+    try {
+      photos?.forEach((p) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); });
+    } catch { /* best-effort */ }
+  };
+  // Mode buckets are optional, and legacy records can be missing a set.
+  const revokeInSet = (setObj: { set1?: ApiPhotoSet; set2?: ApiPhotoSet } | undefined): void => {
+    revokePhotos(setObj?.set1?.photos);
+    revokePhotos(setObj?.set2?.photos);
+  };
+  revokeInSet(session.sets);
+  revokeInSet(session.setsTrack);
+  revokeInSet(session.setsTurning);
+  revokePhotos(session.candidates?.photos);
+}
 
 export interface UseCompetitionSystemResult {
   // Current state
@@ -169,7 +220,7 @@ export interface UseCompetitionSystemResult {
   // Utilities
   clearError: () => void;
   refreshCompetitions: () => Promise<void>;
-  getSessionStats: () => any;
+  getSessionStats: () => SessionStats;
   updateStorageStats: () => Promise<void>;
 }
 
@@ -251,7 +302,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   }, [isPrecisionDiscipline]);
 
   // Whether we're running in desktop mode with an externally-selected competition
-  const isDesktopManaged = Boolean(externalCompetitionId && (window as any).electronAPI);
+  // `window.electronAPI` is declared globally by @airq/shared-storage and is
+  // absent in the plain web build — presence alone marks the desktop shell.
+  const isDesktopManaged = Boolean(externalCompetitionId && window.electronAPI);
 
   // Generate default competition name using i18n
   const getDefaultCompetitionName = useCallback((competitionCount?: number) => {
@@ -379,22 +432,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       const competitionName = name || getDefaultCompetitionName();
       
       // Revoke blob URLs from current competition before creating a new one
-      try {
-        if (currentCompetition?.session) {
-          const s = currentCompetition.session as any;
-          const revokeInSet = (setObj: any) => {
-            try { setObj?.set1?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-            try { setObj?.set2?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-          };
-          revokeInSet(s.sets);
-          revokeInSet(s.setsTrack);
-          revokeInSet(s.setsTurning);
-          // Candidate pool URLs are independent of mode buckets — revoke
-          // them on competition transitions too, otherwise we leak one URL
-          // per candidate per switch.
-          try { s.candidates?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-        }
-      } catch {}
+      if (currentCompetition?.session) {
+        revokeSessionBlobUrls(currentCompetition.session);
+      }
 
       // Create new empty session with mode-specific sets
       const trackTitles = defaultTrackSetTitles(isPrecisionDiscipline);
@@ -438,22 +478,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       setError(null);
       
       // Revoke blob URLs from current competition before switching
-      try {
-        if (currentCompetition?.session) {
-          const s = currentCompetition.session as any;
-          const revokeInSet = (setObj: any) => {
-            try { setObj?.set1?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-            try { setObj?.set2?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-          };
-          revokeInSet(s.sets);
-          revokeInSet(s.setsTrack);
-          revokeInSet(s.setsTurning);
-          // Candidate pool URLs are independent of mode buckets — revoke
-          // them on competition transitions too, otherwise we leak one URL
-          // per candidate per switch.
-          try { s.candidates?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-        }
-      } catch {}
+      if (currentCompetition?.session) {
+        revokeSessionBlobUrls(currentCompetition.session);
+      }
 
       await competitionService.setActiveCompetition(id);
       const competition = await migrateLoadedCompetition(
@@ -476,22 +503,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       setError(null);
       
       // Revoke blob URLs before deleting (if deleting the current competition)
-      try {
-        if (currentCompetition?.id === id && currentCompetition?.session) {
-          const s = currentCompetition.session as any;
-          const revokeInSet = (setObj: any) => {
-            try { setObj?.set1?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-            try { setObj?.set2?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-          };
-          revokeInSet(s.sets);
-          revokeInSet(s.setsTrack);
-          revokeInSet(s.setsTurning);
-          // Candidate pool URLs are independent of mode buckets — revoke
-          // them on competition transitions too, otherwise we leak one URL
-          // per candidate per switch.
-          try { s.candidates?.photos?.forEach((p: any) => { if (p?.url?.startsWith?.('blob:')) URL.revokeObjectURL(p.url); }); } catch {}
-        }
-      } catch {}
+      if (currentCompetition?.id === id && currentCompetition?.session) {
+        revokeSessionBlobUrls(currentCompetition.session);
+      }
 
       await competitionService.deleteCompetition(id);
       
@@ -638,8 +652,10 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
    */
   const filesToPhotos = useCallback((files: File[], sessionIdLocal: string, flag?: CandidateFlag): ApiPhoto[] => {
     return files.map((file) => ({
+      // `randomUUID` is unavailable on insecure origins and in older
+      // WebViews, hence the feature test and the timestamp+random fallback.
       id: (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
-        ? (crypto as any).randomUUID()
+        ? crypto.randomUUID()
         : `photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       sessionId: sessionIdLocal,
       url: URL.createObjectURL(file),
@@ -808,7 +824,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // auto-layout-flip; without that, bumping capacity to 10 in landscape
     // would route a 10th drop into a hidden 10th slot. Layout choice is
     // now fully manual.
-    const sess = currentCompetition.session as any;
+    const sess = currentCompetition.session;
     const slotCapacity = getGridCapacity(sess);
     const currentSlotCount = sess.sets?.[setKey]?.photos?.length ?? 0;
     // Mirror the over-cap guard from usePhotoSessionOPFS (PR #62 review I2):
@@ -878,7 +894,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         set1: session.sets?.set1 || { title: '', photos: [] },
         set2: session.sets?.set2 || { title: '', photos: [] }
       };
-      const photoToRemove = (ensuredSets as any)[setKey]?.photos?.find((p: any) => p.id === photoId);
+      const photoToRemove = ensuredSets[setKey]?.photos?.find(p => p.id === photoId);
       if (photoToRemove && typeof photoToRemove.url === 'string' && photoToRemove.url.startsWith('blob:')) {
         try { URL.revokeObjectURL(photoToRemove.url); } catch (err) {
           console.warn(`removePhoto: revoke failed for ${photoId}:`, err);
@@ -903,7 +919,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       // `isPhotoReferencedInSession` stays truthy, and the OPFS file orphans
       // after a mode-switch round-trip.
       const modeKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
-      (next as any)[modeKey] = nextSets;
+      next[modeKey] = nextSets;
       referencedElsewhere = isPhotoReferencedInSession(next, photoId);
       return next;
     }, { updatePhotos: true });
@@ -992,7 +1008,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       // when the set is full (PR #62 review C1, contract violation vs.
       // docs/CANDIDATE_PHOTOS.md swap-on-full row). Clamp out-of-range indices to
       // `capacity - 1` so the helper's swap branch fires instead.
-      const capacity = getGridCapacity(session as any);
+      const capacity = getGridCapacity(session);
       const safeIndex = slotIndex >= capacity
         ? Math.max(0, capacity - 1)
         : slotIndex < 0
@@ -1002,7 +1018,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       // mode switch doesn't resurrect pre-promotion state from the bucket.
       const next = promoteCandidateToSlotPure(session, candidateId, setKey, safeIndex);
       const modeKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
-      (next as any)[modeKey] = next.sets;
+      next[modeKey] = next.sets;
       return next;
     }, { updatePhotos: true });
   }, [updateCurrentCompetition]);
@@ -1020,7 +1036,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // Turning-point only (the UI button is hidden on track sheets); guard here
     // too so a stray call can't insert a placeholder into a track set.
     if (!sess || sess.mode !== 'turningpoint') return;
-    const capacity = getGridCapacity(sess as any);
+    const capacity = getGridCapacity(sess);
     if ((sess.sets?.[setKey]?.photos?.length ?? 0) >= capacity) return;
     await updateCurrentCompetition(session => {
       const placeholder = createPlaceholderPhoto(session.id, t('photo.noPhotoFilename'));
@@ -1035,7 +1051,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     await updateCurrentCompetition(session => {
       const next = demoteSlotToCandidatePure(session, setKey, photoId, 'pick');
       const modeKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
-      (next as any)[modeKey] = next.sets;
+      next[modeKey] = next.sets;
       return next;
     }, { updatePhotos: true });
   }, [updateCurrentCompetition]);
@@ -1281,7 +1297,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
 
   const updateSetTitle = useCallback(async (setKey: 'set1' | 'set2', title: string) => {
     await updateCurrentCompetition(session => {
-      let updatedSets = {
+      const updatedSets = {
         ...session.sets,
         [setKey]: { ...session.sets[setKey], title }
       };
@@ -1360,9 +1376,9 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       try {
         const urlsToRevoke = collectModeSwitchRevokeUrls(session, mode);
         for (const url of urlsToRevoke) {
-          try { URL.revokeObjectURL(url); } catch {}
+          try { URL.revokeObjectURL(url); } catch { /* best-effort */ }
         }
-      } catch {}
+      } catch { /* best-effort — never block the mode switch on cleanup */ }
       const sanitizedCurrentSets = {
         set1: {
           ...session.sets.set1,
@@ -1373,16 +1389,16 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
           photos: session.sets.set2.photos.map(p => ({ ...p, url: '' }))
         }
       };
-      (updatedSession as any)[currentKey] = sanitizedCurrentSets;
+      updatedSession[currentKey] = sanitizedCurrentSets;
       
       // Load target mode sets (or use empty defaults)
-      const targetSets = (updatedSession as any)[nextKey] || { 
+      const targetSets = updatedSession[nextKey] || { 
         set1: { title: '', photos: [] }, 
         set2: { title: '', photos: [] } 
       };
       
       // Set appropriate default titles when switching to track mode with empty sets
-      let newSets = { ...targetSets };
+      const newSets = { ...targetSets };
       if (mode === 'track') {
         const trackTitles = defaultTrackSetTitles(isPrecisionDiscipline);
         if (!newSets.set1.title || newSets.set1.title.trim() === '') {
@@ -1421,7 +1437,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       // Refresh storage stats after mode switch persistence
       try {
         await updateStorageStats();
-      } catch {}
+      } catch { /* stats are informational — a failure must not fail the switch */ }
       
     } catch (err) {
       console.error('Failed to update session mode:', err);
@@ -1506,7 +1522,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     const set2Count = session.sets.set2.photos.length;
     // Same source-of-truth helper as usePhotoSessionOPFS so the four sites
     // can't drift (round-5 follow-up to feedback 2026-05-03).
-    const gridCapacity = getGridCapacity(session as any);
+    const gridCapacity = getGridCapacity(session);
     
     return {
       set1Photos: set1Count,
@@ -1562,7 +1578,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
         setError(message);
         return { kind: 'err', reason: 'no-competition', message };
       }
-      const layoutMode = (session as any).layoutMode === 'portrait' ? 'portrait' : 'landscape';
+      const layoutMode = session.layoutMode === 'portrait' ? 'portrait' : 'landscape';
       const set1Count = session.sets?.set1?.photos?.length ?? 0;
       const set2Count = session.sets?.set2?.photos?.length ?? 0;
       const result = distributeRallyDrop({ files, layoutMode, set1Count, set2Count });

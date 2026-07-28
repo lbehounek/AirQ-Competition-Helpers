@@ -56,7 +56,9 @@ describe('getGridCapacity', () => {
     it('treats unknown layoutMode strings as landscape (9)', () => {
       // Defensive: anything other than 'portrait' falls into the
       // landscape branch.
-      expect(getGridCapacity({ mode: 'track', layoutMode: 'square' as any })).toBe(9);
+      // No cast needed: `SessionShape.layoutMode` deliberately widens to
+      // `string` so a session written by a future/older build round-trips.
+      expect(getGridCapacity({ mode: 'track', layoutMode: 'square' })).toBe(9);
     });
   });
 
