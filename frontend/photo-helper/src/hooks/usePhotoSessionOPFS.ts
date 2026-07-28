@@ -188,8 +188,14 @@ export function usePhotoSessionOPFS() {
           // Ensure track bucket has default titles. Mutates the bucket in
           // place — `withUrls.setsTrack` is the same object as `setsTrack`,
           // which is what the previous `(withUrls as any).setsTrack.…` writes
-          // were reaching too. The `?.` on `set1`/`set2` guards the legacy
-          // nested shape, where they are genuinely absent.
+          // were reaching too.
+          //
+          // The `?.` below only stops the CONDITION from throwing — it does NOT
+          // handle the legacy nested shape, because the assignments that follow
+          // still assume the flat one and throw a TypeError on
+          // `undefined.title` exactly as they always have. Handling it properly
+          // would mean running `unwrapSets` on the bucket first; see TODO 15,
+          // which is about deciding whether that shape still exists at all.
           if (!setsTrack.set1?.title || !setsTrack.set2?.title) {
             const titles = getTrackTitles();
             setsTrack.set1.title = setsTrack.set1.title || titles.set1;

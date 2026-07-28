@@ -57,7 +57,10 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
   useEffect(() => {
     const loadLocale = async () => {
       try {
-        let stored: string | null = null;
+        // `string | null | undefined`: getConfig resolves `undefined` for a key
+        // that was never written (the Electron config store returns `config[key]`),
+        // while localStorage.getItem returns `null`. Both are "nothing stored".
+        let stored: string | null | undefined = null;
 
         // In Electron, use config storage (shared across all app:// origins)
         const api = window.electronAPI;
@@ -101,7 +104,13 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
       // In Electron, use config storage
       const api = window.electronAPI;
       if (api?.setConfig) {
-        await api.setConfig('locale', safeLocale);
+        // Resolves false when the config file could not be written. The locale
+        // still applies for this session; it just will not survive a restart,
+        // and silently pretending it saved is how that becomes a mystery.
+        const saved = await api.setConfig('locale', safeLocale);
+        if (saved === false) {
+          console.warn('Locale could not be persisted; it will reset on restart');
+        }
       } else if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem('app-locale', safeLocale);
       }

@@ -15,7 +15,11 @@ on:
 # than stack a second 25-minute windows job on top of it.
 concurrency:
   group: e2e-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs (force-push churn), but NEVER a run on main: this
+  # workflow also fires on `push: main`, and two merges inside 25 minutes would
+  # otherwise cancel the first merge commit's verification, letting a commit land
+  # with no completed E2E.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   e2e:

@@ -843,7 +843,21 @@ function AppApi() {
               {isDesktopManaged && (
                 <IconButton
                   size="small"
-                  onClick={() => window.electronAPI?.goHome?.()}
+                  onClick={() => {
+                    // No bridge at all = web build, nothing to navigate to. But a
+                    // bridge WITHOUT the channel is version skew, and a plain
+                    // `?.()` there would leave a dead button with nothing logged —
+                    // so that case is reported rather than silently ignored, and
+                    // the promise is caught so a rejected IPC is not an unhandled
+                    // rejection.
+                    const api = window.electronAPI;
+                    if (!api) return;
+                    if (!api.goHome) {
+                      console.error('electronAPI.goHome is missing — desktop shell is out of date');
+                      return;
+                    }
+                    void api.goHome().catch((err: unknown) => console.error('goHome failed', err));
+                  }}
                   sx={{ color: 'white', mr: 0.5 }}
                   title={t('app.backToMenu')}
                 >
@@ -857,7 +871,14 @@ function AppApi() {
                   onClick={() => {
                     const params = new URLSearchParams(window.location.search);
                     const compId = params.get('competitionId');
-                    window.electronAPI?.navigateToApp?.('map-corridors', compId);
+                    const api = window.electronAPI;
+                    if (!api) return;
+                    if (!api.navigateToApp) {
+                      console.error('electronAPI.navigateToApp is missing — desktop shell is out of date');
+                      return;
+                    }
+                    void api.navigateToApp('map-corridors', compId)
+                      .catch((err: unknown) => console.error('navigateToApp failed', err));
                   }}
                   startIcon={<Map sx={{ fontSize: 18 }} />}
                   sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 1.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}

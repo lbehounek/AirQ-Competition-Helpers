@@ -710,3 +710,65 @@ describe('competition switch', () => {
     expect(storage.disk('comp-a').markers.map((m: any) => m.photoId)).toEqual(['pm-1', 'pm-2'])
   })
 })
+
+// ---------------------------------------------------------------------------
+// PR #114 review F1. The write queue is per HOOK INSTANCE and therefore spans a
+// competition switch, but the coalescing payload ref is hook-wide while the
+// target `dir` is captured per call. A task enqueued for competition A that
+// runs AFTER competition B has published its payload would read B's session and
+// write it into A's file — and clear the ref, so B's own task found nothing
+// owed and silently skipped. Cross-competition corruption plus a lost write.
+// ---------------------------------------------------------------------------
+
+describe('competition switch with a write still queued', () => {
+  it('never writes one competition session into another competition file', async () => {
+    // comp-b must ALREADY have a session on disk. Otherwise its init performs a
+    // first-run `fresh` write, which queues behind comp-a's slow writes, so
+    // `sessionRef` stays null, comp-b's setters no-op, and comp-b never
+    // publishes a payload — the interleaving under test never happens.
+    storage.files.set('/root/competitions/comp-b/corridors/session.json', {
+      id: 'corridors-comp-b', version: 1, createdAt: '', updatedAt: '',
+      mapStyleId: 'mapbox-streets', discipline: 'rally', use1NmAfterSp: false,
+      geojson: null, leftSegments: null, rightSegments: null, gates: null,
+      points: null, exactPoints: null, markers: [], groundMarkers: [],
+      noGpsPhotos: [], noGpsTrayOpen: true,
+    })
+
+    const apiRef = { current: null as SessionApi | null }
+    const view = render(<Harness competitionId="comp-a" apiRef={apiRef as Ref<SessionApi>} />)
+    await act(async () => { await new Promise(r => setTimeout(r, 0)) })
+
+    // TWO comp-a writes with slow storage. The first occupies the queue; the
+    // SECOND is the dangerous one — it starts only after the switch, so it reads
+    // the shared payload ref at a moment when comp-b has already published.
+    storage.writeDelayMs = 300
+    const a1 = apiRef.current!.setMarkers(() => [marker(1)] as any)
+    const a2 = apiRef.current!.setMarkers(() => [marker(1), marker(2)] as any)
+
+    await act(async () => {
+      view.rerender(<Harness competitionId="comp-b" apiRef={apiRef as Ref<SessionApi>} />)
+    })
+    // comp-b's init only READS (session exists), so it completes while comp-a's
+    // writes are still draining.
+    await act(async () => { await new Promise(r => setTimeout(r, 60)) })
+
+    await outsideAct(async () => {
+      apiRef.current!.setMarkers(() => [marker(50)] as any).catch(() => {})
+    })
+
+    storage.writeDelayMs = 0
+    await Promise.allSettled([a1, a2])
+    await act(async () => { await new Promise(r => setTimeout(r, 400)) })
+
+    const a = storage.disk('comp-a')
+    const b = storage.disk('comp-b')
+
+    expect(a.id, 'comp-b session was written into the comp-a file').not.toBe('corridors-comp-b')
+    expect((a.markers ?? []).map((m: any) => m.photoId),
+      'comp-b marker leaked into the comp-a file').not.toContain('pm-50')
+    expect(b, 'comp-b session was never written').not.toBeNull()
+    expect((b.markers ?? []).map((m: any) => m.photoId),
+      'comp-b write was swallowed by the comp-a task clearing the shared payload')
+      .toContain('pm-50')
+  })
+})

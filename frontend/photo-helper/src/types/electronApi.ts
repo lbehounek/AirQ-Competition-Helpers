@@ -95,8 +95,8 @@ declare module '@airq/shared-storage' {
      * on one locale. `setMenuLocale` re-renders the native application menu.
      * Signatures verified against `frontend/desktop/preload.js`.
      */
-    getConfig?: (key: string) => Promise<string | null>;
-    setConfig?: (key: string, value: string) => Promise<void>;
+    getConfig?: (key: string) => Promise<string | undefined>;
+    setConfig?: (key: string, value: string) => Promise<boolean>;
     setMenuLocale?: (locale: string) => Promise<void>;
   }
 }

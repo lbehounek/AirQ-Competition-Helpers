@@ -296,7 +296,7 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
   // simply write the newest payload and the other two have nothing left to do
   // — one write instead of three, each of which would otherwise serialize a
   // whole session (geojson, corridors, gates, points included).
-  const pendingWriteRef = useRef<CorridorsSession | null>(null)
+  const pendingWriteRef = useRef<{ dir: DirectoryHandle; session: CorridorsSession } | null>(null)
   // Photos directory for the active competition. Resolved alongside the
   // corridors session dir during init when `competitionId` is provided —
   // otherwise null. Phase 3 of photo-map-culling uses it as the write
@@ -473,7 +473,16 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
     if (storage && dir) {
       // Publish the payload BEFORE enqueueing, so a task already waiting in
       // line picks up this newer snapshot rather than writing a stale one.
-      pendingWriteRef.current = next
+      //
+      // Tagged with the directory it belongs to. The queue lives on the HOOK
+      // INSTANCE, so it spans a competition switch, while `dir` is captured per
+      // call — an untagged payload let a task enqueued for competition A read a
+      // payload published by competition B and write it into A's file, then
+      // clear the ref so B's own task found nothing owed and skipped. That is
+      // cross-competition corruption plus a lost write, which is exactly what
+      // the `sessionRef.current = null` guard above prevents on the other side.
+      const mine = { dir, session: next }
+      pendingWriteRef.current = mine
       try {
         // Awaiting the queue now also waits for writes queued BEFORE ours. The
         // UI never pays for that — the state update above already happened;
@@ -489,15 +498,23 @@ export function useCorridorSessionOPFS(competitionId?: string | null) {
         // the enqueue when a write was already pending would return before the
         // bytes were down.
         await enqueueSessionWrite(async () => {
-          const payload = pendingWriteRef.current
+          const pending = pendingWriteRef.current
+          if (pending && pending.dir !== dir) {
+            // A newer payload is owed to a DIFFERENT competition. Ours is still
+            // owed to this one, so write our own snapshot and leave theirs
+            // untouched — consuming it here would both corrupt our file and
+            // swallow their write.
+            await storage.writeJSON(dir, 'session.json', next)
+            return
+          }
           // Already written by an earlier task in this burst — nothing owed.
-          if (!payload) return
-          await storage.writeJSON(dir, 'session.json', payload)
+          if (!pending) return
+          await storage.writeJSON(dir, 'session.json', pending.session)
           // Cleared only on SUCCESS, so a failed write leaves the payload owed
           // and the next queued task retries it instead of silently dropping
           // it. The identity check keeps a retry from discarding a NEWER
           // payload published while this write was in flight.
-          if (pendingWriteRef.current === payload) pendingWriteRef.current = null
+          if (pendingWriteRef.current === pending) pendingWriteRef.current = null
         })
       } catch (e) {
         console.error('Failed to persist corridors session', e)
