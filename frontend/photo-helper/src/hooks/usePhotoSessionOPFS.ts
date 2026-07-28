@@ -42,6 +42,47 @@ export function createDefaultCanvasState(): ApiPhoto['canvasState'] {
   };
 }
 
+/**
+ * A per-mode set bucket as it may appear on disk. Current sessions store the
+ * flat `{ set1, set2 }` shape, but some early `setsTrack`/`setsTurning`
+ * records were written one level deeper as `{ sets: { set1, set2 } }`.
+ * The intersection (rather than a union) keeps both member accesses legal
+ * without a cast, which is what the original `active.sets ? … : …` guard was
+ * expressing via `any`.
+ */
+type MaybeNestedSets = ApiPhotoSession['sets'] & { sets?: ApiPhotoSession['sets'] };
+
+/** Collapse the legacy nested bucket to the flat `{ set1, set2 }` shape. */
+const unwrapSets = (v: MaybeNestedSets): ApiPhotoSession['sets'] => (v.sets ? v.sets : v);
+
+/**
+ * A brand-new, empty per-mode bucket. A factory rather than a shared literal
+ * on purpose: spreading ONE `{ title: '', photos: [] }` object into several
+ * set slots (as the migration used to) aliases the SAME empty `photos` array
+ * into all of them, so any future in-place push would land in every set at
+ * once. Returns fresh arrays every call.
+ */
+const emptyModeBucket = (): ApiPhotoSession['sets'] => ({
+  set1: { title: '', photos: [] },
+  set2: { title: '', photos: [] },
+});
+
+/**
+ * Message to show in the error banner for a value thrown from a `catch`.
+ * Returns the fallback when the throw carries nothing useful.
+ *
+ * Deliberately accepts more than `Error`: OPFS/DOM rejections are not always
+ * `Error` instances but usually still carry a string `message`, and the
+ * previous `catch (e: any) => e?.message || fallback` relied on that. Narrowed
+ * explicitly instead of typed as `any` so the shape assumption is visible.
+ */
+const errorMessage = (e: unknown, fallback: string): string => {
+  if (typeof e === 'object' && e !== null && 'message' in e && typeof e.message === 'string' && e.message) {
+    return e.message;
+  }
+  return fallback;
+};
+
 const defaultSession = (id: string): ApiPhotoSession => ({
   id,
   version: 1,
@@ -108,22 +149,31 @@ export function usePhotoSessionOPFS() {
         handlesRef.current = { sessionsDir: handles.sessions, sessionDir: dir, photosDir: photos };
         const existing = await storage.readJSON<ApiPhotoSession>(dir, 'session.json');
         if (existing) {
-          // Ensure per-mode sets exist (migration)
-          const sAny: any = existing as any;
-          if (!sAny.setsTrack || !sAny.setsTurning) {
-            const emptySets = { title: '', photos: [] } as any;
-            const track = existing.mode === 'track' ? existing.sets : { set1: { ...emptySets }, set2: { ...emptySets } };
-            const turning = existing.mode === 'turningpoint' ? existing.sets : { set1: { ...emptySets }, set2: { ...emptySets } };
-            sAny.setsTrack = track;
-            sAny.setsTurning = turning;
+          // Ensure per-mode sets exist (migration). Typed as MaybeNestedSets
+          // because a bucket read from disk may still carry the legacy
+          // `{ sets: { set1, set2 } }` nesting — see the type's doc comment.
+          //
+          // Preserved quirk: when EITHER bucket is missing BOTH are rebuilt,
+          // so a half-migrated record is normalised in a single pass (and a
+          // lone pre-existing bucket is discarded). Kept as-is deliberately —
+          // this is the shape every session on disk has been through.
+          let setsTrack: MaybeNestedSets;
+          let setsTurning: MaybeNestedSets;
+          if (!existing.setsTrack || !existing.setsTurning) {
+            setsTrack = existing.mode === 'track' ? existing.sets : emptyModeBucket();
+            setsTurning = existing.mode === 'turningpoint' ? existing.sets : emptyModeBucket();
+          } else {
+            setsTrack = existing.setsTrack;
+            setsTurning = existing.setsTurning;
           }
           // Active sets mirror based on mode
-          const active = existing.mode === 'track' ? (sAny.setsTrack as typeof existing.sets) : (sAny.setsTurning as typeof existing.sets);
+          const active: MaybeNestedSets = existing.mode === 'track' ? setsTrack : setsTurning;
+          const activeSets = unwrapSets(active);
           const withUrls: ApiPhotoSession = {
-            ...(sAny as ApiPhotoSession),
+            ...existing,
             sets: {
-              set1: { ...active.sets ? (active as any).sets.set1 : active.set1, photos: [...active.sets ? (active as any).sets.set1.photos : active.set1.photos] },
-              set2: { ...active.sets ? (active as any).sets.set2 : active.set2, photos: [...active.sets ? (active as any).sets.set2.photos : active.set2.photos] },
+              set1: { ...activeSets.set1, photos: [...activeSets.set1.photos] },
+              set2: { ...activeSets.set2, photos: [...activeSets.set2.photos] },
             },
           };
           for (const p of withUrls.sets.set1.photos) {
@@ -133,13 +183,23 @@ export function usePhotoSessionOPFS() {
             try { p.url = await getPhotoURL(p.id); } catch { p.url = ''; }
           }
           // Attach per-mode sets to in-memory state
-          (withUrls as any).setsTrack = sAny.setsTrack;
-          (withUrls as any).setsTurning = sAny.setsTurning;
-          // Ensure track bucket has default titles
-          if (!((withUrls as any).setsTrack?.set1?.title) || !((withUrls as any).setsTrack?.set2?.title)) {
+          withUrls.setsTrack = setsTrack;
+          withUrls.setsTurning = setsTurning;
+          // Ensure track bucket has default titles. Mutates the bucket in
+          // place — `withUrls.setsTrack` is the same object as `setsTrack`,
+          // which is what the previous `(withUrls as any).setsTrack.…` writes
+          // were reaching too.
+          //
+          // The `?.` below only stops the CONDITION from throwing — it does NOT
+          // handle the legacy nested shape, because the assignments that follow
+          // still assume the flat one and throw a TypeError on
+          // `undefined.title` exactly as they always have. Handling it properly
+          // would mean running `unwrapSets` on the bucket first; see TODO 15,
+          // which is about deciding whether that shape still exists at all.
+          if (!setsTrack.set1?.title || !setsTrack.set2?.title) {
             const titles = getTrackTitles();
-            (withUrls as any).setsTrack.set1.title = (withUrls as any).setsTrack.set1.title || titles.set1;
-            (withUrls as any).setsTrack.set2.title = (withUrls as any).setsTrack.set2.title || titles.set2;
+            setsTrack.set1.title = setsTrack.set1.title || titles.set1;
+            setsTrack.set2.title = setsTrack.set2.title || titles.set2;
           }
           setSession(withUrls);
         } else {
@@ -147,13 +207,16 @@ export function usePhotoSessionOPFS() {
           // Initialize per-mode stores
           const trackTitles = getTrackTitles();
           // Set defaults for track titles
-          (fresh as any).sets = {
+          fresh.sets = {
             set1: { title: trackTitles.set1, photos: [] },
             set2: { title: trackTitles.set2, photos: [] },
           };
-          (fresh as any).setsTrack = (fresh as any).sets;
+          // Same object on purpose (not a copy): a fresh session starts in
+          // track mode, so the active view and the track bucket ARE the same
+          // sets until the first mode switch re-splits them.
+          fresh.setsTrack = fresh.sets;
           // Turning point titles remain empty by default
-          (fresh as any).setsTurning = { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } };
+          fresh.setsTurning = emptyModeBucket();
           await storage.writeJSON(dir, 'session.json', fresh);
           setSession(fresh);
         }
@@ -184,14 +247,16 @@ export function usePhotoSessionOPFS() {
       set1: { ...s.sets.set1, photos: s.sets.set1.photos.map(p => ({ ...p, url: '' })) },
       set2: { ...s.sets.set2, photos: s.sets.set2.photos.map(p => ({ ...p, url: '' })) },
     },
-    ...(s as any).setsTrack ? { setsTrack: {
-      set1: { ...(s as any).setsTrack.set1, photos: (s as any).setsTrack.set1.photos.map((p: any) => ({ ...p, url: '' })) },
-      set2: { ...(s as any).setsTrack.set2, photos: (s as any).setsTrack.set2.photos.map((p: any) => ({ ...p, url: '' })) },
-    }} : {},
-    ...(s as any).setsTurning ? { setsTurning: {
-      set1: { ...(s as any).setsTurning.set1, photos: (s as any).setsTurning.set1.photos.map((p: any) => ({ ...p, url: '' })) },
-      set2: { ...(s as any).setsTurning.set2, photos: (s as any).setsTurning.set2.photos.map((p: any) => ({ ...p, url: '' })) },
-    }} : {},
+    // Mode buckets are optional on disk (a pre-split session has neither), so
+    // each is spread in only when present rather than written as `undefined`.
+    ...(s.setsTrack ? { setsTrack: {
+      set1: { ...s.setsTrack.set1, photos: s.setsTrack.set1.photos.map(p => ({ ...p, url: '' })) },
+      set2: { ...s.setsTrack.set2, photos: s.setsTrack.set2.photos.map(p => ({ ...p, url: '' })) },
+    }} : {}),
+    ...(s.setsTurning ? { setsTurning: {
+      set1: { ...s.setsTurning.set1, photos: s.setsTurning.set1.photos.map(p => ({ ...p, url: '' })) },
+      set2: { ...s.setsTurning.set2, photos: s.setsTurning.set2.photos.map(p => ({ ...p, url: '' })) },
+    }} : {}),
   });
 
   const persistSession = useCallback(async (next: ApiPhotoSession) => {
@@ -201,7 +266,12 @@ export function usePhotoSessionOPFS() {
       try {
         const storage = getStorage();
         await storage.writeJSON(handlesRef.current.sessionDir, 'session.json', sanitizeForDisk(next));
-      } catch {}
+      } catch (err) {
+        // In-memory state is already updated, so the UI stays consistent; only
+        // durability is lost. Not surfaced as a banner (this hook is the legacy
+        // backup path) but logged so a failed write isn't completely invisible.
+        console.warn('persistSession: failed to write session.json', err);
+      }
     }
     updateStorageEstimate();
   }, []);
@@ -275,8 +345,8 @@ export function usePhotoSessionOPFS() {
       };
       await persistSession(next);
       await updateStorageEstimate();
-    } catch (e: any) {
-      setError(e?.message || 'Failed to add candidate photos');
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to add candidate photos'));
     } finally {
       setLoading(false);
     }
@@ -292,7 +362,7 @@ export function usePhotoSessionOPFS() {
       // follows the layout. Centralised in `getGridCapacity` so the four
       // sites in this file plus `useCompetitionSystem.getSessionStats`
       // can't drift.
-      const gridCapacity = getGridCapacity(session as any);
+      const gridCapacity = getGridCapacity(session);
       const current = session.sets[setKey].photos.length;
       // State-corruption guard (round-5 follow-up): a layout switch with
       // photos already loaded (or a session imported from an older build
@@ -371,12 +441,12 @@ export function usePhotoSessionOPFS() {
       };
       // Mirror into per-mode store
       const modeKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
-      (next as any)[modeKey] = next.sets;
+      next[modeKey] = next.sets;
       await persistSession(next);
       await updateStorageEstimate();
       return { routedTo: 'slot' as const, count: newPhotos.length };
-    } catch (e: any) {
-      setError(e?.message || 'Failed to add photos');
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to add photos'));
     } finally {
       setLoading(false);
     }
@@ -418,7 +488,7 @@ export function usePhotoSessionOPFS() {
   ) => {
     if (!session) return;
     const next = promoteCandidateToSlotPure(session, candidateId, setKey, slotIndex);
-    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    next[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
   }, [session, persistSession]);
 
@@ -428,7 +498,7 @@ export function usePhotoSessionOPFS() {
   ) => {
     if (!session) return;
     const next = demoteSlotToCandidatePure(session, setKey, photoId, 'pick');
-    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    next[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
   }, [session, persistSession]);
 
@@ -437,7 +507,10 @@ export function usePhotoSessionOPFS() {
     await persistSession(setCandidateFlagPure(session, photoId, flag));
   }, [session, persistSession]);
 
-  const updateCandidatePhotoState = useCallback(async (photoId: string, canvasState: any) => {
+  // Partial patch — the pure helper merges it over the photo's existing
+  // canvasState, so callers send only the fields they changed. Signature kept
+  // identical to `useCompetitionSystem.updateCandidatePhotoState`.
+  const updateCandidatePhotoState = useCallback(async (photoId: string, canvasState: Partial<ApiPhoto['canvasState']>) => {
     if (!session) return;
     await persistSession(updateCandidateCanvasStatePure(session, photoId, canvasState));
   }, [session, persistSession]);
@@ -485,7 +558,7 @@ export function usePhotoSessionOPFS() {
           [setKey]: { ...session.sets[setKey], photos: session.sets[setKey].photos.filter(p => p.id !== photoId) },
         },
       };
-      (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+      next[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
       await persistSession(next);
       await updateStorageEstimate();
     } catch {
@@ -511,7 +584,7 @@ export function usePhotoSessionOPFS() {
         },
       },
     };
-    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    next[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
     await updateStorageEstimate();
   }, [session, persistSession]);
@@ -569,7 +642,7 @@ export function usePhotoSessionOPFS() {
     }
 
     // Mirror active sets into per-mode bucket
-    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    next[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
     await updateStorageEstimate();
   }, [session, persistSession]);
@@ -587,14 +660,14 @@ export function usePhotoSessionOPFS() {
         set2: titles.set2 !== undefined ? { ...session.sets.set2, title: titles.set2 } : session.sets.set2,
       },
     };
-    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    next[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
     await updateStorageEstimate();
   }, [session, persistSession]);
 
   const reorderPhotos = useCallback(async (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => {
     if (!session) return;
-    const gridCapacity = getGridCapacity(session as any);
+    const gridCapacity = getGridCapacity(session);
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= gridCapacity || toIndex >= gridCapacity) return;
     const current = [...session.sets[setKey].photos];
     const slots: (ApiPhoto | null)[] = Array(gridCapacity).fill(null);
@@ -610,7 +683,7 @@ export function usePhotoSessionOPFS() {
       updatedAt: new Date().toISOString(),
       sets: { ...session.sets, [setKey]: { ...session.sets[setKey], photos: compact.slice(0, gridCapacity) } },
     };
-    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    next[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
     await updateStorageEstimate();
   }, [session, persistSession]);
@@ -627,7 +700,7 @@ export function usePhotoSessionOPFS() {
         set2: (setKey === 'set2' || setKey === 'both') ? { ...session.sets.set2, photos: shuffle(session.sets.set2.photos) } : session.sets.set2,
       },
     };
-    (next as any)[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
+    next[session.mode === 'track' ? 'setsTrack' : 'setsTurning'] = next.sets;
     await persistSession(next);
     await updateStorageEstimate();
   }, [session, persistSession]);
@@ -637,11 +710,10 @@ export function usePhotoSessionOPFS() {
     // Save current active sets into the current mode bucket
     const currentKey = session.mode === 'track' ? 'setsTrack' : 'setsTurning';
     const nextKey = mode === 'track' ? 'setsTrack' : 'setsTurning';
-    const sAny: any = session as any;
-    const next: any = { ...session };
+    const next: ApiPhotoSession = { ...session };
     next[currentKey] = session.sets;
     // Load target mode sets (or empty)
-    const target = sAny[nextKey] || { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } };
+    const target = session[nextKey] || emptyModeBucket();
     // Deep clone to avoid mutating stored buckets
     next.sets = {
       set1: { ...target.set1, photos: [...target.set1.photos] },
@@ -655,19 +727,19 @@ export function usePhotoSessionOPFS() {
       for (const p of next.sets.set2.photos) {
         if (!p.url) { p.url = await getPhotoURL(p.id); }
       }
-    } catch (e) {
+    } catch {
       // Non-fatal; UI will try to preload and surface errors if any
     }
     next.mode = mode;
     next.version = session.version + 1;
     next.updatedAt = new Date().toISOString();
-    await persistSession(next as ApiPhotoSession);
+    await persistSession(next);
     await updateStorageEstimate();
   }, [session, persistSession]);
 
   const updateLayoutMode = useCallback(async (layoutMode: LayoutMode) => {
     if (!session) return;
-    const next: ApiPhotoSession = { ...(session as any), version: session.version + 1, updatedAt: new Date().toISOString(), layoutMode };
+    const next: ApiPhotoSession = { ...session, version: session.version + 1, updatedAt: new Date().toISOString(), layoutMode };
     await persistSession(next);
   }, [session, persistSession]);
 
@@ -681,7 +753,7 @@ export function usePhotoSessionOPFS() {
 
   const getSessionStats = useCallback(() => {
     if (!session) return { set1Photos: 0, set2Photos: 0, totalPhotos: 0, set1Available: 9, set2Available: 9, isComplete: false };
-    const gridCapacity = getGridCapacity(session as any);
+    const gridCapacity = getGridCapacity(session);
     const set1Count = session.sets.set1.photos.length;
     const set2Count = session.sets.set2.photos.length;
     return {
@@ -761,12 +833,13 @@ export function usePhotoSessionOPFS() {
       const fresh = defaultSession(id);
       // Initialize TRACK titles on reset
       const trackTitles = getTrackTitles();
-      (fresh as any).sets = {
+      fresh.sets = {
         set1: { title: trackTitles.set1, photos: [] },
         set2: { title: trackTitles.set2, photos: [] },
       };
-      (fresh as any).setsTrack = (fresh as any).sets;
-      (fresh as any).setsTurning = { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } };
+      // Same object on purpose — see the identical aliasing in the loader.
+      fresh.setsTrack = fresh.sets;
+      fresh.setsTurning = emptyModeBucket();
       await persistSession(fresh);
       setError(null);
       // Revoke all URLs

@@ -169,8 +169,11 @@ export const isValidImageFile = (file: File): boolean => {
     'image/png'
   ];
   
-  const hasValidType = validTypes.includes(file.type) || 
-    file.name.toLowerCase().match(/\.(jpe?g|png)$/); // Fallback to file extension
+  // `.test()` rather than `.match()`: match returns an array-or-null, which
+  // made the whole expression `boolean | null` and not assignable to the
+  // declared `boolean` return.
+  const hasValidType = validTypes.includes(file.type) ||
+    /\.(jpe?g|png)$/.test(file.name.toLowerCase()); // Fallback to file extension
   
   const hasValidSize = file.size <= 20 * 1024 * 1024; // 20MB limit
   

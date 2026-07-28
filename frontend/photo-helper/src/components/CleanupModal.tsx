@@ -153,14 +153,20 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
             return (
               <React.Fragment key={candidate.competition.id}>
                 <ListItem
-                  onClick={() => handleToggleCandidate(candidate.competition.id)}
-                  sx={{ 
-                    cursor: 'pointer',
-                    '&:hover': { backgroundColor: 'action.hover' },
+                  // MUI v7's `ListItem` has no `disabled` prop (it lives on
+                  // `ListItemButton` now), so the old `disabled={loading}` was
+                  // forwarded to the underlying <li> and did nothing. Express
+                  // the same intent explicitly: while a cleanup is running the
+                  // row ignores clicks and stops looking interactive. The inner
+                  // Checkbox keeps its own `disabled={loading}`.
+                  onClick={() => { if (!loading) handleToggleCandidate(candidate.competition.id); }}
+                  sx={{
+                    cursor: loading ? 'default' : 'pointer',
+                    opacity: loading ? 0.5 : 1,
+                    '&:hover': { backgroundColor: loading ? 'transparent' : 'action.hover' },
                     borderRadius: 1,
                     mb: 1
                   }}
-                  disabled={loading}
                 >
                   <ListItemIcon>
                     <Checkbox

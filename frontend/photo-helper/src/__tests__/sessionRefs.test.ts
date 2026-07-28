@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { isPhotoReferencedInSession } from '../utils/sessionRefs';
 import type { ApiPhoto, ApiPhotoSession } from '../types/api';
+import { makeCanvasState } from './support/testHelpers';
 
 // PR #62 review IMP-2: the shared cross-bucket reference check used by every
 // candidate / slot deletion path. The OPFS file is shared across the active
@@ -14,7 +15,7 @@ function p(id: string): ApiPhoto {
     sessionId: 'sess-1',
     url: `blob:${id}`,
     filename: `${id}.jpg`,
-    canvasState: {} as any,
+    canvasState: makeCanvasState(),
     label: '',
   };
 }

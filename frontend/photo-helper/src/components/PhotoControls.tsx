@@ -1,15 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
   Slider,
   Paper,
   IconButton,
-  FormControl,
-  FormLabel,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
   Divider,
   Chip,
   ButtonGroup,
@@ -20,10 +15,8 @@ import {
 } from '@mui/material';
 import {
   ZoomIn,
-  ZoomOut,
   Brightness4,
   Contrast,
-  RestoreFromTrash,
   Refresh,
   Label,
   CropFree,
@@ -31,42 +24,41 @@ import {
   ColorLens,
   AutoAwesome,
   RadioButtonUnchecked,
-  Circle,
   Clear,
   Close,
   Add,
   Remove
 } from '@mui/icons-material';
+import type { SxProps, Theme } from '@mui/material/styles';
 import type { Photo } from '../types';
 import type { CanvasSetting } from '../utils/canvasStatePatch';
 import { useI18n } from '../contexts/I18nContext';
 
+/**
+ * Just the plain-object arm of MUI's `sx`.
+ *
+ * The two local components below MERGE a caller's `sx` into their own style
+ * literal (`sx={{ ...ourStyles, ...sx }}`), which only works for an object.
+ * The callable (`theme => ({...})`) and array forms that full `SxProps` also
+ * permits would spread to nothing and be silently dropped, so accepting them
+ * would be a lie. Derived from `SxProps` rather than hand-written so it tracks
+ * MUI's own definition, and via `Exclude` rather than importing
+ * `SystemStyleObject` so we don't reach into `@mui/system` — a transitive
+ * dependency this package doesn't declare.
+ */
+type SxStyleObject = Exclude<SxProps<Theme>, ((theme: Theme) => unknown) | ReadonlyArray<unknown>>;
+
 interface PhotoControlsProps {
+  // Structural (not `Photo`/`ApiPhoto`) so both photo shapes can be passed,
+  // but the canvas state itself reuses `Photo['canvasState']` verbatim. The
+  // inline copy this replaces had drifted — it marked `sharpness` and
+  // `whiteBalance` optional, which made every `onUpdate({ ...photo.canvasState,
+  // … })` spread here unassignable to `onUpdate`'s own parameter type.
   photo: {
-    canvasState: {
-      position: { x: number; y: number };
-      scale: number;
-      brightness: number;
-      contrast: number;
-      sharpness?: number;
-      whiteBalance?: {
-        temperature: number;
-        tint: number;
-        auto: boolean;
-      };
-      labelPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-      circle?: {
-        x: number;
-        y: number;
-        radius: number;
-        color: 'white' | 'red' | 'yellow';
-        visible: boolean;
-      } | null;
-    };
+    canvasState: Photo['canvasState'];
   };
   label: string;
   onUpdate: (canvasState: Photo['canvasState']) => void;
-  onRemove: () => void;
   onClose?: () => void; // Close modal callback
   mode?: 'full' | 'sidebar' | 'sliders' | 'compact-left' | 'compact-right';
   showOriginal?: boolean;
@@ -91,7 +83,7 @@ interface EditableValueDisplayProps {
   formatDisplay?: (value: number) => string;
   parseInput?: (input: string) => number | null;
   step?: number; // Add step prop for wheel handling
-  sx?: any;
+  sx?: SxStyleObject;
 }
 
 const EditableValueDisplay: React.FC<EditableValueDisplayProps> = ({
@@ -215,13 +207,12 @@ interface SliderWithControlsProps {
   color?: 'primary' | 'secondary';
   size?: 'small' | 'medium';
   disabled?: boolean;
-  sx?: any;
+  sx?: SxStyleObject;
   label?: React.ReactNode;
   formatDisplay?: (value: number) => string;
   parseInput?: (input: string) => number | null;
   resetButton?: React.ReactNode;
   onApplyToAll?: (value: number) => void;
-  settingName?: string;
 }
 
 const SliderWithControls: React.FC<SliderWithControlsProps> = ({
@@ -238,8 +229,7 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
   formatDisplay,
   parseInput,
   resetButton,
-  onApplyToAll,
-  settingName
+  onApplyToAll
 }) => {
   const { t } = useI18n();
   const handleDecrement = () => {
@@ -363,7 +353,6 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   photo,
   label,
   onUpdate,
-  onRemove,
   onClose,
   mode = 'full',
   showOriginal = false,
@@ -564,18 +553,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     });
   };
 
-  const handleCirclePositionChange = (x: number, y: number) => {
-    if (!circle) return;
-    ensureEdited();
-    onUpdate({
-      ...photo.canvasState,
-      circle: {
-        ...circle,
-        x,
-        y
-      }
-    });
-  };
+  // NB: there is deliberately no circle *position* handler here. The panel only
+  // offers radius + colour; the circle is repositioned by dragging it on the
+  // canvas, which `PhotoEditorApi` owns end-to-end.
 
   const handleRemoveCircle = () => {
     ensureEdited();
@@ -1508,12 +1488,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
 
       <Grid container spacing={3}>
         {/* Label Position Selector */}
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           {renderSidebarControls()}
         </Grid>
 
         {/* Image Adjustments */}
-        <Grid item xs={12} md={6}>
+        <Grid size={{ xs: 12, md: 6 }}>
           <Paper elevation={1} sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <Brightness4 color="primary" />
@@ -1683,7 +1663,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         </Grid>
 
         {/* White Balance Controls */}
-        <Grid item xs={12}>
+        <Grid size={{ xs: 12 }}>
           <Paper elevation={1} sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
               <ColorLens color="primary" />

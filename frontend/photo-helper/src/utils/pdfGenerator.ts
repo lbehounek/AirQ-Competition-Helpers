@@ -22,6 +22,7 @@ if (typeof globalThis.Buffer === 'undefined') {
   globalThis.Buffer = Buffer;
 }
 
+
 // Branding (the small "created using …" line on every PDF page) is gated
 // behind this flag. The promotional site is not yet live and the app isn't
 // fully tested, so the user asked us to suppress it for the upcoming
@@ -132,15 +133,14 @@ const createMultilineTextImage = (lines: string[], fontSize: number = 12): TextI
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#000000';
     
-    // Measure text dimensions
+    // Measure text dimensions. Only the widest line matters — the per-line
+    // widths were collected into an array that nothing ever read (drawing is
+    // right-aligned, so each line positions itself off `rightX`).
     let maxWidth = 0;
-    const lineMetrics = lines.map(line => {
-      const metrics = ctx.measureText(line);
-      const width = Math.ceil(metrics.width);
-      maxWidth = Math.max(maxWidth, width);
-      return { text: line, width };
-    });
-    
+    for (const line of lines) {
+      maxWidth = Math.max(maxWidth, Math.ceil(ctx.measureText(line).width));
+    }
+
     const lineHeight = Math.ceil(FONT_SIZE * 1.2);
     const totalHeight = (lineHeight * lines.length) + (LINE_SPACING * (lines.length - 1));
     
@@ -186,7 +186,9 @@ const createMultilineTextImage = (lines: string[], fontSize: number = 12): TextI
 export const generatePDF = async (
   set1: ApiPhotoSet,
   set2: ApiPhotoSet,
-  sessionId: string,
+  // Unused: photos arrive fully resolved in `set1`/`set2`, so nothing here
+  // needs to look anything up by session. Kept positionally for the call sites.
+  _sessionId: string,
   aspectRatio = 4/3,
   competitionName?: string,
   layoutMode: 'landscape' | 'portrait' = 'landscape',
@@ -310,7 +312,13 @@ export const generatePDF = async (
             photoId: photo.id,
           };
         }
-      } catch {/* ignore */}
+      } catch {
+        // Deliberately silent, and not a swallowed failure: the *original*
+        // error was already logged above, and falling out of this block
+        // returns `kind: 'failed'`, which `generatePDF` collects and turns
+        // into a thrown, user-visible abort. Logging the scrape failure too
+        // would just add noise for a fallback that was never guaranteed.
+      }
       return { kind: 'failed', photoId: photo.id, error };
     }
   };
@@ -404,7 +412,9 @@ export const generatePDF = async (
 
   // Create a single page (compute a local layout per page)
   const createPage = async (photoSet: ApiPhotoSet, setTitle: string, pageKey: string) => {
-    const elements: any[] = [];
+    // Every push below is a `React.createElement(Image, …)`; the array is
+    // handed to `React.createElement(Page, …, elements)` as the page children.
+    const elements: React.ReactElement[] = [];
     // Per-page count drives the landscape rally turning-point grid
     // selection (3×3 vs 5×2). Other modes ignore it.
     const pageCount = photoSet.photos.length;
@@ -479,7 +489,13 @@ export const generatePDF = async (
       if (headerImage) {
         const headerTopPad = 2.83; // ~1mm from the left edge
         const measuredGutter = Math.max(15, Math.ceil(headerImage.width));
-        localLayout = calculateLayout(15, measuredGutter, headerTopPad, pageCount, 'left');
+        // Call the landscape grid directly rather than via `calculateLayout`:
+        // that wrapper's return type is the portrait|landscape union, and only
+        // the landscape arm carries `headerX`/`headerY`. We are provably in the
+        // landscape branch here, so binding the concrete result keeps the
+        // header coordinates visible without a cast.
+        const landscapeLayout = calculateLandscapeGrid(aspectRatio, measuredGutter, headerTopPad, pageCount, 'left');
+        localLayout = landscapeLayout;
         // Center the rasterised header image vertically within the page —
         // the image is taller than its text (MIN_ROTATED_HEIGHT=400) but
         // the text is drawn at the image's centre, so centering the
@@ -492,7 +508,7 @@ export const generatePDF = async (
             src: headerImage.dataUrl,
             style: {
               position: 'absolute',
-              left: localLayout.headerX,
+              left: landscapeLayout.headerX,
               top: topPosition,
               width: headerImage.width,
               height: headerImage.height,
@@ -531,7 +547,10 @@ export const generatePDF = async (
         mergedTitleImage?.height || 0,
         promotionalImage?.height || 0
       );
-      localLayout = calculateLayout(15, measuredHeaderHeight, headerTopPad, pageCount);
+      // Same reason as the 'left'-placement branch above: bind the concrete
+      // landscape layout so `headerY` survives the union.
+      const landscapeLayout = calculateLandscapeGrid(aspectRatio, measuredHeaderHeight, headerTopPad, pageCount, 'top');
+      localLayout = landscapeLayout;
 
       if (mergedTitleImage) {
         // Place merged title at top-left
@@ -542,7 +561,7 @@ export const generatePDF = async (
             style: {
               position: 'absolute',
               left: headerTopPad, // ~1mm from left edge
-              top: localLayout.headerY,
+              top: landscapeLayout.headerY,
               width: mergedTitleImage.width,
               height: mergedTitleImage.height,
             }
@@ -559,7 +578,7 @@ export const generatePDF = async (
             style: {
               position: 'absolute',
               right: headerTopPad, // ~1mm from right edge
-              top: localLayout.headerY,
+              top: landscapeLayout.headerY,
               width: promotionalImage.width,
               height: promotionalImage.height,
             }
@@ -686,7 +705,7 @@ export const generatePDF = async (
     // bundle so the file lands in the competition's working folder
     // (feedback 2026-04-25). Fall back to the browser download path —
     // used in the web build and as a safety net if the IPC throws.
-    const api = (typeof window !== 'undefined') ? (window as any).electronAPI : null;
+    const api = (typeof window !== 'undefined') ? window.electronAPI : null;
     if (api && typeof api.savePdf === 'function') {
       try {
         let workingDir: string | null = null;

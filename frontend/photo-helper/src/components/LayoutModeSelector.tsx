@@ -20,7 +20,9 @@ interface LayoutModeSelectorProps {
   compact?: boolean;
   set1Count?: number;
   set2Count?: number;
-  onModeChangeStart?: () => void;
+  // NB: there is no `onModeChangeStart` counterpart to `onModeChangeComplete`.
+  // The switch is synchronous apart from the confirm dialog, so no consumer
+  // ever had a use for a "starting" notification and none was wired up.
   onModeChangeComplete?: (newMode: 'landscape' | 'portrait') => void;
 }
 
@@ -28,10 +30,12 @@ export const LayoutModeSelector: React.FC<LayoutModeSelectorProps> = ({
   compact = false,
   set1Count = 0,
   set2Count = 0,
-  onModeChangeStart,
   onModeChangeComplete
 }) => {
-  const { layoutMode, setLayoutMode, canSwitchToLandscape } = useLayoutMode();
+  // `canSwitchToLandscape` from the context is not consulted here: the 10-photo
+  // portrait→landscape guard is enforced locally against `set1Count`/`set2Count`
+  // (which the parent already has) plus the confirm dialog below.
+  const { layoutMode, setLayoutMode } = useLayoutMode();
   const { t } = useI18n();
   const [showWarningDialog, setShowWarningDialog] = useState(false);
   const [pendingMode, setPendingMode] = useState<'landscape' | 'portrait' | null>(null);

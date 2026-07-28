@@ -12,9 +12,26 @@ interface I18nContextType {
 
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
-// Helper function to get nested object values by path
-const getNestedValue = (obj: any, path: string): string => {
-  return path.split('.').reduce((current, key) => current?.[key], obj) || path;
+/**
+ * Walk a dotted path (`'app.title'`) through the translation tree, falling
+ * back to the raw key when any segment is missing so a missing string shows up
+ * verbatim in the UI instead of as `undefined`.
+ *
+ * `unknown` rather than a recursive `Translation` walk: the tree is nested to
+ * an arbitrary depth and the intermediate values genuinely aren't known to be
+ * strings until the last hop, so each step is narrowed explicitly.
+ */
+const getNestedValue = (obj: unknown, path: string): string => {
+  const value = path.split('.').reduce<unknown>(
+    (current, key) =>
+      // Only descend through real objects; anything else (string leaf reached
+      // early, null, undefined) short-circuits to undefined → key fallback.
+      typeof current === 'object' && current !== null
+        ? (current as Record<string, unknown>)[key]
+        : undefined,
+    obj,
+  );
+  return typeof value === 'string' && value ? value : path;
 };
 
 // Helper function to replace placeholders in strings
@@ -40,11 +57,15 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
   useEffect(() => {
     const loadLocale = async () => {
       try {
-        let stored: string | null = null;
+        // `string | null | undefined`: getConfig resolves `undefined` for a key
+        // that was never written (the Electron config store returns `config[key]`),
+        // while localStorage.getItem returns `null`. Both are "nothing stored".
+        let stored: string | null | undefined = null;
 
         // In Electron, use config storage (shared across all app:// origins)
-        if ((window as any).electronAPI?.getConfig) {
-          stored = await (window as any).electronAPI.getConfig('locale');
+        const api = window.electronAPI;
+        if (api?.getConfig) {
+          stored = await api.getConfig('locale');
         } else if (typeof window !== 'undefined' && window.localStorage) {
           stored = window.localStorage.getItem('app-locale');
         }
@@ -68,8 +89,9 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
 
   // Sync menu language on mount and when locale changes
   useEffect(() => {
-    if (initialized && (window as any).electronAPI?.setMenuLocale) {
-      (window as any).electronAPI.setMenuLocale(locale);
+    const api = window.electronAPI;
+    if (initialized && api?.setMenuLocale) {
+      api.setMenuLocale(locale);
     }
   }, [locale, initialized]);
 
@@ -80,14 +102,21 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
 
     try {
       // In Electron, use config storage
-      if ((window as any).electronAPI?.setConfig) {
-        await (window as any).electronAPI.setConfig('locale', safeLocale);
+      const api = window.electronAPI;
+      if (api?.setConfig) {
+        // Resolves false when the config file could not be written. The locale
+        // still applies for this session; it just will not survive a restart,
+        // and silently pretending it saved is how that becomes a mystery.
+        const saved = await api.setConfig('locale', safeLocale);
+        if (saved === false) {
+          console.warn('Locale could not be persisted; it will reset on restart');
+        }
       } else if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem('app-locale', safeLocale);
       }
       // Update Electron menu language
-      if ((window as any).electronAPI?.setMenuLocale) {
-        (window as any).electronAPI.setMenuLocale(safeLocale);
+      if (api?.setMenuLocale) {
+        api.setMenuLocale(safeLocale);
       }
     } catch (e) {
       console.warn('Failed to save locale:', e);

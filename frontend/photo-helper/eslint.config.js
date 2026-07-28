@@ -19,5 +19,15 @@ export default tseslint.config([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // A leading underscore is this codebase's existing marker for "parameter
+      // kept for signature/positional reasons, deliberately unused" — see
+      // `_layoutMode` in utils/imageProcessing.ts and the several added while
+      // making `tsc -b` pass. TypeScript already honours that convention via
+      // `noUnusedParameters`; without this option eslint reported the very
+      // parameters tsc was satisfied with, so the two tools disagreed about
+      // the same code.
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
   },
 ])

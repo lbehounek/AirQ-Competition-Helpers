@@ -57,7 +57,6 @@ function makeDataTransfer(initial: Record<string, string> = {}): DataTransfer {
 function renderZone(overrides: Partial<React.ComponentProps<typeof GridSizedDropZone>> = {}) {
   const props: React.ComponentProps<typeof GridSizedDropZone> = {
     onFilesDropped: vi.fn(),
-    setName: 'Set 1',
     maxPhotos: 9,
     setKey: 'set1',
     ...overrides,

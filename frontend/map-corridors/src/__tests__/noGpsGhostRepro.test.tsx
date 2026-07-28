@@ -59,7 +59,11 @@ class FakeStorage {
     return { root: { path: '/root' }, sessions: { path: '/root/sessions' } }
   }
 
+  /** Widen the init window so a test can fire a setter while init is in flight. */
+  dirDelayMs = 0
+
   async getDirectoryHandle(parent: DirectoryHandle, name: string) {
+    if (this.dirDelayMs > 0) await new Promise(r => setTimeout(r, this.dirDelayMs))
     return { path: `${parent.path}/${name}` }
   }
 
@@ -603,5 +607,168 @@ describe('collectContentHashes', () => {
   it('returns a fresh set each call, so callers cannot cache a stale snapshot', () => {
     const session = { markers: [{ contentHash: 'a' }], noGpsPhotos: [] } as any
     expect(collectContentHashes(session)).not.toBe(collectContentHashes(session))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Write coalescing (TODO 9). The queue guarantees ORDER; coalescing collapses
+// the redundant middle of a burst. Neither may weaken the other, and neither
+// may weaken "when my await resolves, the file is at least as fresh as what I
+// asked for" — the import and export flushes depend on that.
+// ---------------------------------------------------------------------------
+
+describe('session write coalescing', () => {
+  it('collapses a burst into far fewer writes while keeping the last value', async () => {
+    const api = await mountSession()
+    const before = storage.sessionWrites.length
+
+    await outsideAct(async () => {
+      await Promise.all([
+        api.current.setMarkers(() => [marker(1, { displayName: 'T' })] as any),
+        api.current.setMarkers(() => [marker(1, { displayName: 'TP' })] as any),
+        api.current.setMarkers(() => [marker(1, { displayName: 'TP1' })] as any),
+      ])
+    })
+
+    const writes = storage.sessionWrites.length - before
+    expect(writes, 'three queued writes should collapse').toBeLessThan(3)
+    expect(writes).toBeGreaterThan(0)
+    expect(storage.disk('comp-1').markers[0].displayName).toBe('TP1')
+  })
+
+  it('still writes every DISTINCT value when calls are spaced out', async () => {
+    // Coalescing must not swallow an edit that had already been flushed —
+    // only redundant writes still queued behind a newer one.
+    const api = await mountSession()
+    await outsideAct(async () => { await api.current.setMarkers(() => [marker(1)] as any) })
+    expect(storage.disk('comp-1').markers).toHaveLength(1)
+    await outsideAct(async () => { await api.current.setMarkers(() => [marker(1), marker(2)] as any) })
+    expect(storage.disk('comp-1').markers).toHaveLength(2)
+  })
+
+  it('a failed write leaves the payload owed, so the next write retries it', async () => {
+    // The payload is cleared only on success. Without that, a rejected write
+    // would drop the snapshot and the follow-up task would find nothing owed —
+    // turning a transient quota error into permanent data loss.
+    const api = await mountSession()
+    const realWrite = storage.writeJSON.bind(storage)
+    let failNext = true
+    storage.writeJSON = (async (dir: any, name: string, data: any) => {
+      if (name === 'session.json' && failNext) { failNext = false; throw new Error('quota') }
+      return realWrite(dir, name, data)
+    }) as typeof storage.writeJSON
+
+    await outsideAct(async () => {
+      await Promise.all([
+        api.current.setMarkers(() => [marker(1)] as any),
+        api.current.setMarkers(() => [marker(1), marker(2)] as any),
+      ])
+    })
+
+    expect(storage.disk('comp-1').markers.map((m: any) => m.photoId)).toEqual(['pm-1', 'pm-2'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Competition switch (TODO 7). The init effect repoints sessionDirRef at the
+// NEW competition while sessionRef still holds the PREVIOUS one, so a setter
+// firing in that window used to write the old competition's data into the new
+// competition's file.
+// ---------------------------------------------------------------------------
+
+describe('competition switch', () => {
+  it('never writes the previous competition session into the new one', async () => {
+    // The SAME hook instance must switch competitionId — a freshly mounted
+    // instance has its own null sessionRef and cannot reproduce this at all.
+    const apiRef = { current: null as SessionApi | null }
+    const view = render(
+      <Harness competitionId="comp-a" apiRef={apiRef as Ref<SessionApi>} />,
+    )
+    await act(async () => { await new Promise(r => setTimeout(r, 0)) })
+
+    await outsideAct(async () => {
+      await apiRef.current!.setMarkers(() => [marker(1), marker(2)] as any)
+    })
+    expect(storage.disk('comp-a').markers).toHaveLength(2)
+
+    // Hold init open so the setter below lands INSIDE the window where
+    // sessionDirRef already points at comp-b but sessionRef still holds comp-a.
+    storage.dirDelayMs = 5
+    await act(async () => {
+      view.rerender(<Harness competitionId="comp-b" apiRef={apiRef as Ref<SessionApi>} />)
+    })
+
+    await outsideAct(async () => {
+      await apiRef.current!.setMarkers((prev) => [...prev, marker(9)] as any)
+    })
+    storage.dirDelayMs = 0
+    await act(async () => { await new Promise(r => setTimeout(r, 80)) })
+
+    const ids = (storage.disk('comp-b')?.markers ?? []).map((m: any) => m.photoId)
+    expect(ids, 'comp-a markers leaked into comp-b').not.toContain('pm-1')
+    expect(ids, 'comp-a markers leaked into comp-b').not.toContain('pm-2')
+    expect(storage.disk('comp-a').markers.map((m: any) => m.photoId)).toEqual(['pm-1', 'pm-2'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PR #114 review F1. The write queue is per HOOK INSTANCE and therefore spans a
+// competition switch, but the coalescing payload ref is hook-wide while the
+// target `dir` is captured per call. A task enqueued for competition A that
+// runs AFTER competition B has published its payload would read B's session and
+// write it into A's file — and clear the ref, so B's own task found nothing
+// owed and silently skipped. Cross-competition corruption plus a lost write.
+// ---------------------------------------------------------------------------
+
+describe('competition switch with a write still queued', () => {
+  it('never writes one competition session into another competition file', async () => {
+    // comp-b must ALREADY have a session on disk. Otherwise its init performs a
+    // first-run `fresh` write, which queues behind comp-a's slow writes, so
+    // `sessionRef` stays null, comp-b's setters no-op, and comp-b never
+    // publishes a payload — the interleaving under test never happens.
+    storage.files.set('/root/competitions/comp-b/corridors/session.json', {
+      id: 'corridors-comp-b', version: 1, createdAt: '', updatedAt: '',
+      mapStyleId: 'mapbox-streets', discipline: 'rally', use1NmAfterSp: false,
+      geojson: null, leftSegments: null, rightSegments: null, gates: null,
+      points: null, exactPoints: null, markers: [], groundMarkers: [],
+      noGpsPhotos: [], noGpsTrayOpen: true,
+    })
+
+    const apiRef = { current: null as SessionApi | null }
+    const view = render(<Harness competitionId="comp-a" apiRef={apiRef as Ref<SessionApi>} />)
+    await act(async () => { await new Promise(r => setTimeout(r, 0)) })
+
+    // TWO comp-a writes with slow storage. The first occupies the queue; the
+    // SECOND is the dangerous one — it starts only after the switch, so it reads
+    // the shared payload ref at a moment when comp-b has already published.
+    storage.writeDelayMs = 300
+    const a1 = apiRef.current!.setMarkers(() => [marker(1)] as any)
+    const a2 = apiRef.current!.setMarkers(() => [marker(1), marker(2)] as any)
+
+    await act(async () => {
+      view.rerender(<Harness competitionId="comp-b" apiRef={apiRef as Ref<SessionApi>} />)
+    })
+    // comp-b's init only READS (session exists), so it completes while comp-a's
+    // writes are still draining.
+    await act(async () => { await new Promise(r => setTimeout(r, 60)) })
+
+    await outsideAct(async () => {
+      apiRef.current!.setMarkers(() => [marker(50)] as any).catch(() => {})
+    })
+
+    storage.writeDelayMs = 0
+    await Promise.allSettled([a1, a2])
+    await act(async () => { await new Promise(r => setTimeout(r, 400)) })
+
+    const a = storage.disk('comp-a')
+    const b = storage.disk('comp-b')
+
+    expect(a.id, 'comp-b session was written into the comp-a file').not.toBe('corridors-comp-b')
+    expect((a.markers ?? []).map((m: any) => m.photoId),
+      'comp-b marker leaked into the comp-a file').not.toContain('pm-50')
+    expect(b, 'comp-b session was never written').not.toBeNull()
+    expect((b.markers ?? []).map((m: any) => m.photoId),
+      'comp-b write was swallowed by the comp-a task clearing the shared payload')
+      .toContain('pm-50')
   })
 })

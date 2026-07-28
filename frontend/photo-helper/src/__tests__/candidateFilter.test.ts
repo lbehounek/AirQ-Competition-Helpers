@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { filterCandidates, countByFlag } from '../utils/candidateFilter';
 import type { ApiPhoto, CandidateFlag } from '../types/api';
+import { makeCanvasState } from './support/testHelpers';
 
 // Filter helper for the CandidateTray view (PR #62 review gap B8). The
 // component was previously 507 lines of UI logic with no direct test; the
@@ -12,15 +13,7 @@ function makePhoto(id: string, flag?: CandidateFlag | undefined): ApiPhoto {
     sessionId: 'sess-1',
     url: `blob:${id}`,
     filename: `${id}.jpg`,
-    canvasState: {
-      position: { x: 0, y: 0 },
-      scale: 1,
-      brightness: 0,
-      contrast: 1,
-      sharpness: 0,
-      whiteBalance: { temperature: 0, tint: 0, auto: false },
-      labelPosition: 'bottom-left',
-    } as any,
+    canvasState: makeCanvasState(),
     label: '',
     ...(flag !== undefined ? { flag } : {}),
   };

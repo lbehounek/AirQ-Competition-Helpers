@@ -28,7 +28,13 @@ class ImageCacheManager {
 
     // Load the image
     console.log(`📥 Loading image for ${photoId}`);
-    const base = ((import.meta as any)?.env?.VITE_API_BASE_URL || '').replace(/\/$/, ''); // Remove trailing slash
+    // `vite/client` types `import.meta.env` with a permissive index signature,
+    // so reading a var straight off it hands back `any`. Take it as `unknown`
+    // and check for a string before calling `.replace` — a non-string value
+    // (mis-set at build time) would otherwise throw here rather than fall back.
+    const configuredBase: unknown = import.meta.env?.VITE_API_BASE_URL;
+    const base = (typeof configuredBase === 'string' ? configuredBase : '')
+      .replace(/\/$/, ''); // Remove trailing slash
     const encodedSessionId = encodeURIComponent(sessionId);
     const encodedPhotoId = encodeURIComponent(photoId);
     const url = `${base}/api/photos/${encodedSessionId}/${encodedPhotoId}`;
@@ -150,9 +156,11 @@ export function getImageCache(): ImageCacheManager {
   if (!imageCacheInstance) {
     imageCacheInstance = new ImageCacheManager();
     
-    // Make it available globally for debugging
+    // Make it available globally for debugging. Cast to a `window` view naming
+    // exactly this one extra property rather than `any` — devtools convenience
+    // only, no app code reads it back.
     if (typeof window !== 'undefined') {
-      (window as any).imageCache = imageCacheInstance;
+      (window as Window & { imageCache?: ImageCacheManager }).imageCache = imageCacheInstance;
     }
   }
   return imageCacheInstance;

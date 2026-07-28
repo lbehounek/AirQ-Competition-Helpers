@@ -25,7 +25,6 @@ import {
 } from '@mui/material';
 import {
   FlightTakeoff,
-  RestartAlt,
   Close,
   PictureAsPdf,
   Shuffle,
@@ -85,7 +84,10 @@ function AppApi() {
   const discipline: Discipline = useMemo(() => resolveDiscipline(window.location.search), []);
   const isPrecision = discipline === 'precision';
 
-  const sessionHookResult = useCompetitionSystem() as any;
+  // No `as any`: that cast let `UseCompetitionSystemResult` drift five members
+  // out of date and hid the fact that `resetSession` was never returned at all.
+  // Typed, the compiler now catches the next drift instead of the next reader.
+  const sessionHookResult = useCompetitionSystem();
   const {
     session,
     loading,
@@ -294,8 +296,6 @@ function AppApi() {
   const supportsShuffle = Boolean(sessionHookResult.shufflePhotos);
   const shufflePhotos = supportsShuffle ? sessionHookResult.shufflePhotos : undefined;
   const updateCompetitionName = updateSessionCompetitionName;
-  const supportsReset = Boolean(sessionHookResult.resetSession);
-  const resetSession = supportsReset ? sessionHookResult.resetSession : undefined;
   const supportsRefresh = Boolean(sessionHookResult.refreshSession);
   const refreshSession = supportsRefresh ? sessionHookResult.refreshSession : undefined;
   const supportsApplyToAll = Boolean(sessionHookResult.applySettingToAll);
@@ -558,7 +558,10 @@ function AppApi() {
   // computing it here keeps the intent explicit at the call site.
   const handleSendCandidateToSet = async (photoId: string, setKey: 'set1' | 'set2') => {
     if (!session || !promoteCandidateToSlot) return;
-    const capacity = getGridCapacity(session as any);
+    // No cast: `ApiPhotoSession` already satisfies `SessionShape` structurally
+    // (`mode` + optional `layoutMode`), which is the whole point of that helper
+    // taking a minimal shape instead of the full session type.
+    const capacity = getGridCapacity(session);
     const slotCount = session.sets[setKey].photos.length;
     const slotIndex = slotCount < capacity ? slotCount : Math.max(0, capacity - 1);
     await promoteCandidateToSlot(photoId, setKey, slotIndex);
@@ -840,7 +843,21 @@ function AppApi() {
               {isDesktopManaged && (
                 <IconButton
                   size="small"
-                  onClick={() => (window as any).electronAPI?.goHome()}
+                  onClick={() => {
+                    // No bridge at all = web build, nothing to navigate to. But a
+                    // bridge WITHOUT the channel is version skew, and a plain
+                    // `?.()` there would leave a dead button with nothing logged —
+                    // so that case is reported rather than silently ignored, and
+                    // the promise is caught so a rejected IPC is not an unhandled
+                    // rejection.
+                    const api = window.electronAPI;
+                    if (!api) return;
+                    if (!api.goHome) {
+                      console.error('electronAPI.goHome is missing — desktop shell is out of date');
+                      return;
+                    }
+                    void api.goHome().catch((err: unknown) => console.error('goHome failed', err));
+                  }}
                   sx={{ color: 'white', mr: 0.5 }}
                   title={t('app.backToMenu')}
                 >
@@ -854,7 +871,14 @@ function AppApi() {
                   onClick={() => {
                     const params = new URLSearchParams(window.location.search);
                     const compId = params.get('competitionId');
-                    (window as any).electronAPI?.navigateToApp('map-corridors', compId);
+                    const api = window.electronAPI;
+                    if (!api) return;
+                    if (!api.navigateToApp) {
+                      console.error('electronAPI.navigateToApp is missing — desktop shell is out of date');
+                      return;
+                    }
+                    void api.navigateToApp('map-corridors', compId)
+                      .catch((err: unknown) => console.error('navigateToApp failed', err));
                   }}
                   startIcon={<Map sx={{ fontSize: 18 }} />}
                   sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 1.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
@@ -1147,7 +1171,6 @@ function AppApi() {
                     </Box>
                     <GridSizedDropZone
                       onFilesDropped={(files) => handleAddToSet(files, 'set1')}
-                      setName={t('sets.set1')}
                       // Cap follows the layout, for precision too. The old
                       // precision-track exception advertised 10 in landscape on
                       // the strength of an auto-flip to portrait that was
@@ -1213,7 +1236,6 @@ function AppApi() {
                     </Box>
                     <GridSizedDropZone
                       onFilesDropped={(files) => handleAddToSet(files, 'set2')}
-                      setName={t('sets.set2')}
                       maxPhotos={layoutMode === 'portrait' ? 10 : 9}
                       loading={loading}
                       error={error}
@@ -1315,24 +1337,14 @@ function AppApi() {
         {/* Action Buttons - Centered and Prominent */}
         <Paper elevation={1} sx={{ p: 4, mb: 4, borderRadius: 3 }}>
           <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<RestartAlt />}
-              onClick={() => { if (supportsReset && resetSession) resetSession(); }}
-              size="large"
-              sx={{
-                py: 1.5,
-                px: 4,
-                fontSize: '1.1rem',
-                minWidth: 160,
-                borderWidth: 2,
-                '&:hover': { borderWidth: 2 }
-              }}
-              disabled={!supportsReset}
-            >
-              {t('actions.resetSession')}
-            </Button>
+            {/* The "Reset session" control was removed 2026-07-28. It was gated on
+                `sessionHookResult.resetSession`, which `useCompetitionSystem` has
+                never returned — only the two now-deleted legacy hooks defined it —
+                so it rendered permanently disabled and could not be clicked. If the
+                feature is wanted, it needs implementing on the competition system
+                first (deciding what "reset" means when a competition, not a session,
+                is the unit of work); re-adding the button alone brings back dead
+                chrome. */}
             <Button
               variant="contained"
               color="success"
@@ -1484,7 +1496,6 @@ function AppApi() {
                         onUpdate={(canvasState) =>
                           handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
                         }
-                        onRemove={() => handlePhotoRemove(selectedPhoto.setKey, selectedPhoto.photo.id)}
                         size="large"
                         setKey={selectedPhoto.setKey}
                         showOriginal={showOriginal}
@@ -1551,7 +1562,6 @@ function AppApi() {
                         onUpdate={(canvasState) =>
                           handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
                         }
-                        onRemove={() => {}} // No-op since delete button is removed
                         onClose={() => {
                           setSelectedPhoto(null);
                           // Immediately refresh session to sync grid with modal changes
@@ -1584,7 +1594,6 @@ function AppApi() {
                       onUpdate={(canvasState) =>
                         handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
                       }
-                      onRemove={() => {}} // No-op since delete button is removed
                       onClose={() => {
                         setSelectedPhoto(null);
                         // Immediately refresh session to sync grid with modal changes

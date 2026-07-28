@@ -17,20 +17,23 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    # Recent runs take ~5 min; 30 leaves headroom for a cold cache while still
+    # capping a hang far below GitHub's 360-minute default.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'pnpm'
           cache-dependency-path: 'frontend/pnpm-lock.yaml'
 
@@ -91,7 +94,7 @@ jobs:
         run: pnpm exec electron-builder --win --publish never
 
       - name: Upload executable
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: photo-helper-v${{ steps.get_version.outputs.VERSION }}
           path: frontend/desktop/dist/*.exe
@@ -102,12 +105,13 @@ jobs:
     needs: build-windows
     if: startsWith(github.ref, 'refs/tags/desktop-v')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -116,7 +120,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF_NAME#desktop-v}" >> $GITHUB_OUTPUT
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           name: Desktop App v${{ steps.tag_version.outputs.VERSION }}
           draft: false

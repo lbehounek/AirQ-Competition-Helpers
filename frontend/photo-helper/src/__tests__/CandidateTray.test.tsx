@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { CandidateTray, type CandidateTrayProps } from '../components/CandidateTray';
 import { serializeDragPayload, DRAG_PAYLOAD_MIME } from '../utils/dragPayload';
 import type { ApiPhoto, CandidateFlag } from '../types/api';
+import { makeCanvasState } from './support/testHelpers';
 
 // PR #62 review G7: the new CandidateTray component (516 LOC) shipped with
 // zero direct tests. The empty-state branch is the only entry point for
@@ -36,15 +37,7 @@ function p(id: string, flag?: CandidateFlag): ApiPhoto {
     sessionId: 'sess-1',
     url: `blob:${id}`,
     filename: `${id}.jpg`,
-    canvasState: {
-      position: { x: 0, y: 0 },
-      scale: 1,
-      brightness: 0,
-      contrast: 1,
-      sharpness: 0,
-      whiteBalance: { temperature: 0, tint: 0, auto: false },
-      labelPosition: 'bottom-left',
-    } as any,
+    canvasState: makeCanvasState(),
     label: '',
     ...(flag !== undefined ? { flag } : {}),
   };

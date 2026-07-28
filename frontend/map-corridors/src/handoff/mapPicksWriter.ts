@@ -23,6 +23,7 @@ import {
 import { comparePhotoMarkers, type PhotoMarker } from '../types/markers'
 import { partitionPicksByRouteTP } from '../setSplit/partitionPicksBySet'
 import type { RouteWaypoint } from '../corridors/matchPoints'
+import { createSerialQueue } from '../utils/serialQueue'
 
 const FILENAME = MAP_PICKS_FILENAME
 const DEBOUNCE_MS = 300
@@ -136,11 +137,28 @@ type PendingState = {
   picks: MapPickEntry[]
 }
 let pending: PendingState | null = null
-// Serializes writes so two debounce flushes can't interleave and produce
-// a torn JSON. The chain swallows errors from prior writes (`.catch`)
-// before continuing — each call's caller still sees its OWN write's
-// rejection via the returned `currentPromise` below.
-let inFlight: Promise<void> = Promise.resolve()
+// Serializes writes so two flushes can't interleave and produce a torn JSON —
+// `StorageInterface.writeJSON` promises no ordering across overlapping calls
+// (see the header of utils/serialQueue.ts for why).
+//
+// DEBOUNCE AND ORDERING ARE SEPARATE CONCERNS, deliberately kept apart:
+//  - the debounce (below) decides WHEN a write is issued and collapses a burst
+//    of `scheduleWriteMapPicks` calls into a single one — latest payload wins;
+//  - this queue decides only in WHICH ORDER the writes that were actually
+//    issued reach disk.
+// They cannot be folded into one mechanism because two callers bypass the
+// debounce entirely and still must not overlap: `flushPendingMapPicks`
+// (pagehide / "Send to editor") and the flush-on-dir-change path in
+// `scheduleWriteMapPicks`. `createSerialQueue` supplies the ordering half only
+// — it does NOT debounce and does NOT coalesce, which is exactly the split we
+// want here. It is the same primitive the session writer (hooks/useSerialQueue)
+// and the photo-import queue use, so the "each caller gets its OWN outcome, a
+// failed write never wedges the ones behind it" contract is stated and tested
+// in one place (src/__tests__/serialQueue.test.ts) instead of three.
+//
+// `let`, not `const`, purely so `_resetMapPicksWriterForTests` can hand back a
+// virgin chain between tests.
+let writeQueue = createSerialQueue()
 
 /**
  * Run the actual storage write. Returns a promise that resolves/rejects
@@ -154,17 +172,17 @@ function executeWrite(
 ): Promise<void> {
   const file: MapPicksFile = {
     version: 1,
+    // Stamped when the write is ISSUED, not when the queue gets to it: the
+    // reader treats `updatedAt` as "the picks were this, as of then", and the
+    // `picks` snapshot was taken now. Stamping inside the queued task would
+    // date the file to whenever the disk caught up.
     updatedAt: new Date().toISOString(),
     picks,
   }
-  // Schedule after any prior write settles (success OR failure — we don't
-  // want one failure to permanently break the queue), then return the
-  // per-call promise so the caller sees ITS own rejection.
-  const currentPromise = inFlight
-    .catch(() => undefined)
-    .then(() => storage.writeJSON(dir, FILENAME, file))
-  inFlight = currentPromise
-  return currentPromise
+  // Queued, so it starts only after any prior write has SETTLED (success OR
+  // failure — one failure must not permanently break the chain). The returned
+  // promise carries THIS write's outcome alone.
+  return writeQueue(() => storage.writeJSON(dir, FILENAME, file))
 }
 
 /**
@@ -230,5 +248,7 @@ export function _resetMapPicksWriterForTests(): void {
     clearTimeout(pending.timer)
     pending = null
   }
-  inFlight = Promise.resolve()
+  // A brand-new queue rather than a drain: a write the previous test left in
+  // flight must not end up ordered AHEAD of the next test's writes.
+  writeQueue = createSerialQueue()
 }

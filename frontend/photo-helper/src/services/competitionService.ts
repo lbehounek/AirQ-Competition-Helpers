@@ -11,10 +11,11 @@ import type {
   CleanupCandidate,
   StorageStats
 } from '../types/competition';
-import type { ApiPhotoSession } from '../types/api';
+import type { ApiPhoto, ApiPhotoSession, ApiPhotoSet, CandidatePool } from '../types/api';
 import {
+  // Only `initStorage` — the service caches the returned instance on
+  // `this.storage` and reads it from there; it never calls `getStorage()`.
   initStorage,
-  getStorage,
   type StorageInterface,
   type DirectoryHandle,
   type StorageHandles,
@@ -23,6 +24,39 @@ import {
 const COMPETITIONS_INDEX_FILE = 'competitions-index.json';
 const MAX_COMPETITIONS = 10;
 const MAX_AGE_DAYS = 30;
+
+/**
+ * The `{ set1, set2 }` pair shape. `ApiPhotoSession` spells it out inline
+ * three times (`sets`, `setsTrack`, `setsTurning`); naming it here lets the
+ * URL-stripping / photo-collecting / blob-loading helpers below be written
+ * once and still be honest about what they take.
+ */
+type ModeSets = { set1: ApiPhotoSet; set2: ApiPhotoSet };
+
+/**
+ * Narrow `unknown` to an indexable object, or `undefined`.
+ *
+ * Used only for `session.json` files read back off disk during index rebuild
+ * (`rebuildIndexFromDirs`). Those are genuinely untrusted: they may predate
+ * any current field, or be half-written by a save that was interrupted by a
+ * tab close. Arrays pass the `typeof` check too, which is harmless — every
+ * property we go on to read is simply absent on an array.
+ */
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
+
+/** Narrow `unknown` to a string, or `undefined` if it is anything else. */
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+/**
+ * Photo count of one persisted set, tolerating a missing set, a missing
+ * `photos` key, or a `photos` value that is not an array.
+ */
+const countPersistedPhotos = (set: unknown): number => {
+  const photos = asRecord(set)?.photos;
+  return Array.isArray(photos) ? photos.length : 0;
+};
 
 export class CompetitionService {
   private storage: StorageInterface | null = null;
@@ -103,11 +137,18 @@ export class CompetitionService {
           const compDir = await this.storage!.getDirectoryHandle(
             this.competitionsDir!, dir.name, { create: false }
           );
-          const session = await this.storage!.readJSON<any>(compDir, 'session.json');
-          const name = session?.competition_name || dir.name;
-          const createdAt = session?.createdAt || new Date().toISOString();
-          const lastModified = session?.updatedAt || createdAt;
-          const photoCount = (session?.sets?.set1?.photos?.length || 0) + (session?.sets?.set2?.photos?.length || 0);
+          // Read as `unknown` rather than asserting `ApiPhotoSession`: this is
+          // the recovery path for a lost/corrupt index, so the very files it
+          // scans are the ones most likely to be malformed. Each field is
+          // narrowed individually so a bad file degrades to the directory name
+          // and "now" instead of writing a non-string into CompetitionMetadata.
+          const raw = await this.storage!.readJSON<unknown>(compDir, 'session.json');
+          const session = asRecord(raw);
+          const sets = asRecord(session?.sets);
+          const name = asString(session?.competition_name) || dir.name;
+          const createdAt = asString(session?.createdAt) || new Date().toISOString();
+          const lastModified = asString(session?.updatedAt) || createdAt;
+          const photoCount = countPersistedPhotos(sets?.set1) + countPersistedPhotos(sets?.set2);
 
           competitions.push({
             id: dir.name,
@@ -545,32 +586,39 @@ export class CompetitionService {
   }
 
   private sanitizeSessionForStorage(session: ApiPhotoSession): ApiPhotoSession {
-    const clearUrls = (sets?: { set1: any; set2: any }) => {
+    // Overloaded so `sets` (required on ApiPhotoSession) keeps a non-optional
+    // result while the optional per-mode buckets may still hand back
+    // `undefined`. The `!sets` guard is kept rather than pushed onto callers:
+    // an in-memory session that somehow lost `sets` must degrade the same way
+    // it always has, not start throwing.
+    function clearUrls(sets: ModeSets): ModeSets;
+    function clearUrls(sets: ModeSets | undefined): ModeSets | undefined;
+    function clearUrls(sets?: ModeSets): ModeSets | undefined {
       if (!sets) return undefined;
       return {
         set1: {
           ...sets.set1,
-          photos: (sets.set1?.photos || []).map((p: any) => ({ ...p, url: '' }))
+          photos: (sets.set1?.photos || []).map((p) => ({ ...p, url: '' }))
         },
         set2: {
           ...sets.set2,
-          photos: (sets.set2?.photos || []).map((p: any) => ({ ...p, url: '' }))
+          photos: (sets.set2?.photos || []).map((p) => ({ ...p, url: '' }))
         }
       };
-    };
+    }
 
     // Candidate pool uses the same URL-stripping pass. The pool is a flat
     // `{ photos: [] }` shape so it's not symmetric with `{ set1, set2 }` and
     // can't share the helper above.
-    const clearCandidateUrls = (pool?: { photos: any[] }) =>
-      pool ? { photos: (pool.photos || []).map((p: any) => ({ ...p, url: '' })) } : undefined;
+    const clearCandidateUrls = (pool: CandidatePool): CandidatePool =>
+      ({ photos: (pool.photos || []).map((p) => ({ ...p, url: '' })) });
 
     return {
       ...session,
-      sets: clearUrls(session.sets) as any,
-      ...(session as any).setsTrack ? { setsTrack: clearUrls((session as any).setsTrack) as any } : {},
-      ...(session as any).setsTurning ? { setsTurning: clearUrls((session as any).setsTurning) as any } : {},
-      ...(session as any).candidates ? { candidates: clearCandidateUrls((session as any).candidates) as any } : {}
+      sets: clearUrls(session.sets),
+      ...(session.setsTrack ? { setsTrack: clearUrls(session.setsTrack) } : {}),
+      ...(session.setsTurning ? { setsTurning: clearUrls(session.setsTurning) } : {}),
+      ...(session.candidates ? { candidates: clearCandidateUrls(session.candidates) } : {})
     };
   }
 
@@ -582,25 +630,30 @@ export class CompetitionService {
     // blob URLs; previously saved files remain available for loading.
 
     // Collect photos across active sets and both mode buckets
-    const collect = (sets?: { set1: any; set2: any }) =>
+    const collect = (sets?: ModeSets): ApiPhoto[] =>
       sets ? [...(sets.set1?.photos || []), ...(sets.set2?.photos || [])] : [];
 
-    const activePhotos = collect(session.sets as any);
-    const trackPhotos = collect((session as any).setsTrack);
-    const turningPhotos = collect((session as any).setsTurning);
-    const candidatePhotos = ((session as any).candidates?.photos as any[]) || [];
+    const activePhotos = collect(session.sets);
+    const trackPhotos = collect(session.setsTrack);
+    const turningPhotos = collect(session.setsTurning);
+    const candidatePhotos = session.candidates?.photos || [];
 
     // Deduplicate by id while preserving first occurrence with a blob url if available
-    const idToPhoto = new Map<string, any>();
-    const pushPhoto = (p: any) => {
+    const idToPhoto = new Map<string, ApiPhoto>();
+    const pushPhoto = (p: ApiPhoto) => {
       if (!p || !p.id) return;
-      if (!idToPhoto.has(p.id)) {
+      // Single `get` instead of `has` + `get`: the map never stores
+      // `undefined`, so a miss and an absent key are the same thing, and this
+      // avoids an assertion on the second lookup.
+      const existing = idToPhoto.get(p.id);
+      if (!existing) {
         idToPhoto.set(p.id, p);
-      } else {
-        const existing = idToPhoto.get(p.id);
-        if ((!existing.url || !existing.url.startsWith('blob:')) && p.url && p.url.startsWith('blob:')) {
-          idToPhoto.set(p.id, p);
-        }
+        return;
+      }
+      // Prefer whichever copy still carries a live blob URL — only those can
+      // actually be fetched and written to disk in the loop below.
+      if ((!existing.url || !existing.url.startsWith('blob:')) && p.url && p.url.startsWith('blob:')) {
+        idToPhoto.set(p.id, p);
       }
     };
 
@@ -623,8 +676,8 @@ export class CompetitionService {
   private async loadSessionPhotos(session: ApiPhotoSession, photosDir: DirectoryHandle): Promise<ApiPhotoSession> {
     await this.ensureInitialized();
 
-    const loadPhotoUrls = async (photos: typeof session.sets.set1.photos) => {
-      const updatedPhotos = [];
+    const loadPhotoUrls = async (photos: ApiPhoto[]): Promise<ApiPhoto[]> => {
+      const updatedPhotos: ApiPhoto[] = [];
       for (const photo of photos) {
         try {
           const blob = await this.storage!.getPhotoBlob(photosDir, photo.id);
@@ -639,7 +692,7 @@ export class CompetitionService {
     };
 
     // Load blob URLs for mode-specific sets as well
-    const loadModeSpecificSets = async (sets: { set1: any; set2: any } | undefined) => {
+    const loadModeSpecificSets = async (sets: ModeSets | undefined): Promise<ModeSets | undefined> => {
       if (!sets) return undefined;
       return {
         set1: {
@@ -656,9 +709,9 @@ export class CompetitionService {
     // Candidates pool — flat array, not the {set1, set2} shape. Reuses the
     // same blob-load helper as slot photos. Missing pool stays missing
     // (older sessions on disk have no candidates field).
-    const loadCandidates = async (pool: { photos: any[] } | undefined) => {
+    const loadCandidates = async (pool: CandidatePool | undefined): Promise<CandidatePool | undefined> => {
       if (!pool) return undefined;
-      return { photos: await loadPhotoUrls((pool.photos || []) as any) };
+      return { photos: await loadPhotoUrls(pool.photos || []) };
     };
 
     return {
@@ -675,7 +728,7 @@ export class CompetitionService {
       },
       setsTrack: await loadModeSpecificSets(session.setsTrack),
       setsTurning: await loadModeSpecificSets(session.setsTurning),
-      candidates: await loadCandidates((session as any).candidates)
+      candidates: await loadCandidates(session.candidates)
     };
   }
 }

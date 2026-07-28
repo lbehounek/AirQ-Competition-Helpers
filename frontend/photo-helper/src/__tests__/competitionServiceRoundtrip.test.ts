@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { DirectoryHandle, StorageInterface } from '@airq/shared-storage';
+import {
+  savePhotoThumb as savePhotoThumbImpl,
+  getPhotoThumb as getPhotoThumbImpl,
+  deletePhotoThumb as deletePhotoThumbImpl,
+} from '@airq/shared-storage';
 import type { ApiPhoto, ApiPhotoSession } from '../types/api';
+import { makeCanvasState, resetCompetitionServiceCaches } from './support/testHelpers';
 // Note: competitionService is dynamic-imported inside each test so the
 // `vi.mock` hoist below takes effect before the service captures the mocked
 // `getStorage` reference. We then reset the singleton's cached handles in
@@ -97,7 +103,14 @@ class InMemoryStorage implements StorageInterface {
     const entry = this.pathToEntry.get(photosDir.path);
     if (!entry || entry.kind !== 'dir') throw new Error(`Bad dir: ${photosDir.path}`);
     const file = entry.children.get(photoId);
-    if (!file || file.kind !== 'blob') throw new Error(`Photo not found: ${photoId}`);
+    if (!file || file.kind !== 'blob') {
+      // Same 'NotFoundError' naming as the missing-directory case above: the
+      // shared `getPhotoThumb` helper distinguishes "no thumb yet" (→ null,
+      // caller regenerates) from a real storage fault purely by `err.name`.
+      const err = new Error(`Photo not found: ${photoId}`);
+      err.name = 'NotFoundError';
+      throw err;
+    }
     return file.blob;
   }
 
@@ -111,6 +124,21 @@ class InMemoryStorage implements StorageInterface {
     const entry = this.pathToEntry.get(dir.path);
     if (!entry || entry.kind !== 'dir') return;
     entry.children.clear();
+  }
+
+  // Thumb methods delegate to the very helpers OPFSStorage/ElectronStorage
+  // use, so the double keeps the real `thumbs/` subdir + `.jpg` naming rules
+  // instead of inventing a second, divergent thumb layout.
+  async savePhotoThumb(photosDir: DirectoryHandle, photoId: string, blob: Blob) {
+    return savePhotoThumbImpl(this, photosDir, photoId, blob);
+  }
+
+  async getPhotoThumb(photosDir: DirectoryHandle, photoId: string) {
+    return getPhotoThumbImpl(this, photosDir, photoId);
+  }
+
+  async deletePhotoThumb(photosDir: DirectoryHandle, photoId: string) {
+    return deletePhotoThumbImpl(this, photosDir, photoId);
   }
 
   async deleteSessionDir() { /* unused */ }
@@ -144,7 +172,9 @@ let storageMock: InMemoryStorage;
 // service captures `getStorage()` at call time, so the mock just needs to
 // return our in-memory adapter consistently.
 vi.mock('@airq/shared-storage', async () => {
-  const actual = await vi.importActual<any>('@airq/shared-storage');
+  // Typed against the real module so the spread below can't silently drop an
+  // export the service depends on (an `any` here hid exactly that class of bug).
+  const actual = await vi.importActual<typeof import('@airq/shared-storage')>('@airq/shared-storage');
   return {
     ...actual,
     initStorage: vi.fn(async () => storageMock),
@@ -169,20 +199,24 @@ beforeEach(async () => {
   };
   globalThis.URL.revokeObjectURL = (url: string) => { createdUrls.delete(url); };
   // Service's saveSessionPhotos calls `fetch(blob:url)` then `.blob()`. jsdom
-  // doesn't implement that, so route through our map.
-  globalThis.fetch = (input: any) => {
-    const url = typeof input === 'string' ? input : input.url;
+  // doesn't implement that, so route through our map. The stub returns a REAL
+  // `Response` so it satisfies the genuine `fetch` signature — no cast, and no
+  // risk of the code under test starting to use a response member the double
+  // never had. Bytes go in as an ArrayBuffer because undici's `Response` does
+  // not understand a jsdom `Blob` (it stringifies it to "[object Blob]"); the
+  // Content-Type header carries the MIME type that `saveSessionPhotos` copies
+  // onto the `File` it writes.
+  globalThis.fetch = async (input: RequestInfo | URL): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const blob = createdUrls.get(url);
-    if (!blob) return Promise.reject(new Error(`Mock fetch: unknown URL ${url}`));
-    return Promise.resolve({ blob: async () => blob } as any);
+    if (!blob) throw new Error(`Mock fetch: unknown URL ${url}`);
+    return new Response(await blob.arrayBuffer(), { headers: { 'Content-Type': blob.type } });
   };
   // The competitionService is a module-singleton that caches `this.storage`,
   // `this.handles`, and `this.competitionsDir` on first `initialize()`. Wipe
   // those between tests so `ensureInitialized` re-grabs the fresh mock.
   const { competitionService } = await import('../services/competitionService');
-  (competitionService as any).storage = null;
-  (competitionService as any).handles = null;
-  (competitionService as any).competitionsDir = null;
+  resetCompetitionServiceCaches(competitionService);
 });
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -193,15 +227,7 @@ function makePhoto(id: string, overrides: Partial<ApiPhoto> = {}): ApiPhoto {
     sessionId: 'sess-1',
     url,
     filename: `${id}.jpg`,
-    canvasState: {
-      position: { x: 0, y: 0 },
-      scale: 1,
-      brightness: 0,
-      contrast: 1,
-      sharpness: 0,
-      whiteBalance: { temperature: 0, tint: 0, auto: false },
-      labelPosition: 'bottom-left',
-    } as any,
+    canvasState: makeCanvasState(),
     label: '',
     ...overrides,
   };
@@ -237,7 +263,7 @@ describe('competitionService — candidate pool roundtrip', () => {
     const { competitionService } = await import('../services/competitionService');
 
     const cand1 = makePhoto('cand-1', { flag: 'pick' });
-    cand1.canvasState = { ...cand1.canvasState, brightness: 0.42 } as any;
+    cand1.canvasState = { ...cand1.canvasState, brightness: 0.42 };
     const cand2 = makePhoto('cand-2', { flag: 'reject' });
     const slot1 = makePhoto('slot-1');
 
@@ -254,7 +280,7 @@ describe('competitionService — candidate pool roundtrip', () => {
     expect(savedJson!.candidates?.photos.every(p => p.url === '')).toBe(true);
     expect(savedJson!.candidates?.photos[0].flag).toBe('pick');
     expect(savedJson!.candidates?.photos[1].flag).toBe('reject');
-    expect((savedJson!.candidates?.photos[0].canvasState as any).brightness).toBe(0.42);
+    expect(savedJson!.candidates!.photos[0].canvasState.brightness).toBe(0.42);
 
     // Reload — blob URLs rehydrated, candidate pool intact.
     const reloaded = await competitionService.getCompetition(created.id);
@@ -263,7 +289,7 @@ describe('competitionService — candidate pool roundtrip', () => {
     const reloadedCand1 = reloaded!.session.candidates!.photos.find(p => p.id === 'cand-1')!;
     expect(reloadedCand1.flag).toBe('pick');
     expect(reloadedCand1.url.startsWith('blob:')).toBe(true);
-    expect((reloadedCand1.canvasState as any).brightness).toBe(0.42);
+    expect(reloadedCand1.canvasState.brightness).toBe(0.42);
     const reloadedCand2 = reloaded!.session.candidates!.photos.find(p => p.id === 'cand-2')!;
     expect(reloadedCand2.flag).toBe('reject');
     expect(reloaded!.session.sets.set1.photos[0].id).toBe('slot-1');

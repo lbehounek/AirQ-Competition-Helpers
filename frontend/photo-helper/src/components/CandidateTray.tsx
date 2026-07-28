@@ -175,7 +175,7 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
     const active = isDragActive || dropActive;
     return (
       <Paper
-        {...(rootProps as any)}
+        {...rootProps}
         elevation={1}
         sx={{
           mb: 2,
@@ -205,7 +205,7 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
 
   return (
     <Paper
-      {...(rootProps as any)}
+      {...rootProps}
       elevation={1}
       sx={{
         mb: 2,
@@ -473,7 +473,6 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
             photo={photo}
             label=""
             onUpdate={() => { /* persisted via parent's updateCandidatePhotoState */ }}
-            onRemove={() => { /* delete via toolbar */ }}
             size="grid"
           />
         </Box>

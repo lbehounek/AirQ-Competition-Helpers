@@ -21,7 +21,7 @@ interface TurningPointLayoutProps {
    */
   onInitialFilesDropped?: (files: File[]) => void;
   onPhotoClick: (photo: ApiPhoto, setKey: 'set1' | 'set2') => void;
-  onPhotoUpdate: (setKey: 'set1' | 'set2', photoId: string, canvasState: any) => void;
+  onPhotoUpdate: (setKey: 'set1' | 'set2', photoId: string, canvasState: ApiPhoto['canvasState']) => void;
   onPhotoRemove: (setKey: 'set1' | 'set2', photoId: string) => void;
   onPhotoMove: (setKey: 'set1' | 'set2', fromIndex: number, toIndex: number) => void;
   /**
@@ -97,7 +97,6 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
           </Box>
           <GridSizedDropZone
             onFilesDropped={(files) => (onInitialFilesDropped || ((f) => onFilesDropped('set1', f)))(files)}
-            setName={t('turningpoint.photos')}
             maxPhotos={initialDropMax}
             loading={loading}
             error={error}

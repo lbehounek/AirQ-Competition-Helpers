@@ -41,6 +41,12 @@ interface MigrationResult {
   migrated: boolean;
 }
 
+/** Same shape, but for the null-tolerant overload — `session` mirrors the input. */
+interface MigrationResultMaybe {
+  session: ApiPhotoSession | null | undefined;
+  migrated: boolean;
+}
+
 function migrateBucket(
   bucket: { set1: ApiPhotoSet; set2: ApiPhotoSet } | undefined,
 ): { bucket: { set1: ApiPhotoSet; set2: ApiPhotoSet } | undefined; changed: boolean } {
@@ -65,12 +71,26 @@ function migrateBucket(
  * whether any change was made. The original session reference is returned
  * unchanged when no migration applies, so callers can cheap-compare to
  * decide whether to persist back to OPFS.
+ *
+ * Overloaded on nullability: the function is genuinely null-tolerant (callers
+ * pass `competition.session` straight from a possibly-empty load), but a caller
+ * that hands in a real session must not be forced to re-check the result for
+ * null. The narrow overload gives them `ApiPhotoSession` back; the wide one
+ * mirrors whatever nullish value went in.
  */
+export function migrateLegacyPrecisionTitles(
+  session: ApiPhotoSession,
+  isPrecision: boolean,
+): MigrationResult;
 export function migrateLegacyPrecisionTitles(
   session: ApiPhotoSession | null | undefined,
   isPrecision: boolean,
-): MigrationResult {
-  if (!session) return { session: session as ApiPhotoSession, migrated: false };
+): MigrationResultMaybe;
+export function migrateLegacyPrecisionTitles(
+  session: ApiPhotoSession | null | undefined,
+  isPrecision: boolean,
+): MigrationResultMaybe {
+  if (!session) return { session, migrated: false };
   if (!isPrecision) return { session, migrated: false };
 
   const setsResult = migrateBucket(session.sets);

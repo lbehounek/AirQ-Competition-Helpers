@@ -262,6 +262,7 @@
     "editPhoto": "Upravit fotografii {{label}}",
     "photoLabel": "Fotografie {{label}}",
     "zoomAndSharpness": "Přiblížení a ostrost",
+    "closeEditor": "Zavřít editor",
     "circleOverlay": "Kruhové označení",
     "circleMode": {
       "add": "Přidat kruh",
