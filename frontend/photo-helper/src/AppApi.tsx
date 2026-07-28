@@ -75,37 +75,6 @@ import { deriveSet2FromSet1 } from './utils/autoPrefillSetTitle';
 import { getGridCapacity } from './utils/getGridCapacity';
 import type { ApiPhoto } from './types/api';
 
-/**
- * The two desktop-shell navigation channels this screen drives
- * (`frontend/desktop/preload.js`: `go-home` / `navigate-to-app`). Neither is
- * part of `shared-storage`'s `ElectronStorageAPI`, so reading them off the
- * global type is an error — this file used to paper over that with
- * `(window as any).electronAPI`.
- *
- * They are declared by AUGMENTING the same interface, never by re-declaring
- * `Window.electronAPI`: a second declaration of that property collides under
- * TS2717 and hides shared-storage's own members (see the long note in
- * `src/types/electronApi.ts`).
- *
- * TODO: these two belong in `src/types/electronApi.ts` next to the other
- * preload channels — that file is now the single home for them (`savePdf`
- * moved there out of `utils/pdfGenerator.ts`). They are declared locally only
- * because this change could not touch `src/types/`.
- *
- * Optional like every other channel there — the web build has no bridge at
- * all, hence the `?.` at both call sites. `competitionId` is nullable because
- * it comes straight from `URLSearchParams.get`, which yields `null` when the
- * app was opened without one.
- */
-declare module '@airq/shared-storage' {
-  interface ElectronStorageAPI {
-    /** Return to the launcher's competition/app menu. */
-    goHome?: () => Promise<void>;
-    /** Open a sibling app, optionally carrying the active competition. */
-    navigateToApp?: (appName: string, competitionId?: string | null) => Promise<void>;
-  }
-}
-
 function AppApi() {
   // Desktop launcher passes `?discipline=precision|rally` when opening this app
   // (desktop/main.js:205). Default to rally for web / legacy sessions.

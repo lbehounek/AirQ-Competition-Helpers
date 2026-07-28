@@ -13,37 +13,6 @@ interface I18nContextType {
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 /**
- * The preload channels this context uses (`frontend/desktop/preload.js`:
- * `get-config` / `set-config` / `set-menu-locale`). They are not part of
- * `shared-storage`'s `ElectronStorageAPI`, so reading them off the global type
- * is an error — this file used to paper over that with `(window as any)`.
- *
- * They are declared by AUGMENTING the same interface, never by re-declaring
- * `Window.electronAPI`: a second declaration of that property collides under
- * TS2717 and hides shared-storage's own members (see the long note in
- * `src/types/electronApi.ts`).
- *
- * TODO: these three belong in `src/types/electronApi.ts` next to the other
- * preload channels — that file is now the single home for them (`savePdf`
- * moved there out of `utils/pdfGenerator.ts`). They are declared locally only
- * because this change could not touch `src/types/`.
- *
- * Optional like every other channel there: the app also ships as a plain web
- * build with no bridge at all, and older desktop builds may predate an
- * individual channel — hence the feature-detect at each call site below.
- */
-declare module '@airq/shared-storage' {
-  interface ElectronStorageAPI {
-    /** Read a persisted renderer setting, shared across all `app://` origins. */
-    getConfig?: (key: string) => Promise<string | null>;
-    /** Persist a renderer setting. */
-    setConfig?: (key: string, value: string) => Promise<void>;
-    /** Re-render the native application menu in the given locale. */
-    setMenuLocale?: (locale: string) => Promise<void>;
-  }
-}
-
-/**
  * Walk a dotted path (`'app.title'`) through the translation tree, falling
  * back to the raw key when any segment is missing so a missing string shows up
  * verbatim in the UI instead of as `undefined`.

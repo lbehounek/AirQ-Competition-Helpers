@@ -80,5 +80,23 @@ declare module '@airq/shared-storage' {
      * so the two apps agree on the channel.
      */
     savePdf?: (base64Data: string, fileName: string, defaultDir?: string) => Promise<string | null>;
+
+    /**
+     * Navigation channels, used by `AppApi`. Signatures verified against
+     * `frontend/desktop/preload.js` (`go-home`, `navigate-to-app`).
+     */
+    goHome?: () => Promise<void>;
+    navigateToApp?: (appName: string, competitionId?: string | null) => Promise<void>;
+
+    /**
+     * Renderer settings + native menu, used by `I18nContext`. `getConfig` /
+     * `setConfig` persist in the Electron config store, which is shared across
+     * every `app://` origin — that is how the launcher and both sub-apps agree
+     * on one locale. `setMenuLocale` re-renders the native application menu.
+     * Signatures verified against `frontend/desktop/preload.js`.
+     */
+    getConfig?: (key: string) => Promise<string | null>;
+    setConfig?: (key: string, value: string) => Promise<void>;
+    setMenuLocale?: (locale: string) => Promise<void>;
   }
 }
