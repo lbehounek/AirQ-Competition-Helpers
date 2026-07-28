@@ -10,6 +10,35 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.30.1] - 2026-07-28
+
+Maintenance release. Nearly all of the work is internal — the Photo Helper build
+now genuinely typechecks, roughly 2,100 lines of unreachable code are gone, and
+every `any` has been removed from the package — and the desktop build is now
+tagged *and* built automatically on merge, where previously the tag was created
+but the build had to be started by hand. That sweep uncovered the handful of real
+defects below.
+
+### Fixed
+- **Photo Helper:** the close button on the photo editor showed an untranslated
+  tooltip in Czech — the English string was there, the Czech one was missing.
+- **Photo Helper:** a competition whose `session.json` was malformed — hand-edited,
+  or left half-written by a crash — could poison the rebuilt competition list with
+  a nonsense title or date, which then misordered the list. The recovery path now
+  validates each field and falls back to the folder name and the current time
+  rather than propagating bad data.
+- **Photo Helper:** a failed write to the desktop config file (where the language
+  setting is stored) was discarded without a trace, so a language that quietly
+  reset on next launch left nothing to diagnose it by. The failure is now
+  reported to the console. The write itself can still fail — this only makes it
+  visible.
+
+### Removed
+- **Photo Helper:** the **Reset session** button, which was permanently greyed out
+  and could never be clicked — it was wired to a function the competition system
+  no longer provides. Nothing changes in practice; the underlying feature has to
+  be built on the competition system before the button can return.
+
 ## [2.30.0] - 2026-07-26
 
 ### Fixed
