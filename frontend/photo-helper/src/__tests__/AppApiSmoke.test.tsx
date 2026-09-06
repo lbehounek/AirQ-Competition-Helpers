@@ -38,6 +38,10 @@ vi.mock('../hooks/useCompetitionSystem', () => ({
     promoteCandidateToSlot: vi.fn(), addPlaceholderToSet: vi.fn(), demoteSlotToCandidate: vi.fn(),
     setCandidateFlag: vi.fn(), setCandidateLabel: vi.fn(), setCandidateFilename: vi.fn(),
     updateCandidatePhotoState: vi.fn(), deleteCandidates: vi.fn(),
+    // Not invoked at mount — only from the pagehide/visibility handlers and
+    // the two desktop nav buttons, which `await` it. Stubbed so the mock keeps
+    // the shape `UseCompetitionSystemResult` actually declares.
+    flushPersistence: vi.fn(async () => {}),
   }),
 }));
 vi.mock('../hooks/useMapPicksSync', () => ({ useMapPicksSync: () => {} }));

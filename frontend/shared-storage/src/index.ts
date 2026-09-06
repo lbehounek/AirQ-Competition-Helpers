@@ -35,6 +35,16 @@ export { slugifyForFilename } from './slugify';
 // without instantiating an OPFS/Electron backend.
 export { savePhotoThumb, getPhotoThumb, deletePhotoThumb } from './photoThumbs';
 
+// Thumb SYNTHESIS — shared by photo-helper (candidate tray tier) and
+// map-corridors (import pipeline). Lives in shared-storage because neither
+// app may import from the other and both already depend on this package.
+export { generateThumb, fitWithin, type GenerateThumbOpts } from './photoThumbs';
+
+// One-at-a-time task queue. Lives here (not in a consumer package) because
+// BOTH renderers need the same ordering guarantee over `writeJSON` — see the
+// module header for why the interface itself provides none.
+export { createSerialQueue, type SerialQueue } from './serialQueue';
+
 import type { StorageInterface, StorageType } from './types';
 import { OPFSStorage, opfsStorage } from './opfsStorage';
 import { ElectronStorage, electronStorage } from './electronStorage';

@@ -3,6 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { CandidateTray, type CandidateTrayProps } from '../components/CandidateTray';
 import { serializeDragPayload, DRAG_PAYLOAD_MIME } from '../utils/dragPayload';
+import { useCandidateThumbUrl } from '../hooks/useCandidateThumbUrl';
+import { invalidateCandidateThumb } from '../utils/candidateThumbs';
+import type { DirectoryHandle } from '@airq/shared-storage';
 import type { ApiPhoto, CandidateFlag } from '../types/api';
 import { makeCanvasState } from './support/testHelpers';
 
@@ -21,15 +24,30 @@ vi.mock('../contexts/I18nContext', () => ({
   }),
 }));
 
-// Stub PhotoEditorApi — rendering it pulls in WebGL, canvas, image cache,
-// AspectRatioContext, etc. We only need the populated-state thumbnails to
-// have a draggable shell with the toolbar; the actual image render is
-// covered elsewhere. The mock keeps the test focused on tray behaviour.
-vi.mock('../components/PhotoEditorApi', () => ({
-  PhotoEditorApi: ({ photo }: { photo: ApiPhoto }) => (
-    <div data-testid={`mock-editor-${photo.id}`}>{photo.id}</div>
-  ),
+// Stub the thumbnail tier. `CandidateThumbImage` itself is rendered for real
+// (it is the thing the tray now mounts per candidate), but its hook is mocked:
+// the real one calls `getStorage()` — which throws before `initStorage()` — and
+// `URL.createObjectURL`, which jsdom cannot round-trip. Hook behaviour has its
+// own suite in useCandidateThumbUrl.test.tsx.
+vi.mock('../hooks/useCandidateThumbUrl', () => ({
+  useCandidateThumbUrl: vi.fn((photo: ApiPhoto) => ({
+    url: `thumb:${photo.id}`,
+    state: 'ready' as const,
+  })),
 }));
+vi.mock('../utils/candidateThumbs', () => ({
+  invalidateCandidateThumb: vi.fn(),
+}));
+
+const thumbHookMock = vi.mocked(useCandidateThumbUrl);
+const invalidateMock = vi.mocked(invalidateCandidateThumb);
+
+/** Force every thumb into one view state for a render. */
+function stubThumbView(view: { url: string | null; state: 'loading' | 'ready' | 'fallback' | 'missing' }) {
+  thumbHookMock.mockImplementation(() => view);
+}
+
+const testPhotosDir: DirectoryHandle = { path: '/competitions/c1/photos' };
 
 function p(id: string, flag?: CandidateFlag): ApiPhoto {
   return {
@@ -52,6 +70,7 @@ function renderTray(overrides: Partial<CandidateTrayProps> = {}) {
     onDelete: vi.fn(),
     onSendToSet: vi.fn(),
     onSlotDroppedIn: vi.fn(),
+    photosDir: testPhotosDir,
     ...overrides,
   };
   const result = render(<CandidateTray {...props} />);
@@ -160,9 +179,9 @@ describe('CandidateTray — populated state', () => {
 
   it('renders all photo thumbnails by default (hideRejects off)', () => {
     renderTray({ photos: [p('a', 'pick'), p('b'), p('c', 'reject')] });
-    expect(screen.getByTestId('mock-editor-a')).toBeInTheDocument();
-    expect(screen.getByTestId('mock-editor-b')).toBeInTheDocument();
-    expect(screen.getByTestId('mock-editor-c')).toBeInTheDocument();
+    expect(screen.getByTestId('candidate-thumb-a')).toBeInTheDocument();
+    expect(screen.getByTestId('candidate-thumb-b')).toBeInTheDocument();
+    expect(screen.getByTestId('candidate-thumb-c')).toBeInTheDocument();
   });
 
   // The "Hide rejects" toggle is part of the pick/reject workflow now hidden
@@ -212,19 +231,24 @@ describe('CandidateTray — populated state', () => {
     expect(screen.queryByLabelText('candidates.flag.reject')).not.toBeInTheDocument();
   });
 
-  it('fires onDelete when delete button is clicked', () => {
+  it('fires onDelete when delete button is clicked, and does NOT invalidate the thumb itself', () => {
     const onDelete = vi.fn();
     renderTray({ photos: [p('photo-X')], onDelete });
     const deleteButtons = screen.getAllByLabelText('common.delete');
     fireEvent.click(deleteButtons[deleteButtons.length - 1]);
     expect(onDelete).toHaveBeenCalledWith('photo-X');
+    // The epoch bump belongs to `useCompetitionSystem`, which owns EVERY
+    // delete path (this button, the cleanup dialog, clear-all). Doing it here
+    // too would leave the bulk paths uncovered while looking safe; the
+    // behaviour itself is pinned in useCompetitionSystem.candidates.test.tsx.
+    expect(invalidateMock).not.toHaveBeenCalled();
   });
 
   it('serialises a drag-payload with the tray protocol when a thumb starts dragging', () => {
     renderTray({ photos: [p('photo-X')] });
     // The draggable shell is the outer Box around the thumb. Its data-testid
-    // is on the mocked editor; the draggable parent is one level up.
-    const thumbInner = screen.getByTestId('mock-editor-photo-X');
+    // is on the thumb image; the draggable parent is a few levels up.
+    const thumbInner = screen.getByTestId('candidate-thumb-photo-X');
     const draggable = thumbInner.closest('[draggable="true"]') as HTMLElement;
     expect(draggable).not.toBeNull();
 
@@ -261,7 +285,63 @@ describe('CandidateTray — populated state', () => {
   });
 });
 
+describe('CandidateTray — thumbnail tier (no editor mounted)', () => {
+  it('renders plain <img> thumbs and NOT a single canvas', () => {
+    // Structural guard for the whole point of the tier: mounting a
+    // PhotoEditorApi per candidate is what this replaced, and an accidental
+    // re-introduction shows up here as canvases appearing in the tray.
+    const { container } = renderTray({ photos: [p('a'), p('b'), p('c')] });
+    expect(container.querySelector('canvas')).toBeNull();
+    expect(container.querySelectorAll('img')).toHaveLength(3);
+  });
+
+  it('points each <img> at the hook URL, undraggable and centre-cropped', () => {
+    const { container } = renderTray({ photos: [p('photo-X')] });
+    const img = container.querySelector('img')!;
+    expect(img).toHaveAttribute('src', 'thumb:photo-X');
+    expect(img).toHaveAttribute('draggable', 'false');
+    expect(img).toHaveAttribute('alt', 'photo-X.jpg');
+    expect(img.style.objectFit).toBe('cover');
+  });
+
+  it('shows a skeleton and no image while the thumb is loading', () => {
+    stubThumbView({ url: null, state: 'loading' });
+    const { container } = renderTray({ photos: [p('photo-X')] });
+    expect(container.querySelector('.MuiSkeleton-root')).not.toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('renders the full-resolution source image in the fallback state', () => {
+    stubThumbView({ url: 'blob:photo-X', state: 'fallback' });
+    const { container } = renderTray({ photos: [p('photo-X')] });
+    expect(container.querySelector('img')).toHaveAttribute('src', 'blob:photo-X');
+  });
+
+  it('renders the missing-image caption when there are no bytes at all', () => {
+    stubThumbView({ url: null, state: 'missing' });
+    const { container } = renderTray({ photos: [p('photo-X')] });
+    expect(screen.getByText('candidates.thumbMissing')).toBeInTheDocument();
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it.each([
+    ['a resolved handle', testPhotosDir],
+    ['null (storage unavailable)', null],
+    ['undefined (still resolving)', undefined],
+  ])('forwards photosDir to the hook verbatim: %s', (_label, dir) => {
+    renderTray({ photos: [p('photo-X')], photosDir: dir as DirectoryHandle | null | undefined });
+    expect(thumbHookMock).toHaveBeenCalled();
+    expect(thumbHookMock.mock.calls[0][1]).toBe(dir);
+  });
+});
+
 beforeEach(() => {
-  // Quiet expected warnings from malformed-payload test paths. Tests that
-  // explicitly assert console.warn override this with their own spy.
+  // Reset the thumb hook to its default "ready" behaviour — individual tests
+  // override it via stubThumbView and must not leak that into the next one.
+  thumbHookMock.mockClear();
+  thumbHookMock.mockImplementation((photo) => ({
+    url: `thumb:${photo.id}`,
+    state: 'ready' as const,
+  }));
+  invalidateMock.mockClear();
 });

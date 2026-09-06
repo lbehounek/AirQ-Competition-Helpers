@@ -4,6 +4,7 @@
  */
 
 import Pica from 'pica';
+import { debugLog } from './debugLog';
 
 // Global Pica instance with optimized settings
 let picaInstance: Pica.Pica | null = null;
@@ -40,7 +41,37 @@ export interface HighQualityResizeOptions extends ResizeSharpenOptions {
  */
 export interface IntelligentResizeOptions extends ResizeSharpenOptions {
   forceMultiPass?: boolean;
+  /**
+   * Bypass the resize cache for THIS call — no read, no write.
+   *
+   * The PDF export sets it: it asks for sizes (1600 px × the photo's zoom) the
+   * editor never requests, so caching them buys nothing and evicts exactly the
+   * large-modal entries the cache exists to serve, at the price of a full-size
+   * canvas clone per photo.
+   *
+   * Deliberately per-call rather than a process-wide "suspend" flag: the export
+   * yields between photos, so the editor stays interactive while it runs, and a
+   * global bypass also disabled caching for any modal redraw the user triggered
+   * in that window. Excluded from the cache key by `getCacheKey`: it selects
+   * behaviour rather than describing the output, so a caller that omits it must
+   * still find what a caller that passed `false` stored.
+   */
+  skipCache?: boolean;
 }
+
+/**
+ * Options shared by both intermediate (non-final) multi-pass steps.
+ * Extracted because the first pass and the loop passes must stay identical —
+ * they were two hand-copied literals, and sharpening applied on an
+ * intermediate step compounds through the remaining passes.
+ */
+const INTERMEDIATE_PASS_OPTIONS: HighQualityResizeOptions = {
+  filter: 'lanczos3',
+  quality: 3,
+  unsharpAmount: 0, // No sharpening on intermediate steps
+  unsharpRadius: 0.6,
+  unsharpThreshold: 2,
+};
 
 // Cache for high-quality resized images
 interface ResizeCache {
@@ -50,12 +81,25 @@ interface ResizeCache {
   targetWidth: number;
   targetHeight: number;
   options: string; // serialized options for cache key
+  /** Pixel count of the cached canvas — the unit the cache budget is spent in. */
+  pixels: number;
 }
 
 class HighQualityResizeCache {
   private cache = new Map<string, ResizeCache>();
   private maxAge = 10 * 60 * 1000; // 10 minutes cache lifetime
-  private maxSize = 20; // Maximum number of cached resized images
+  /**
+   * Memory budget in PIXELS, not entries. ≈64 MB of RGBA backing store, i.e.
+   * ~6 large-modal entries at zoom 3 (600x450x3 ≈ 2.4 MP each).
+   *
+   * WHY the change from `maxSize = 20`: entry count says nothing about memory.
+   * Twenty unbounded entries could hold well over a gigabyte after a single
+   * PDF export (each export canvas is up to 4800x3600), which is fatal on the
+   * 4 GB competition laptops this app targets.
+   */
+  private readonly maxTotalPixels = 16_000_000;
+  /** Running sum of `pixels` over `cache`; kept in step with every mutation. */
+  private totalPixels = 0;
 
   /**
    * Generate cache key from image and parameters
@@ -68,7 +112,13 @@ class HighQualityResizeCache {
     // function's option bag verbatim — serialized into the key below.
     options: IntelligentResizeOptions
   ): string {
-    const optionsKey = JSON.stringify(options);
+    // `skipCache` says whether to USE the cache, not what the output looks
+    // like, so it must not vary the key: including it would file an entry
+    // under `"skipCache":false` that a caller omitting the option could never
+    // find, silently fragmenting the cache in two.
+    const identityOptions: Omit<IntelligentResizeOptions, 'skipCache'> = { ...options };
+    delete (identityOptions as IntelligentResizeOptions).skipCache;
+    const optionsKey = JSON.stringify(identityOptions);
     return `${imageKey}-${targetWidth}x${targetHeight}-${optionsKey}`;
   }
 
@@ -85,13 +135,14 @@ class HighQualityResizeCache {
     const cached = this.cache.get(cacheKey);
 
     if (cached && Date.now() - cached.timestamp < this.maxAge) {
-      console.log(`✨ Using cached high-quality resize: ${cacheKey}`);
+      debugLog(`✨ Using cached high-quality resize: ${cacheKey}`);
       return cached.canvas;
     }
 
-    // Remove expired entry
+    // Remove expired entry (and give its pixels back to the budget)
     if (cached) {
       this.cache.delete(cacheKey);
+      this.totalPixels -= cached.pixels;
     }
 
     return null;
@@ -108,7 +159,25 @@ class HighQualityResizeCache {
     canvas: HTMLCanvasElement
   ): void {
     const cacheKey = this.getCacheKey(imageKey, targetWidth, targetHeight, options);
-    
+    const pixels = canvas.width * canvas.height;
+
+    // Skip an entry that could never fit the budget — BEFORE cloning. The
+    // clone is a full-size `drawImage` (up to ~69 MB for a PDF-sized canvas),
+    // so cloning first and evicting afterwards would pay the whole cost for
+    // nothing. Only oversize single entries are dropped here; ordinary
+    // overflow is handled by eviction in `cleanup()`.
+    if (pixels > this.maxTotalPixels) {
+      debugLog(`⏭️ Skipping oversize resize cache entry (${pixels} px): ${cacheKey}`);
+      return;
+    }
+
+    // Replacing an existing key: reclaim the old entry's pixels first so the
+    // running total cannot drift upward on repeated writes to the same key.
+    const previous = this.cache.get(cacheKey);
+    if (previous) {
+      this.totalPixels -= previous.pixels;
+    }
+
     // Clone the canvas to avoid issues with modifications
     const clonedCanvas = document.createElement('canvas');
     clonedCanvas.width = canvas.width;
@@ -124,10 +193,12 @@ class HighQualityResizeCache {
       sourceImageKey: imageKey,
       targetWidth,
       targetHeight,
-      options: JSON.stringify(options)
+      options: JSON.stringify(options),
+      pixels,
     });
+    this.totalPixels += pixels;
 
-    console.log(`💾 Cached high-quality resize: ${cacheKey}`);
+    debugLog(`💾 Cached high-quality resize: ${cacheKey}`);
     this.cleanup();
   }
 
@@ -140,20 +211,25 @@ class HighQualityResizeCache {
   }
 
   /**
-   * Clean up old cache entries
+   * Evict oldest-first until the total pixel budget is respected.
+   * Returns nothing. A single entry larger than the whole budget can never
+   * reach here — `setCached` refuses it before cloning — so the loop always
+   * terminates while entries remain.
    */
   private cleanup(): void {
-    if (this.cache.size <= this.maxSize) return;
+    if (this.totalPixels <= this.maxTotalPixels) return;
 
-    // Sort entries by timestamp and remove oldest
+    // Oldest first; `timestamp` is set on insert, so this is insertion order
+    // in practice, but sorting keeps it correct if entries are ever refreshed.
     const entries = Array.from(this.cache.entries())
       .sort((a, b) => a[1].timestamp - b[1].timestamp);
 
-    const toRemove = entries.slice(0, this.cache.size - this.maxSize);
-    toRemove.forEach(([key]) => {
-      console.log(`🗑️ Removing old cached resize: ${key}`);
+    for (const [key, entry] of entries) {
+      if (this.totalPixels <= this.maxTotalPixels) break;
+      debugLog(`🗑️ Removing old cached resize: ${key}`);
       this.cache.delete(key);
-    });
+      this.totalPixels -= entry.pixels;
+    }
   }
 
   /**
@@ -161,16 +237,20 @@ class HighQualityResizeCache {
    */
   clear(): void {
     this.cache.clear();
-    console.log('🗑️ High-quality resize cache cleared');
+    this.totalPixels = 0;
+    debugLog('🗑️ High-quality resize cache cleared');
   }
 
   /**
-   * Get cache statistics
+   * Get cache statistics (devtools only — exposed on `window.resizeCache`).
+   * Returns the entry count, the pixel budget and its current usage, and the
+   * live cache keys.
    */
   getStats() {
     return {
       size: this.cache.size,
-      maxSize: this.maxSize,
+      totalPixels: this.totalPixels,
+      maxTotalPixels: this.maxTotalPixels,
       entries: Array.from(this.cache.keys())
     };
   }
@@ -209,25 +289,34 @@ const getPicaInstance = (): Pica.Pica => {
 };
 
 /**
- * High-quality canvas resizing using Pica
- * Significantly better quality than browser's default drawImage()
+ * High-quality resize of a canvas OR a decoded image using Pica.
+ * Returns a freshly created target canvas of exactly `targetWidth` ×
+ * `targetHeight`; never rejects — a pica failure falls back to the browser's
+ * own `drawImage` scaling so callers always get a usable canvas.
+ *
+ * WHY it accepts an `HTMLImageElement` directly: pica pre-decodes an image
+ * source once via `createImageBitmap` (off the main thread) and crops its
+ * tiles from that bitmap. The intermediate full-resolution canvas this module
+ * used to draw first was a ~48 MB allocation plus a full-size `drawImage` on
+ * the main thread per resize — twice over for the multi-pass path — and bought
+ * nothing: pica reads the same pixels either way.
  */
 export const resizeCanvasHighQuality = async (
-  sourceCanvas: HTMLCanvasElement,
+  source: HTMLCanvasElement | HTMLImageElement,
   targetWidth: number,
   targetHeight: number,
   options: HighQualityResizeOptions = {}
 ): Promise<HTMLCanvasElement> => {
   const pica = getPicaInstance();
-  
+
   // Create target canvas
   const targetCanvas = document.createElement('canvas');
   targetCanvas.width = targetWidth;
   targetCanvas.height = targetHeight;
-  
+
   try {
     // Use Pica for high-quality resizing
-    await pica.resize(sourceCanvas, targetCanvas, {
+    await pica.resize(source, targetCanvas, {
       filter: options.filter || 'lanczos3',
       unsharpAmount: options.unsharpAmount ?? 80,
       unsharpRadius: options.unsharpRadius ?? 0.6,
@@ -244,16 +333,21 @@ export const resizeCanvasHighQuality = async (
     if (ctx) {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(sourceCanvas, 0, 0, targetWidth, targetHeight);
+      ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
     }
-    
+
     return targetCanvas;
   }
 };
 
 /**
- * High-quality image-to-canvas resizing
- * Direct resizing from HTMLImageElement with Pica quality
+ * High-quality image-to-canvas resizing.
+ * Returns a canvas of exactly the requested size.
+ *
+ * Now a thin alias for {@link resizeCanvasHighQuality}: the image goes to pica
+ * untouched instead of being copied into a full-resolution intermediate canvas
+ * first. Kept as a named entry point because the strategy helpers below read
+ * better with the image/canvas distinction spelled out at the call site.
  */
 export const resizeImageHighQuality = async (
   sourceImage: HTMLImageElement,
@@ -261,21 +355,7 @@ export const resizeImageHighQuality = async (
   targetHeight: number,
   options: HighQualityResizeOptions = {}
 ): Promise<HTMLCanvasElement> => {
-  // First, draw image to a source canvas at original size
-  const sourceCanvas = document.createElement('canvas');
-  sourceCanvas.width = sourceImage.width;
-  sourceCanvas.height = sourceImage.height;
-  
-  const sourceCtx = sourceCanvas.getContext('2d');
-  if (!sourceCtx) {
-    throw new Error('Failed to get source canvas context');
-  }
-  
-  // Draw original image to source canvas
-  sourceCtx.drawImage(sourceImage, 0, 0);
-  
-  // Use high-quality resize
-  return resizeCanvasHighQuality(sourceCanvas, targetWidth, targetHeight, options);
+  return resizeCanvasHighQuality(sourceImage, targetWidth, targetHeight, options);
 };
 
 /**
@@ -304,35 +384,31 @@ export const resizeImageMultiPass = async (
     });
   }
   
-  // For large reductions, use multi-pass approach
-  let currentCanvas = document.createElement('canvas');
-  currentCanvas.width = sourceWidth;
-  currentCanvas.height = sourceHeight;
-  
-  const ctx = currentCanvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('Failed to get canvas context for multi-pass resize');
-  }
-  
-  // Draw original image
-  ctx.drawImage(sourceImage, 0, 0);
-  
-  let currentWidth = sourceWidth;
-  let currentHeight = sourceHeight;
-  
+  // For large reductions, use a multi-pass approach. The FIRST pass reads the
+  // image directly — previously the image was copied into a full-resolution
+  // canvas (a 12 MP source = a 48 MB allocation plus a full drawImage on the
+  // main thread) purely to have something canvas-shaped to hand pica.
+  let currentWidth = Math.max(targetWidth, Math.floor(sourceWidth * 0.5));
+  let currentHeight = Math.max(targetHeight, Math.floor(sourceHeight * 0.5));
+  let currentCanvas = await resizeCanvasHighQuality(
+    sourceImage,
+    currentWidth,
+    currentHeight,
+    INTERMEDIATE_PASS_OPTIONS,
+  );
+
   // Iteratively downscale by max 50% each step until we reach target size
   while (currentWidth > targetWidth * 1.1 || currentHeight > targetHeight * 1.1) {
     const nextWidth = Math.max(targetWidth, Math.floor(currentWidth * 0.5));
     const nextHeight = Math.max(targetHeight, Math.floor(currentHeight * 0.5));
-    
-    const nextCanvas = await resizeCanvasHighQuality(currentCanvas, nextWidth, nextHeight, {
-      filter: 'lanczos3',
-      quality: 3,
-      unsharpAmount: 0, // No sharpening on intermediate steps
-      unsharpRadius: 0.6,
-      unsharpThreshold: 2
-    });
-    
+
+    const nextCanvas = await resizeCanvasHighQuality(
+      currentCanvas,
+      nextWidth,
+      nextHeight,
+      INTERMEDIATE_PASS_OPTIONS,
+    );
+
     currentCanvas = nextCanvas;
     currentWidth = nextWidth;
     currentHeight = nextHeight;
@@ -362,9 +438,12 @@ export const intelligentResize = async (
 ): Promise<HTMLCanvasElement> => {
   const cache = getResizeCache();
   const imageKey = cache.getImageKey(sourceImage);
-  
-  // Check cache first
-  const cached = cache.getCached(imageKey, targetWidth, targetHeight, options);
+
+  // Check cache first (skipped entirely for a bypassing caller — see
+  // `IntelligentResizeOptions.skipCache`)
+  const cached = options.skipCache
+    ? null
+    : cache.getCached(imageKey, targetWidth, targetHeight, options);
   if (cached) {
     // Return a copy of the cached canvas to avoid modifications
     const resultCanvas = document.createElement('canvas');
@@ -388,10 +467,10 @@ export const intelligentResize = async (
   
   // Use multi-pass for large reductions or when forced
   if (scale < 0.25 || options.forceMultiPass) {
-    console.log(`📐 Using multi-pass resize for ${sourceWidth}x${sourceHeight} → ${targetWidth}x${targetHeight} (scale: ${scale.toFixed(3)})`);
+    debugLog(`📐 Using multi-pass resize for ${sourceWidth}x${sourceHeight} → ${targetWidth}x${targetHeight} (scale: ${scale.toFixed(3)})`);
     resultCanvas = await resizeImageMultiPass(sourceImage, targetWidth, targetHeight, options);
   } else {
-    console.log(`📐 Using single-pass resize for ${sourceWidth}x${sourceHeight} → ${targetWidth}x${targetHeight} (scale: ${scale.toFixed(3)})`);
+    debugLog(`📐 Using single-pass resize for ${sourceWidth}x${sourceHeight} → ${targetWidth}x${targetHeight} (scale: ${scale.toFixed(3)})`);
     resultCanvas = await resizeImageHighQuality(sourceImage, targetWidth, targetHeight, {
       filter: 'lanczos3',
       quality: 3,
@@ -399,9 +478,11 @@ export const intelligentResize = async (
     });
   }
   
-  // Cache the result
-  cache.setCached(imageKey, targetWidth, targetHeight, options, resultCanvas);
-  
+  // Cache the result (skipped for a bypassing caller)
+  if (!options.skipCache) {
+    cache.setCached(imageKey, targetWidth, targetHeight, options, resultCanvas);
+  }
+
   return resultCanvas;
 };
 

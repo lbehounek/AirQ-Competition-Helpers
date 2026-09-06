@@ -8,6 +8,12 @@ import {
 } from '@airq/shared-storage';
 import type { AddPhotosResult, ApiPhoto } from '../types/api';
 import { asErrResult, asOkResult, makeCanvasState, resetCompetitionServiceCaches } from './support/testHelpers';
+import {
+  resolveCandidateThumb,
+  peekCandidateThumb,
+  resetCandidateThumbsForTests,
+  type CandidateThumbDeps,
+} from '../utils/candidateThumbs';
 
 // PR #62 review G1 / G2 / G5: the hook layer wraps the pure helpers with
 // capacity clamps, smart-drop routing, mode-bucket mirroring, and the
@@ -195,6 +201,8 @@ beforeEach(async () => {
   // competitionService is a module singleton — reset its caches each test.
   const { competitionService } = await import('../services/competitionService');
   resetCompetitionServiceCaches(competitionService);
+  // So is the candidate thumbnail tier (cache, in-flight map, epochs).
+  resetCandidateThumbsForTests();
 });
 
 afterEach(() => { vi.restoreAllMocks(); });
@@ -846,5 +854,66 @@ describe('useCompetitionSystem — addExistingCandidate sequential race (handoff
     expect(remainingFiles).toContain(pmId);       // pm- preserved for map-corridors
     expect(remainingFiles).not.toContain(localId); // local fully removed
     expect(result.current.session!.candidates!.photos.length).toBe(0);
+  });
+});
+
+
+// The thumbnail tier's delete race guard is an EPOCH bump, and it only works
+// if every delete path bumps it. It used to live on the tray's per-thumb
+// delete button, which left the cleanup dialog (`deleteCandidates`) and
+// `clearAllCandidates` uncovered — exactly the paths a user reaches right
+// after a bulk import, while tens of generations are still queued.
+describe('useCompetitionSystem — candidate deletes invalidate the thumb tier', () => {
+  /** A promise plus its resolve handle, so the test controls when a generation finishes. */
+  function gate() {
+    let resolve!: (b: Blob) => void;
+    const promise = new Promise<Blob>((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  /**
+   * Start a real thumb generation for `id` that is parked mid-flight, and hand
+   * back its promise plus the persist spy. Returns `{ pending, savePhotoThumb,
+   * release }` — `release` finishes the generation.
+   */
+  async function startParkedGeneration(id: string, photosDir: DirectoryHandle) {
+    const g = gate();
+    const savePhotoThumb = vi.fn(async () => {});
+    const deps: CandidateThumbDeps = {
+      storage: { getPhotoThumb: async () => null, savePhotoThumb } as unknown as CandidateThumbDeps['storage'],
+      photosDir,
+      fetchBlob: async () => new Blob(['source'], { type: 'image/jpeg' }),
+      generate: () => g.promise,
+    };
+    const pending = resolveCandidateThumb({ id, url: `blob:${id}` }, deps);
+    // Let it get past the storage read and into the (gated) generate.
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    return {
+      pending,
+      savePhotoThumb,
+      release: () => g.resolve(new Blob(['thumb'], { type: 'image/jpeg' })),
+    };
+  }
+
+  it.each([
+    ['deleteCandidates (cleanup dialog)', (r: Awaited<ReturnType<typeof setup>>, id: string) => r.current.deleteCandidates([id])],
+    ['clearAllCandidates', (r: Awaited<ReturnType<typeof setup>>) => r.current.clearAllCandidates()],
+    ['removeCandidate', (r: Awaited<ReturnType<typeof setup>>, id: string) => r.current.removeCandidate(id)],
+  ])('%s drops a generation that was still queued', async (_name, del) => {
+    const result = await setup();
+    await act(async () => { await result.current.addPhotosToCandidates([makeFile('a.jpg')]); });
+    const id = result.current.session!.candidates!.photos[0].id;
+    const compId = result.current.currentCompetition!.id;
+    const photosDir = { path: `/competitions/${compId}/photos` } as DirectoryHandle;
+
+    const { pending, savePhotoThumb, release } = await startParkedGeneration(id, photosDir);
+
+    await act(async () => { await del(result, id); });
+
+    // The generation only finishes AFTER the delete — the realistic order.
+    release();
+    expect(await pending).toBeNull();
+    expect(savePhotoThumb).not.toHaveBeenCalled();
+    expect(peekCandidateThumb(id)).toBeUndefined();
   });
 });

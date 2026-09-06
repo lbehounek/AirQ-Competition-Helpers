@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
 import { Box, Button, Typography, Paper, CircularProgress, IconButton, Tooltip } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import { Image as ImageIcon, CloudUpload, Close } from '@mui/icons-material';
@@ -11,6 +11,8 @@ import { useLabeling } from '../contexts/LabelingContext';
 import { useI18n } from '../contexts/I18nContext';
 import { useLayoutMode } from '../contexts/LayoutModeContext';
 import { getImageCache } from '../utils/imageCache';
+import { useStableCallback } from '../hooks/useStableCallback';
+import { debugLog } from '../utils/debugLog';
 import { parseDragPayload, serializeDragPayload, DRAG_PAYLOAD_MIME } from '../utils/dragPayload';
 import { dispatchSlotDrop } from '../utils/slotDropDispatch';
 import type { ApiPhoto, ApiPhotoSet } from '../types/api';
@@ -72,13 +74,341 @@ interface GridSlot {
 interface PhotoGridSlotEmptyProps {
   label: string;
   position: number;
-  onFilesDropped?: (files: File[]) => void;
+  /**
+   * Always present (the parent wraps the optional prop in `useStableCallback`,
+   * which never returns undefined). Whether a drop should actually do anything
+   * is carried by `canDropFiles` instead — see that prop.
+   */
+  onFilesDropped: (files: File[]) => void;
+  /**
+   * False when the parent received no `onFilesDropped`. Replaces the old
+   * `onFilesDropped && …` presence tests, which a stable wrapper would have
+   * silently turned into "always true".
+   */
+  canDropFiles: boolean;
   maxFilesRemaining?: number;
-  /** When set (turning-point only), shows a "No photo" button that inserts a placeholder in this slot. */
-  onAddNoPhoto?: () => void;
+  /** Shows a "No photo" button that inserts a placeholder in this slot. */
+  showAddNoPhoto: boolean;
+  /** Stable; only called when `showAddNoPhoto` is true. */
+  onAddNoPhoto: () => void;
 }
 
-export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
+interface PhotoGridSlotProps {
+  index: number;
+  label: string;
+  photo: ApiPhoto | null;
+  setKey: 'set1' | 'set2';
+  labelMode: 'track' | 'turningpoint';
+  cssRatio: string;
+  isDragOver: boolean;
+  isDragging: boolean;
+  /** Every callback below is identity-stable (`useStableCallback` in the parent). */
+  onSlotUpdate: (photoId: string, canvasState: ApiPhoto['canvasState']) => void;
+  onSlotRemove: (photoId: string) => void;
+  onSlotClick: (photo: ApiPhoto) => void;
+  onDragStart: (e: React.DragEvent, index: number, photoId: string | undefined) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent, index: number) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent, index: number) => void;
+  canDropFiles: boolean;
+  onFilesDropped: (files: File[]) => void;
+  maxFilesRemaining: number;
+  showAddPlaceholder: boolean;
+  onAddPlaceholder: (index: number) => void;
+}
+
+/**
+ * One grid cell: the frame, the drag affordances and either a photo editor, a
+ * "no photo" placeholder card or the empty-slot dropzone.
+ *
+ * Memoized (shallow) — this is where the WP's win lands. Editing photo A
+ * produces a new `photos` ARRAY but leaves every other `ApiPhoto` object's
+ * identity intact (`updatePhotoState` maps only the edited one), and every
+ * callback prop is stabilized by the parent, so B..N skip the render entirely
+ * and never redraw their canvases. Returns the rendered cell.
+ */
+const PhotoGridSlot = React.memo(function PhotoGridSlot({
+  index,
+  label,
+  photo,
+  setKey,
+  labelMode,
+  cssRatio,
+  isDragOver,
+  isDragging,
+  onSlotUpdate,
+  onSlotRemove,
+  onSlotClick,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  canDropFiles,
+  onFilesDropped,
+  maxFilesRemaining,
+  showAddPlaceholder,
+  onAddPlaceholder,
+}: PhotoGridSlotProps) {
+  const { t } = useI18n();
+  // Bind the per-slot handlers to primitives only, so they stay stable while
+  // the photo object is unchanged — otherwise `React.memo(PhotoEditorApi)`
+  // below would never get a chance to skip.
+  const photoId = photo?.id;
+
+  const handleUpdate = useCallback(
+    (canvasState: ApiPhoto['canvasState']) => {
+      if (photoId) onSlotUpdate(photoId, canvasState);
+    },
+    [photoId, onSlotUpdate],
+  );
+
+  const handleClick = useCallback(() => {
+    if (photo) onSlotClick(photo);
+  }, [photo, onSlotClick]);
+
+  const handleRemove = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation(); // Prevent triggering photo click
+      if (photoId) onSlotRemove(photoId);
+    },
+    [photoId, onSlotRemove],
+  );
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent) => onDragStart(e, index, photoId),
+    [onDragStart, index, photoId],
+  );
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => onDragOver(e, index),
+    [onDragOver, index],
+  );
+  const handleDrop = useCallback((e: React.DragEvent) => onDrop(e, index), [onDrop, index]);
+  const handleAddNoPhoto = useCallback(() => onAddPlaceholder(index), [onAddPlaceholder, index]);
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+      <Paper
+        elevation={photo ? 2 : 0}
+        draggable={photo ? true : false}
+        onDragStart={photo ? handleDragStart : undefined}
+        onDragEnd={photo ? onDragEnd : undefined}
+        onDragOver={handleDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={handleDrop}
+        sx={{
+          aspectRatio: cssRatio,
+          bgcolor: photo ? 'background.paper' : 'grey.50',
+          // Remove tile borders for a cleaner look; rely on spacing and hover glows
+          border: 'none',
+          borderRadius: 0, // Rectangular to match PDF output
+          overflow: 'hidden',
+          position: 'relative',
+          transition: 'all 0.2s ease-in-out',
+          cursor: photo ? 'grab' : 'default',
+          opacity: isDragging ? 0.5 : 1,
+          transform: isDragOver ? 'scale(1.02)' : 'scale(1)',
+          boxShadow: isDragOver
+            ? '0 0 20px rgba(76, 175, 80, 0.6)' // Green glow when drag over
+            : photo
+              ? '0 0 12px rgba(33, 150, 243, 0.4)' // Blue glow for photos
+              : 'none',
+          '&:hover': photo ? {
+            boxShadow: '0 0 12px rgba(33, 150, 243, 0.4)'
+          } : {}
+        }}
+      >
+        {photo ? (
+          <Box
+            onClick={photo.isPlaceholder ? undefined : handleClick}
+            sx={{
+              cursor: photo.isPlaceholder ? 'default' : 'pointer',
+              width: '100%',
+              height: '100%',
+              position: 'relative',
+              '&:hover .hover-overlay': {
+                opacity: 1
+              },
+              '&:hover .delete-button': {
+                opacity: 1,
+                boxShadow: '0 0 12px rgba(0, 0, 0, 0.6)'
+              }
+            }}
+          >
+            {photo.isPlaceholder ? (
+              // "No photo" placeholder cell: a blank frame holding the slot
+              // position, with its TP/SP/FP label (bottom-left, mirroring
+              // drawLabel) and a centered "No photo" caption. No PhotoEditorApi
+              // (it has no image; routing it there would spin "Loading…" forever).
+              <Box sx={{ width: '100%', height: '100%', position: 'relative', bgcolor: 'grey.100', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography variant="body2" sx={{ color: 'text.disabled', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, userSelect: 'none' }}>
+                  {t('photo.noPhotoCell')}
+                </Typography>
+                {label && (
+                  <Box sx={{ position: 'absolute', bottom: 4, left: 4, bgcolor: 'rgba(0, 0, 0, 0.7)', color: 'white', fontSize: '0.75rem', fontWeight: 600, px: 1, py: 0.25, borderRadius: 1, pointerEvents: 'none' }}>
+                    {label}
+                  </Box>
+                )}
+              </Box>
+            ) : (
+              <PhotoEditorApi
+                key={photo.id} // Stable key based on photo ID to prevent remounting
+                photo={photo}
+                label={label}
+                onUpdate={handleUpdate}
+                size="grid" // Small size for grid view
+                setKey={setKey} // Pass setKey for PDF generation
+                mode={labelMode}
+              />
+            )}
+
+            {/* Delete button — kept OUTSIDE the dark hover-overlay so it
+                has its own visibility. Previously embedded inside the
+                overlay at `opacity:0`, which only revealed it on hover —
+                user feedback (M., 2026-05-15) reported it was undiscoverable.
+                Now visible always at 0.6 opacity, full opacity on tile
+                hover, with a Czech-aware tooltip. */}
+            <Tooltip title={t('photo.deleteTooltip')} placement="left" enterDelay={400}>
+              <IconButton
+                className="delete-button"
+                onClick={handleRemove}
+                aria-label={t('photo.deleteTooltip')}
+                sx={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  width: 36,
+                  height: 36,
+                  bgcolor: 'rgba(220, 53, 69, 0.92)', // Red so the destructive action reads at a glance
+                  color: 'white',
+                  borderRadius: '6px',
+                  opacity: 0.6, // Visible at rest — the whole point of this change
+                  transition: 'opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease',
+                  zIndex: 2, // Above the dark hover overlay so the red badge stays legible
+                  '&:hover': {
+                    bgcolor: 'rgba(200, 35, 51, 1)',
+                    transform: 'scale(1.08)',
+                    opacity: 1,
+                  }
+                }}
+                size="medium"
+              >
+                <Close sx={{ fontSize: 22 }} />
+              </IconButton>
+            </Tooltip>
+
+            {/* Hover overlay — dim + "click to edit" hint. Delete button
+                is now a sibling above, not a child, so its visibility no
+                longer depends on the overlay opacity. Hidden for placeholders
+                (they aren't editable). */}
+            {!photo.isPlaceholder && (
+              <Box
+                className="hover-overlay"
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  bgcolor: 'rgba(0, 0, 0, 0.5)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: 0,
+                  transition: 'opacity 0.2s ease-in-out',
+                  pointerEvents: 'none'
+                }}
+              >
+                <Typography
+                  variant="body1"
+                  sx={{
+                    color: 'white',
+                    fontWeight: 600,
+                    textShadow: '0 2px 4px rgba(0,0,0,0.8)'
+                  }}
+                >
+                  {t('photo.clickToEdit')}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        ) : (
+          <PhotoGridSlotEmpty
+            label={label}
+            position={index + 1}
+            onFilesDropped={onFilesDropped}
+            canDropFiles={canDropFiles}
+            maxFilesRemaining={maxFilesRemaining}
+            showAddNoPhoto={showAddPlaceholder}
+            onAddNoPhoto={handleAddNoPhoto}
+          />
+        )}
+      </Paper>
+      {/* Filename caption — screen only; the PDF generator rasterizes
+          canvases by data-photo-id, so this DOM text is never emitted
+          to print. Keeps the photo itself undisturbed for the
+          competitor's view (feedback 2026-04-23). */}
+      {photo?.filename && !photo.isPlaceholder && (
+        <Typography
+          variant="caption"
+          title={photo.filename}
+          sx={{
+            mt: 0.5,
+            px: 0.5,
+            fontFamily: 'monospace',
+            fontSize: '0.65rem',
+            color: 'text.secondary',
+            textAlign: 'center',
+            lineHeight: 1.2,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            userSelect: 'text',
+            '@media print': { display: 'none' },
+          }}
+        >
+          {photo.filename}
+        </Typography>
+      )}
+    </Box>
+  );
+});
+
+/**
+ * Element-wise comparison of the two optional label arrays.
+ * @returns true when both are absent, or both hold the same strings in order.
+ */
+function sameStringArray(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((value, i) => value === b[i]);
+}
+
+/**
+ * `React.memo` comparator for the grid.
+ *
+ * Everything is compared by identity except `customLabels`, which
+ * `TurningPointLayout` rebuilds with `generateTurningPointLabels` on every one
+ * of its renders — an unavoidable fresh array that would defeat a plain
+ * shallow memo. Callbacks are deliberately NOT ignored: `useStableCallback`
+ * refreshes its ref in a layout effect of THIS component's subtree, so
+ * skipping the render would freeze the old closure and silently drop later
+ * updates. That makes this memo correct today (it never serves a stale
+ * handler) and effective once the callers pass stable callbacks.
+ *
+ * @returns true when the props are equivalent and the render can be skipped.
+ */
+function arePhotoGridPropsEqual(a: PhotoGridApiProps, b: PhotoGridApiProps): boolean {
+  const keys = Object.keys({ ...a, ...b }) as (keyof PhotoGridApiProps)[];
+  for (const key of keys) {
+    if (key === 'customLabels') continue;
+    if (!Object.is(a[key], b[key])) return false;
+  }
+  return sameStringArray(a.customLabels, b.customLabels);
+}
+
+const PhotoGridApiImpl: React.FC<PhotoGridApiProps> = ({
   photoSet,
   setKey,
   onPhotoUpdate,
@@ -97,7 +427,6 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 }) => {
   const { currentRatio, isTransitioning } = useAspectRatio();
   const { generateLabel } = useLabeling();
-  const { t } = useI18n();
 
   // Turning-point sets supply customLabels (SP/TP1../FP); track sets don't.
   // Reuse that existing signal to size the burned-in photo label per discipline
@@ -107,17 +436,31 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  
-  // Preload images when photo set changes
+
+  // Preload images when the SET's contents actually change.
+  //
+  // WHY the key: `photoSet.photos` is a brand-new array on every canvasState
+  // edit (`updatePhotoState` maps it) and again when the persisted session
+  // lands, so an effect keyed on the array re-ran the whole preload pass twice
+  // per slider tick. Identity + URL is what the cache actually keys on, so
+  // this only re-runs when a photo is added, removed, reordered or re-blobbed.
+  // The ref keeps the effect honest without an eslint-disable: the key decides
+  // WHEN to preload, the ref supplies the current list to preload.
+  const photosRef = useRef(photoSet.photos);
+  useLayoutEffect(() => {
+    photosRef.current = photoSet.photos;
+  });
+  const preloadKey = useMemo(
+    () => photoSet.photos.map(p => `${p.id}:${p.url}`).join('\n'),
+    [photoSet.photos],
+  );
   useEffect(() => {
-    if (photoSet.photos.length > 0) {
-      const cache = getImageCache();
-      cache.preloadImages(photoSet.photos).catch(err => {
-        console.error('Failed to preload images:', err);
-      });
-    }
-  }, [photoSet.photos]);
-  
+    if (!preloadKey) return;
+    getImageCache().preloadImages(photosRef.current).catch(err => {
+      console.error('Failed to preload images:', err);
+    });
+  }, [preloadKey]);
+
   // Import the layout mode hook
   const { layoutConfig } = useLayoutMode();
   const effectiveMaxPhotos = maxPhotosOverride ?? layoutConfig.maxPhotosPerSet;
@@ -131,20 +474,20 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   // Create grid slots based on layout mode (9 for landscape, 10 for portrait)
   const gridSlots: GridSlot[] = Array.from({ length: effectiveSlots }, (_, index) => {
     const photo = photoSet.photos[index] || null;
-    
+
     // Only show labels when there's a photo, or in track mode for empty slots
     let label = '';
     if (photo) {
       // Photo exists - always show label
-      label = customLabels && customLabels[index] 
-        ? customLabels[index] 
+      label = customLabels && customLabels[index]
+        ? customLabels[index]
         : generateLabel(index, labelOffset);
     } else if (!customLabels) {
       // Empty slot in track mode - show label
       label = generateLabel(index, labelOffset);
     }
     // Empty slot in turning point mode - no label (label stays empty string)
-    
+
     return {
       id: `${setKey}-slot-${index}`,
       index,
@@ -153,7 +496,7 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
     };
   });
 
-  
+
   // Drag and drop handlers
   //
   // Two payload channels:
@@ -165,7 +508,12 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
   //                                 duplicated inline in two components).
   // Slot drags emit both so the tray can recognise the source. The grid only
   // needs the structured payload on drops that *could* be from the tray.
-  const handleDragStart = (e: React.DragEvent, index: number, photoId: string | undefined) => {
+  //
+  // Every handler below goes through `useStableCallback`: they close over
+  // props and state that change constantly, but the identity handed to the
+  // memoized slots must not, or no slot would ever skip a render. The
+  // latest-ref inside keeps the closures current.
+  const handleDragStart = useStableCallback((e: React.DragEvent, index: number, photoId: string | undefined) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', index.toString());
@@ -178,25 +526,25 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
     // Create custom drag image (optional - use default for now)
     (e.currentTarget as HTMLElement).style.opacity = '0.5';
-  };
+  });
 
-  const handleDragEnd = (e: React.DragEvent) => {
+  const handleDragEnd = useStableCallback((e: React.DragEvent) => {
     setDraggedIndex(null);
     setDragOverIndex(null);
     (e.currentTarget as HTMLElement).style.opacity = '1';
-  };
+  });
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = useStableCallback((e: React.DragEvent, index: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverIndex(index);
-  };
+  });
 
-  const handleDragLeave = () => {
+  const handleDragLeave = useStableCallback(() => {
     setDragOverIndex(null);
-  };
+  });
 
-  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+  const handleDrop = useStableCallback((e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
 
     // Dispatch decided by a pure helper (PR #62 review I4) — the component
@@ -234,7 +582,19 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
 
     setDraggedIndex(null);
     setDragOverIndex(null);
-  };
+  });
+
+  // Same treatment for the callbacks handed straight down to a slot. A stable
+  // wrapper is never `undefined`, so the "is this handler present?" questions
+  // the old inline JSX asked become explicit booleans computed here, from the
+  // ORIGINAL props.
+  const onSlotUpdate = useStableCallback(onPhotoUpdate);
+  const onSlotRemove = useStableCallback(onPhotoRemove);
+  const onSlotClick = useStableCallback(onPhotoClick);
+  const onSlotFilesDropped = useStableCallback(onFilesDropped);
+  const onSlotAddPlaceholder = useStableCallback(onAddPlaceholder);
+  const canDropFiles = !!onFilesDropped;
+  const canAddPlaceholder = labelMode === 'turningpoint' && !!onAddPlaceholder;
 
   return (
     <Box sx={{ width: '100%', position: 'relative' }}>
@@ -274,211 +634,61 @@ export const PhotoGridApi: React.FC<PhotoGridApiProps> = ({
           maxWidth: '100%',
           mx: 'unset'
         }}>
-        {gridSlots.map((slot) => {
-          const isDragOver = dragOverIndex === slot.index;
-          const isDragging = draggedIndex === slot.index;
-
-          return (
-            <Box key={slot.id} sx={{ display: 'flex', flexDirection: 'column' }}>
-            <Paper
-              elevation={slot.photo ? 2 : 0}
-              draggable={slot.photo ? true : false}
-              onDragStart={slot.photo ? (e) => handleDragStart(e, slot.index, slot.photo?.id) : undefined}
-              onDragEnd={slot.photo ? handleDragEnd : undefined}
-              onDragOver={(e) => handleDragOver(e, slot.index)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, slot.index)}
-              sx={{
-                aspectRatio: currentRatio.cssRatio,
-                bgcolor: slot.photo ? 'background.paper' : 'grey.50',
-                // Remove tile borders for a cleaner look; rely on spacing and hover glows
-                border: 'none',
-                borderRadius: 0, // Rectangular to match PDF output
-                overflow: 'hidden',
-                position: 'relative',
-                transition: 'all 0.2s ease-in-out',
-                cursor: slot.photo ? 'grab' : 'default',
-                opacity: isDragging ? 0.5 : 1,
-                transform: isDragOver ? 'scale(1.02)' : 'scale(1)',
-                boxShadow: isDragOver 
-                  ? '0 0 20px rgba(76, 175, 80, 0.6)' // Green glow when drag over
-                  : slot.photo 
-                    ? '0 0 12px rgba(33, 150, 243, 0.4)' // Blue glow for photos
-                    : 'none',
-                '&:hover': slot.photo ? {
-                  boxShadow: '0 0 12px rgba(33, 150, 243, 0.4)'
-                } : {}
-              }}
-            >
-            {slot.photo ? (
-              <Box
-                onClick={slot.photo.isPlaceholder ? undefined : () => onPhotoClick && onPhotoClick(slot.photo!)}
-                sx={{
-                  cursor: slot.photo.isPlaceholder ? 'default' : 'pointer',
-                  width: '100%',
-                  height: '100%',
-                  position: 'relative',
-                  '&:hover .hover-overlay': {
-                    opacity: 1
-                  },
-                  '&:hover .delete-button': {
-                    opacity: 1,
-                    boxShadow: '0 0 12px rgba(0, 0, 0, 0.6)'
-                  }
-                }}
-              >
-                {slot.photo.isPlaceholder ? (
-                  // "No photo" placeholder cell: a blank frame holding the slot
-                  // position, with its TP/SP/FP label (bottom-left, mirroring
-                  // drawLabel) and a centered "No photo" caption. No PhotoEditorApi
-                  // (it has no image; routing it there would spin "Loading…" forever).
-                  <Box sx={{ width: '100%', height: '100%', position: 'relative', bgcolor: 'grey.100', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Typography variant="body2" sx={{ color: 'text.disabled', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, userSelect: 'none' }}>
-                      {t('photo.noPhotoCell')}
-                    </Typography>
-                    {slot.label && (
-                      <Box sx={{ position: 'absolute', bottom: 4, left: 4, bgcolor: 'rgba(0, 0, 0, 0.7)', color: 'white', fontSize: '0.75rem', fontWeight: 600, px: 1, py: 0.25, borderRadius: 1, pointerEvents: 'none' }}>
-                        {slot.label}
-                      </Box>
-                    )}
-                  </Box>
-                ) : (
-                  <PhotoEditorApi
-                    key={slot.photo.id} // Stable key based on photo ID to prevent remounting
-                    photo={slot.photo}
-                    label={slot.label}
-                    onUpdate={(canvasState) => onPhotoUpdate(slot.photo!.id, canvasState)}
-                    size="grid" // Small size for grid view
-                    setKey={setKey} // Pass setKey for PDF generation
-                    mode={labelMode}
-                  />
-                )}
-
-                {/* Delete button — kept OUTSIDE the dark hover-overlay so it
-                    has its own visibility. Previously embedded inside the
-                    overlay at `opacity:0`, which only revealed it on hover —
-                    user feedback (M., 2026-05-15) reported it was undiscoverable.
-                    Now visible always at 0.6 opacity, full opacity on tile
-                    hover, with a Czech-aware tooltip. */}
-                <Tooltip title={t('photo.deleteTooltip')} placement="left" enterDelay={400}>
-                  <IconButton
-                    className="delete-button"
-                    onClick={(e) => {
-                      e.stopPropagation(); // Prevent triggering photo click
-                      onPhotoRemove(slot.photo!.id);
-                    }}
-                    aria-label={t('photo.deleteTooltip')}
-                    sx={{
-                      position: 'absolute',
-                      top: 8,
-                      right: 8,
-                      width: 36,
-                      height: 36,
-                      bgcolor: 'rgba(220, 53, 69, 0.92)', // Red so the destructive action reads at a glance
-                      color: 'white',
-                      borderRadius: '6px',
-                      opacity: 0.6, // Visible at rest — the whole point of this change
-                      transition: 'opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease',
-                      zIndex: 2, // Above the dark hover overlay so the red badge stays legible
-                      '&:hover': {
-                        bgcolor: 'rgba(200, 35, 51, 1)',
-                        transform: 'scale(1.08)',
-                        opacity: 1,
-                      }
-                    }}
-                    size="medium"
-                  >
-                    <Close sx={{ fontSize: 22 }} />
-                  </IconButton>
-                </Tooltip>
-
-                {/* Hover overlay — dim + "click to edit" hint. Delete button
-                    is now a sibling above, not a child, so its visibility no
-                    longer depends on the overlay opacity. Hidden for placeholders
-                    (they aren't editable). */}
-                {!slot.photo.isPlaceholder && (
-                <Box
-                  className="hover-overlay"
-                  sx={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    bgcolor: 'rgba(0, 0, 0, 0.5)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    opacity: 0,
-                    transition: 'opacity 0.2s ease-in-out',
-                    pointerEvents: 'none'
-                  }}
-                >
-                  <Typography
-                    variant="body1"
-                    sx={{
-                      color: 'white',
-                      fontWeight: 600,
-                      textShadow: '0 2px 4px rgba(0,0,0,0.8)'
-                    }}
-                  >
-                    {t('photo.clickToEdit')}
-                  </Typography>
-                </Box>
-                )}
-              </Box>
-            ) : (
-              <PhotoGridSlotEmpty
-                label={slot.label}
-                position={slot.index + 1}
-                onFilesDropped={onFilesDropped}
-                maxFilesRemaining={maxFilesRemaining}
-                onAddNoPhoto={labelMode === 'turningpoint' && onAddPlaceholder && slot.index === photoSet.photos.length ? () => onAddPlaceholder(slot.index) : undefined}
-              />
-            )}
-            </Paper>
-            {/* Filename caption — screen only; the PDF generator rasterizes
-                canvases by data-photo-id, so this DOM text is never emitted
-                to print. Keeps the photo itself undisturbed for the
-                competitor's view (feedback 2026-04-23). */}
-            {slot.photo?.filename && !slot.photo.isPlaceholder && (
-              <Typography
-                variant="caption"
-                title={slot.photo.filename}
-                sx={{
-                  mt: 0.5,
-                  px: 0.5,
-                  fontFamily: 'monospace',
-                  fontSize: '0.65rem',
-                  color: 'text.secondary',
-                  textAlign: 'center',
-                  lineHeight: 1.2,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  userSelect: 'text',
-                  '@media print': { display: 'none' },
-                }}
-              >
-                {slot.photo.filename}
-              </Typography>
-            )}
-            </Box>
-          );
-        })}
+        {gridSlots.map((slot) => (
+          <PhotoGridSlot
+            key={slot.id}
+            index={slot.index}
+            label={slot.label}
+            photo={slot.photo}
+            setKey={setKey}
+            labelMode={labelMode}
+            cssRatio={currentRatio.cssRatio}
+            isDragOver={dragOverIndex === slot.index}
+            isDragging={draggedIndex === slot.index}
+            onSlotUpdate={onSlotUpdate}
+            onSlotRemove={onSlotRemove}
+            onSlotClick={onSlotClick}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            canDropFiles={canDropFiles}
+            onFilesDropped={onSlotFilesDropped}
+            maxFilesRemaining={maxFilesRemaining}
+            // The "No photo" affordance only ever sits on the first empty slot.
+            showAddPlaceholder={canAddPlaceholder && slot.index === photoSet.photos.length}
+            onAddPlaceholder={onSlotAddPlaceholder}
+          />
+        ))}
         </Box>
       )}
     </Box>
   );
 };
 
-const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
+/**
+ * Memoized public export. See `arePhotoGridPropsEqual` for why `customLabels`
+ * needs a content comparison and why the callbacks do not get one.
+ */
+export const PhotoGridApi = React.memo(PhotoGridApiImpl, arePhotoGridPropsEqual);
+PhotoGridApi.displayName = 'PhotoGridApi';
+
+/**
+ * Empty grid cell: a react-dropzone target (or an Electron file-dialog button
+ * where the native picker is available) plus the optional "No photo" action.
+ * Memoized so a drag over a neighbouring slot doesn't re-run `useDropzone`
+ * across the whole grid.
+ */
+const PhotoGridSlotEmpty = React.memo(function PhotoGridSlotEmpty({
   label,
   position: _position,
   onFilesDropped,
+  canDropFiles,
   maxFilesRemaining,
-  onAddNoPhoto
-}) => {
+  showAddNoPhoto,
+  onAddNoPhoto,
+}: PhotoGridSlotEmptyProps) {
   const theme = useTheme();
   const { t } = useI18n();
   const electronImport = useElectronPhotoImport();
@@ -498,9 +708,11 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
     maxFiles: slotMaxFiles, // Respect layout-dependent remaining capacity
     noClick: useElectronDialog,
     onDrop: (acceptedFiles, rejectedFiles) => {
-      console.log('Drop event - Accepted:', acceptedFiles, 'Rejected:', rejectedFiles);
+      debugLog('Drop event - Accepted:', acceptedFiles, 'Rejected:', rejectedFiles);
 
-      if (acceptedFiles.length > 0 && onFilesDropped) {
+      // `canDropFiles`, not `onFilesDropped &&`: the handler is a stable
+      // wrapper and is therefore always truthy.
+      if (acceptedFiles.length > 0 && canDropFiles) {
         // Filter out valid files
         const validFiles = acceptedFiles.filter(file => isValidImageFile(file));
         if (validFiles.length > 0) {
@@ -512,17 +724,17 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
 
   const handleElectronClick = async () => {
     if (electronImport.isImporting) return;
-    if (!onFilesDropped) return;
+    if (!canDropFiles) return;
     await electronImport.pickPhotos(slotMaxFiles, onFilesDropped);
   };
 
   // Determine border color based on drag state
-  const borderColor = isDragActive 
+  const borderColor = isDragActive
     ? (isDragAccept ? 'success.main' : (isDragReject ? 'error.main' : 'primary.main'))
     : 'grey.300';
-  
-  const bgColor = isDragActive 
-    ? (isDragAccept 
+
+  const bgColor = isDragActive
+    ? (isDragAccept
         ? alpha(theme.palette.success.main, 0.08)
         : (isDragReject ? alpha(theme.palette.error.main, 0.08) : alpha(theme.palette.primary.main, 0.08)))
     : theme.palette.grey[50];
@@ -594,7 +806,7 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
           <Typography variant="caption" sx={{ opacity: 0.7, textAlign: 'center', px: 1 }}>
             {t('upload.clickOrDrop')}
           </Typography>
-          {onAddNoPhoto && (
+          {showAddNoPhoto && (
             // Turning-point only: reserve this slot as a "no photo" placeholder
             // so the surrounding TP numbering stays correct. stopPropagation +
             // preventDefault so it doesn't trigger the dropzone's file picker.
@@ -612,4 +824,4 @@ const PhotoGridSlotEmpty: React.FC<PhotoGridSlotEmptyProps> = ({
       )}
     </Box>
   );
-};
+});

@@ -63,21 +63,33 @@ export function asErrResult(result: AddPhotosResult | undefined): Extract<AddPho
 }
 
 /**
- * The three lazily-populated caches `CompetitionService.ensureInitialized()`
- * checks. Declared separately because they are `private` and therefore absent
- * from `CompetitionService`'s public type.
+ * The private state the module-singleton `CompetitionService` carries between
+ * calls: the three lazily-populated storage caches `ensureInitialized()`
+ * checks, plus the three write-coalescing maps (owed session payloads, what
+ * was last written to the index per id, and the ids whose index entry is
+ * still owed). Declared separately because they are `private` and therefore
+ * absent from `CompetitionService`'s public type.
  */
 type CompetitionServiceCaches = {
   storage: StorageInterface | null;
   handles: StorageHandles | null;
   competitionsDir: DirectoryHandle | null;
+  pendingSessionWrites: Map<string, unknown>;
+  indexTouch: Map<string, unknown>;
+  indexDirty: Set<string>;
 };
 
 /**
- * Wipe the module-singleton service's cached storage handles so the next
- * `ensureInitialized()` re-grabs whatever `getStorage()` currently returns.
- * Tests that swap in a fresh in-memory storage double per case need this or
- * the second test keeps writing into the first test's storage.
+ * Wipe the module-singleton service's cached storage handles AND its
+ * write-coalescing memory, so the next `ensureInitialized()` re-grabs whatever
+ * `getStorage()` currently returns and no payload owed by a previous case is
+ * still pending. Tests that swap in a fresh in-memory storage double per case
+ * need this or the second test keeps writing into the first test's storage.
+ *
+ * NOT reset — and not resettable: the service's serial write queue itself. A
+ * task left in flight by a previous case would still be draining while the
+ * next one runs, so every test MUST await (or `Promise.all`) the service calls
+ * it makes before the case ends.
  *
  * The fields are `private`, so this necessarily reaches past the declared
  * surface — but it models the private cache's real shape rather than reaching
@@ -91,4 +103,9 @@ export function resetCompetitionServiceCaches(service: CompetitionService): void
   caches.storage = null;
   caches.handles = null;
   caches.competitionsDir = null;
+  // Per-competition write memory: an owed payload or a stale `indexTouch`
+  // would otherwise bleed a previous test's competition id into this one.
+  caches.pendingSessionWrites.clear();
+  caches.indexTouch.clear();
+  caches.indexDirty.clear();
 }

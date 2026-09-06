@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import {
   getLabelingMode,
   generateLabelForMode,
@@ -63,13 +63,13 @@ export const LabelingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const isPrecision = resolveDiscipline(search) === 'precision';
   const [currentLabeling, setCurrentLabeling] = useState<LabelingOption>(() => resolveDefaultLabeling(search));
 
-  const setLabeling = (labeling: LabelingOption) => {
+  const setLabeling = useCallback((labeling: LabelingOption) => {
     // Precision discipline locks labeling to numbers — silently ignore any
     // attempt to switch it (defense in depth: the selector is hidden in
     // the UI, but a stale render or test could still call this).
     if (isPrecision && labeling.id !== 'numbers') return;
     setCurrentLabeling(labeling);
-  };
+  }, [isPrecision]);
 
   // Delegates to the shared label generator so the precision/rally
   // labeling rule cannot drift between photo-helper and map-corridors.
@@ -78,17 +78,20 @@ export const LabelingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // discipline — e.g., a rally session can opt into numbers via the
   // selector. `LabelingOption.id` is structurally identical to
   // `LabelingMode` (`'letters' | 'numbers'`).
-  const generateLabel = (index: number, offset = 0): string => {
-    return generateLabelForMode(currentLabeling.id, index + offset);
-  };
+  // Memoized on the labeling id alone: PhotoGridApi calls this once per slot on
+  // every render, so a fresh identity here invalidated the whole grid.
+  const generateLabel = useCallback(
+    (index: number, offset = 0): string => generateLabelForMode(currentLabeling.id, index + offset),
+    [currentLabeling.id],
+  );
+
+  const value = useMemo(
+    () => ({ currentLabeling, setLabeling, generateLabel, isLocked: isPrecision }),
+    [currentLabeling, setLabeling, generateLabel, isPrecision],
+  );
 
   return (
-    <LabelingContext.Provider value={{
-      currentLabeling,
-      setLabeling,
-      generateLabel,
-      isLocked: isPrecision
-    }}>
+    <LabelingContext.Provider value={value}>
       {children}
     </LabelingContext.Provider>
   );

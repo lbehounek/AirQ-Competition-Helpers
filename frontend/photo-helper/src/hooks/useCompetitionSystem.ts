@@ -33,6 +33,7 @@ import {
   insertPlaceholderIntoSet,
   reconcilePlacedToDesiredSet,
 } from '../utils/candidateTransitions';
+import { invalidateCandidateThumb } from '../utils/candidateThumbs';
 import { createPlaceholderPhoto, PLACEHOLDER_ID_PREFIX } from '../utils/placeholderPhoto';
 import { collectSessionContentHashes, partitionFilesByContentHash } from '../utils/contentHash';
 // Only the resolver is needed here — it already picks the right per-discipline
@@ -41,6 +42,7 @@ import { collectSessionContentHashes, partitionFilesByContentHash } from '../uti
 import { defaultTrackSetTitles } from '../utils/defaultTrackSetTitles';
 import { migrateLegacyPrecisionTitles } from '../utils/migrateLegacyPrecisionTitles';
 import { collectModeSwitchRevokeUrls } from '../utils/modeSwitchRevokeUrls';
+import { samePhotoIds } from '../utils/samePhotoIds';
 import { deriveSet2FromSet1 } from '../utils/autoPrefillSetTitle';
 
 /**
@@ -220,6 +222,15 @@ export interface UseCompetitionSystemResult {
   // Utilities
   clearError: () => void;
   refreshCompetitions: () => Promise<void>;
+  /**
+   * Drain queued `session.json` writes and apply any deferred
+   * `competitions-index.json` patch. Best-effort — it never rejects; a
+   * failure is logged and swallowed, because every caller is a navigation
+   * choke point where blocking or throwing would be worse than a lost edit.
+   * Fired on pagehide / visibility-hidden / desktop navigation, and before
+   * competition create / switch / delete and mode switch.
+   */
+  flushPersistence: () => Promise<void>;
   getSessionStats: () => SessionStats;
   updateStorageStats: () => Promise<void>;
 }
@@ -331,7 +342,6 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       // If an external competition ID is provided (from desktop launcher),
       // use it directly instead of relying on the index's activeCompetitionId
       if (externalCompetitionId) {
-        console.log('Using externally-selected competition:', externalCompetitionId);
         await competitionService.setActiveCompetition(externalCompetitionId);
         const competition = await migrateLoadedCompetition(
           await competitionService.getCompetition(externalCompetitionId),
@@ -353,7 +363,6 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
 
       // If no competitions exist (fresh install), create the first one
       if (!activeCompetition) {
-        console.log('No competitions found, creating first competition');
         const defaultName = getDefaultCompetitionName(1);
 
         // Create new empty session with mode-specific sets
@@ -408,7 +417,6 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
   const refreshCompetitions = useCallback(async () => {
     try {
       const index = await competitionService.getCompetitionsIndex();
-      console.log('refreshCompetitions loaded:', index.competitions?.length || 0, 'competitions');
       setCompetitions(index.competitions);
     } catch (err) {
       console.error('Failed to load competitions:', err);
@@ -423,12 +431,33 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     }
   }, [loading, currentCompetition]);
 
+  /**
+   * Force every write the service is still holding onto out to disk.
+   *
+   * Returns a promise that resolves once the drain finished — or once it
+   * failed, which is logged and swallowed: this is called from `pagehide`,
+   * from visibility-hidden, and immediately before create/switch/delete/mode
+   * switch, and none of those may be blocked by a storage error.
+   */
+  const flushPersistence = useCallback(async () => {
+    try {
+      await competitionService.flushPendingWrites();
+    } catch (err) {
+      console.warn('[useCompetitionSystem] flushPersistence failed (non-fatal):', err);
+    }
+  }, []);
+
   // Competition Management Functions
   const createNewCompetition = useCallback(async (name?: string) => {
     try {
       setLoading(true);
       setError(null);
-      
+
+      // Drain first: a queued `updatePhotos: true` payload must be written
+      // while its `blob:` URLs are still alive — `revokeSessionBlobUrls`
+      // below (and the mode-switch url stripping) would make them unfetchable.
+      await flushPersistence();
+
       const competitionName = name || getDefaultCompetitionName();
       
       // Revoke blob URLs from current competition before creating a new one
@@ -470,13 +499,17 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     } finally {
       setLoading(false);
     }
-  }, [getDefaultCompetitionName, refreshCompetitions]);
+  }, [getDefaultCompetitionName, refreshCompetitions, flushPersistence]);
 
   const switchToCompetition = useCallback(async (id: string) => {
     try {
       setLoading(true);
       setError(null);
-      
+
+      // Drain before the revoke below invalidates the blob URLs a queued
+      // photo-carrying payload still needs.
+      await flushPersistence();
+
       // Revoke blob URLs from current competition before switching
       if (currentCompetition?.session) {
         revokeSessionBlobUrls(currentCompetition.session);
@@ -495,13 +528,18 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     } finally {
       setLoading(false);
     }
-  }, [refreshCompetitions]);
+  }, [refreshCompetitions, flushPersistence]);
 
   const deleteCompetition = useCallback(async (id: string) => {
     try {
       setLoading(true);
       setError(null);
-      
+
+      // Drain first: any payload still owed for OTHER competitions must land
+      // before the delete's tombstone runs, and one owed for THIS competition
+      // is dropped by that tombstone rather than resurrecting the directory.
+      await flushPersistence();
+
       // Revoke blob URLs before deleting (if deleting the current competition)
       if (currentCompetition?.id === id && currentCompetition?.session) {
         revokeSessionBlobUrls(currentCompetition.session);
@@ -525,7 +563,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     } finally {
       setLoading(false);
     }
-  }, [currentCompetition?.id, refreshCompetitions]);
+  }, [currentCompetition?.id, refreshCompetitions, flushPersistence]);
 
   const updateCompetitionName = useCallback(async (name: string) => {
     if (!currentCompetition) return;
@@ -570,6 +608,11 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     const current = currentCompetitionRef.current;
     if (!current) return;
 
+    // Set when the persist below failed for a call that a LATER call had
+    // already superseded. Read by the outer catch to decide whether the user
+    // deserves an error banner — see the rollback comment below.
+    let superseded = false;
+
     try {
       const originalSession = current.session;
       const updatedSession = updater(originalSession);
@@ -584,15 +627,13 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       // the candidate pool so promoting/demoting/adding to the tray triggers
       // a write — `competitionService.saveSessionPhotos` walks candidates
       // alongside slots, so the persistence path is symmetric.
-      const origCandIds = (originalSession.candidates?.photos ?? []).map(p => p.id);
-      const nextCandIds = (updatedSession.candidates?.photos ?? []).map(p => p.id);
-      const photosChanged = options?.updatePhotos ||
-        originalSession.sets.set1.photos.length !== updatedSession.sets.set1.photos.length ||
-        originalSession.sets.set2.photos.length !== updatedSession.sets.set2.photos.length ||
-        JSON.stringify(originalSession.sets.set1.photos.map(p => p.id)) !== JSON.stringify(updatedSession.sets.set1.photos.map(p => p.id)) ||
-        JSON.stringify(originalSession.sets.set2.photos.map(p => p.id)) !== JSON.stringify(updatedSession.sets.set2.photos.map(p => p.id)) ||
-        origCandIds.length !== nextCandIds.length ||
-        JSON.stringify(origCandIds) !== JSON.stringify(nextCandIds);
+      // `samePhotoIds` is the id-and-order comparison the four JSON.stringify
+      // round-trips used to do — same verdict (these are string arrays), but
+      // O(n) with no allocation on a path that runs on every slider tick.
+      const photosChanged = Boolean(options?.updatePhotos) ||
+        !samePhotoIds(originalSession.sets.set1.photos, updatedSession.sets.set1.photos) ||
+        !samePhotoIds(originalSession.sets.set2.photos, updatedSession.sets.set2.photos) ||
+        !samePhotoIds(originalSession.candidates?.photos ?? [], updatedSession.candidates?.photos ?? []);
 
       const updatedCompetition: Competition = {
         ...current,
@@ -612,9 +653,24 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       try {
         await competitionService.updateCompetition(updatedCompetition, { updatePhotos: photosChanged });
       } catch (err) {
-        // Persist failed — roll back the ref so the next caller doesn't
-        // build on top of unsaved phantom state.
-        currentCompetitionRef.current = current;
+        // Persist failed. Roll back the ref so the next caller doesn't build
+        // on top of unsaved phantom state — but ONLY if we are still the most
+        // recent writer. Under coalesced writes a later call in the same burst
+        // may already have advanced the ref, and its task may have SUCCEEDED
+        // by writing the payload we owed; an unconditional rollback would
+        // silently discard that newer, persisted state.
+        superseded = currentCompetitionRef.current !== updatedCompetition;
+        if (!superseded) {
+          currentCompetitionRef.current = current;
+          // The ref is back at the pre-edit snapshot and `setCurrentCompetition`
+          // is skipped, so the UI is about to show the edit as NOT applied.
+          // Drop what the service still owes for it too, or the next
+          // `flushPendingWrites` would retry exactly this payload and put the
+          // rolled-back edit on disk — it would then reappear on reload, with
+          // the error banner having said the opposite. Identity-checked inside
+          // the service, so a newer publish is never discarded.
+          competitionService.discardPendingWrite(updatedCompetition);
+        }
         throw err;
       }
       setCurrentCompetition(updatedCompetition);
@@ -635,12 +691,23 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
       }
 
     } catch (err) {
-      console.error('Failed to update competition:', err);
       // When the caller opted to handle the failure itself (the reflow path
       // surfaces a tailored "couldn't re-sort N photos" toast), rethrow instead
       // of swallowing into the generic global Alert — otherwise the persist
       // error is invisible to the caller and the reflowFailures count lies.
-      if (options?.rethrow) throw err;
+      if (options?.rethrow) {
+        console.error('Failed to update competition:', err);
+        throw err;
+      }
+      if (superseded) {
+        // A newer call in the same burst already carried our state to disk
+        // (that is what coalescing means), so the data is safe and a banner
+        // would be a lie. Still logged, because a failing write is worth
+        // knowing about even when it was harmless.
+        console.warn('[useCompetitionSystem] superseded update failed to persist (harmless):', err);
+        return;
+      }
+      console.error('Failed to update competition:', err);
       setError(err instanceof Error ? err.message : 'Failed to update competition');
     }
   }, [refreshCompetitions]);
@@ -956,6 +1023,13 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
 
   const removeCandidate = useCallback(async (photoId: string) => {
     const compId = currentCompetition?.id;
+    // Drop the in-memory thumb and bump the photo's epoch BEFORE anything
+    // else. A generation still queued behind the tray's concurrency limiter
+    // would otherwise pass its `stillCurrent()` check, repopulate the cache
+    // and re-create `photos/thumbs/{id}.jpg` right after the delete below
+    // removed it. Lives here rather than at the button that triggers it so
+    // EVERY delete path is covered — see `deleteCandidates` for the bulk twin.
+    invalidateCandidateThumb(photoId);
     // Capture POST-mutation reference state. Slots and candidates are
     // disjoint by construction, but the cross-bucket check is symmetric
     // with `removePhoto` (PR #62 review IMP-2) — if anything ever breaks
@@ -1116,6 +1190,12 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // no-op — the cleanup dialog closed with no feedback even though 0 of
     // N requested photos were deleted. Surface the snapshot-drift count.
     if (presentIds.length === 0) return { deleted: 0, skipped: photoIds.length };
+    // Same epoch guard as `removeCandidate`, and the reason it matters MORE
+    // here: the cleanup dialog and `clearAllCandidates` fire right after a bulk
+    // import, when tens of generations are still queued two-at-a-time. Without
+    // this, each of those still passes `stillCurrent()` and re-persists an
+    // orphan thumb for a photo this call is deleting.
+    for (const id of presentIds) invalidateCandidateThumb(id);
     let safeIds: string[] = [];
     await updateCurrentCompetition(session => {
       let next = session;
@@ -1336,11 +1416,16 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
 
   const updateSessionMode = useCallback(async (mode: 'track' | 'turningpoint') => {
     if (!currentCompetition) return;
-    
+
     try {
       setLoading(true);
       setError(null);
-      
+
+      // Drain BEFORE the url-stripping below: a queued payload carrying live
+      // `blob:` URLs still needs them to fetch the bytes, and the sanitized
+      // copy this function builds has them blanked.
+      await flushPersistence();
+
       const session = currentCompetition.session;
       
       // Save current active sets into the current mode bucket
@@ -1445,7 +1530,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     } finally {
       setLoading(false);
     }
-  }, [currentCompetition]);
+  }, [currentCompetition, flushPersistence]);
 
   const updateLayoutMode = useCallback(async (layoutMode: 'landscape' | 'portrait') => {
     await updateCurrentCompetition(session => ({
@@ -1640,6 +1725,7 @@ export function useCompetitionSystem(): UseCompetitionSystemResult {
     // Utilities
     clearError,
     refreshCompetitions,
+    flushPersistence,
     getSessionStats,
     updateStorageStats
   };

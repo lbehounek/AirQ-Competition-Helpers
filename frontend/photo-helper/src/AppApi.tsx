@@ -21,7 +21,8 @@ import {
   DialogActions,
   TextField,
   Snackbar,
-  Tooltip
+  Tooltip,
+  LinearProgress
 } from '@mui/material';
 import {
   FlightTakeoff,
@@ -31,13 +32,12 @@ import {
   Warning,
   Home,
   Map,
-  ChevronLeft,
-  ChevronRight,
   HelpOutline,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { useClipboardPaste } from './hooks/useClipboardPaste';
 import { useMapPicksSync } from './hooks/useMapPicksSync';
+import { useStableCallback } from './hooks/useStableCallback';
 import { startPhotoHelperTour, startEditorModalTour, scheduleAutoStartTour, markTourSeen } from './onboarding/photoHelperTour';
 import {
   buildEditorPicks,
@@ -48,8 +48,7 @@ import { getStorage, type DirectoryHandle } from '@airq/shared-storage';
 import { GridSizedDropZone } from './components/GridSizedDropZone';
 import { PhotoGridApi } from './components/PhotoGridApi';
 import { EditableHeading } from './components/EditableHeading';
-import { PhotoEditorApi } from './components/PhotoEditorApi';
-import { PhotoControls } from './components/PhotoControls';
+import { PhotoEditorModalBody } from './components/PhotoEditorModalBody';
 import { AspectRatioSelector } from './components/AspectRatioSelector';
 import { LabelingSelector } from './components/LabelingSelector';
 import { ModeSelector } from './components/ModeSelector';
@@ -64,7 +63,7 @@ import { useAspectRatio } from './contexts/AspectRatioContext';
 import { useLabeling } from './contexts/LabelingContext';
 import { useI18n } from './contexts/I18nContext';
 import { useLayoutMode } from './contexts/LayoutModeContext';
-import { generatePDF } from './utils/pdfGenerator';
+import { generatePDF, type PdfProgress } from './utils/pdfGenerator';
 import { generateTurningPointLabels } from './utils/imageProcessing';
 import { resolveDiscipline } from './utils/parseDiscipline';
 import type { Discipline } from './utils/parseDiscipline';
@@ -73,6 +72,7 @@ import { gridShapeFor } from './utils/gridShapeFor';
 import { pickEffectiveLayout } from './utils/pickEffectiveLayout';
 import { deriveSet2FromSet1 } from './utils/autoPrefillSetTitle';
 import { getGridCapacity } from './utils/getGridCapacity';
+import { mergeSelectedPhotoPatch } from './utils/mergeSelectedPhotoPatch';
 import type { ApiPhoto } from './types/api';
 
 function AppApi() {
@@ -127,6 +127,9 @@ function AppApi() {
     setCandidateFilename,
     updateCandidatePhotoState,
     deleteCandidates,
+    // Drains the persistence queue. Fired at every point where the page (or
+    // the desktop shell) is about to stop running this renderer.
+    flushPersistence,
   } = sessionHookResult;
 
   // i18n — declared near the top because `handleReflowError` (below) reads `t`
@@ -195,22 +198,43 @@ function AppApi() {
   // layout `competitions/{compId}/{photos,}`; matches map-corridors'
   // useCorridorSessionOPFS resolution, so the writer + reader agree
   // on paths.
-  const [pmcCompetitionDir, setPmcCompetitionDir] = useState<DirectoryHandle | null>(null);
-  const [pmcPhotosDir, setPmcPhotosDir] = useState<DirectoryHandle | null>(null);
-  // Sticky banner shown when cross-app dir resolution fails (OPFS unavailable,
-  // permission revoked, transient I/O during init). Without it the editor
-  // looks normal but the map → editor handoff is silently dead for the
-  // session.
-  const [pmcSyncUnavailable, setPmcSyncUnavailable] = useState(false);
+  //
+  // Both pieces of state are SELF-DESCRIBING — they carry the competition id
+  // they belong to, and the values consumers see are derived from that id at
+  // RENDER time. Clearing them from inside the effect instead (the obvious
+  // shape) is one render too late: in the commit where `currentCompetition`
+  // flips from A to B, `candidatePhotos` below is already B's list while the
+  // state still holds A's handles, and React runs CHILD passive effects before
+  // the parent's — so every newly mounted `CandidateThumbImage` for a B id
+  // would start `resolveCandidateThumb` against A's `photos/` before the reset
+  // ran. That resolver is module-level and uncancellable, so it would read
+  // A/photos/thumbs/{idB} (miss), generate, and persist B's thumb INTO A —
+  // committed as `persisted`, so B never gets it at all while A accumulates
+  // orphans. Deriving makes the very first render after a switch report
+  // "still resolving", which is the tri-state CandidateTray keys off.
+  const [pmcDirs, setPmcDirs] = useState<{
+    compId: string;
+    competitionDir: DirectoryHandle;
+    photosDir: DirectoryHandle;
+  } | null>(null);
+  // Competition whose dir resolution FAILED (OPFS unavailable, permission
+  // revoked, transient I/O during init) — drives a sticky banner, because
+  // without it the editor looks normal while the map → editor handoff is
+  // silently dead. Same id-keyed reasoning as above.
+  const [pmcFailedCompId, setPmcFailedCompId] = useState<string | null>(null);
   const pmcCompetitionId = currentCompetition?.id ?? null;
+  const pmcResolved = pmcDirs && pmcDirs.compId === pmcCompetitionId ? pmcDirs : null;
+  const pmcCompetitionDir = pmcResolved?.competitionDir ?? null;
+  const pmcPhotosDir = pmcResolved?.photosDir ?? null;
+  // A resolved competition is never "unavailable", even if an earlier attempt
+  // for the same id failed (StrictMode's double-invoked effect, or a transient
+  // I/O error on the first pass) — this is what the old `setPmcSyncUnavailable(false)`
+  // on the success path did.
+  const pmcSyncUnavailable =
+    pmcCompetitionId !== null && pmcFailedCompId === pmcCompetitionId && pmcResolved === null;
   useEffect(() => {
     let cancelled = false;
-    if (!pmcCompetitionId) {
-      setPmcCompetitionDir(null);
-      setPmcPhotosDir(null);
-      setPmcSyncUnavailable(false);
-      return;
-    }
+    if (!pmcCompetitionId) return;
     void (async () => {
       try {
         const storage = getStorage();
@@ -219,12 +243,10 @@ function AppApi() {
         const compDir = await storage.getDirectoryHandle(competitionsDir, pmcCompetitionId, { create: true });
         const photosDir = await storage.getDirectoryHandle(compDir, 'photos', { create: true });
         if (cancelled) return;
-        setPmcCompetitionDir(compDir);
-        setPmcPhotosDir(photosDir);
-        setPmcSyncUnavailable(false);
+        setPmcDirs({ compId: pmcCompetitionId, competitionDir: compDir, photosDir });
       } catch (err) {
         console.warn('[AppApi] failed to resolve photo-map-culling dirs:', err);
-        if (!cancelled) setPmcSyncUnavailable(true);
+        if (!cancelled) setPmcFailedCompId(pmcCompetitionId);
       }
     })();
     return () => { cancelled = true; };
@@ -272,11 +294,26 @@ function AppApi() {
     }
   }, [candidatePhotos, pmcCompetitionDir]);
 
+  // Last-chance drains. `pagehide` covers tab close / navigation;
+  // visibility-hidden fires earlier and far more reliably on mobile, where
+  // `pagehide` can be skipped entirely. Both are best-effort by nature — OPFS
+  // writes started here may not complete — but the editor's 150 ms debounce
+  // bounds what a missed one can cost to the very last interaction.
   useEffect(() => {
-    const onPageHide = () => { void flushPendingEditorPicks(); };
-    window.addEventListener('pagehide', onPageHide);
-    return () => window.removeEventListener('pagehide', onPageHide);
-  }, []);
+    const flushAll = () => {
+      void flushPendingEditorPicks();
+      void flushPersistence();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushAll();
+    };
+    window.addEventListener('pagehide', flushAll);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', flushAll);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [flushPersistence]);
 
   // Session identifiers and storage stats come from the OPFS-backed
   // useCompetitionSystem hook — no network round-trip, so availability is
@@ -344,6 +381,17 @@ function AppApi() {
   // lost its image bytes"; the message tells the user how to recover.
   const [pdfError, setPdfError] = useState<string | null>(null);
 
+  // Live progress of a running PDF export, or null when none is running.
+  // Doubles as the export's busy flag: the Generate button is disabled while
+  // it is non-null. WHY it exists at all — the export now yields to the event
+  // loop between photos so the window stays responsive, which also means the
+  // button is clickable mid-run and the user gets no feedback that anything is
+  // happening. (`generatePDF` additionally coalesces a concurrent second call,
+  // so this is the friendly half of a two-layer guard, not the only one.)
+  // Declared here, before every memo/handler that reads it — AppApiSmoke exists
+  // to catch a hoisting mistake in this file.
+  const [pdfProgress, setPdfProgress] = useState<PdfProgress | null>(null);
+
   // Hint snackbar for cross-set slot→slot drags (out of scope in v1 per
   // docs/CANDIDATE_PHOTOS.md). Previously a silent no-op (PR #62 review I4).
   const [crossSetHintOpen, setCrossSetHintOpen] = useState(false);
@@ -405,8 +453,6 @@ function AppApi() {
     setKey: 'set1' | 'set2' | 'candidates';
     label: string;
   } | null>(null);
-  const [showOriginal, setShowOriginal] = useState(false);
-  const [circleMode, setCircleMode] = useState(false);
 
   const stats = getSessionStats();
   const SHOW_WELCOME_INSTRUCTIONS = false;
@@ -602,7 +648,11 @@ function AppApi() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.mode, pendingTPSend]);
 
-  const handlePhotoUpdate = (setKey: 'set1' | 'set2' | 'candidates', photoId: string, canvasState: Partial<ApiPhoto['canvasState']>) => {
+  const handlePhotoUpdate = useCallback((
+    setKey: 'set1' | 'set2' | 'candidates',
+    photoId: string,
+    canvasState: Partial<ApiPhoto['canvasState']>,
+  ) => {
     // Dispatch to the right backend method — slot photos go through
     // updatePhotoState, candidates through updateCandidatePhotoState. The
     // explicit `void` prefix marks fire-and-forget intent (PR #62 review
@@ -615,17 +665,24 @@ function AppApi() {
       void updatePhotoState(setKey, photoId, canvasState);
     }
 
-    // Optimistically update selected photo immediately for instant UI feedback
-    if (selectedPhoto?.photo.id === photoId) {
-      setSelectedPhoto({
-        ...selectedPhoto,
-        photo: {
-          ...selectedPhoto.photo,
-          canvasState: { ...selectedPhoto.photo.canvasState, ...canvasState }
-        }
-      });
+    // Optimistically update the selected photo. FUNCTIONAL and id-guarded (the
+    // guard lives in the updater, see mergeSelectedPhotoPatch): commits are
+    // debounced, so one can land after the editor was closed or paged to the
+    // next photo, and a closure-captured `selectedPhoto` would then re-open the
+    // modal or revert the new selection.
+    setSelectedPhoto(prev => mergeSelectedPhotoPatch(prev, photoId, canvasState));
+  }, [updatePhotoState, updateCandidatePhotoState]);
+
+  /**
+   * Close the editor and re-sync the grid with whatever the modal changed.
+   * One definition for all three exits (backdrop click, the panel's ✕, Esc).
+   */
+  const closeModal = useCallback(() => {
+    setSelectedPhoto(null);
+    if (supportsRefresh && refreshSession) {
+      refreshSession();
     }
-  };
+  }, [supportsRefresh, refreshSession]);
 
   const handlePhotoRemove = (setKey: 'set1' | 'set2' | 'candidates', photoId: string) => {
     // Close editor optimistically; persistence is fire-and-forget (errors
@@ -688,9 +745,86 @@ function AppApi() {
     }
   };
 
+  // --- Stable prop bundles for the memoized photo grids --------------------
+  //
+  // `PhotoGridApi` and everything under it is memoized now, but a memo only
+  // helps when its props keep their identity. Every handler below used to be a
+  // fresh inline arrow in the JSX, so on each of the TWO AppApi renders a
+  // single slider tick produces (optimistic state, then the persisted session)
+  // both grids re-rendered all their slots.
+  //
+  // The four wrapped in `useStableCallback` read live state — `session` for the
+  // slot label, `selectedPhoto` for the close-on-delete — so a `useCallback`
+  // keyed honestly on that state would change identity on exactly the renders
+  // we are trying to skip, i.e. it would not memoize anything. The latest-ref
+  // wrapper keeps them correct instead. They are only ever invoked from DOM
+  // events, which is the wrapper's contract.
+  const handlePhotoClickStable = useStableCallback(handlePhotoClick);
+  const handlePhotoRemoveStable = useStableCallback(handlePhotoRemove);
+  const handlePhotoMoveStable = useStableCallback(handlePhotoMove);
+  const handleAddToSetStable = useStableCallback(handleAddToSet);
+  const handleInitialTurningPointDropStable = useStableCallback(handleInitialTurningPointDrop);
+  const handleCrossSetDropRejected = useCallback(() => setCrossSetHintOpen(true), []);
+  const handleCandidateDroppedStable = useStableCallback(
+    (setKey: 'set1' | 'set2', candidateId: string, slotIndex: number) => {
+      void handleCandidateDropped(setKey)(candidateId, slotIndex);
+    },
+  );
+
+  /**
+   * One frozen bundle of grid handlers per set key.
+   * @returns the props `PhotoGridApi` needs for that set; identity-stable for
+   * the lifetime of the page because every member closes over stable wrappers
+   * only. Built by a factory so the two sets cannot drift apart.
+   */
+  const makeSetHandlers = useCallback(
+    (setKey: 'set1' | 'set2') => ({
+      onPhotoUpdate: (photoId: string, canvasState: ApiPhoto['canvasState']) =>
+        handlePhotoUpdate(setKey, photoId, canvasState),
+      onPhotoRemove: (photoId: string) => handlePhotoRemoveStable(setKey, photoId),
+      onPhotoClick: (photo: ApiPhoto) => handlePhotoClickStable(photo, setKey),
+      onPhotoMove: (fromIndex: number, toIndex: number) => handlePhotoMoveStable(setKey, fromIndex, toIndex),
+      onFilesDropped: (files: File[]) => { void handleAddToSetStable(files, setKey); },
+      onCandidateDropped: (candidateId: string, slotIndex: number) =>
+        handleCandidateDroppedStable(setKey, candidateId, slotIndex),
+      onCandidateDroppedAtZero: (candidateId: string) =>
+        handleCandidateDroppedStable(setKey, candidateId, 0),
+      onCrossSetDropRejected: handleCrossSetDropRejected,
+    }),
+    [
+      handlePhotoUpdate,
+      handlePhotoRemoveStable,
+      handlePhotoClickStable,
+      handlePhotoMoveStable,
+      handleAddToSetStable,
+      handleCandidateDroppedStable,
+      handleCrossSetDropRejected,
+    ],
+  );
+  const set1Handlers = useMemo(() => makeSetHandlers('set1'), [makeSetHandlers]);
+  const set2Handlers = useMemo(() => makeSetHandlers('set2'), [makeSetHandlers]);
+
+  // Turning-point layout takes the (setKey, …) shape directly, so it only needs
+  // the dispatchers stabilized — it fans them out per set itself.
+  const handleTurningPointFiles = useStableCallback(
+    (setKey: 'set1' | 'set2', files: File[]) => { void handleAddToSetStable(files, setKey); },
+  );
+  const handleTurningPointInitialFiles = useMemo(
+    () => (isPrecision
+      ? (files: File[]) => { void handleAddToSetStable(files, 'set1'); }
+      : (files: File[]) => { void handleInitialTurningPointDropStable(files); }),
+    [isPrecision, handleAddToSetStable, handleInitialTurningPointDropStable],
+  );
+  const handleTurningPointAddPlaceholder = useMemo(
+    () => (addPlaceholderToSet
+      ? (setKey: 'set1' | 'set2', slotIndex: number) => { void addPlaceholderToSet(setKey, slotIndex); }
+      : undefined),
+    [addPlaceholderToSet],
+  );
+
   const handleShuffle = async () => {
     if (!session) return;
-    
+
     console.log('🎲 Shuffling photos in both sets...');
     
     // Shuffle both sets in a single state update (no flickering, both sets update!)
@@ -721,7 +855,12 @@ function AppApi() {
       console.error('No session available for PDF generation');
       return;
     }
+    // Already exporting — ignore the click rather than queueing a second run.
+    if (pdfProgress !== null) return;
 
+    // Seed a zero-total 'render' tick so the indicator appears immediately;
+    // `generatePDF` overwrites it with real counts on the first photo.
+    setPdfProgress({ phase: 'render', done: 0, total: 0 });
     try {
       // Resolve via the pure helper so the precedence chain (context >
       // session > 'landscape') is unit-tested in isolation. See
@@ -738,7 +877,7 @@ function AppApi() {
         generateLabel,
       });
 
-      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, effectiveLayout, t, session.mode, currentCompetition?.id);
+      await generatePDF(set1WithLabels, set2WithLabels, sessionId, currentRatio.ratio, session.competition_name, effectiveLayout, t, session.mode, currentCompetition?.id, { onProgress: setPdfProgress });
 
       // Post-export prompt: offer to clean up unused candidate photos so the
       // user doesn't accumulate them across competitions. ~3 MB per photo
@@ -766,11 +905,22 @@ function AppApi() {
       // instead of dumping the raw technical string into a native alert().
       const failures = (error as { renderFailures?: unknown[] } | null)?.renderFailures;
       const failedCount = Array.isArray(failures) ? failures.length : 0;
+      // The lazy facade tags an unreachable export chunk (web build: a tab left
+      // open across an rsync --delete deploy). "Please try again" is actively
+      // wrong there — the browser's module map caches the failed fetch, so every
+      // retry fails identically until the page is reloaded. Say so instead.
+      const chunkLoadFailed = Boolean((error as { chunkLoadFailed?: boolean } | null)?.chunkLoadFailed);
       setPdfError(
-        failedCount > 0
-          ? t('pdf.error.renderFailed', { count: failedCount })
-          : t('pdf.error.generic'),
+        chunkLoadFailed
+          ? t('pdf.error.moduleLoad')
+          : failedCount > 0
+            ? t('pdf.error.renderFailed', { count: failedCount })
+            : t('pdf.error.generic'),
       );
+    } finally {
+      // Clears the busy state on every exit path — success, render-failure
+      // abort, or a throw from the save dialog.
+      setPdfProgress(null);
     }
   };
 
@@ -843,7 +993,7 @@ function AppApi() {
               {isDesktopManaged && (
                 <IconButton
                   size="small"
-                  onClick={() => {
+                  onClick={async () => {
                     // No bridge at all = web build, nothing to navigate to. But a
                     // bridge WITHOUT the channel is version skew, and a plain
                     // `?.()` there would leave a dead button with nothing logged —
@@ -856,6 +1006,10 @@ function AppApi() {
                       console.error('electronAPI.goHome is missing — desktop shell is out of date');
                       return;
                     }
+                    // Drain before the shell tears this renderer down — the
+                    // hook swallows and logs its own failures, so this never
+                    // blocks the navigation.
+                    await flushPersistence();
                     void api.goHome().catch((err: unknown) => console.error('goHome failed', err));
                   }}
                   sx={{ color: 'white', mr: 0.5 }}
@@ -868,7 +1022,7 @@ function AppApi() {
                 <Button
                   size="small"
                   variant="outlined"
-                  onClick={() => {
+                  onClick={async () => {
                     const params = new URLSearchParams(window.location.search);
                     const compId = params.get('competitionId');
                     const api = window.electronAPI;
@@ -877,6 +1031,9 @@ function AppApi() {
                       console.error('electronAPI.navigateToApp is missing — desktop shell is out of date');
                       return;
                     }
+                    // Same drain as goHome: the other app opens the same
+                    // competition directory, so an owed write must land first.
+                    await flushPersistence();
                     void api.navigateToApp('map-corridors', compId)
                       .catch((err: unknown) => console.error('navigateToApp failed', err));
                   }}
@@ -1118,6 +1275,12 @@ function AppApi() {
             onSendToTP={session?.mode === 'turningpoint' ? undefined : handleSendCandidateToTP}
             onSlotDroppedIn={handleSlotDroppedToTray}
             hideSet2={isPrecision && session?.mode === 'track'}
+            // Tri-state for the thumbnail tier: a handle = read/persist thumbs
+            // in `photos/thumbs`; null = resolution failed, generate in memory
+            // only; undefined = still resolving (also right after a competition
+            // switch, thanks to the reset in the effect above) so thumbs wait
+            // instead of touching the wrong competition's directory.
+            photosDir={pmcSyncUnavailable ? null : (pmcPhotosDir ?? undefined)}
           />
           </Box>
         )}
@@ -1129,21 +1292,17 @@ function AppApi() {
             set2={session.sets.set2}
             loading={loading}
             error={error}
-            onFilesDropped={(setKey, files) => handleAddToSet(files, setKey)}
+            onFilesDropped={handleTurningPointFiles}
             /* Initial Rally drop can span 10-18 photos — distribute across
                both sets instead of overflowing set1 invisibly. Precision stays
                capped at 9 so single-set flow still applies. */
-            onInitialFilesDropped={isPrecision
-              ? (files) => handleAddToSet(files, 'set1')
-              : handleInitialTurningPointDrop}
-            onPhotoClick={handlePhotoClick}
+            onInitialFilesDropped={handleTurningPointInitialFiles}
+            onPhotoClick={handlePhotoClickStable}
             onPhotoUpdate={handlePhotoUpdate}
-            onPhotoRemove={handlePhotoRemove}
-            onPhotoMove={handlePhotoMove}
-            onCandidateDropped={(setKey, candidateId, slotIndex) =>
-              handleCandidateDropped(setKey)(candidateId, slotIndex)
-            }
-            onAddPlaceholder={addPlaceholderToSet ? (setKey, slotIndex) => { void addPlaceholderToSet(setKey, slotIndex); } : undefined}
+            onPhotoRemove={handlePhotoRemoveStable}
+            onPhotoMove={handlePhotoMoveStable}
+            onCandidateDropped={handleCandidateDroppedStable}
+            onAddPlaceholder={handleTurningPointAddPlaceholder}
             totalPhotoCount={stats.set1Photos + stats.set2Photos}
             isPrecision={isPrecision}
           />
@@ -1170,7 +1329,7 @@ function AppApi() {
                       </Typography>
                     </Box>
                     <GridSizedDropZone
-                      onFilesDropped={(files) => handleAddToSet(files, 'set1')}
+                      onFilesDropped={set1Handlers.onFilesDropped}
                       // Cap follows the layout, for precision too. The old
                       // precision-track exception advertised 10 in landscape on
                       // the strength of an auto-flip to portrait that was
@@ -1181,8 +1340,8 @@ function AppApi() {
                       loading={loading}
                       error={error}
                       setKey="set1"
-                      onCandidateDropped={(candidateId) => handleCandidateDropped('set1')(candidateId, 0)}
-                      onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
+                      onCandidateDropped={set1Handlers.onCandidateDroppedAtZero}
+                      onCrossSetDropRejected={handleCrossSetDropRejected}
                     />
                   </Paper>
                 ) : (
@@ -1201,15 +1360,13 @@ function AppApi() {
                       <PhotoGridApi
                         photoSet={session.sets.set1}
                         setKey="set1"
-                        onPhotoUpdate={(photoId, canvasState) =>
-                          handlePhotoUpdate('set1', photoId, canvasState)
-                        }
-                        onPhotoRemove={(photoId) => handlePhotoRemove('set1', photoId)}
-                        onPhotoClick={(photo) => handlePhotoClick(photo, 'set1')}
-                        onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set1', fromIndex, toIndex)}
-                        onFilesDropped={(files) => handleAddToSet(files, 'set1')}
-                        onCandidateDropped={handleCandidateDropped('set1')}
-                        onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
+                        onPhotoUpdate={set1Handlers.onPhotoUpdate}
+                        onPhotoRemove={set1Handlers.onPhotoRemove}
+                        onPhotoClick={set1Handlers.onPhotoClick}
+                        onPhotoMove={set1Handlers.onPhotoMove}
+                        onFilesDropped={set1Handlers.onFilesDropped}
+                        onCandidateDropped={set1Handlers.onCandidateDropped}
+                        onCrossSetDropRejected={handleCrossSetDropRejected}
                         // Render every photo the set actually holds. A set can
                         // legitimately carry 10 in landscape (the layout switch
                         // warns, then permits it), and the PDF prints all 10 as
@@ -1235,13 +1392,13 @@ function AppApi() {
                       </Typography>
                     </Box>
                     <GridSizedDropZone
-                      onFilesDropped={(files) => handleAddToSet(files, 'set2')}
+                      onFilesDropped={set2Handlers.onFilesDropped}
                       maxPhotos={layoutMode === 'portrait' ? 10 : 9}
                       loading={loading}
                       error={error}
                       setKey="set2"
-                      onCandidateDropped={(candidateId) => handleCandidateDropped('set2')(candidateId, 0)}
-                      onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
+                      onCandidateDropped={set2Handlers.onCandidateDroppedAtZero}
+                      onCrossSetDropRejected={handleCrossSetDropRejected}
                     />
                   </Paper>
                 ) : (
@@ -1261,15 +1418,13 @@ function AppApi() {
                         photoSet={session.sets.set2}
                         setKey="set2"
                         labelOffset={session.sets.set1.photos.length} // Continue sequence from Set 1
-                        onPhotoUpdate={(photoId, canvasState) =>
-                          handlePhotoUpdate('set2', photoId, canvasState)
-                        }
-                        onPhotoRemove={(photoId) => handlePhotoRemove('set2', photoId)}
-                        onPhotoClick={(photo) => handlePhotoClick(photo, 'set2')}
-                        onPhotoMove={(fromIndex, toIndex) => handlePhotoMove('set2', fromIndex, toIndex)}
-                        onFilesDropped={(files) => handleAddToSet(files, 'set2')}
-                        onCandidateDropped={handleCandidateDropped('set2')}
-                        onCrossSetDropRejected={() => setCrossSetHintOpen(true)}
+                        onPhotoUpdate={set2Handlers.onPhotoUpdate}
+                        onPhotoRemove={set2Handlers.onPhotoRemove}
+                        onPhotoClick={set2Handlers.onPhotoClick}
+                        onPhotoMove={set2Handlers.onPhotoMove}
+                        onFilesDropped={set2Handlers.onFilesDropped}
+                        onCandidateDropped={set2Handlers.onCandidateDropped}
+                        onCrossSetDropRejected={handleCrossSetDropRejected}
                         slotsOverride={set2Grid.slots}
                         columnsOverride={set2Grid.columns}
                       />
@@ -1336,6 +1491,7 @@ function AppApi() {
 
         {/* Action Buttons - Centered and Prominent */}
         <Paper elevation={1} sx={{ p: 4, mb: 4, borderRadius: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
           <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', flexWrap: 'wrap' }}>
             {/* The "Reset session" control was removed 2026-07-28. It was gated on
                 `sessionHookResult.resetSession`, which `useCompetitionSystem` has
@@ -1350,7 +1506,7 @@ function AppApi() {
               color="success"
               startIcon={<PictureAsPdf />}
               onClick={handleGeneratePDF}
-              disabled={stats.totalPhotos === 0}
+              disabled={stats.totalPhotos === 0 || pdfProgress !== null}
               size="large"
               data-tour="export"
               sx={{
@@ -1365,6 +1521,28 @@ function AppApi() {
             >
               {t('actions.generatePdf')}
             </Button>
+          </Box>
+
+          {/* Export progress. Only rendered while an export runs. The bar is
+              indeterminate until `generatePDF` reports a real photo total —
+              the seeded first tick has total 0, and a determinate bar at 0 %
+              reads as "stuck" rather than "starting". */}
+          {pdfProgress && (
+            <Box sx={{ width: '100%', maxWidth: 360 }} data-testid="pdf-progress">
+              <LinearProgress
+                variant={pdfProgress.total > 0 ? 'determinate' : 'indeterminate'}
+                value={pdfProgress.total > 0 ? (pdfProgress.done / pdfProgress.total) * 100 : 0}
+                sx={{ height: 6, borderRadius: 3 }}
+              />
+              <Typography variant="caption" sx={{ display: 'block', mt: 1, textAlign: 'center', color: 'text.secondary' }}>
+                {pdfProgress.phase === 'render'
+                  ? t('pdf.progress.rendering', { done: pdfProgress.done, total: pdfProgress.total })
+                  : pdfProgress.phase === 'compose'
+                    ? t('pdf.progress.composing')
+                    : t('pdf.progress.saving')}
+              </Typography>
+            </Box>
+          )}
           </Box>
         </Paper>
 
@@ -1416,13 +1594,7 @@ function AppApi() {
       {/* Photo Editor Modal */}
       <Modal
         open={!!selectedPhoto}
-        onClose={() => {
-          setSelectedPhoto(null);
-          // Immediately refresh session to sync grid with modal changes
-          if (supportsRefresh && refreshSession) {
-            refreshSession();
-          }
-        }}
+        onClose={closeModal}
         closeAfterTransition
         slots={{ backdrop: Backdrop }}
         slotProps={{
@@ -1449,166 +1621,25 @@ function AppApi() {
             flexDirection: 'column'
           }}>
             {selectedPhoto && (
-              <>
-
-
-                {/* In-modal tour trigger — highlights the editor controls in place. */}
-                <Tooltip title={t('tour.help.button')}>
-                  <IconButton
-                    size="small"
-                    onClick={startEditorTour}
-                    aria-label={t('tour.help.button')}
-                    data-tour="editor-help"
-                    sx={{ position: 'absolute', top: 8, right: 48, zIndex: 2, color: 'text.secondary' }}
-                  >
-                    <HelpOutline />
-                  </IconButton>
-                </Tooltip>
-                {/* Modal Content - L-Shape Layout: Photo top-left, Controls wrapping around */}
-                <Box data-tour="editor" sx={{
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                  height: '90vh', // Much taller content - utilizing saved header space
-                  maxHeight: '900px'
-                }}>
-                  {/* Top Row: Photo (left) + Right Controls */}
-                  <Box sx={{
-                    display: 'flex',
-                    flex: '1 1 55%', // Reduced to 55% to give more space to bottom
-                    overflow: 'hidden'
-                  }}>
-                    {/* Photo - Top Left */}
-                    <Box data-tour="editor-photo" sx={{
-                      flex: '1 1 65%', // Take 65% of width
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      bgcolor: 'grey.50',
-                      px: 4, // Horizontal padding
-                      py: 10 // Much more vertical padding above and below photo
-                    }}>
-                      <PhotoEditorApi
-                        photo={selectedPhoto.photo}
-                        label={selectedPhoto.label}
-                        onUpdate={(canvasState) =>
-                          handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
-                        }
-                        size="large"
-                        setKey={selectedPhoto.setKey}
-                        showOriginal={showOriginal}
-                        circleMode={circleMode}
-                        mode={session?.mode}
-                      />
-                      {/* Filename caption under the photo — screen only. */}
-                      {selectedPhoto.photo.filename && (
-                        <Typography
-                          variant="caption"
-                          title={selectedPhoto.photo.filename}
-                          sx={{
-                            mt: 1.5,
-                            fontFamily: 'monospace',
-                            color: 'text.secondary',
-                            userSelect: 'text',
-                            '@media print': { display: 'none' },
-                          }}
-                        >
-                          {selectedPhoto.photo.filename}
-                        </Typography>
-                      )}
-                      {/* Prev/next navigation within the same set/pool. Mirrors
-                          the ArrowLeft/ArrowRight keyboard shortcuts; hidden when
-                          the set has a single photo. Clamps at both ends. */}
-                      {modalPhotoList.length > 1 && (
-                        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <IconButton
-                            size="small"
-                            onClick={() => navigateModalPhoto(-1)}
-                            disabled={!canPrev}
-                            aria-label={t('modal.prevPhoto')}
-                            title={t('modal.prevPhoto')}
-                          >
-                            <ChevronLeft />
-                          </IconButton>
-                          <Typography variant="caption" color="text.secondary" sx={{ minWidth: 48, textAlign: 'center' }}>
-                            {modalIndex + 1} / {modalPhotoList.length}
-                          </Typography>
-                          <IconButton
-                            size="small"
-                            onClick={() => navigateModalPhoto(1)}
-                            disabled={!canNext}
-                            aria-label={t('modal.nextPhoto')}
-                            title={t('modal.nextPhoto')}
-                          >
-                            <ChevronRight />
-                          </IconButton>
-                        </Box>
-                      )}
-                    </Box>
-
-                    {/* Right Controls */}
-                    <Box sx={{
-                      flex: '0 0 35%', // Take 35% of width
-                      borderLeft: '1px solid',
-                      borderColor: 'divider',
-                      bgcolor: 'background.default',
-                      overflow: 'auto'
-                    }}>
-                      <PhotoControls
-                        photo={selectedPhoto.photo}
-                        label={selectedPhoto.label}
-                        onUpdate={(canvasState) =>
-                          handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
-                        }
-                        onClose={() => {
-                          setSelectedPhoto(null);
-                          // Immediately refresh session to sync grid with modal changes
-                          if (supportsRefresh && refreshSession) {
-                            refreshSession();
-                          }
-                        }}
-                        mode="compact-right"
-                        showOriginal={showOriginal}
-                        onToggleOriginal={() => setShowOriginal(!showOriginal)}
-                        circleMode={circleMode}
-                        onCircleModeToggle={() => setCircleMode(!circleMode)}
-                        onApplyToAll={supportsApplyToAll && applySettingToAll ? (setting, value) => applySettingToAll(setting, value) : undefined}
-                        onSyncLabelPositionToAll={supportsApplyLabelPositionToAll && applyLabelPositionToAll ? (position) => applyLabelPositionToAll(position) : undefined}
-                      />
-                    </Box>
-                  </Box>
-
-                  {/* Bottom Row: Controls spanning full width - Taller */}
-                  <Box sx={{
-                    flex: '0 0 38%', // Reduced to move cards down and give more space to photo
-                    borderTop: '1px solid',
-                    borderColor: 'divider',
-                    bgcolor: 'background.paper',
-                    overflow: 'auto'
-                  }}>
-                    <PhotoControls
-                      photo={selectedPhoto.photo}
-                      label={selectedPhoto.label}
-                      onUpdate={(canvasState) =>
-                        handlePhotoUpdate(selectedPhoto.setKey, selectedPhoto.photo.id, canvasState)
-                      }
-                      onClose={() => {
-                        setSelectedPhoto(null);
-                        // Immediately refresh session to sync grid with modal changes
-                        if (supportsRefresh && refreshSession) {
-                          refreshSession();
-                        }
-                      }}
-                      mode="sliders"
-                      showOriginal={showOriginal}
-                      onToggleOriginal={() => setShowOriginal(!showOriginal)}
-                      onApplyToAll={supportsApplyToAll && applySettingToAll ? (setting, value) => applySettingToAll(setting, value) : undefined}
-                    />
-                  </Box>
-                </Box>
-              </>
+              /* No `key` on purpose: keying by photo id would remount
+                 PhotoEditorApi on every prev/next, reloading the image and
+                 restarting its idle high-quality render. The live-preview
+                 overlay inside is id-keyed instead, so a stale one is ignored
+                 without a remount. */
+              <PhotoEditorModalBody
+                selected={selectedPhoto}
+                sessionMode={session?.mode}
+                onUpdate={handlePhotoUpdate}
+                onClose={closeModal}
+                modalIndex={modalIndex}
+                modalCount={modalPhotoList.length}
+                canPrev={canPrev}
+                canNext={canNext}
+                onNavigate={navigateModalPhoto}
+                onStartTour={startEditorTour}
+                applySettingToAll={supportsApplyToAll ? applySettingToAll : undefined}
+                applyLabelPositionToAll={supportsApplyLabelPositionToAll ? applyLabelPositionToAll : undefined}
+              />
             )}
           </Box>
         </Fade>

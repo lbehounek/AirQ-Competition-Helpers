@@ -327,6 +327,49 @@ describe('competitionService — candidate pool roundtrip', () => {
     expect(afterNames).toEqual(['c2']);
   });
 
+  // The candidate tray persists a thumbnail per photo at
+  // `photos/thumbs/{id}.jpg`. Deleting the photo has to take its thumb with it
+  // or every cleanup leaks ~20 KB per candidate — bytes that
+  // `estimateCompetitionSize` does not count, so nothing would ever surface them.
+  it('deletePhotosByIds also removes the photo thumbnails', async () => {
+    const { competitionService } = await import('../services/competitionService');
+    const created = await competitionService.createCompetition(
+      'ThumbCleanup',
+      makeSession({ candidates: [makePhoto('t1'), makePhoto('t2')] }),
+    );
+
+    const photosDir = { path: `/competitions/${created.id}/photos` } as DirectoryHandle;
+    await storageMock.savePhotoThumb(photosDir, 't1', new Blob(['thumb-1'], { type: 'image/jpeg' }));
+    await storageMock.savePhotoThumb(photosDir, 't2', new Blob(['thumb-2'], { type: 'image/jpeg' }));
+    expect(await storageMock.getPhotoThumb(photosDir, 't1')).not.toBeNull();
+
+    const result = await competitionService.deletePhotosByIds(created.id, ['t1']);
+
+    expect(result).toEqual({ failed: [] });
+    expect(await storageMock.getPhotoThumb(photosDir, 't1')).toBeNull();
+    // Untouched ids keep theirs.
+    expect(await storageMock.getPhotoThumb(photosDir, 't2')).not.toBeNull();
+  });
+
+  it('deletePhotosByIds does not report a failed thumb delete as a failed photo', async () => {
+    const { competitionService } = await import('../services/competitionService');
+    const created = await competitionService.createCompetition(
+      'ThumbBoom',
+      makeSession({ candidates: [makePhoto('t1')] }),
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    storageMock.deletePhotoThumb = (async () => {
+      throw new Error('simulated thumb delete error');
+    }) as typeof storageMock.deletePhotoThumb;
+
+    // The photo file itself was deleted, so the cleanup dialog must report
+    // success — it accounts for photo bytes, not thumbnail bytes.
+    const result = await competitionService.deletePhotosByIds(created.id, ['t1']);
+    expect(result).toEqual({ failed: [] });
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
   it('deletePhotosByIds is a safe no-op for an unknown competition id', async () => {
     const { competitionService } = await import('../services/competitionService');
     // Missing competition directory → treated as already-cleaned. `failed`

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 export type LayoutMode = 'landscape' | 'portrait';
 
@@ -61,10 +61,14 @@ export const LayoutModeProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return 'landscape';
   });
 
-  const layoutConfig: LayoutConfig = {
-    mode: layoutMode,
-    ...LAYOUT_CONFIGS[layoutMode]
-  };
+  // Memoized on the mode: PhotoGridApi reads `layoutConfig` directly, and this
+  // object was previously rebuilt on every provider render. Memoizing it also
+  // makes `getGridDimensions` below honestly declare its dependency (it used to
+  // close over a fresh object every render).
+  const layoutConfig = useMemo<LayoutConfig>(
+    () => ({ mode: layoutMode, ...LAYOUT_CONFIGS[layoutMode] }),
+    [layoutMode],
+  );
 
   const setLayoutMode = useCallback((mode: LayoutMode) => {
     setLayoutModeState(mode);
@@ -89,16 +93,13 @@ export const LayoutModeProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, [layoutConfig]);
 
+  const value = useMemo(
+    () => ({ layoutMode, layoutConfig, setLayoutMode, canSwitchToLandscape, getGridDimensions }),
+    [layoutMode, layoutConfig, setLayoutMode, canSwitchToLandscape, getGridDimensions],
+  );
+
   return (
-    <LayoutModeContext.Provider 
-      value={{
-        layoutMode,
-        layoutConfig,
-        setLayoutMode,
-        canSwitchToLandscape,
-        getGridDimensions
-      }}
-    >
+    <LayoutModeContext.Provider value={value}>
       {children}
     </LayoutModeContext.Provider>
   );

@@ -16,6 +16,8 @@ import {
   // Only `initStorage` — the service caches the returned instance on
   // `this.storage` and reads it from there; it never calls `getStorage()`.
   initStorage,
+  createSerialQueue,
+  type SerialQueue,
   type StorageInterface,
   type DirectoryHandle,
   type StorageHandles,
@@ -24,6 +26,19 @@ import {
 const COMPETITIONS_INDEX_FILE = 'competitions-index.json';
 const MAX_COMPETITIONS = 10;
 const MAX_AGE_DAYS = 30;
+
+/**
+ * How stale `competitions-index.json`'s `lastModified` may get before a save
+ * rewrites it anyway.
+ *
+ * WHY: the index carries only `name` / `lastModified` / `photoCount`. A canvas
+ * edit (brightness, zoom, circle radius — the entire slider hot path) changes
+ * NONE of them, so the read-modify-write of a second whole file on every save
+ * was pure overhead. Name and photoCount changes still write immediately; only
+ * `lastModified` is allowed to lag, by at most this long, and
+ * `flushPendingWrites()` catches it up at every navigation choke point.
+ */
+const INDEX_REFRESH_MS = 10_000;
 
 /**
  * The `{ set1, set2 }` pair shape. `ApiPhotoSession` spells it out inline
@@ -58,10 +73,55 @@ const countPersistedPhotos = (set: unknown): number => {
   return Array.isArray(photos) ? photos.length : 0;
 };
 
+/**
+ * Persistence for competitions, over OPFS (web) or the native filesystem
+ * (Electron) — both behind `StorageInterface`.
+ *
+ * WRITE-PATH INVARIANTS (see docs/PERSISTENCE.md). Every writer of
+ * `session.json` or `competitions-index.json` in this renderer goes through
+ * ONE FIFO `writeQueue`, because `StorageInterface.writeJSON` promises no
+ * ordering across overlapping calls and both files are whole-file snapshots.
+ *
+ *  1. PUBLIC mutators enqueue exactly once.
+ *  2. PRIVATE helpers (`getCompetitionsIndex`, `saveCompetitionsIndex`,
+ *     `writeSessionNow`, `writeIndexEntryNow`, `refreshIndexEntryIfNeeded`)
+ *     NEVER enqueue. Re-entering the queue from inside a queued task
+ *     deadlocks silently — the inner task waits on a tail that only completes
+ *     when the outer one returns.
+ *  3. Publish-before-enqueue: `updateCompetition` records the owed payload
+ *     synchronously, before its first `await`, so a caller firing during
+ *     `pagehide` has its snapshot registered even if the write never lands.
+ */
 export class CompetitionService {
   private storage: StorageInterface | null = null;
   private handles: StorageHandles | null = null;
   private competitionsDir: DirectoryHandle | null = null;
+
+  /**
+   * The one FIFO shared by every writer of `session.json` and
+   * `competitions-index.json`. Serializes; coalescing is this class's own
+   * policy, implemented with the three maps below.
+   */
+  private readonly writeQueue: SerialQueue = createSerialQueue();
+
+  /**
+   * Newest payload still owed per competition id, published BEFORE the task is
+   * enqueued. A burst of N saves therefore collapses to ONE write of the last
+   * snapshot: the first task drains the entry, the rest find it gone and
+   * no-op. `updatePhotos` is OR-accumulated so a coalesced write never skips
+   * photo bytes an earlier call in the burst asked for.
+   */
+  private pendingSessionWrites = new Map<string, { competition: Competition; updatePhotos: boolean }>();
+
+  /**
+   * What THIS service last wrote into the index for an id. Drives the
+   * "does the index actually need rewriting?" decision without reading the
+   * file back on every save.
+   */
+  private indexTouch = new Map<string, { name: string; photoCount: number; writtenAt: number }>();
+
+  /** Ids whose index `lastModified` was skipped and is still owed. */
+  private indexDirty = new Set<string>();
 
   async initialize(): Promise<void> {
     this.storage = await initStorage();
@@ -217,25 +277,26 @@ export class CompetitionService {
     // Save photos to competition directory
     await this.saveSessionPhotos(session, photosDir);
 
-    // Update index
-    const index = await this.getCompetitionsIndex();
-    console.log('createCompetition: index before update has', index.competitions.length, 'entries');
-    const metadata: CompetitionMetadata = {
-      id: competition.id,
-      name: competition.name,
-      createdAt: competition.createdAt,
-      lastModified: competition.lastModified,
-      photoCount: competition.photoCount,
-      isActive: true // New competition becomes active
-    };
+    // Update index — through the write queue, so a save still in flight for
+    // another competition cannot read-modify-write over our new entry.
+    await this.writeQueue(async () => {
+      const index = await this.getCompetitionsIndex();
+      const metadata: CompetitionMetadata = {
+        id: competition.id,
+        name: competition.name,
+        createdAt: competition.createdAt,
+        lastModified: competition.lastModified,
+        photoCount: competition.photoCount,
+        isActive: true // New competition becomes active
+      };
 
-    // Set all others to inactive
-    index.competitions.forEach(comp => comp.isActive = false);
-    index.competitions.push(metadata);
-    index.activeCompetitionId = id;
+      // Set all others to inactive
+      index.competitions.forEach(comp => comp.isActive = false);
+      index.competitions.push(metadata);
+      index.activeCompetitionId = id;
 
-    console.log('createCompetition: index after update has', index.competitions.length, 'entries');
-    await this.saveCompetitionsIndex(index);
+      await this.saveCompetitionsIndex(index);
+    });
     return competition;
   }
 
@@ -282,9 +343,81 @@ export class CompetitionService {
     }
   }
 
+  /**
+   * Persist a competition. Signature unchanged; the BEHAVIOUR is now
+   * coalescing and serialized (see the class-head invariants).
+   *
+   * A burst of saves for the same id — a slider drag, a pan, an apply-to-all
+   * fan-out — collapses into ONE `session.json` write carrying the newest
+   * snapshot. Every call still resolves only once the write that superseded
+   * it has settled, so `await updateCompetition(...)` keeps meaning "it is on
+   * disk" and existing callers need no change.
+   *
+   * Returns nothing; rejects with the underlying storage error when the write
+   * that ran for this call failed. A call whose payload was superseded before
+   * its task ran resolves without writing anything.
+   */
   async updateCompetition(competition: Competition, options?: { updatePhotos?: boolean }): Promise<void> {
-    await this.ensureInitialized();
+    const id = competition.id;
+    const prev = this.pendingSessionWrites.get(id);
+    // Everything up to the enqueue is synchronous on purpose: a `pagehide`
+    // caller must have its payload OWED before the first await, so a later
+    // `flushPendingWrites()` can still find and write it.
+    const mine = {
+      competition,
+      // OR-accumulate: if any coalesced call in this burst wanted photo bytes
+      // written, the single surviving write must write them.
+      updatePhotos: Boolean(options?.updatePhotos) || Boolean(prev?.updatePhotos),
+    };
+    this.pendingSessionWrites.set(id, mine);
 
+    await this.writeQueue(async () => {
+      await this.ensureInitialized();
+      const pending = this.pendingSessionWrites.get(id);
+      // Nothing owed: an earlier task in this burst already wrote the newest
+      // snapshot on our behalf (or the competition was deleted meanwhile).
+      if (!pending) return;
+
+      await this.writeSessionNow(pending.competition, pending.updatePhotos);
+      // Clear only on success AND identity — a newer publish that landed while
+      // we were writing stays owed and is picked up by the next task.
+      if (this.pendingSessionWrites.get(id) === pending) {
+        this.pendingSessionWrites.delete(id);
+      }
+      await this.refreshIndexEntryIfNeeded(pending.competition);
+    });
+  }
+
+  /**
+   * Forget the payload still owed for `competition`, but ONLY while it is
+   * still exactly that snapshot.
+   *
+   * Returns true when a payload was dropped, false when nothing was owed or a
+   * newer publish had already superseded it.
+   *
+   * WHY: `updateCompetition` deliberately keeps a FAILED payload owed so a
+   * later `flushPendingWrites` can retry it. That is right for a caller that
+   * kept the edit — but the editor hook ROLLS BACK on a failed persist and
+   * tells the user the edit was not saved. Without this escape hatch the next
+   * flush (tab hidden, pagehide, competition switch, goHome) would write the
+   * rolled-back edit to disk anyway, and it would reappear after a reload.
+   *
+   * The identity check is the whole safety of it: under coalescing a newer
+   * call may already have replaced the owed payload, and that newer state must
+   * survive — the roll-back only speaks for the snapshot it published itself.
+   */
+  discardPendingWrite(competition: Competition): boolean {
+    const pending = this.pendingSessionWrites.get(competition.id);
+    if (!pending || pending.competition !== competition) return false;
+    this.pendingSessionWrites.delete(competition.id);
+    return true;
+  }
+
+  /**
+   * Write one competition's `session.json` (and, when asked, its photo
+   * bytes). Never enqueues — it is only ever called from inside a queued task.
+   */
+  private async writeSessionNow(competition: Competition, updatePhotos: boolean): Promise<void> {
     const competitionDir = await this.storage!.getDirectoryHandle(
       this.competitionsDir!,
       competition.id,
@@ -301,24 +434,146 @@ export class CompetitionService {
     await this.storage!.writeJSON(competitionDir, 'session.json', sanitizedSession);
 
     // Only update photos if explicitly requested (e.g., when photos actually changed)
-    if (options?.updatePhotos) {
+    if (updatePhotos) {
       await this.saveSessionPhotos(competition.session, photosDir);
     }
+  }
 
-    // Update metadata in index
+  /**
+   * Rewrite this competition's index entry — but only when it would actually
+   * say something new, or when its `lastModified` has gone stale.
+   *
+   * Returns nothing. Marks the id dirty FIRST so that a skipped (or failed)
+   * write leaves `flushPendingWrites()` a note to catch up later; the mark is
+   * cleared again only once the entry really has been written. Never enqueues.
+   */
+  private async refreshIndexEntryIfNeeded(competition: Competition): Promise<void> {
+    const id = competition.id;
+    const photoCount = this.calculatePhotoCount(competition.session);
+    const now = Date.now();
+    const touch = this.indexTouch.get(id);
+
+    this.indexDirty.add(id);
+
+    const needsWrite = !touch
+      || touch.name !== competition.name
+      || touch.photoCount !== photoCount
+      || now - touch.writtenAt >= INDEX_REFRESH_MS;
+    if (!needsWrite) return;
+
+    await this.writeIndexEntryNow(id, {
+      name: competition.name,
+      photoCount,
+      lastModified: new Date(now).toISOString(),
+    });
+    this.indexTouch.set(id, { name: competition.name, photoCount, writtenAt: now });
+    this.indexDirty.delete(id);
+  }
+
+  /**
+   * Patch one entry of `competitions-index.json` in place (read → splice →
+   * write). A missing entry is a no-op: the competition was deleted, or the
+   * index was rebuilt without it. Never enqueues.
+   */
+  private async writeIndexEntryNow(
+    id: string,
+    patch: Pick<CompetitionMetadata, 'name' | 'photoCount' | 'lastModified'>
+  ): Promise<void> {
     const index = await this.getCompetitionsIndex();
-    const metadataIndex = index.competitions.findIndex(c => c.id === competition.id);
+    const metadataIndex = index.competitions.findIndex(c => c.id === id);
+    if (metadataIndex < 0) return;
 
-    if (metadataIndex >= 0) {
-      index.competitions[metadataIndex] = {
-        ...index.competitions[metadataIndex],
-        name: competition.name,
-        lastModified: new Date().toISOString(),
-        photoCount: this.calculatePhotoCount(competition.session)
-      };
+    index.competitions[metadataIndex] = { ...index.competitions[metadataIndex], ...patch };
+    await this.saveCompetitionsIndex(index);
+  }
 
-      await this.saveCompetitionsIndex(index);
-    }
+  /**
+   * Drain everything still owed: first retry session payloads left behind by
+   * FAILED writes, then apply the index `lastModified` patches that the
+   * throttle skipped.
+   *
+   * Best-effort but honest — per-entry isolation means one competition's
+   * failure never blocks the others, and the FIRST error is rethrown once the
+   * whole pass is done. A `NotFoundError` (the competition directory is gone)
+   * drops that payload for good rather than retrying it forever.
+   *
+   * Returns nothing. Fired at every navigation choke point: pagehide,
+   * visibility-hidden, desktop goHome / switch-app, and before
+   * create / switch / delete / mode-switch.
+   */
+  async flushPendingWrites(): Promise<void> {
+    await this.writeQueue(async () => {
+      await this.ensureInitialized();
+      let firstError: unknown;
+      // What the retry loop below actually landed on disk, per id. The payload
+      // is dropped from `pendingSessionWrites` the moment it is written, so
+      // without this note the index loop would fall back to `indexTouch` — the
+      // values of the last SUCCESSFUL index write, which PREDATE the payload
+      // just flushed. A rename or a photo added by the retried write would then
+      // be patched away again (and, with no `indexTouch` at all, the id would be
+      // dropped from `indexDirty` and never refreshed).
+      const written = new Map<string, { name: string; photoCount: number }>();
+
+      // Snapshot the maps: the loops below await, and a concurrent publish may
+      // add entries we must not visit twice in this pass.
+      for (const [id, pending] of [...this.pendingSessionWrites]) {
+        try {
+          await this.writeSessionNow(pending.competition, pending.updatePhotos);
+          if (this.pendingSessionWrites.get(id) === pending) {
+            this.pendingSessionWrites.delete(id);
+          }
+          written.set(id, {
+            name: pending.competition.name,
+            photoCount: this.calculatePhotoCount(pending.competition.session),
+          });
+          // The session file moved; its index entry is now behind.
+          this.indexDirty.add(id);
+        } catch (err) {
+          if ((err as { name?: string } | null)?.name === 'NotFoundError') {
+            // The directory is gone — this payload can never be written.
+            this.pendingSessionWrites.delete(id);
+            this.indexDirty.delete(id);
+            this.indexTouch.delete(id);
+          }
+          firstError ??= err;
+        }
+      }
+
+      for (const id of [...this.indexDirty]) {
+        try {
+          const touch = this.indexTouch.get(id);
+          const pending = this.pendingSessionWrites.get(id);
+          // Newest truth first: a payload still owed (one the retry loop failed
+          // on, or a publish that landed mid-pass), then what the retry loop
+          // just wrote, and only then the last index write. With none of the
+          // three there is nothing to say.
+          const fresh = pending
+            ? {
+                name: pending.competition.name,
+                photoCount: this.calculatePhotoCount(pending.competition.session),
+              }
+            : written.get(id);
+          const name = fresh?.name ?? touch?.name;
+          const photoCount = fresh?.photoCount ?? touch?.photoCount;
+          if (name === undefined || photoCount === undefined) {
+            this.indexDirty.delete(id);
+            continue;
+          }
+          const now = Date.now();
+          await this.writeIndexEntryNow(id, {
+            name,
+            photoCount,
+            lastModified: new Date(now).toISOString(),
+          });
+          this.indexTouch.set(id, { name, photoCount, writtenAt: now });
+          this.indexDirty.delete(id);
+        } catch (err) {
+          firstError ??= err;
+        }
+      }
+
+      if (firstError) throw firstError;
+    });
   }
 
   /**
@@ -369,77 +624,102 @@ export class CompetitionService {
         console.warn(`deletePhotosByIds: failed to delete ${id}:`, err);
         failed.push(id);
       }
+      // Tray thumbnails live at `photos/thumbs/{id}.jpg` (written by the
+      // candidate thumbnail tier and by map-corridors' import). Best-effort and
+      // deliberately NOT counted in `failed`: the cleanup dialog reports how
+      // much PHOTO storage was reclaimed, and a stranded ~20 KB thumb must not
+      // make a successful photo delete look like a failure. `deletePhotoThumb`
+      // is already idempotent for a missing thumb / missing `thumbs/` dir.
+      try {
+        await this.storage!.deletePhotoThumb(photosDir, id);
+      } catch (err) {
+        console.warn(`deletePhotosByIds: thumb delete failed for ${id}:`, err);
+      }
     }
     return { failed };
   }
 
   async deleteCompetition(id: string): Promise<void> {
-    await this.ensureInitialized();
+    await this.writeQueue(async () => {
+      await this.ensureInitialized();
 
-    try {
-      // Delete competition directory by clearing it and then removing
-      const competitionDir = await this.storage!.getDirectoryHandle(
-        this.competitionsDir!,
-        id,
-        { create: false }
-      );
-
-      // Clear the directory contents first
-      await this.storage!.clearDirectory(competitionDir);
-
-      // Note: For OPFS, we need to use a different approach
-      // The storage abstraction handles directory deletion
-      // For now, we'll use the parent to remove the entry
       try {
-        // Try to get competitions directory entries and remove
-        const entries = await this.storage!.listDirectory(this.competitionsDir!);
-        if (entries.find(e => e.name === id && e.isDirectory)) {
-          // Use a workaround: re-get the directory and clear it
-          // The directory should be empty now, attempting removal
-          // For OPFS this requires removeEntry on parent
-          // For Electron this is handled by the IPC
+        // Delete competition directory by clearing it and then removing
+        const competitionDir = await this.storage!.getDirectoryHandle(
+          this.competitionsDir!,
+          id,
+          { create: false }
+        );
 
-          // This is a limitation of the abstraction - we need direct parent access
-          // For now, just ensure it's empty which effectively "deletes" it
+        // Clear the directory contents first
+        await this.storage!.clearDirectory(competitionDir);
+
+        // Tombstone, INSIDE the queued task: FIFO guarantees every earlier task
+        // for this id has already finished, and any task enqueued after us finds
+        // nothing owed and no-ops. Dropping these outside the task would let a
+        // queued stale snapshot re-create session.json in a deleted directory.
+        this.pendingSessionWrites.delete(id);
+        this.indexDirty.delete(id);
+        this.indexTouch.delete(id);
+
+        // Note: For OPFS, we need to use a different approach
+        // The storage abstraction handles directory deletion
+        // For now, we'll use the parent to remove the entry
+        try {
+          // Try to get competitions directory entries and remove
+          const entries = await this.storage!.listDirectory(this.competitionsDir!);
+          if (entries.find(e => e.name === id && e.isDirectory)) {
+            // Use a workaround: re-get the directory and clear it
+            // The directory should be empty now, attempting removal
+            // For OPFS this requires removeEntry on parent
+            // For Electron this is handled by the IPC
+
+            // This is a limitation of the abstraction - we need direct parent access
+            // For now, just ensure it's empty which effectively "deletes" it
+          }
+        } catch {
+          // Ignore errors during cleanup
         }
-      } catch {
-        // Ignore errors during cleanup
-      }
 
-      // Update index
-      const index = await this.getCompetitionsIndex();
-      index.competitions = index.competitions.filter(c => c.id !== id);
+        // Update index
+        const index = await this.getCompetitionsIndex();
+        index.competitions = index.competitions.filter(c => c.id !== id);
 
-      // If this was the active competition, set another as active
-      if (index.activeCompetitionId === id) {
-        index.activeCompetitionId = index.competitions.length > 0 ? index.competitions[0].id : null;
-        if (index.competitions.length > 0) {
-          index.competitions[0].isActive = true;
+        // If this was the active competition, set another as active
+        if (index.activeCompetitionId === id) {
+          index.activeCompetitionId = index.competitions.length > 0 ? index.competitions[0].id : null;
+          if (index.competitions.length > 0) {
+            index.competitions[0].isActive = true;
+          }
         }
-      }
 
-      await this.saveCompetitionsIndex(index);
-    } catch (error) {
-      console.error('Failed to delete competition:', error);
-      throw new Error(`Failed to delete competition: ${id}`);
-    }
+        await this.saveCompetitionsIndex(index);
+      } catch (error) {
+        console.error('Failed to delete competition:', error);
+        throw new Error(`Failed to delete competition: ${id}`);
+      }
+    });
   }
 
   async setActiveCompetition(id: string): Promise<void> {
-    const index = await this.getCompetitionsIndex();
+    // Queued: this is a read-modify-write of competitions-index.json, the same
+    // file `refreshIndexEntryIfNeeded` patches, so it must not interleave.
+    await this.writeQueue(async () => {
+      const index = await this.getCompetitionsIndex();
 
-    // Set all to inactive
-    index.competitions.forEach(comp => comp.isActive = false);
+      // Set all to inactive
+      index.competitions.forEach(comp => comp.isActive = false);
 
-    // Set target as active
-    const target = index.competitions.find(c => c.id === id);
-    if (target) {
-      target.isActive = true;
-      index.activeCompetitionId = id;
-      await this.saveCompetitionsIndex(index);
-    } else {
-      throw new Error(`Competition not found: ${id}`);
-    }
+      // Set target as active
+      const target = index.competitions.find(c => c.id === id);
+      if (target) {
+        target.isActive = true;
+        index.activeCompetitionId = id;
+        await this.saveCompetitionsIndex(index);
+      } else {
+        throw new Error(`Competition not found: ${id}`);
+      }
+    });
   }
 
   async getActiveCompetition(): Promise<Competition | null> {

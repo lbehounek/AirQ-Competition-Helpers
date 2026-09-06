@@ -1,7 +1,7 @@
 /**
  * Pure A4-landscape grid math for the rally turning-point PDF page
  * (feedback 2026-05-03 — landscape page renders 5×2 when a set has >= 10
- * photos, else 3×3). Extracted from `pdfGenerator.calculateLayout` so the
+ * photos, else 3×3). Extracted from `pdfGeneratorImpl.calculateLayout` so the
  * grid-selection boundary, the per-photo dimensions, and the centering
  * arithmetic can be unit-tested without spawning the React PDF renderer.
  *

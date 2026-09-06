@@ -2,6 +2,13 @@
  * CandidateTray — slotless workspace pool of photos the user is still
  * triaging. See docs/CANDIDATE_PHOTOS.md.
  *
+ * Thumbs are SOURCE-photo previews served by the thumbnail tier
+ * (`utils/candidateThumbs.ts`, persisted at `photos/thumbs/{id}.jpg` through
+ * `StorageInterface`); a candidate's adjustments are visible in the editor
+ * modal only. `PhotoEditorApi` is deliberately NOT mounted here: one
+ * full-resolution decode, two 600 px canvases, a window pointermove + keydown
+ * listener and a 3 s idle timer PER CANDIDATE was the tray's dominant cost.
+ *
  * Drag/drop wire format (shared with PhotoGridApi):
  *   application/x-airq-photo = JSON.stringify({ kind: 'tray', photoId })   ← drag source
  *                            | JSON.stringify({ kind: 'slot', setKey, index, photoId }) ← drop target
@@ -30,12 +37,13 @@ import {
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { useTheme, alpha } from '@mui/material/styles';
-import { PhotoEditorApi } from './PhotoEditorApi';
+import { CandidateThumbImage } from './CandidateThumbImage';
 import { useI18n } from '../contexts/I18nContext';
 import { isValidImageFile } from '../utils/imageProcessing';
 import { filterCandidates, countByFlag } from '../utils/candidateFilter';
 import { isPickFlag } from '@airq/shared-handoff';
 import { parseDragPayload, serializeDragPayload, DRAG_PAYLOAD_MIME } from '../utils/dragPayload';
+import type { DirectoryHandle } from '@airq/shared-storage';
 import type { ApiPhoto, CandidateFlag } from '../types/api';
 
 // Pick (star) / reject (block) flagging in the candidate tray is intentionally
@@ -67,6 +75,19 @@ export interface CandidateTrayProps {
   onSlotDroppedIn: (payload: { setKey: 'set1' | 'set2'; photoId: string }) => void;
   /** Hide "Send to Set 2" in the context menu (precision-track single-set mode). */
   hideSet2?: boolean;
+  /**
+   * Competition photos dir (`competitions/{compId}/photos`); tray thumbs are
+   * persisted in its `thumbs/` subdir. TRI-STATE:
+   *   `undefined` — still resolving (thumbs wait, no I/O). AppApi passes this
+   *     while `pmcPhotosDir` is null and `pmcSyncUnavailable` is false, which
+   *     includes the window right after a competition switch — generating then
+   *     would write into the PREVIOUS competition's `thumbs/`.
+   *   `null` — resolution failed: thumbs are generated in memory only.
+   *   a handle — normal operation.
+   * Required (not optional) so a caller cannot silently leave every thumb
+   * stuck in the waiting state.
+   */
+  photosDir: DirectoryHandle | null | undefined;
 }
 
 const THUMB_WIDTH = 144;
@@ -82,6 +103,7 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
   onSendToTP,
   onSlotDroppedIn,
   hideSet2,
+  photosDir,
 }) => {
   const theme = useTheme();
   const { t } = useI18n();
@@ -315,10 +337,15 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
             <CandidateThumb
               key={photo.id}
               photo={photo}
+              photosDir={photosDir}
               hideSet2={hideSet2}
               onClick={() => onPhotoClick(photo)}
               onDragStart={(e) => handleThumbDragStart(e, photo)}
               onSetFlag={(flag) => onSetFlag(photo.id, flag)}
+              // Dropping the cached thumb + bumping its epoch is NOT done here:
+              // it belongs to every delete path (this button, the cleanup
+              // dialog, clear-all), so `useCompetitionSystem` does it for all
+              // of them. See `removeCandidate` / `deleteCandidates`.
               onDelete={() => onDelete(photo.id)}
               onSendToSet={(setKey) => onSendToSet(photo.id, setKey)}
               onSendToTP={onSendToTP ? () => onSendToTP(photo.id) : undefined}
@@ -364,6 +391,8 @@ const CountChip: React.FC<CountChipProps> = ({ count, icon, color }) => {
 
 interface CandidateThumbProps {
   photo: ApiPhoto;
+  /** Tri-state competition photos dir — see `CandidateTrayProps.photosDir`. */
+  photosDir: DirectoryHandle | null | undefined;
   hideSet2?: boolean;
   onClick: () => void;
   onDragStart: (e: React.DragEvent) => void;
@@ -372,8 +401,17 @@ interface CandidateThumbProps {
   onSendToSet: (setKey: 'set1' | 'set2') => void;
   onSendToTP?: () => void;
 }
-const CandidateThumb: React.FC<CandidateThumbProps> = ({
+/**
+ * One candidate thumbnail. Memoized so a tray-level re-render (a flag filter
+ * change, a new candidate arriving) doesn't re-render every existing thumb.
+ * NOTE: the parent still passes inline arrows for the toolbar callbacks, so
+ * this memo only bites once those are stabilized. The image itself is already
+ * protected independently — `CandidateThumbImage` is memoized on the fields
+ * the picture depends on, so a flag/label update never re-renders the <img>.
+ */
+const CandidateThumb = React.memo(function CandidateThumb({
   photo,
+  photosDir,
   hideSet2,
   onClick,
   onDragStart,
@@ -381,7 +419,7 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
   onDelete,
   onSendToSet,
   onSendToTP,
-}) => {
+}: CandidateThumbProps) {
   const theme = useTheme();
   const { t } = useI18n();
   const flag: CandidateFlag = (photo.flag as CandidateFlag | undefined) ?? 'neutral';
@@ -456,8 +494,8 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
       }}
     >
       {/* Image area — click opens the edit modal. pointerEvents on the inner
-          editor are disabled so the parent's drag/click handlers receive
-          events instead. */}
+          image wrapper are disabled so the parent's drag/click handlers
+          receive the events instead of the <img>. */}
       <Box
         onClick={onClick}
         sx={{
@@ -468,13 +506,7 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
         }}
       >
         <Box sx={{ width: '100%', height: '100%', pointerEvents: 'none' }}>
-          <PhotoEditorApi
-            key={photo.id}
-            photo={photo}
-            label=""
-            onUpdate={() => { /* persisted via parent's updateCandidatePhotoState */ }}
-            size="grid"
-          />
+          <CandidateThumbImage photo={photo} photosDir={photosDir} />
         </Box>
       </Box>
 
@@ -581,4 +613,4 @@ const CandidateThumb: React.FC<CandidateThumbProps> = ({
       </Box>
     </Box>
   );
-};
+});
