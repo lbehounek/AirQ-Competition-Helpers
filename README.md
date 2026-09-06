@@ -85,6 +85,9 @@ Make sure to configure `deploy.conf` based on your environment.
   developer reference for the map ↔ editor feature.
 - [User stories](./docs/photo-map-culling/user-stories.md) ·
   [Design decisions (ADRs)](./docs/photo-map-culling/decisions.md)
+- [Corridor TP-skip investigation](./docs/CORRIDOR_TP_SKIP.md) — open bug: how
+  KML/GPX parsing and turning-point detection work, and the four reproduced
+  causes of a corridor joining two non-consecutive turning points.
 - [CHANGELOG](./CHANGELOG.md) — what shipped in each desktop release.
 
 ## Notes on authorship
