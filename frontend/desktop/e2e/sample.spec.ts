@@ -18,6 +18,23 @@ function sessionPhotoCount(file: string): number {
   }
 }
 
+/**
+ * Ask the main process for the competition index through the very IPC channel
+ * the gate wraps (`competition-list`) and return the ids it reports.
+ *
+ * Returns `[]` when the preload bridge is missing, which fails the callers'
+ * `toContain` assertion loudly rather than throwing an opaque evaluate error.
+ */
+async function listCompetitionIds(page: LaunchedApp['page']): Promise<string[]> {
+  return page.evaluate(async () => {
+    const api = (window as unknown as {
+      electronAPI?: { competitions?: { list?: () => Promise<{ competitions?: { id: string }[] }> } };
+    }).electronAPI;
+    const index = await api?.competitions?.list?.();
+    return (index?.competitions || []).map(c => c.id);
+  });
+}
+
 // Verifies the bundled sample competition is PRELOADED on launch (main.js
 // ensureSampleCompetition) and shows up in the launcher's competition list as a
 // normal, clearly-marked competition. Runs only when a sample is bundled (the
@@ -41,8 +58,36 @@ test('preloaded sample competition appears in the launcher (when a sample is bun
   });
   test.skip(!sampleAvailable, 'no sample bundled in this build');
 
+  // --- The `afterSample` gate contract (main.js) -------------------------
+  // The sample is copied in the BACKGROUND after the window opens, so the
+  // handful of IPC channels that OBSERVE the competitions index await that
+  // copy. The property under test is NOT "the sample eventually shows up"
+  // (a poll would pass with the gate removed whenever the copy happens to win
+  // the race) but "no list call can observe an index without the sample".
+  //
+  // So: one call, no poll, no retry. With the gate this holds however slow the
+  // disk is; without it the call races the multi-megabyte copy.
+  expect(await listCompetitionIds(page)).toContain('sample-plasy-blue');
+
+  // `storage-init` is the first call every sub-app makes, and it is gated for
+  // the same reason (photo-helper's CompetitionService rewrites an index that
+  // only LOOKS empty, which would persist the sample away).
+  //
+  // Honest scope: this pair of lines does NOT prove that gate. `storage-init`
+  // only creates directories and returns paths — it never reads the index — so
+  // the re-list below goes back through the still-gated `competition-list` and
+  // would pass even with `afterSample` stripped from init. The init wiring is
+  // pinned by `__tests__/sampleGate.test.js`; what this adds here is only that
+  // an init between two lists does not disturb the sample.
+  await page.evaluate(async () => {
+    const api = (window as unknown as { electronAPI?: { storage?: { init?: () => Promise<unknown> } } }).electronAPI;
+    await api?.storage?.init?.();
+  });
+  expect(await listCompetitionIds(page)).toContain('sample-plasy-blue');
+
   // The launcher lists competitions in #competition-select; the preloaded sample
-  // is marked VZOR / SAMPLE.
+  // is marked VZOR / SAMPLE. This only waits for the renderer to paint the
+  // option — the copy itself is already done (the gated call above awaited it).
   await expect(page.locator('#competition-select')).toBeVisible();
   await expect.poll(async () =>
     page.locator('#competition-select option').filter({ hasText: /VZOR|SAMPLE/ }).count(),

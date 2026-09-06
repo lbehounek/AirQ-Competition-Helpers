@@ -85,6 +85,12 @@ protocol.registerSchemesAsPrivileged([
 // Keep a global reference of the window object
 let mainWindow;
 
+// Settles once the bundled sample competition is in the competitions index (or
+// the copy failed, or no sample is bundled at all). It starts RESOLVED so a
+// gated IPC handler that fires before `startSampleCompetition()` — or after it
+// threw — can never hang. `ensureSampleCompetition` never rejects by contract.
+let sampleReady = Promise.resolve('none');
+
 // Determine if we're in development or production
 const isDev = !app.isPackaged;
 
@@ -96,7 +102,17 @@ function getResourcePath() {
   return path.join(process.resourcesPath);
 }
 
-// Resolve app:// URL to local file path
+/**
+ * Resolve an `app://` URL to an absolute path on disk.
+ *
+ * Returns the file path to serve, or `null` when the request is for a build
+ * asset under `<app>/assets/` that does not exist — the caller turns that into
+ * a 404 (see `setupProtocol`). Every other miss inside a sub-app falls back to
+ * that app's index.html so client-side routes keep working.
+ *
+ * @param {string} requestUrl the full `app://…` request URL
+ * @returns {string|null} absolute file path, or null for a missing build asset
+ */
 function resolveAppUrl(requestUrl) {
   let url = requestUrl.replace('app://', '');
   url = url.split('?')[0].split('#')[0];
@@ -134,10 +150,18 @@ function resolveAppUrl(requestUrl) {
     filePath = path.join(resolvedBase, 'index.html');
   }
 
-  // SPA fallback: if file doesn't exist, serve the app's index.html
+  // SPA fallback: if the file doesn't exist, serve the app's index.html so
+  // client-side routes resolve.
+  //
+  // EXCEPT under `<app>/assets/`, where Vite's content-hashed bundles live: a
+  // missing chunk there means a stale cached index.html is asking for a file we
+  // renamed in a later build. Handing it index.html answers a <script src> with
+  // HTML and a 200, and the renderer dies on "Unexpected token '<'" — a symptom
+  // that points nowhere near the real cause. Fail loudly with a 404 instead.
   if (url.startsWith('photo-helper/') || url.startsWith('map-corridors/')) {
+    const appName = url.startsWith('photo-helper/') ? 'photo-helper' : 'map-corridors';
     try { fs.statSync(filePath); } catch {
-      const appName = url.startsWith('photo-helper/') ? 'photo-helper' : 'map-corridors';
+      if (url.startsWith(`${appName}/assets/`)) return null;
       filePath = isDev
         ? path.join(resourcePath, appName, 'dist', 'index.html')
         : path.join(resourcePath, appName, 'index.html');
@@ -155,6 +179,13 @@ function setupProtocol() {
   protocol.handle('app', async (request) => {
     try {
       const filePath = resolveAppUrl(request.url);
+      // `null` = a missing file under `<app>/assets/`; see resolveAppUrl. Serve
+      // a real 404 rather than the SPA index.html, so a stale asset reference
+      // fails as a missing script instead of as broken JS.
+      if (filePath === null) {
+        console.warn(`Protocol handler: missing build asset ${request.url}`);
+        return new Response('Not Found', { status: 404 });
+      }
       const fileUrl = pathToFileURL(filePath).href;
       const original = await net.fetch(fileUrl);
       // Copy response but add our headers
@@ -240,7 +271,8 @@ function createWindow() {
 }
 
 // Handle navigation between apps
-safeHandle('navigate-to-app', async (event, appName, competitionId) => {
+// Gated on `sampleReady`: reads the index for the discipline query string.
+safeHandle('navigate-to-app', afterSample(async (event, appName, competitionId) => {
   let qs = competitionId ? `?competitionId=${encodeURIComponent(competitionId)}` : '';
   if (competitionId) {
     const index = readCompetitionsIndex();
@@ -270,7 +302,7 @@ safeHandle('navigate-to-app', async (event, appName, competitionId) => {
   } else if (appName === 'home') {
     mainWindow.loadURL('app://home/index.html');
   }
-});
+}));
 
 // Handle going back to home
 safeHandle('go-home', () => {
@@ -391,6 +423,27 @@ function safeHandle(channel, fn) {
   });
 }
 
+// Gate a handler on the background sample copy (see `sampleReady`). Wrap ONLY
+// the channels that OBSERVE the competitions index or the `.sample-pending`
+// marker, so the rest of the IPC surface stays instant:
+//   - `storage-init` is the first call every sub-app makes (photo-helper's
+//     CompetitionService.initialize → storage.init; map-corridors'
+//     ElectronStorage.init), and photo-helper rewrites an index that looks
+//     empty, so it must not run before the sample is in it.
+//   - `competition-list` is the first call the launcher makes
+//     (renderer/app.js) and what map-corridors' App.tsx calls directly at mount.
+// The wait is zero in release builds, which bundle no sample.
+//
+// RULE: any new IPC handler that reads competitions-index.json or the
+// `.sample-pending` marker must be wrapped in `afterSample` too, or it can
+// observe an index without the sample.
+function afterSample(fn) {
+  return async (event, ...args) => {
+    await sampleReady;
+    return fn(event, ...args);
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Bundled sample competition (optional; present only in local builds — the
 // photos are gitignored). When packed, a "Load sample" button in Map Corridors
@@ -448,86 +501,41 @@ function isSampleAvailable() {
   }
 }
 
-// Fixed id for the always-present sample competition (recreated if deleted).
-const SAMPLE_COMP_ID = 'sample-plasy-blue';
+// Bundled-sample bootstrap — the fixed id, the copy/fallback algorithm and the
+// photo counter live in `lib/sampleCompetition.js` so they can be unit-tested
+// without Electron. The behaviour is unchanged except that the copy is now
+// ASYNCHRONOUS and runs after the window is created; see `sampleReady` and
+// `startSampleCompetition` below.
+const { SAMPLE_COMP_ID, ensureSampleCompetition } = require('./lib/sampleCompetition');
 
-// Count non-placeholder photos across a photo-helper session's sets (for the
-// launcher's photo-count badge on the preloaded sample).
-function countSessionPhotos(sessionPath) {
+// Kick off the background sample copy. Called from `app.whenReady()` AFTER
+// `createWindow()`, so the multi-megabyte copy no longer sits on the pre-paint
+// path. `validateStoragePath` can throw synchronously — it did inside the old
+// sync function's own try block — so the whole body is wrapped here to keep
+// that guarantee: a throw must leave `sampleReady` RESOLVED, never rejected,
+// because every gated IPC handler awaits it.
+function startSampleCompetition() {
   try {
-    const s = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
-    const seen = new Set();
-    for (const bucket of [s.sets, s.setsTrack, s.setsTurning]) {
-      for (const key of ['set1', 'set2']) {
-        for (const p of bucket?.[key]?.photos || []) {
-          if (p && !p.isPlaceholder && p.id) seen.add(p.id);
-        }
-      }
-    }
-    return seen.size;
-  } catch {
-    return 0;
-  }
-}
-
-// Ensure the sample competition exists in the index on every launch (when a
-// sample is bundled). It's a NORMAL competition the user can open/edit/delete.
-// Preferred: copy the pre-built, FINALIZED competition (photos already in the
-// editor sets + handoff) so it shows photos from any entry point with no import.
-// Fallback (no pre-built dir): create an empty competition + a `.sample-pending`
-// marker that Map Corridors consumes on first open to import the raw sample.
-function ensureSampleCompetition() {
-  try {
-    const index = readCompetitionsIndex();
-    if (index.competitions.some(c => c.id === SAMPLE_COMP_ID)) return; // already present
-    const now = new Date().toISOString();
-    const name = 'VZOR – Plasy Blue';
     const competitionsDir = path.join(getPhotoSessionsPath(), 'competitions');
-    ensureDir(competitionsDir);
-    const compDir = validateStoragePath(path.join(competitionsDir, sanitizeFileName(SAMPLE_COMP_ID)));
-
-    const prebuilt = path.join(getSampleDataPath(), 'competition');
-    if (fs.existsSync(path.join(prebuilt, 'session.json'))) {
-      // Copy the finalized competition verbatim — corridors session, editor
-      // session.json, photos and map-picks.json. No pending marker.
-      fs.rmSync(compDir, { recursive: true, force: true });
-      fs.cpSync(prebuilt, compDir, { recursive: true });
-      const photoCount = countSessionPhotos(path.join(compDir, 'session.json'));
-      index.competitions.push({
-        id: SAMPLE_COMP_ID, name, discipline: 'rally',
-        createdAt: now, lastModified: now, photoCount, isActive: false,
-      });
-      writeCompetitionsIndex(index);
-      console.log(`[sample] preloaded finalized competition copied (${photoCount} photos)`);
-      return;
-    }
-
-    if (!isSampleAvailable()) return;
-    // Fallback: empty competition + pending marker (runtime import on first open).
-    ensureDir(compDir);
-    ensureDir(path.join(compDir, 'photos'));
-    const emptySession = {
-      id: `session-sample-${Date.now()}`,
-      version: 1, createdAt: now, updatedAt: now, mode: 'track', competition_name: name,
-      sets: { set1: { title: 'SP - TPX', photos: [] }, set2: { title: 'TPX - FP', photos: [] } },
-      setsTrack: { set1: { title: 'SP - TPX', photos: [] }, set2: { title: 'TPX - FP', photos: [] } },
-      setsTurning: { set1: { title: '', photos: [] }, set2: { title: '', photos: [] } },
-    };
-    fs.writeFileSync(path.join(compDir, 'session.json'), JSON.stringify(emptySession, null, 2), 'utf8');
-    fs.writeFileSync(path.join(compDir, '.sample-pending'), '1', 'utf8');
-    index.competitions.push({
-      id: SAMPLE_COMP_ID, name, discipline: 'rally',
-      createdAt: now, lastModified: now, photoCount: 0, isActive: false,
+    sampleReady = ensureSampleCompetition({
+      sampleDataDir: getSampleDataPath(),
+      competitionsDir,
+      compDir: validateStoragePath(path.join(competitionsDir, sanitizeFileName(SAMPLE_COMP_ID))),
+      readIndex: readCompetitionsIndex,
+      writeIndex: writeCompetitionsIndex,
+      sampleAvailable: isSampleAvailable,
+      log: console,
     });
-    writeCompetitionsIndex(index);
-    console.log('[sample] preloaded competition created (pending import):', SAMPLE_COMP_ID);
   } catch (e) {
-    console.warn('[sample] ensureSampleCompetition failed:', e);
+    console.warn('[sample] start failed:', e);
+    // `sampleReady` keeps its resolved value — a broken sample must never wedge
+    // the launcher or either sub-app.
   }
 }
 
 // Is the given competition still waiting for its bundled sample to be imported?
-safeHandle('sample-is-pending', async (_event, competitionId) => {
+// Gated on `sampleReady`: reads the `.sample-pending` marker the copy writes.
+safeHandle('sample-is-pending', afterSample(async (_event, competitionId) => {
   try {
     if (typeof competitionId !== 'string') return false;
     const compDir = validateStoragePath(path.join(getPhotoSessionsPath(), 'competitions', sanitizeFileName(competitionId)));
@@ -535,10 +543,12 @@ safeHandle('sample-is-pending', async (_event, competitionId) => {
   } catch {
     return false;
   }
-});
+}));
 
 // Clear the marker once the sample has been imported (so it won't re-import).
-safeHandle('sample-clear-pending', async (_event, competitionId) => {
+// Gated on `sampleReady`: clearing the marker before the copy wrote it would
+// leave the fallback sample stuck as pending forever.
+safeHandle('sample-clear-pending', afterSample(async (_event, competitionId) => {
   try {
     if (typeof competitionId !== 'string') return;
     const compDir = validateStoragePath(path.join(getPhotoSessionsPath(), 'competitions', sanitizeFileName(competitionId)));
@@ -546,7 +556,7 @@ safeHandle('sample-clear-pending', async (_event, competitionId) => {
   } catch (e) {
     console.warn('[sample] clear-pending failed:', e);
   }
-});
+}));
 
 // Allowlist for `read-photo-file`: paths the user explicitly chose in a
 // preceding `open-photos` dialog. Without this, a compromised renderer
@@ -578,7 +588,9 @@ function ensureDir(dirPath) {
 }
 
 // Initialize storage - create root and sessions directories
-safeHandle('storage-init', async () => {
+// Gated on `sampleReady`: photo-helper rewrites an index that looks empty, and
+// this is the first call it makes.
+safeHandle('storage-init', afterSample(async () => {
   const rootPath = getPhotoSessionsPath();
   const sessionsPath = path.join(rootPath, 'sessions');
 
@@ -586,7 +598,7 @@ safeHandle('storage-init', async () => {
   ensureDir(sessionsPath);
 
   return { rootPath, sessionsPath };
-});
+}));
 
 // Ensure session directories exist
 safeHandle('storage-ensure-session-dirs', async (event, sessionId) => {
@@ -666,7 +678,12 @@ safeHandle('storage-get-photo', async (event, photosPath, photoId) => {
     }
   }
 
-  return null;
+  // Signal a miss as a rejection whose message starts with `NotFound:` — the
+  // renderer's ElectronStorage maps that prefix onto the same NotFoundError the
+  // OPFS backend raises, which is what `getPhotoThumb`'s "regenerate on miss"
+  // path keys off. Returning null here made an Electron miss indistinguishable
+  // from a genuine read failure.
+  throw new Error(`NotFound: no photo file for '${safeId}' in ${safePhotosPath}`);
 });
 
 // Delete a photo file
@@ -816,9 +833,10 @@ function writeCompetitionsIndex(index) {
 }
 
 // List all competitions
-safeHandle('competition-list', async () => {
+// Gated on `sampleReady`: reads the competitions index.
+safeHandle('competition-list', afterSample(async () => {
   return readCompetitionsIndex();
-});
+}));
 
 // Create a new competition
 safeHandle('competition-create', async (event, name, workingDir) => {
@@ -1896,7 +1914,6 @@ app.whenReady().then(async () => {
     await session.defaultSession.clearCache();
   }
   setupProtocol();
-  ensureSampleCompetition();
   createMenu();
   createWindow();
 
@@ -1906,6 +1923,12 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+
+  // Sample copy LAST: the window is created and its `loadURL` already issued,
+  // so the (potentially multi-megabyte) copy happens while the renderer boots
+  // instead of before the first pixel. `activate` is registered above it so a
+  // throw inside `startSampleCompetition` can never skip the handler.
+  startSampleCompetition();
 });
 
 // Quit when all windows are closed
