@@ -1,6 +1,8 @@
 # Corridor bug — a turning point is skipped and two non-consecutive TPs are joined
 
 **Status:** diagnosed, not fixed. Reported by Lukáš, investigated 2026-09-06.
+**Fix handover:** [issue #117](https://github.com/lbehounek/AirQ-Competition-Helpers/issues/117)
+carries the implementation brief as a numbered, checkable list (F1-F8).
 **Reported symptom:** "sometimes one TP is skipped, and two non-consecutive TPs
 are connected by a corridor." No failing KML was available, so every cause below
 was reproduced by constructing input and running the real pipeline.
@@ -282,6 +284,10 @@ throw something opaque.
 ---
 
 ## Suggested order of work
+
+Tracked as F1-F8 in [issue #117](https://github.com/lbehounek/AirQ-Competition-Helpers/issues/117),
+which restates each item with its acceptance test. The list below is the rationale
+for the ordering.
 
 1. **A.1** — the `isSpanOnMain` gap hole. One condition, turns the worst
    rendering into an honest gap.
