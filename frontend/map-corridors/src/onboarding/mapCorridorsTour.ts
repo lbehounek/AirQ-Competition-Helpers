@@ -4,7 +4,9 @@
 // explanatory steps for features that only exist AFTER the user imports data
 // (categorize, set-split), so the tour works on a brand-new empty competition.
 
-import { driver, type DriveStep } from 'driver.js';
+import type { Config, Driver, DriveStep } from 'driver.js';
+// The stylesheet stays EAGER (≈3 kB): keeping it in `index-*.css` avoids a
+// runtime <style> injection from an async chunk under Electron's `app://`.
 import 'driver.js/dist/driver.css';
 
 /** Bumped if the tour changes materially → re-shows once for returning users.
@@ -64,8 +66,35 @@ export function buildTourSteps(t: T): DriveStep[] {
   ];
 }
 
-/** Start the guided tour now (used by the Help button and first-run). */
-export function startMapCorridorsTour(t: T): void {
+/**
+ * driver.js's `driver` factory, injected into {@link runMapCorridorsTour} so
+ * the tour is unit-testable with a fake and so this module never imports
+ * driver.js statically. (Same pattern as photo-helper's photoHelperTour.ts.)
+ */
+export type DriverFactory = (options?: Config) => Driver;
+
+/** Load driver.js (≈26 kB) on demand — one `import()` → one async chunk. */
+const loadDriver = (): Promise<DriverFactory> => import('driver.js').then((m) => m.driver);
+
+/**
+ * Swallow-and-log a tour start failure. A tour is started from an onClick or a
+ * timer, where a rejected promise would be an unhandled rejection: the tour is
+ * an optional nicety, so a missing chunk (web build, tab open across a deploy)
+ * must never break the click that triggered it.
+ */
+const onTourFailure = (err: unknown): void => {
+  console.error(
+    '[onboarding] tour failed to start — on the web build a new version was probably deployed; reload the page',
+    err,
+  );
+};
+
+/**
+ * Run the guided tour with an already-loaded driver factory; returns the live
+ * `Driver` (so a caller/test can inspect or destroy it). Pure with respect to
+ * module state — everything it needs is an argument.
+ */
+export function runMapCorridorsTour(driver: DriverFactory, t: T): Driver {
   const d = driver({
     showProgress: true,
     allowClose: true,
@@ -76,6 +105,21 @@ export function startMapCorridorsTour(t: T): void {
     steps: buildTourSteps(t),
   });
   d.drive();
+  return d;
+}
+
+/**
+ * Start the guided tour now (used by the Help button and first-run). Thin lazy
+ * wrapper around {@link runMapCorridorsTour}: driver.js is fetched on demand,
+ * so the popover appears once the chunk resolves (ms from disk/cache) instead
+ * of synchronously, and a load failure is logged rather than thrown.
+ */
+export function startMapCorridorsTour(t: T): void {
+  void loadDriver()
+    .then((driver) => {
+      runMapCorridorsTour(driver, t);
+    })
+    .catch(onTourFailure);
 }
 
 /** True if the first-run tour hasn't been shown yet (defaults to "show" on any

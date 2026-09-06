@@ -14,7 +14,12 @@
 // docs/photo-map-culling/set-split-suggestion-plan.md.)
 
 import { isPickFlag } from '@airq/shared-handoff'
-import { lineString, nearestPointOnLine, point as turfPoint, length as turfLength } from '@turf/turf'
+// Individual @turf subpackages rather than the `@turf/turf` barrel: identical
+// modules (the barrel only re-exports them), but no phantom dependency and no
+// d3-voronoi circular-dependency build warnings from the barrel's other exports.
+import { lineString, point as turfPoint } from '@turf/helpers'
+import { nearestPointOnLine } from '@turf/nearest-point-on-line'
+import { length as turfLength } from '@turf/length'
 import type { PhotoMarker } from '../types/markers'
 import type { RouteWaypoint } from '../corridors/matchPoints'
 

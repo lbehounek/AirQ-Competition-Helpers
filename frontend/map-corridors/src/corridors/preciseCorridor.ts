@@ -1,5 +1,13 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Point, Position } from 'geojson'
-import { lineString, length as turfLength, getCoord, bearing as turfBearing, destination, point, nearestPointOnLine, lineIntersect } from '@turf/turf'
+// Individual @turf subpackages rather than the `@turf/turf` barrel (see
+// setSplit/partitionPicksBySet.ts) — same modules, no phantom dependency.
+import { lineString, point } from '@turf/helpers'
+import { length as turfLength } from '@turf/length'
+import { getCoord } from '@turf/invariant'
+import { bearing as turfBearing } from '@turf/bearing'
+import { destination } from '@turf/destination'
+import { nearestPointOnLine } from '@turf/nearest-point-on-line'
+import { lineIntersect } from '@turf/line-intersect'
 import type { LonLatAlt, Segment } from './segments'
 import { calculateDistance, buildContinuousTrackWithSources, isTpGatePerpendicular } from './segments'
 
