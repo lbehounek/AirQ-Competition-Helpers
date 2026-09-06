@@ -10,6 +10,184 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.31.0] - 2026-09-05
+
+The desktop app now ships as a proper Windows **installer** alongside the
+portable `.exe`. The installer is the recommended download: the portable build
+unpacks its whole contents into a temporary folder on every launch, which is
+the main reason the app felt slow to open on older laptops; the installed build
+does not. Internally, the launcher also no longer copies the developer-only
+sample competition before opening its window (release builds bundle none).
+
+### Added
+- **Desktop launcher:** `photo-helper-vX.Y.Z-setup.exe` — an installer that
+  installs for the current user only (no administrator rights needed), lets you
+  choose the install folder, and creates Desktop and Start-menu shortcuts.
+  Existing competitions are untouched: both builds keep their data in the same
+  per-user folder, so switching from the portable build to the installer keeps
+  everything, and uninstalling never deletes it.
+
+### Changed
+- **Desktop launcher:** the portable build is still published, now named
+  `photo-helper-vX.Y.Z-portable.exe`, for USB sticks and machines where
+  installing is not allowed.
+- **Map Corridors:** render performance. The map view and the photo list panel
+  are now memoized, and App hands them referentially stable props, so the eleven
+  App state values neither of them reads (import progress, snacks, dialogs, the
+  drop-hint overlay, preview/compare state) no longer re-render either one.
+  Previously a single imported file re-rendered the whole map tree and every
+  list row.
+- **Map Corridors:** photo pins. Each photo marker is now its own memoized
+  `PhotoMarkerPin` with a value-comparable prop contract, so dragging one pin, a
+  zoom frame, or an unrelated state change re-renders only the pins whose own
+  values changed instead of rebuilding all N marker subtrees. Pin styling moved
+  into a pure, unit-tested `photoMarkerStyle` module; the rendered map is
+  pixel-identical.
+- **Map Corridors:** photo list rows. Rows are memoized on a closure-free
+  contract, so a typical panel re-render touches only the one or two rows whose
+  highlight changed rather than rebuilding ~120 MUI rows with three fresh
+  closures each.
+- **Map Corridors:** thumbnail loading. A photo row now loads its thumbnail only
+  once it is (nearly) on screen, instead of every mounted row fetching at mount
+  — including rows inside the default-collapsed "Odmítnuté" group. On the
+  desktop app each of those was an IPC round-trip plus a synchronous file read
+  on the main process. Viewers without IntersectionObserver keep the old eager
+  behaviour.
+- **Map Corridors:** corridor matching. Marker↔corridor matching is now
+  incremental: a flag toggle, label or rename costs no geometry work at all, and
+  a marker drag re-matches only that one marker. A session load or a corridor
+  change still matches everything.
+- **Map Corridors:** marker auto-fan. The per-frame recompute during a zoom now
+  runs only while overlapping markers are actually fanned out. Fanned dots still
+  track the basemap every frame (the placed-photo-drifts-on-zoom fix is intact);
+  a cluster that first forms while zooming out now fans when the zoom settles
+  rather than mid-animation.
+- **Photo Helper:** editing a photo is now noticeably smoother on large sheets.
+  Dragging a slider updates the photo you are editing live, but the change is
+  saved once when you let go instead of on every pixel of the drag — so the grid
+  behind the editor no longer stutters while you adjust brightness, zoom,
+  sharpness or white balance.
+- **Photo Helper:** the competition list file is no longer rewritten on every
+  single edit. It is still updated immediately when you rename a competition or
+  add/remove photos, and always before you switch competition, close the app, or
+  go back to the menu.
+- **Photo Helper:** the photo sheet is much lighter to work with. Previously
+  every single change — even just moving the mouse and pausing — made every
+  photo on the page redraw itself. Now only the photo you actually touched
+  redraws, so editing a full sheet no longer slows the whole window down.
+- **Photo Helper:** photo previews in the grid are now rendered at the size they
+  are actually displayed at, instead of always at the largest size. Small
+  thumbnails (the candidate tray) do far less work, and previews stay just as
+  sharp on high-resolution and scaled Windows displays — including when you drag
+  the window to a second monitor with different scaling.
+- **Photo Helper:** the candidate tray now renders lightweight thumbnails
+  instead of a full photo editor per candidate. Each tray thumb is a ~20 KB
+  320x240 JPEG, generated once from the photo in memory, persisted at
+  `competitions/{id}/photos/thumbs/{photoId}.jpg` and cached (≤400 in memory, 2
+  generations in flight). A 40-candidate session no longer pays 40
+  full-resolution decodes, 80 canvases, 40 window listeners and 40 idle timers.
+  Map-originated (`pm-`) candidates reuse the thumbnail the map app already
+  wrote at import.
+- **Photo Helper:** tray thumbs show the **source photo, centre-cropped** —
+  pan/zoom/brightness/white-balance/circle adjustments are visible when you open
+  the photo, not in the tray. Thumbs no longer stretch the image into the tile.
+- **Photo Helper:** thumbnail synthesis (`generateThumb`/`fitWithin`) moved into
+  `@airq/shared-storage` so the editor and the map app share one implementation;
+  the map app's import path is unchanged.
+- **Photo Helper:** PDF export now matches what you see. Photo adjustments in
+  the exported PDF are rendered with the same GPU shader the live preview uses,
+  so the printed sheet matches what you tuned in the editor. Previously the
+  export used a separate CPU implementation with a different white-balance gain,
+  an inverted tint direction and a different sharpen kernel. Consequences:
+  re-exporting an existing competition will look different from older exports
+  (intended); sharpen strength is resolution-relative, so the 1600 px export
+  sharpens more finely than the 600 px editor view for the same slider value;
+  Auto white balance is resolved into explicit temperature/tint by the editor
+  before export.
+- **Photo Helper:** the window no longer freezes during a PDF export. The export
+  renders one photo at a time and yields between them, so the app stays
+  responsive, shows a progress bar with "Rendering photo 3 of 9…", and a second
+  click on Generate during an export no longer starts a parallel one.
+- **Photo Helper:** starts with 65% less JavaScript. The PDF export engine
+  (@react-pdf/renderer and its pdfkit/fontkit tree, ~1.6 MB) and the guided-tour
+  library are now downloaded the first time you actually export or start a tour,
+  instead of on every launch. Eager JavaScript drops from 2,482 kB to 868 kB
+  (802 kB to 266 kB compressed) — the difference is most noticeable on the first
+  launch after installing or updating.
+- **Both apps:** now split their bundles into cache-stable vendor chunks (React,
+  MUI, pica / the map engine), so a release that only changes app code no longer
+  invalidates the ~2 MB of library code in the browser cache, and the browser
+  compiles the chunks in parallel.
+- **Map Corridors:** first-load size is essentially unchanged (-1.7%): the map
+  engine is needed by the very first screen and cannot be deferred. Its startup
+  cost is a map-runtime issue, not a bundling one.
+- **Internal:** New shared build helper `frontend/vite.chunks.ts` with a
+  build-time guard (`assertLazyOnly`) that FAILS `vite build` if a lazily-loaded
+  library (@react-pdf/*, driver.js) ever becomes part of the initial download
+  again, or if the chunk graph gains a cycle. This closes a trap in which an
+  innocuous manualChunks rule silently re-attached the whole PDF renderer to the
+  first paint while the build stayed green.
+- **Internal:** The PDF generator moved to `utils/pdfGeneratorImpl.ts` behind a
+  lazy facade at the original `utils/pdfGenerator.ts` path, so every current and
+  future importer gets the deferred load automatically.
+- **Internal:** The onboarding tours split into a pure `run*Tour(driverFactory,
+  ...)` and a lazy `start*Tour(...)`, which finally makes the open/close-editor
+  choreography (the 450 ms / 80 ms timers, the boolean back-compat argument,
+  onDestroyed) unit-testable.
+- **Internal:** Map Corridors now imports individual `@turf/*` subpackages
+  instead of the `@turf/turf` barrel, and drops the unused `maplibre-gl` /
+  `@vis.gl/react-maplibre` dependencies (119 packages out of the lockfile; zero
+  bundle impact — every map import already went through `react-map-gl/mapbox`).
+
+### Fixed
+- **Desktop launcher:** when a window asked for a program file left over from an
+  older build, the app answered with its own start page instead of saying the
+  file was missing, which surfaced as a baffling script error. It is now
+  reported as a plain "not found".
+- **Photo Helper:** the zoom slider sometimes failed to keep the value you
+  dragged it to — releasing the handle could leave the old zoom saved. The final
+  value is now always the one that is stored.
+- **Photo Helper:** a change made just before closing the editor, switching
+  photo with the arrows, switching competition or leaving the app could be lost.
+  Every one of those now saves what you had in progress first.
+- **Photo Helper:** editing the same photo from both control panels (right side
+  and bottom) could make one panel silently undo a setting the other had just
+  changed. Each panel now saves only the setting you touched.
+- **Photo Helper:** photos are no longer loaded and decoded twice when a
+  competition opens, and a photo that is already loaded is no longer re-loaded
+  from scratch every few minutes. Opening the editor, switching aspect ratio and
+  moving a photo out of the tray are all quicker, with fewer "Loading…" flashes.
+- **Photo Helper:** when the high-quality redraw of a photo took a moment, an
+  older version could occasionally finish last and paint over the newer one,
+  showing a stale image. The newest version now always wins.
+- **Photo Helper:** switching competitions no longer leaves the previous
+  competition's photo directory in use for a moment — the editor clears the
+  resolved directories before resolving the new ones, so nothing can be read
+  from or written into the wrong competition.
+- **Photo Helper:** deleting a candidate now removes its thumbnail file too,
+  instead of leaving ~20 KB stranded per deleted photo; an in-flight thumbnail
+  generation for a just-deleted photo can no longer resurrect it.
+- **Desktop:** a missing photo file is now reported as a proper 'not found'
+  instead of a generic error, so a first-time thumbnail read is no longer
+  indistinguishable from a real read failure (it also stops the map app logging
+  a warning for every thumbnail it has yet to create).
+- **Desktop:** loading photos is faster and much lighter on memory — decoding a
+  photo received from the app's file layer no longer builds a
+  multi-million-entry temporary array per photo.
+- **Photo Helper:** high-quality resizing no longer copies the full-resolution
+  photo into an intermediate canvas before every resize (a ~48 MB allocation per
+  resize, twice for the multi-pass path) — the decoded image now goes straight
+  to pica.
+- **Photo Helper:** the resize cache is bounded by a 16 MP pixel budget (≈64 MB)
+  instead of an unbounded 20 entries, which could hold well over a gigabyte
+  after one PDF export on a 4 GB laptop. The PDF export no longer evicts the
+  editor's cached photos.
+- **Photo Helper:** the PDF export releases its GPU context as soon as the last
+  photo is rendered rather than holding it through PDF composition and the save
+  dialog, and refuses to use the GPU when a photo exceeds the driver's texture
+  limit or the context is lost — those cases fall back to the CPU path instead
+  of printing a black or stretched cell.
+
 ## [2.30.1] - 2026-07-28
 
 Maintenance release. Nearly all of the work is internal — the Photo Helper build

@@ -22,9 +22,17 @@ připojení k internetu); viz [Data a ukládání](#5-data-a-ukládání).
 
 ## 1. Instalace a spuštění
 
-1. Stáhněte si nejnovější `photo-helper-vX.Y.Z.exe` ze stránky **Releases** na
-   GitHubu projektu (Windows 10/11, 64bitové). Je to **přenosný** spustitelný
-   soubor — nic se neinstaluje, stačí ho spustit.
+1. Stáhněte ze stránky **Releases** na GitHubu projektu (Windows 10/11,
+   64bitové) — jsou tam dva soubory:
+   - `photo-helper-vX.Y.Z-setup.exe` — **doporučeno**; instaluje se jen pro
+     aktuálního uživatele (bez oprávnění správce), lze zvolit složku a vytvoří
+     zástupce na ploše a v nabídce Start.
+   - `photo-helper-vX.Y.Z-portable.exe` — přenosná verze pro USB disky nebo
+     počítače, kde nelze instalovat; při každém spuštění se rozbaluje, takže
+     startuje pomaleji.
+
+   Soutěže zůstanou zachovány i při přechodu z přenosné verze na instalátor —
+   obě verze používají stejnou datovou složku.
 2. Aplikace záměrně není podepsaná, takže při prvním spuštění Windows SmartScreen
    zobrazí *„Windows protected your PC"*. Klikněte na **More info → Run anyway**.
 3. Otevře se rozcestník se dvěma dlaždicemi — **Photo Helper** a

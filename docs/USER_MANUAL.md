@@ -24,9 +24,17 @@ required); see [Data & persistence](#data--persistence).
 
 ## 1. Install & launch
 
-1. Download the latest `photo-helper-vX.Y.Z.exe` from the project's GitHub
-   **Releases** page (Windows 10/11, 64-bit). It is a **portable** executable —
-   no installation, just run it.
+1. Download from the project's GitHub **Releases** page (Windows 10/11,
+   64-bit) — there are two files:
+   - `photo-helper-vX.Y.Z-setup.exe` — **recommended**; installs for the current
+     user only (no administrator rights), lets you choose the folder and adds
+     Desktop and Start-menu shortcuts.
+   - `photo-helper-vX.Y.Z-portable.exe` — for USB sticks or computers where
+     installing is not allowed; it unpacks itself on every launch, so it starts
+     more slowly.
+
+   Your competitions are kept when you move from the portable build to the
+   installer — both use the same data folder.
 2. The app is unsigned by design, so on first run Windows SmartScreen shows
    *"Windows protected your PC."* Click **More info → Run anyway**.
 3. The launcher opens with two tiles — **Photo Helper** and **Map Corridors** —
