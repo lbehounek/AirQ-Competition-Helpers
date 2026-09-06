@@ -2,7 +2,7 @@
 // Lists all imported photos grouped by flag. Click an item to fly the
 // map to its marker. Auto-hides when there are no photos.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Badge,
   Box,
@@ -38,6 +38,41 @@ const RECAT_MIME = 'application/x-airq-photo-recat'
 
 const THUMB_W_PX = 40
 const THUMB_H_PX = 30
+
+/**
+ * Shared stand-in for "no route loaded". `routeWaypoints ?? []` used to mint a
+ * fresh array on every render, which invalidated the `setByPhotoId` and
+ * `breakOptions` memos and, through them, every row — for a session that has no
+ * route at all.
+ */
+const EMPTY_WAYPOINTS: readonly RouteWaypoint[] = []
+
+/**
+ * How far outside the list's scroll box a row starts loading its thumbnail.
+ * Enough that a scroll of one screen never shows an empty box, small enough
+ * that a 300-photo session does not fetch everything at once.
+ */
+const THUMB_PREFETCH_MARGIN = '200px'
+
+/**
+ * The panel's scrolling element, shared with every row's lazy-thumb observer.
+ * Three states: an element (observe against it), `null` (the panel is rendering
+ * but its box has not mounted yet — wait, so a row is never observed against
+ * the wrong root), and `undefined`, the no-provider default for a row rendered
+ * outside the panel, which falls back to the viewport.
+ *
+ * WHY it exists: `rootMargin` expands only the ROOT's rectangle — intermediate
+ * scrolling ancestors still clip the target by their plain rect. With the
+ * implicit viewport root, the panel's own `overflow-y: auto` box clipped every
+ * row, so the 200 px prefetch never fired and thumbnails only started loading
+ * once a row was already visible. Pointing `root` at that box is what makes the
+ * margin mean anything.
+ *
+ * WHY a context and not a prop: rows are built by `renderGroupItems` inside
+ * `GroupSection`, so a prop would have to be threaded through two layers that
+ * have no other use for it.
+ */
+const ThumbScrollRootContext = createContext<Element | null | undefined>(undefined)
 
 export interface PhotoListPanelProps {
   markers: readonly PhotoMarker[]
@@ -143,10 +178,25 @@ type GroupKey = 'picksTurning' | 'picksTrack' | 'neutral' | 'rejects' | 'noGps'
 
 const GROUP_ORDER: readonly GroupKey[] = ['picksTurning', 'picksTrack', 'neutral', 'rejects', 'noGps']
 
-export function PhotoListPanel(props: PhotoListPanelProps) {
+/**
+ * The right-hand photo list.
+ *
+ * Memoized because App re-renders on state this panel does not read (import
+ * progress, snacks, dialogs, the map's active-marker glow), and each of those
+ * used to rebuild ~120 MUI rows. App keeps every prop referentially stable, and
+ * the rows below are memoized on a closure-free value contract, so a re-render
+ * that does reach the panel typically touches only the one or two rows whose
+ * highlight changed.
+ */
+export const PhotoListPanel = memo(function PhotoListPanel(props: PhotoListPanelProps) {
   const { t } = useI18n()
   const { markers, noGpsPhotos, storage, photosDir, onMarkerClick, onSendToEditor, onPhotoDelete, onPhotoRename, onCompareVariants, activePhotoId, onPhotoSetFlag, onNoGpsPhotoClick, onPreviewPhoto, setBreakWaypointName, routeWaypoints, onSetBreakChange } = props
   const [collapsedPanel, setCollapsedPanel] = useState(false)
+  // The list's own scroll box, published to the rows through
+  // ThumbScrollRootContext. A callback ref into state (rather than a plain
+  // ref) so mounting it re-renders and the rows' observers pick it up; it
+  // goes back to null whenever the panel is collapsed and the box unmounts.
+  const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Record<GroupKey, boolean>>({
     picksTurning: false,
     picksTrack: false,
@@ -170,7 +220,7 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
   // truth with the handoff writer (partitionPicksBySet), so the divider the user
   // sees matches the set the editor receives. Empty map (no break / stale break /
   // precision) → no divider rendered.
-  const waypoints = routeWaypoints ?? []
+  const waypoints = routeWaypoints ?? EMPTY_WAYPOINTS
   const setByPhotoId = useMemo(() => partitionPicksByRouteTP(markers, waypoints, setBreakWaypointName), [markers, waypoints, setBreakWaypointName])
   // Route turning points (TP1…TPn) — the options for the "Set 2 starts at"
   // selector.
@@ -226,10 +276,20 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
     lastAnchorRef.current = null
   }, [])
 
+  // Latest visible row order, read INSIDE the click handler rather than closed
+  // over, so the handler itself stays referentially stable — otherwise every
+  // grouping change would hand all memoized rows a new onRowClick and re-render
+  // the whole list. useLayoutEffect (not useEffect) because it runs
+  // synchronously inside commit: a click can never observe the previous render's
+  // order, not even when the render that changed it was non-discrete (an OPFS
+  // load resolving, say).
+  const orderedIdsRef = useRef<readonly string[]>([])
+  useLayoutEffect(() => { orderedIdsRef.current = orderedSelectableIds }, [orderedSelectableIds])
+
   const handleRowClick = useCallback((photoId: string, markerId: string, e: React.MouseEvent) => {
     if (e.shiftKey && lastAnchorRef.current) {
       const anchor = lastAnchorRef.current
-      setSelectedIds(prev => computeRangeSelection(orderedSelectableIds, anchor, photoId, prev))
+      setSelectedIds(prev => computeRangeSelection(orderedIdsRef.current, anchor, photoId, prev))
       return
     }
     if (e.ctrlKey || e.metaKey) {
@@ -241,7 +301,12 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
     // doesn't stay in selection mode without an obvious cue.
     clearSelection()
     onMarkerClick(markerId)
-  }, [orderedSelectableIds, clearSelection, onMarkerClick])
+  }, [clearSelection, onMarkerClick])
+
+  // Stable counterpart to the inline `() => setDragSourceGroup(null)` the rows
+  // used to receive; `setDragSourceGroup` itself is already stable and is passed
+  // straight through as onRowDragStart.
+  const handleRowDragEnd = useCallback(() => setDragSourceGroup(null), [])
 
   // Double-click a row → open the full-res single-photo preview. Keyed on
   // photoId so it works for GPS and no-GPS rows alike. The single-clicks that
@@ -318,74 +383,80 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
         )}
       </Stack>
       {!collapsedPanel && (
-        <Box sx={{ flex: 1, overflowY: 'auto' }}>
-          {/* "Set 2 starts at" selector — rally only (onSetBreakChange wired)
-              and only once the route has turning points. The chosen route TP
-              becomes the start of set 2: picks at/after it (along the route) go
-              to set 2, the editor fills the sheets accordingly, and the pick
-              groups below show a "Set 2" divider at the cut. */}
-          {onSetBreakChange && breakOptions.length > 0 && (
-            <Box sx={{ px: 1, py: 0.75, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'grey.50' }}>
-              <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>
-                {t('photo.list.setBreakLabel')}
-              </Typography>
-              <TextField
-                select
-                size="small"
-                fullWidth
-                value={breakValue}
-                onChange={(e) => onSetBreakChange(e.target.value === '' ? null : e.target.value)}
-                SelectProps={{ displayEmpty: true }}
-                inputProps={{ 'aria-label': t('photo.list.setBreakLabel') }}
-              >
-                <MenuItem value="">{t('photo.list.setBreakNone')}</MenuItem>
-                {breakOptions.map(o => (
-                  <MenuItem key={o.name} value={o.name}>{o.name}</MenuItem>
-                ))}
-              </TextField>
-            </Box>
-          )}
-          {GROUP_ORDER.map(key => (
-            <GroupSection
-              key={key}
-              groupKey={key}
-              title={t(`photo.list.${key}`)}
-              count={groupCount(groups, key)}
-              collapsed={collapsedGroups[key]}
-              onToggle={() => toggleGroup(key)}
-              // Phase 14 — drop target for drag-to-recategorize. Highlight only
-              // when a drag is in progress from a different, valid group.
-              isDropTarget={!!onPhotoSetFlag && dragSourceGroup !== null && canRecategorize(dragSourceGroup, key)}
-              onDropPhoto={(markerId) => {
-                const flag = flagForGroup(key)
-                if (flag !== undefined) onPhotoSetFlag?.(markerId, flag)
-              }}
-              recatMime={RECAT_MIME}
-              items={renderGroupItems(groups, key, {
-                storage,
-                photosDir,
-                onRowClick: handleRowClick,
-                onRowDoubleClick: onPreviewPhoto ? handleRowDoubleClick : undefined,
-                selectedIds,
-                activePhotoId: activePhotoId ?? null,
-                onPhotoDelete,
-                onPhotoRename,
-                deleteTooltip: t('photo.deleteTooltip'),
-                renameTooltip: t('photo.renameTooltip'),
-                renamePlaceholder: t('photo.renamePlaceholder'),
-                renameSaveAria: t('photo.renameSaveAria'),
-                // Phase 14 — recat drag (GPS rows) + no-GPS click-to-place.
-                recatMime: RECAT_MIME,
-                recatEnabled: !!onPhotoSetFlag,
-                onRowDragStart: (g) => setDragSourceGroup(g),
-                onRowDragEnd: () => setDragSourceGroup(null),
-                onNoGpsPhotoClick,
-                setByPhotoId,
-                setBreakLabel: t('photo.list.setBreakDivider'),
-              })}
-            />
-          ))}
-        </Box>
+        // The rows' scrolling ancestor, handed to their lazy-thumbnail
+        // observers as the IntersectionObserver root so THUMB_PREFETCH_MARGIN
+        // actually prefetches (see ThumbScrollRootContext). Held in state, not
+        // a ref, because those observers must re-run once the element exists.
+        <ThumbScrollRootContext.Provider value={scrollRoot}>
+          <Box ref={setScrollRoot} sx={{ flex: 1, overflowY: 'auto' }}>
+            {/* "Set 2 starts at" selector — rally only (onSetBreakChange wired)
+                and only once the route has turning points. The chosen route TP
+                becomes the start of set 2: picks at/after it (along the route) go
+                to set 2, the editor fills the sheets accordingly, and the pick
+                groups below show a "Set 2" divider at the cut. */}
+            {onSetBreakChange && breakOptions.length > 0 && (
+              <Box sx={{ px: 1, py: 0.75, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'grey.50' }}>
+                <Typography variant="caption" sx={{ display: 'block', fontWeight: 600, color: 'text.secondary', mb: 0.5 }}>
+                  {t('photo.list.setBreakLabel')}
+                </Typography>
+                <TextField
+                  select
+                  size="small"
+                  fullWidth
+                  value={breakValue}
+                  onChange={(e) => onSetBreakChange(e.target.value === '' ? null : e.target.value)}
+                  SelectProps={{ displayEmpty: true }}
+                  inputProps={{ 'aria-label': t('photo.list.setBreakLabel') }}
+                >
+                  <MenuItem value="">{t('photo.list.setBreakNone')}</MenuItem>
+                  {breakOptions.map(o => (
+                    <MenuItem key={o.name} value={o.name}>{o.name}</MenuItem>
+                  ))}
+                </TextField>
+              </Box>
+            )}
+            {GROUP_ORDER.map(key => (
+              <GroupSection
+                key={key}
+                groupKey={key}
+                title={t(`photo.list.${key}`)}
+                count={groupCount(groups, key)}
+                collapsed={collapsedGroups[key]}
+                onToggle={() => toggleGroup(key)}
+                // Phase 14 — drop target for drag-to-recategorize. Highlight only
+                // when a drag is in progress from a different, valid group.
+                isDropTarget={!!onPhotoSetFlag && dragSourceGroup !== null && canRecategorize(dragSourceGroup, key)}
+                onDropPhoto={(markerId) => {
+                  const flag = flagForGroup(key)
+                  if (flag !== undefined) onPhotoSetFlag?.(markerId, flag)
+                }}
+                recatMime={RECAT_MIME}
+                items={renderGroupItems(groups, key, {
+                  storage,
+                  photosDir,
+                  onRowClick: handleRowClick,
+                  onRowDoubleClick: onPreviewPhoto ? handleRowDoubleClick : undefined,
+                  selectedIds,
+                  activePhotoId: activePhotoId ?? null,
+                  onPhotoDelete,
+                  onPhotoRename,
+                  deleteTooltip: t('photo.deleteTooltip'),
+                  renameTooltip: t('photo.renameTooltip'),
+                  renamePlaceholder: t('photo.renamePlaceholder'),
+                  renameSaveAria: t('photo.renameSaveAria'),
+                  // Phase 14 — recat drag (GPS rows) + no-GPS click-to-place.
+                  recatMime: RECAT_MIME,
+                  recatEnabled: !!onPhotoSetFlag,
+                  onRowDragStart: setDragSourceGroup,
+                  onRowDragEnd: handleRowDragEnd,
+                  onNoGpsPhotoClick,
+                  setByPhotoId,
+                  setBreakLabel: t('photo.list.setBreakDivider'),
+                })}
+              />
+            ))}
+          </Box>
+        </ThumbScrollRootContext.Provider>
       )}
       {!collapsedPanel && onCompareVariants && selectedMarkers.length >= 1 && (
         <Box sx={{ p: 1, borderTop: '1px solid', borderColor: 'divider', display: 'flex', gap: 1 }}>
@@ -443,7 +514,7 @@ export function PhotoListPanel(props: PhotoListPanelProps) {
       )}
     </Paper>
   )
-}
+})
 
 /**
  * Toggle a photoId in the selection list. Append on first click, remove on
@@ -617,21 +688,19 @@ function renderGroupItems(
         // Phase 14 — clicking a no-GPS row starts placing it on the map
         // (provisional pin at map center). Distinct from the drag below: a
         // drag fires only on motion, a click only without it.
-        onClick={ctx.onNoGpsPhotoClick ? () => ctx.onNoGpsPhotoClick!(p.photoId) : undefined}
+        onNoGpsClick={ctx.onNoGpsPhotoClick}
         // Double-click opens the full-res preview (same as GPS rows).
-        onDoubleClick={ctx.onRowDoubleClick ? () => ctx.onRowDoubleClick!(p.photoId) : undefined}
+        onRowDoubleClick={ctx.onRowDoubleClick}
         selected={false}
         active={false}
         // Drag the row straight onto the map to place it — same drag type the
         // bottom tray uses, so it lands at the drop point as a Track pick via
         // the map's existing NO_GPS_PHOTO_DRAG_TYPE drop handler. NOT the
         // recategorise drag (that's GPS-rows-only, drops onto panel groups), so
-        // we deliberately don't touch onRowDragStart's group-highlight state.
-        recatDraggable
-        onRecatDragStart={(e) => {
-          e.dataTransfer.setData(NO_GPS_PHOTO_DRAG_TYPE, p.photoId)
-          e.dataTransfer.effectAllowed = 'move'
-        }}
+        // we deliberately pass no `dragGroup` and no `onRowDragEnd`: a drag
+        // from here must never touch the group-highlight state.
+        dragMime={NO_GPS_PHOTO_DRAG_TYPE}
+        dragData={p.photoId}
         onDelete={ctx.onPhotoDelete}
         deleteTooltip={ctx.deleteTooltip}
         {...commonRenameCtx}
@@ -654,21 +723,22 @@ function renderGroupItems(
       <PhotoListItem
         key={m.id}
         photoId={m.photoId!}
+        markerId={m.id}
         displayName={photoMarkerDisplayName(m)}
         originalFilename={m.name}
         storage={ctx.storage}
         photosDir={ctx.photosDir}
-        onClick={(e) => ctx.onRowClick(m.photoId!, m.id, e)}
-        onDoubleClick={ctx.onRowDoubleClick ? () => ctx.onRowDoubleClick!(m.photoId!) : undefined}
+        onRowClick={ctx.onRowClick}
+        onRowDoubleClick={ctx.onRowDoubleClick}
         selected={selectedSet.has(m.photoId!)}
         active={m.photoId === ctx.activePhotoId}
-        recatDraggable={ctx.recatEnabled}
-        onRecatDragStart={(e) => {
-          e.dataTransfer.setData(ctx.recatMime, m.id)
-          e.dataTransfer.effectAllowed = 'move'
-          ctx.onRowDragStart(key)
-        }}
-        onRecatDragEnd={ctx.onRowDragEnd}
+        // Recat drag payload as two plain strings so the memo can compare it by
+        // value; both undefined when the parent didn't wire onPhotoSetFlag.
+        dragMime={ctx.recatEnabled ? ctx.recatMime : undefined}
+        dragData={ctx.recatEnabled ? m.id : undefined}
+        dragGroup={key}
+        onRowDragStart={ctx.onRowDragStart}
+        onRowDragEnd={ctx.onRowDragEnd}
         onDelete={ctx.onPhotoDelete}
         deleteTooltip={ctx.deleteTooltip}
         {...commonRenameCtx}
@@ -731,8 +801,91 @@ export function normalizeRename(draft: string, current: string, maxLen = 200): s
   return trimmed
 }
 
-function PhotoListItem(props: {
+/* ──────────────────────────────────────────────────────────────────────
+ *  Static row chrome. These `sx` objects contain no per-row value, so they are
+ *  hoisted to module scope: MUI hashes an sx object into a class on every
+ *  render it sees, and a 120-row list re-created five of them per row.
+ * ────────────────────────────────────────────────────────────────────── */
+
+/** Row root — hover reveals the rename/delete buttons (photo-helper tile parity). */
+const ROW_ROOT_SX = {
+  position: 'relative',
+  '&:hover .photo-row-delete': { opacity: 1 },
+  '&:hover .photo-row-rename': { opacity: 1 },
+} as const
+
+/** Fixed-size thumbnail well; stays grey while the thumb is missing/loading. */
+const ROW_THUMB_SX = {
+  width: THUMB_W_PX,
+  height: THUMB_H_PX,
+  flexShrink: 0,
+  bgcolor: 'grey.100',
+  borderRadius: 0.5,
+  overflow: 'hidden',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+} as const
+
+const ROW_SAVE_BTN_SX = {
+  position: 'absolute',
+  top: '50%',
+  right: 4,
+  transform: 'translateY(-50%)',
+  width: 24,
+  height: 24,
+  bgcolor: 'success.main',
+  color: 'white',
+  opacity: 1,
+  '&:hover': { bgcolor: 'success.dark' },
+} as const
+
+const ROW_RENAME_BTN_SX = {
+  position: 'absolute',
+  top: '50%',
+  right: 32, // sits left of the X
+  transform: 'translateY(-50%)',
+  width: 24,
+  height: 24,
+  bgcolor: 'rgba(25, 118, 210, 0.85)',
+  color: 'white',
+  opacity: 0.6,
+  transition: 'opacity 0.15s ease, background-color 0.15s ease',
+  '&:hover': {
+    bgcolor: 'rgba(21, 101, 192, 1)',
+    opacity: 1,
+  },
+} as const
+
+const ROW_DELETE_BTN_SX = {
+  position: 'absolute',
+  top: '50%',
+  right: 4,
+  transform: 'translateY(-50%)',
+  width: 24,
+  height: 24,
+  bgcolor: 'rgba(220, 53, 69, 0.92)', // Same red as photo-helper grid tiles
+  color: 'white',
+  opacity: 0.6, // Visible at rest — discoverable without hover
+  transition: 'opacity 0.15s ease, background-color 0.15s ease',
+  '&:hover': {
+    bgcolor: 'rgba(200, 35, 51, 1)',
+    opacity: 1,
+  },
+} as const
+
+/**
+ * A row's inputs, deliberately closure-free: every member is a primitive or a
+ * reference the panel keeps stable across renders, so `memo` below can compare
+ * them by value. The row identifies ITSELF back to the panel (it passes its own
+ * photoId/markerId into the shared handlers) rather than being handed
+ * per-row lambdas, which is what used to defeat memoization here.
+ */
+type PhotoListItemProps = {
   photoId: string
+  /** GPS rows: the marker id handed to `onRowClick` and used as the recat drag
+   *  payload. Undefined for no-GPS rows, which have no marker. */
+  markerId?: string
   /** Custom name if set, else the original filename — the primary label + edit seed. */
   displayName: string
   /** Original camera filename. Shown as a secondary line only when renamed. */
@@ -740,16 +893,18 @@ function PhotoListItem(props: {
   storage: StorageInterface | null
   photosDir: DirectoryHandle | null
   /**
-   * Row click receives the raw event so the caller can branch on modifier
-   * keys (Ctrl/Cmd → toggle in variant selection, Shift → range select,
-   * plain click → fly to marker). `undefined` disables the row entirely.
+   * GPS rows only. Receives (photoId, markerId, event) so the panel can branch
+   * on modifier keys (Ctrl/Cmd → toggle in variant selection, Shift → range
+   * select, plain click → fly to marker). Undefined = no single-click action.
    */
-  onClick: ((e: React.MouseEvent) => void) | undefined
+  onRowClick?: (photoId: string, markerId: string, e: React.MouseEvent) => void
+  /** No-GPS rows only — click-to-place (provisional pin at map center). */
+  onNoGpsClick?: (photoId: string) => void
   /**
-   * Double-click opens the full-res preview. Independent of `onClick`; the
-   * preceding single-clicks still fire. `undefined` disables it.
+   * Double-click opens the full-res preview. Independent of the single click;
+   * the preceding single-clicks still fire. Undefined disables it.
    */
-  onDoubleClick?: (e: React.MouseEvent) => void
+  onRowDoubleClick?: (photoId: string) => void
   /** Whether this row is part of the variant-compare selection. */
   selected: boolean
   /**
@@ -757,35 +912,76 @@ function PhotoListItem(props: {
    * filled tint and scrolls the row into view. Independent of `selected`.
    */
   active: boolean
+  /** HTML5 drag MIME + payload, as two strings so memo compares them by value.
+   *  Both undefined = the row is not draggable. */
+  dragMime?: string
+  dragData?: string
   /**
-   * Phase 14 — whether this row can be dragged onto another group to
-   * recategorize it (GPS rows only; no-GPS rows have no flag). When true and
-   * not editing, the row root is HTML5-draggable.
+   * The group this row is dragged FROM, driving the recategorize drop-target
+   * highlight. Undefined for the no-GPS map-drop drag, which must NOT touch
+   * that highlight (see the no-GPS branch of renderGroupItems).
    */
-  recatDraggable?: boolean
-  onRecatDragStart?: (e: React.DragEvent) => void
-  onRecatDragEnd?: () => void
+  dragGroup?: GroupKey
+  onRowDragStart?: (group: GroupKey) => void
+  onRowDragEnd?: () => void
   onDelete: (photoId: string) => void | Promise<void>
   deleteTooltip: string
   onRename: (photoId: string, newName: string) => void | Promise<void>
   renameTooltip: string
   renamePlaceholder: string
   renameSaveAria: string
-}) {
+}
+
+const PhotoListItem = memo(function PhotoListItem(props: PhotoListItemProps) {
   const {
-    photoId, displayName, originalFilename, storage, photosDir, onClick, onDoubleClick, selected, active, onDelete, deleteTooltip,
+    photoId, markerId, displayName, originalFilename, storage, photosDir,
+    onRowClick, onNoGpsClick, onRowDoubleClick, selected, active, onDelete, deleteTooltip,
     onRename, renameTooltip, renamePlaceholder, renameSaveAria,
-    recatDraggable, onRecatDragStart, onRecatDragEnd,
+    dragMime, dragData, dragGroup, onRowDragStart, onRowDragEnd,
   } = props
-  const { url, state } = usePhotoThumbUrl(storage, photosDir, photoId)
   const rowRef = useRef<HTMLDivElement | null>(null)
+  const [editing, setEditing] = useState(false)
+
+  // Thumbnail I/O is deferred until the row is (nearly) on screen. Every mounted
+  // row used to fetch at mount — including rows inside the default-collapsed
+  // "rejects" group, which <Collapse> keeps mounted — and on Electron each fetch
+  // is an IPC round-trip plus a synchronous readFileSync + base64 on the main
+  // process (desktop/main.js `storage-get-photo`). usePhotoThumbUrl already
+  // treats a null storage as "missing" and reloads once it becomes non-null, so
+  // gating its inputs changes nothing the user sees once the row is visible.
+  // No IntersectionObserver (jsdom, very old viewers) → treat the row as visible
+  // so the fallback is exactly today's eager behaviour.
+  const [thumbWanted, setThumbWanted] = useState(() => typeof IntersectionObserver === 'undefined')
+  const scrollRoot = useContext(ThumbScrollRootContext)
+  useEffect(() => {
+    if (thumbWanted) return
+    const el = rowRef.current
+    if (!el) return
+    // Inside the panel, wait for its scroll box rather than observing against
+    // the viewport for one commit and immediately re-observing.
+    if (scrollRoot === null) return
+    // The root is that scroll box, because `rootMargin` expands only the ROOT's
+    // rectangle: with the viewport as root the panel clipped each row to its
+    // plain rect and the 200 px prefetch did nothing at all. The spec still
+    // clips by every scrolling ancestor, so rows inside a height-0 Collapse
+    // correctly do NOT intersect.
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) {
+        setThumbWanted(true)
+        io.disconnect()
+      }
+    }, { root: scrollRoot, rootMargin: THUMB_PREFETCH_MARGIN })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [thumbWanted, scrollRoot])
+  const { url, state } = usePhotoThumbUrl(thumbWanted ? storage : null, thumbWanted ? photosDir : null, photoId)
+
   // Bring the active row into view when it becomes active (e.g. the user
   // clicked its marker on the map). `block: 'nearest'` avoids yanking the
   // scroll when the row is already visible.
   useEffect(() => {
     if (active) rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [active])
-  const [editing, setEditing] = useState(false)
   // `draft` is the in-progress text. Seeded with the current display value on
   // every entry into edit mode so a previous cancel doesn't leak into the
   // next session.
@@ -793,6 +989,28 @@ function PhotoListItem(props: {
   // Show the camera filename underneath only when a custom name is in effect —
   // otherwise the row would print the same string twice.
   const showOriginal = displayName !== originalFilename
+
+  // GPS rows route through onRowClick (which needs the marker id); no-GPS rows
+  // through onNoGpsClick. A row with neither has no single-click action at all.
+  const handleClick = onRowClick && markerId !== undefined
+    ? (e: React.MouseEvent) => onRowClick(photoId, markerId, e)
+    : onNoGpsClick
+      ? () => onNoGpsClick(photoId)
+      : undefined
+  const handleDoubleClick = onRowDoubleClick ? () => onRowDoubleClick(photoId) : undefined
+
+  // Phase 14 — drag. Disabled while editing so the rename field stays
+  // text-selectable. Click/selection still work (a drag only fires on real
+  // motion). The thumbnail <img> sets draggable={false} so the photo itself
+  // isn't what gets dragged.
+  const canDrag = dragMime !== undefined && dragData !== undefined && !editing
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData(dragMime!, dragData!)
+    e.dataTransfer.effectAllowed = 'move'
+    // Only the recategorize drag arms the group highlight; the no-GPS map-drop
+    // drag carries no group and must leave that state alone.
+    if (dragGroup !== undefined) onRowDragStart?.(dragGroup)
+  }
 
   const beginEdit = () => {
     setDraft(displayName)
@@ -810,28 +1028,20 @@ function PhotoListItem(props: {
   return (
     <Box
       ref={rowRef}
-      // Phase 14 — recat drag. Disabled while editing so the rename field
-      // stays text-selectable. Click/selection still work (drag only fires on
-      // real motion). The thumbnail <img> sets draggable={false} so the photo
-      // itself isn't what gets dragged.
-      draggable={!!recatDraggable && !editing}
-      onDragStart={recatDraggable && !editing ? onRecatDragStart : undefined}
-      onDragEnd={recatDraggable && !editing ? onRecatDragEnd : undefined}
-      sx={{
-        position: 'relative',
-        // Reveal full delete-button opacity on hover anywhere on the row,
-        // matching the photo-helper grid-tile pattern. The rename pencil
-        // mirrors the same hover reveal so resting state stays uncluttered.
-        '&:hover .photo-row-delete': { opacity: 1 },
-        '&:hover .photo-row-rename': { opacity: 1 },
-      }}
+      draggable={canDrag}
+      onDragStart={canDrag ? handleDragStart : undefined}
+      // Mirrors the pre-WP2f gating exactly: a row in edit mode, and any no-GPS
+      // row (no dragGroup), never registers a drag-end, so a drag from them
+      // cannot clear a highlight another row armed.
+      onDragEnd={canDrag && dragGroup !== undefined ? onRowDragEnd : undefined}
+      sx={ROW_ROOT_SX}
     >
       <ListItemButton
-        onClick={editing ? undefined : onClick}
-        onDoubleClick={editing ? undefined : onDoubleClick}
+        onClick={editing ? undefined : handleClick}
+        onDoubleClick={editing ? undefined : handleDoubleClick}
         // A disabled button swallows dblclick too, so only disable when the
         // row has neither a click nor a double-click action.
-        disabled={!editing && !onClick && !onDoubleClick}
+        disabled={!editing && !handleClick && !handleDoubleClick}
         selected={selected}
         // Edit mode renders as a div so the inner TextField isn't nested
         // inside a <button> (a11y violation + focus contention). Spread
@@ -860,19 +1070,7 @@ function PhotoListItem(props: {
           }),
         }}
       >
-        <Box
-          sx={{
-            width: THUMB_W_PX,
-            height: THUMB_H_PX,
-            flexShrink: 0,
-            bgcolor: 'grey.100',
-            borderRadius: 0.5,
-            overflow: 'hidden',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
+        <Box sx={ROW_THUMB_SX}>
           {state === 'ready' && url && (
             <img
               src={url}
@@ -938,18 +1136,7 @@ function PhotoListItem(props: {
             }}
             aria-label={renameSaveAria}
             size="small"
-            sx={{
-              position: 'absolute',
-              top: '50%',
-              right: 4,
-              transform: 'translateY(-50%)',
-              width: 24,
-              height: 24,
-              bgcolor: 'success.main',
-              color: 'white',
-              opacity: 1,
-              '&:hover': { bgcolor: 'success.dark' },
-            }}
+            sx={ROW_SAVE_BTN_SX}
           >
             <Check sx={{ fontSize: 14 }} />
           </IconButton>
@@ -966,22 +1153,7 @@ function PhotoListItem(props: {
               }}
               aria-label={renameTooltip}
               size="small"
-              sx={{
-                position: 'absolute',
-                top: '50%',
-                right: 32, // sits left of the X
-                transform: 'translateY(-50%)',
-                width: 24,
-                height: 24,
-                bgcolor: 'rgba(25, 118, 210, 0.85)',
-                color: 'white',
-                opacity: 0.6,
-                transition: 'opacity 0.15s ease, background-color 0.15s ease',
-                '&:hover': {
-                  bgcolor: 'rgba(21, 101, 192, 1)',
-                  opacity: 1,
-                },
-              }}
+              sx={ROW_RENAME_BTN_SX}
             >
               <EditOutlined sx={{ fontSize: 14 }} />
             </IconButton>
@@ -989,7 +1161,7 @@ function PhotoListItem(props: {
           <Tooltip title={deleteTooltip} placement="left" enterDelay={400}>
             <IconButton
               className="photo-row-delete"
-              // stopPropagation so the row's `onClick` (fly to marker) doesn't
+              // stopPropagation so the row's click (fly to marker) doesn't
               // fire when the user clicks the X. `MouseDown` is also stopped
               // because ListItemButton has its own ripple-effect handler that
               // can swallow the click otherwise.
@@ -1000,22 +1172,7 @@ function PhotoListItem(props: {
               }}
               aria-label={deleteTooltip}
               size="small"
-              sx={{
-                position: 'absolute',
-                top: '50%',
-                right: 4,
-                transform: 'translateY(-50%)',
-                width: 24,
-                height: 24,
-                bgcolor: 'rgba(220, 53, 69, 0.92)', // Same red as photo-helper grid tiles
-                color: 'white',
-                opacity: 0.6, // Visible at rest — discoverable without hover
-                transition: 'opacity 0.15s ease, background-color 0.15s ease',
-                '&:hover': {
-                  bgcolor: 'rgba(200, 35, 51, 1)',
-                  opacity: 1,
-                },
-              }}
+              sx={ROW_DELETE_BTN_SX}
             >
               <Close sx={{ fontSize: 14 }} />
             </IconButton>
@@ -1024,4 +1181,4 @@ function PhotoListItem(props: {
       )}
     </Box>
   )
-}
+})

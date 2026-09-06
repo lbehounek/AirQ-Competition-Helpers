@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import './App.css'
 
 import { MapProviderView } from './map/MapProviderView'
-import type { MapProviderViewHandle } from './map/MapProviderView'
+import type { MapProviderViewHandle, Overlay } from './map/MapProviderView'
 // DropZone removed; map area acts as drop target
 import type { GeoJSON } from 'geojson'
 // import { buildBufferedCorridor } from './corridors/bufferCorridor'
@@ -31,11 +31,12 @@ import {
 } from './config/mapProviders'
 import { calculateDistance } from './corridors/segments'
 import { matchPointsToCorridors as matchPointsToCorridorsPure, legKey } from './corridors/matchPoints'
+import { matchPointsIncremental } from './corridors/markerMatchCache'
 import { extractStartName, extractEndName } from './corridors/extractStartName'
 import { buildRouteWaypoints } from './corridors/buildRouteWaypoints'
 import { useI18n } from './contexts/I18nContext'
 import { useCorridorSessionOPFS } from './hooks/useCorridorSessionOPFS'
-import type { PhotoFlag, PhotoLabel, GroundMarker, GroundMarkerType } from './types/markers'
+import type { PhotoFlag, PhotoLabel, GroundMarker, GroundMarkerType, GroundMarkerCallbacks } from './types/markers'
 import { DEFAULT_GROUND_MARKER_TYPE, getLabelsForDiscipline, buildPhotoMarkerKmlName, noGpsPhotoDisplayName, photoMarkerDisplayName } from './types/markers'
 import { importPhotosToStorage } from './photoImport/importPhotosToStorage'
 import { createImportQueue } from './photoImport/importQueue'
@@ -61,6 +62,14 @@ import { useEditorPicksSync } from './hooks/useEditorPicksSync'
 // parser, JPEG/PNG → photo import pipeline (Phase 3 of photo-map-culling,
 // ADR-021 — implicit routing, no mode toggle). Anything else lands in
 // `unsupported` so the caller can surface a name-bearing toast.
+// Shared stand-ins for "the session has none of these yet". `?? []` used to mint
+// a fresh array on every App render, which changed the props of the memoized
+// map view and photo panel (and every memo keyed on them) for a session that
+// simply has no photos. The session's own arrays are already `readonly`.
+const EMPTY_MARKERS: readonly PhotoMarker[] = []
+const EMPTY_GROUND_MARKERS: readonly GroundMarker[] = []
+const EMPTY_NO_GPS: readonly NoGpsPhoto[] = []
+
 const SUPPORTED_KML_EXT_RX = /\.(kml|gpx)$/i
 const SUPPORTED_IMAGE_EXT_RX = /\.(jpe?g|png)$/i
 
@@ -261,7 +270,10 @@ function App() {
   }, [])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const mapRef = useRef<MapProviderViewHandle | null>(null)
-  const markers = session?.markers ?? []
+  const markers = session?.markers ?? EMPTY_MARKERS
+  // One reference for every no-GPS consumer below (preview lookup, provisional
+  // pruning, the tray and the panel) so they don't each re-derive an array.
+  const noGpsPhotos = session?.noGpsPhotos ?? EMPTY_NO_GPS
   const [activeMarkerId, setActiveMarkerId] = useState<string | null>(null)
   // Phase 13 — the active photo marker (its map popup is open). Lifted here
   // from MapProviderView so both the map (marker glow) and the right-side
@@ -299,7 +311,7 @@ function App() {
   }, [markers])
 
   // Ground markers state
-  const groundMarkers: readonly GroundMarker[] = session?.groundMarkers ?? []
+  const groundMarkers: readonly GroundMarker[] = session?.groundMarkers ?? EMPTY_GROUND_MARKERS
   const [activeGroundMarkerId, setActiveGroundMarkerId] = useState<string | null>(null)
   const labelToMarker = useMemo(() => {
     const mp = new Map<PhotoLabel, typeof markers[number]>()
@@ -422,15 +434,21 @@ function App() {
     [corridorPolygons, routeWaypoints, coveredLegs],
   )
 
+  // Incremental: only markers whose position changed since the last pass with
+  // the same matcher hit turf, so a flag toggle / label / rename costs nothing
+  // and a drag-end re-matches exactly one marker. Identical output to calling
+  // the matcher directly — it is per-point. See corridors/markerMatchCache.ts.
+  // The site key keeps this pass's cache separate from the ground-marker pass
+  // below, which shares the very same `matchPointsToCorridors`.
   const markerCorridorMatchById = useMemo(
-    () => matchPointsToCorridors(markers),
+    () => matchPointsIncremental(matchPointsToCorridors, markers, 'photo-markers'),
     [markers, matchPointsToCorridors],
   )
   // Ground markers (FAI signs) use the same corridor-matching as photo
   // markers so the answer sheet can list them with distance + from-TP
   // (feedback 2026-04-23: user saw only photo letters, no signs).
   const groundMarkerCorridorMatchById = useMemo(
-    () => matchPointsToCorridors(groundMarkers),
+    () => matchPointsIncremental(matchPointsToCorridors, groundMarkers, 'ground-markers'),
     [groundMarkers, matchPointsToCorridors],
   )
 
@@ -859,11 +877,17 @@ function App() {
   // Coordinate of the chosen break TP, for the map's scissors badge (read-only
   // confirmation of where set 2 starts). Null when no break / precision / the
   // name isn't a current waypoint.
+  // The designated set1↔set2 break, resolved once per change instead of at each
+  // of its consumers. Declared here (not further down with the other memoized
+  // props) because the coordinate memo below lists it as a dependency.
+  const effectiveSetBreakName = useMemo(
+    () => resolveSetBreakName(effectiveDiscipline, session?.setBreakWaypointName),
+    [effectiveDiscipline, session?.setBreakWaypointName],
+  )
   const setBreakWaypointCoord = useMemo<[number, number] | null>(() => {
-    const name = resolveSetBreakName(effectiveDiscipline, session?.setBreakWaypointName)
-    if (!name) return null
-    return routeWaypoints.find(w => w.name === name)?.coord ?? null
-  }, [effectiveDiscipline, session?.setBreakWaypointName, routeWaypoints])
+    if (!effectiveSetBreakName) return null
+    return routeWaypoints.find(w => w.name === effectiveSetBreakName)?.coord ?? null
+  }, [effectiveSetBreakName, routeWaypoints])
 
   // Phase 12 — atomic variant resolution. Promotes the winner to 'pick' and
   // demotes every loser to 'reject' in a single OPFS write so the user
@@ -906,6 +930,25 @@ function App() {
   const handleOpenPhotoPreview = useCallback((photoId: string) => {
     setPreviewPhotoId(photoId)
   }, [])
+  /* ── Stable props for the memoized MapProviderView / PhotoListPanel ──
+   * Each of these replaced an inline lambda or an inline expression in the JSX
+   * below. They exist purely so the two memo boundaries see unchanged props
+   * when App re-renders for something neither of them reads (snack, import
+   * progress, dialogs, the drop-hint overlay). */
+  const handlePhotoListMarkerClick = useCallback((markerId: string) => {
+    mapRef.current?.flyToPhotoMarker(markerId)
+  }, [])
+  // Shared by PhotoListPanel AND NoGpsTray — this was two identical lambdas.
+  const handleRequestDeletePhoto = useCallback((photoId: string) => {
+    setPendingDeletePhoto(photoId)
+  }, [])
+  const handlePhotoRename = useCallback((photoId: string, newName: string) => {
+    void renamePhoto(photoId, newName)
+  }, [renamePhoto])
+  const activePhotoId = useMemo(
+    () => resolveActivePhotoId(markers, activePhotoMarkerId),
+    [markers, activePhotoMarkerId],
+  )
   // Resolve preview metadata from either a GPS marker or a no-GPS photo.
   // `null` = nothing to preview (closed, or the photo vanished).
   const previewPhoto = useMemo(() => {
@@ -919,7 +962,7 @@ function App() {
         timestamp: m.capturedAt?.timestamp,
       }
     }
-    const ng = (session?.noGpsPhotos ?? []).find(p => p.photoId === previewPhotoId)
+    const ng = noGpsPhotos.find(p => p.photoId === previewPhotoId)
     if (ng) {
       return {
         photoId: previewPhotoId,
@@ -929,7 +972,7 @@ function App() {
       }
     }
     return null
-  }, [previewPhotoId, markers, session?.noGpsPhotos])
+  }, [previewPhotoId, markers, noGpsPhotos])
 
   // Phase 6 — drop-from-tray handler. Atomic: a single persistSession
   // mutates BOTH markers and noGpsPhotos in one write, so a partial
@@ -961,7 +1004,7 @@ function App() {
   const handleNoGpsPhotoClick = useCallback((photoId: string) => {
     const center = mapRef.current?.getCenter()
     if (!center) return
-    const photo = (session?.noGpsPhotos ?? []).find(p => p.photoId === photoId)
+    const photo = noGpsPhotos.find(p => p.photoId === photoId)
     if (!photo) return
     // Re-clicking the row of an already-provisional photo must NOT reset the
     // pin — that would silently discard the location the user already dragged
@@ -971,15 +1014,15 @@ function App() {
         ? prev
         : { photoId, filename: photo.displayName ?? photo.filename, lng: center.lng, lat: center.lat }
     ))
-  }, [session?.noGpsPhotos])
+  }, [noGpsPhotos])
 
   // Cancel a provisional placement if its photo leaves "Bez GPS" by another
   // path while the pin is still up (placed via the tray, or deleted) — without
   // this the orphan pin commits against a missing entry and shows a false
   // "placement failed" error.
   useEffect(() => {
-    setProvisionalPlacement(prev => (isProvisionalValid(prev, session?.noGpsPhotos ?? []) ? prev : null))
-  }, [session?.noGpsPhotos])
+    setProvisionalPlacement(prev => (isProvisionalValid(prev, noGpsPhotos) ? prev : null))
+  }, [noGpsPhotos])
 
   const handleProvisionalDrag = useCallback((lng: number, lat: number) => {
     setProvisionalPlacement(prev => (prev ? { ...prev, lng, lat } : prev))
@@ -1440,6 +1483,42 @@ function App() {
     setActiveGroundMarkerId(current => current === id ? null : current)
   }, [persistGroundMarkers])
 
+  /* ── Object props for the memoized MapProviderView ──
+   * Both are compared shallowly by the memo boundary, so rebuilding them per
+   * render would (a) defeat the memo outright and (b) re-attach the map
+   * canvas's dragover/drop listeners on every App render — they are
+   * dependencies of MapProviderView's DnD effect. */
+  const geojsonOverlays = useMemo<Overlay[]>(() => {
+    // Annotated so the nulls widen to `Overlay | null` rather than to a union of
+    // six literal shapes, which the type guard below could not narrow.
+    const all: (Overlay | null)[] = [
+      session?.geojson ? { id: 'uploaded-geojson', data: session.geojson, type: 'line' as const, paint: { 'line-color': '#d32f2f', 'line-width': 3 } } : null,
+      // Segmented corridor borders in green
+      session?.leftSegments ? { id: 'left-segments', data: session.leftSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
+      session?.rightSegments && effectiveDiscipline !== 'precision' ? { id: 'right-segments', data: session.rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
+      // Gates as red perpendicular lines marking corridor start points
+      session?.gates ? { id: 'gates', data: session.gates, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
+      // Hide original KML waypoint labels to avoid duplicates; keep exactPoints labels
+      session?.points ? { id: 'waypoints', data: session.points, type: 'circle' as const, paint: { 'circle-opacity': 0 }, layout: { 'text-field': '' } } : null,
+      // Exact waypoints: hide dot markers (keep labels via symbol layout below)
+      session?.exactPoints ? { id: 'exact-points', data: session.exactPoints, type: 'circle' as const, paint: { 'circle-radius': 0, 'circle-color': '#111111' }, layout: { 'text-field': ['get', 'name'], 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-allow-overlap': true, 'text-ignore-placement': true } } : null,
+    ]
+    // Type guard rather than a cast: it both drops the nulls and proves the
+    // result is Overlay[] (this used to be an `as any`).
+    return all.filter((o): o is Overlay => o !== null)
+  },
+  [session?.geojson, session?.leftSegments, session?.rightSegments, session?.gates, session?.points, session?.exactPoints, effectiveDiscipline])
+
+  const groundMarkerProps = useMemo<GroundMarkerCallbacks>(() => ({
+    groundMarkers,
+    activeGroundMarkerId,
+    onGroundMarkerAdd: handleGroundMarkerAdd,
+    onGroundMarkerDragEnd: handleGroundMarkerDragEnd,
+    onGroundMarkerClick: handleGroundMarkerClick,
+    onGroundMarkerTypeChange: handleGroundMarkerTypeChange,
+    onGroundMarkerDelete: handleGroundMarkerDelete,
+  }), [groundMarkers, activeGroundMarkerId, handleGroundMarkerAdd, handleGroundMarkerDragEnd, handleGroundMarkerClick, handleGroundMarkerTypeChange, handleGroundMarkerDelete])
+
   return (
     <>
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
@@ -1572,18 +1651,7 @@ function App() {
             // token prop can lag one render behind `resolvedStyle` when a
             // `mapbox://` URL resolves in the same batch the token arrived.
             mapboxAccessToken={getMapboxAccessToken()}
-            geojsonOverlays={[
-              session?.geojson ? { id: 'uploaded-geojson', data: session.geojson, type: 'line' as const, paint: { 'line-color': '#d32f2f', 'line-width': 3 } } : null,
-              // Segmented corridor borders in green
-              session?.leftSegments ? { id: 'left-segments', data: session.leftSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
-              session?.rightSegments && effectiveDiscipline !== 'precision' ? { id: 'right-segments', data: session.rightSegments, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
-              // Gates as red perpendicular lines marking corridor start points
-              session?.gates ? { id: 'gates', data: session.gates, type: 'line' as const, paint: { 'line-color': '#00ff00', 'line-width': 2 } } : null,
-              // Hide original KML waypoint labels to avoid duplicates; keep exactPoints labels
-              session?.points ? { id: 'waypoints', data: session.points, type: 'circle' as const, paint: { 'circle-opacity': 0 }, layout: { 'text-field': '' } } : null,
-              // Exact waypoints: hide dot markers (keep labels via symbol layout below)
-              session?.exactPoints ? { id: 'exact-points', data: session.exactPoints, type: 'circle' as const, paint: { 'circle-radius': 0, 'circle-color': '#111111' }, layout: { 'text-field': ['get', 'name'], 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-allow-overlap': true, 'text-ignore-placement': true } } : null,
-            ].filter(Boolean) as any}
+            geojsonOverlays={geojsonOverlays}
             markers={markers}
             activeMarkerId={activeMarkerId}
             usedLabels={usedLabels}
@@ -1596,15 +1664,7 @@ function App() {
             onMarkerDelete={handleMarkerDelete}
             onMarkerLabelChange={handleMarkerLabelChange}
             onMarkerLabelClear={handleMarkerLabelClear}
-            groundMarkerProps={{
-              groundMarkers,
-              activeGroundMarkerId,
-              onGroundMarkerAdd: handleGroundMarkerAdd,
-              onGroundMarkerDragEnd: handleGroundMarkerDragEnd,
-              onGroundMarkerClick: handleGroundMarkerClick,
-              onGroundMarkerTypeChange: handleGroundMarkerTypeChange,
-              onGroundMarkerDelete: handleGroundMarkerDelete,
-            }}
+            groundMarkerProps={groundMarkerProps}
             photoStorage={storage}
             photoDir={photosDir}
             onPhotoIncludeTrack={handlePhotoIncludeTrack}
@@ -1627,33 +1687,33 @@ function App() {
           />
           {/* Phase 6 — no-GPS tray, pinned to bottom-left of the map. */}
           <NoGpsTray
-            photos={session?.noGpsPhotos ?? []}
+            photos={noGpsPhotos}
             open={session?.noGpsTrayOpen ?? true}
             onToggleOpen={() => { void persistNoGpsTrayOpen(!(session?.noGpsTrayOpen ?? true)) }}
             storage={storage}
             photosDir={photosDir}
-            onPhotoDelete={(photoId) => { setPendingDeletePhoto(photoId) }}
+            onPhotoDelete={handleRequestDeletePhoto}
             onPreview={handleOpenPhotoPreview}
           />
           {/* Phase 7 — right-side photo list panel. Auto-hides when there
               are no imported photos (KML-only sessions look unchanged). */}
           <PhotoListPanel
             markers={markers}
-            noGpsPhotos={session?.noGpsPhotos ?? []}
+            noGpsPhotos={noGpsPhotos}
             storage={storage}
             photosDir={photosDir}
-            onMarkerClick={(markerId) => mapRef.current?.flyToPhotoMarker(markerId)}
-            activePhotoId={resolveActivePhotoId(markers, activePhotoMarkerId)}
+            onMarkerClick={handlePhotoListMarkerClick}
+            activePhotoId={activePhotoId}
             onPhotoSetFlag={handlePhotoSetFlag}
             onNoGpsPhotoClick={handleNoGpsPhotoClick}
             onSendToEditor={competitionId ? handleSendToEditor : undefined}
-            onPhotoDelete={(photoId) => { setPendingDeletePhoto(photoId) }}
-            onPhotoRename={(photoId, newName) => { void renamePhoto(photoId, newName) }}
+            onPhotoDelete={handleRequestDeletePhoto}
+            onPhotoRename={handlePhotoRename}
             onCompareVariants={handleCompareVariants}
             onPreviewPhoto={handleOpenPhotoPreview}
             // Visualize the set1↔set2 break in the pick groups (rally only;
             // precision is single-set, so no break → no divider).
-            setBreakWaypointName={resolveSetBreakName(effectiveDiscipline, session?.setBreakWaypointName)}
+            setBreakWaypointName={effectiveSetBreakName}
             routeWaypoints={routeWaypoints}
             // "Set 2 starts at" selector — the sole way to set the break.
             // Omitted for precision so the selector is hidden.
@@ -1795,7 +1855,7 @@ function App() {
                   // between X-click and confirm surfaces the right label.
                   const m = markers.find(m => m.photoId === pendingDeletePhoto)
                   if (m) return photoMarkerDisplayName(m)
-                  const p = (session?.noGpsPhotos ?? []).find(p => p.photoId === pendingDeletePhoto)
+                  const p = noGpsPhotos.find(p => p.photoId === pendingDeletePhoto)
                   if (p) return noGpsPhotoDisplayName(p)
                   return pendingDeletePhoto
                 })()
