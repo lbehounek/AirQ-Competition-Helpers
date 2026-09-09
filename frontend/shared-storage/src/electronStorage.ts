@@ -43,16 +43,71 @@ async function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Convert base64 to Blob
+ * Convert a base64 payload from the main process into a Blob.
+ *
+ * Returns a Blob of the decoded bytes with the given MIME type.
+ *
+ * Writes straight into a preallocated `Uint8Array` instead of filling a plain
+ * `Array` first. That intermediate was the single most expensive step of an
+ * Electron session load: a 5 MB photo produced a 5-million-entry JS array of
+ * boxed numbers (tens of MB of transient heap, all of it garbage) on top of
+ * the ~6.7 MB binary string `atob` already returns — repeated once per photo
+ * while `loadSessionPhotos` walks every candidate. The loop below allocates
+ * exactly one buffer of the final size.
+ *
+ * (The remaining 1.33x base64 string is inherent to the current IPC payload
+ * shape; moving the channel to an ArrayBuffer/Buffer would remove it too.)
  */
 function base64ToBlob(base64: string, mimeType: string): Blob {
   const byteCharacters = atob(base64);
-  const byteNumbers = new Array(byteCharacters.length);
+  const bytes = new Uint8Array(byteCharacters.length);
   for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
+    bytes[i] = byteCharacters.charCodeAt(i);
   }
-  const byteArray = new Uint8Array(byteNumbers);
-  return new Blob([byteArray], { type: mimeType });
+  return new Blob([bytes], { type: mimeType });
+}
+
+/**
+ * Build a "this file/directory does not exist" error in the shape the rest of
+ * the storage layer recognises.
+ *
+ * Returns a plain `Error` stamped with `name = 'NotFoundError'` — the name the
+ * OPFS backend raises natively and the ONLY absence condition `photoThumbs.ts`
+ * resolves to `null` instead of rethrowing. Subclassing `Error` is not an
+ * option here: this package compiles with `erasableSyntaxOnly`.
+ */
+function notFoundError(message: string): Error {
+  return Object.assign(new Error(message), { name: 'NotFoundError' });
+}
+
+/**
+ * Does this rejection represent a main-process "no such file" miss?
+ *
+ * Returns true when the error message carries the `NotFound:` marker that
+ * `storage-get-photo` throws (desktop/main.js). Matched with `includes`, not
+ * `startsWith`, because Electron's `ipcRenderer.invoke` rewraps a handler
+ * rejection as `Error invoking remote method '<channel>': Error: <message>`,
+ * so the marker is never at position 0 in the renderer.
+ */
+function isNotFoundIpcError(err: unknown): boolean {
+  const message = (err as { message?: unknown } | null)?.message;
+  return typeof message === 'string' && message.includes('NotFound:');
+}
+
+/**
+ * Does this rejection represent a main-process "no such directory" miss?
+ *
+ * Returns true for either marker: the shared `NotFound:` prefix, and the older
+ * `Directory not found:` wording that `storage-get-directory` throws today
+ * (desktop/main.js). Both are matched with `includes` for the same
+ * `ipcRenderer.invoke` rewrapping reason as `isNotFoundIpcError`, and both are
+ * accepted so the renderer keeps working against a main process that predates
+ * the marker.
+ */
+function isMissingDirectoryIpcError(err: unknown): boolean {
+  if (isNotFoundIpcError(err)) return true;
+  const message = (err as { message?: unknown } | null)?.message;
+  return typeof message === 'string' && message.includes('Directory not found:');
 }
 
 /**
@@ -108,10 +163,26 @@ export class ElectronStorage implements StorageInterface {
 
   async getPhotoBlob(photosDir: DirectoryHandle, photoId: string): Promise<Blob> {
     const api = getElectronAPI();
-    const result = await api.getPhotoBlob(photosDir.path, photoId);
 
+    // A miss MUST surface as a NotFoundError, not as a generic Error: the
+    // shared `getPhotoThumb` helper only treats `name === 'NotFoundError'` as
+    // "no thumb yet, regenerate" and rethrows everything else. Before this
+    // mapping, every first-time thumb read on Electron looked like a real read
+    // failure to callers (map-corridors logged a warning per missing thumb;
+    // photo-helper's tray had to treat any rejection as a miss and so could
+    // not distinguish a genuinely broken read).
+    let result: Awaited<ReturnType<typeof api.getPhotoBlob>>;
+    try {
+      result = await api.getPhotoBlob(photosDir.path, photoId);
+    } catch (err) {
+      if (isNotFoundIpcError(err)) throw notFoundError(`Photo not found: ${photoId}`);
+      throw err;
+    }
+
+    // Defensive: main-process builds older than the `NotFound:` rejection (and
+    // test doubles for the IPC layer) resolve with null for a miss. Same shape.
     if (!result) {
-      throw new Error(`Photo not found: ${photoId}`);
+      throw notFoundError(`Photo not found: ${photoId}`);
     }
 
     return base64ToBlob(result.base64, result.mimeType);
@@ -150,7 +221,24 @@ export class ElectronStorage implements StorageInterface {
     options?: { create?: boolean }
   ): Promise<DirectoryHandle> {
     const api = getElectronAPI();
-    const childPath = await api.getDirectoryHandle(parent.path, name, options?.create ?? false);
+
+    // Same mapping, same reason as `getPhotoBlob`: a `{ create: false }` miss
+    // MUST surface as a NotFoundError. Three callers key on that name and
+    // silently mis-behave without it on the desktop build —
+    // `photoThumbs.getPhotoThumb` / `deletePhotoThumb` (a competition with no
+    // `thumbs/` dir yet is the NORMAL state before the first thumb persist, and
+    // rethrowing there makes every such read and every photo delete look like a
+    // real I/O failure), and `competitionService.flushPendingWrites`, which only
+    // drops an unwritable owed payload — a competition directory that is gone —
+    // when it sees this name, and would otherwise retry it at every flush point
+    // forever.
+    let childPath: string;
+    try {
+      childPath = await api.getDirectoryHandle(parent.path, name, options?.create ?? false);
+    } catch (err) {
+      if (isMissingDirectoryIpcError(err)) throw notFoundError(`Directory not found: ${name}`);
+      throw err;
+    }
     return createPathHandle(childPath);
   }
 

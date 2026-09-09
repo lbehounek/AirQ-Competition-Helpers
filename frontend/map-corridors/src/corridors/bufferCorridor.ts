@@ -1,5 +1,8 @@
 import type { Feature, FeatureCollection, GeoJSON, LineString, Polygon } from 'geojson'
-import { buffer, featureCollection } from '@turf/turf'
+// Individual @turf subpackages rather than the `@turf/turf` barrel (see
+// setSplit/partitionPicksBySet.ts) — same modules, no phantom dependency.
+import { buffer } from '@turf/buffer'
+import { featureCollection } from '@turf/helpers'
 
 export function buildBufferedCorridor(input: GeoJSON, distance: number, units: 'meters' | 'kilometers' = 'meters'): GeoJSON | null {
   const lines: Feature<LineString>[] = []

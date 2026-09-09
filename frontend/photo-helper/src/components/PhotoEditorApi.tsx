@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Box, Tooltip } from '@mui/material';
 import type { Photo } from '../types';
 import {
@@ -6,11 +6,21 @@ import {
   type WebGLContext,
   type ImageAdjustments
 } from '../utils/webglUtils';
-import { useWebGLContext } from '../utils/webglContextManager';
+import { getWebGLContextManager } from '../utils/webglContextManager';
 import { drawLabel, getCanvasContext } from '../utils/canvasUtils';
 import { useAspectRatio } from '../contexts/AspectRatioContext';
 import { useCachedImage } from '../utils/imageCache';
 import { intelligentResize } from '../utils/highQualityResize';
+import { debugLog } from '../utils/debugLog';
+import {
+  canvasSizeFor,
+  resolveCanvasWidth,
+  GRID_PLACEHOLDER_WIDTH,
+  LARGE_CANVAS_WIDTH,
+} from '../utils/canvasSizing';
+import { useElementWidth } from '../hooks/useElementWidth';
+import { useDevicePixelRatio } from '../hooks/useDevicePixelRatio';
+import { useIsUserIdle } from '../hooks/useUserActivity';
 import type { ApiPhoto } from '../types/api';
 
 interface PhotoEditorApiProps {
@@ -122,7 +132,16 @@ export const renderPhotoOnCanvas = async (
   // Discipline of the photo being rendered — drives the per-mode label font
   // size in drawLabel (track −20%, turning −35%; feedback 2026-06-19). Optional
   // so callers that don't care (or pre-date it) keep the default size.
-  mode?: 'track' | 'turningpoint'
+  mode?: 'track' | 'turningpoint',
+  // Caller-owned canvas to use as the intermediate effect buffer instead of
+  // allocating a new one per call — see where it is consumed below. Omit it
+  // (pdfGenerator does) to keep the previous allocate-per-call behavior.
+  scratchCanvas?: HTMLCanvasElement,
+  // Bypass the resize cache for this render. Set by the PDF export, whose
+  // 1600 px targets would otherwise evict the large-modal entries the cache
+  // exists to serve. Threaded per-call on purpose: the export yields between
+  // photos, so an editor redraw can happen while it runs and MUST keep caching.
+  skipResizeCache = false
 ) => {
   const ctx = getCanvasContext(canvas);
   if (!ctx) {
@@ -177,43 +196,75 @@ export const renderPhotoOnCanvas = async (
     y = (canvas.height - displayHeight) / 2;
   }
   
-  // Create a temporary canvas for image processing
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = Math.ceil(displayWidth);
-  tempCanvas.height = Math.ceil(displayHeight);
+  // Intermediate buffer for the effect passes. Reused across draws when the
+  // caller supplies one: a fresh canvas here meant a ≥1 MB backing store
+  // allocated (and GC'd) on every slider tick, per mounted editor. Nothing
+  // retains it after this call — WebGL uploads it synchronously and
+  // highQualityResize clones before caching — so reuse is safe.
+  const tempCanvas = scratchCanvas ?? document.createElement('canvas');
+  const tempWidth = Math.ceil(displayWidth);
+  const tempHeight = Math.ceil(displayHeight);
   const tempCtx = getCanvasContext(tempCanvas);
   if (!tempCtx) {
     // Fallback: just draw without effects using original image
     ctx.drawImage(image, x, y, displayWidth, displayHeight);
     return;
   }
-  
+
+  /**
+   * Size the shared scratch buffer for THIS render and blank it. Returns
+   * nothing; assigning either dimension already clears the bitmap, so only the
+   * same-size case needs the explicit `clearRect`.
+   *
+   * WHY it is a function called immediately before each paint rather than a
+   * one-off above: the HQ path awaits `intelligentResize`, and two renders can
+   * be in flight at once (the `seq` guard in `renderCanvas` exists for exactly
+   * that). Preparing the buffer before the await gave the sequence
+   * "A clears, A awaits, B clears, B awaits, A paints, B paints" — B's
+   * `drawImage` then composited source-over onto A's already effect-processed
+   * pixels. Opaque JPEGs hide it because the draw covers the buffer, but
+   * `isValidImageFile` also accepts PNG, and in a PNG's transparent regions the
+   * brightness/contrast pass would be applied twice.
+   */
+  const resetScratch = () => {
+    if (tempCanvas.width !== tempWidth || tempCanvas.height !== tempHeight) {
+      tempCanvas.width = tempWidth;
+      tempCanvas.height = tempHeight;
+    } else {
+      tempCtx.clearRect(0, 0, tempWidth, tempHeight);
+    }
+  };
+
   // Draw the original image to temp canvas using high-quality resizing when appropriate
   if (useHighQuality && !isDragging && !showOriginal) {
     try {
-      console.log(`🎨 Using high-quality resize for ${image.width}x${image.height} → ${Math.ceil(displayWidth)}x${Math.ceil(displayHeight)}`);
-      
+      debugLog(`🎨 Using high-quality resize for ${image.width}x${image.height} → ${Math.ceil(displayWidth)}x${Math.ceil(displayHeight)}`);
+
       // Use intelligent high-quality resizing
       const highQualityCanvas = await intelligentResize(
-        image, 
-        Math.ceil(displayWidth), 
+        image,
+        Math.ceil(displayWidth),
         Math.ceil(displayHeight),
         {
           unsharpAmount: 80,      // Post-sharpening
           unsharpRadius: 0.6,
-          unsharpThreshold: 2
+          unsharpThreshold: 2,
+          skipCache: skipResizeCache
         }
       );
-      
+
       // Copy high-quality result to temp canvas
+      resetScratch();
       tempCtx.drawImage(highQualityCanvas, 0, 0);
     } catch (error) {
       console.warn('High-quality resize failed, falling back to standard rendering:', error);
       // Fallback to standard rendering
+      resetScratch();
       tempCtx.drawImage(image, 0, 0, displayWidth, displayHeight);
     }
   } else {
     // Standard fast rendering for dragging or when high-quality is disabled
+    resetScratch();
     tempCtx.drawImage(image, 0, 0, displayWidth, displayHeight);
   }
   
@@ -281,8 +332,8 @@ export const renderPhotoOnCanvas = async (
   } else {
     // Apply CPU-based image processing
     try {
-      let imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-      let data = imageData.data;
+      const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const data = imageData.data;
     
     // Apply white balance first (if needed)
     if (canvasState.whiteBalance?.auto || 
@@ -481,7 +532,7 @@ const drawCirclePreview = (canvas: HTMLCanvasElement, circle: { x: number; y: nu
   ctx.restore();
 };
 
-export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
+const PhotoEditorApiImpl: React.FC<PhotoEditorApiProps> = ({
   photo,
   label,
   onUpdate,
@@ -491,7 +542,10 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   circleMode: externalCircleMode = false,
   mode
 }) => {
-  const { currentRatio, getCanvasSize } = useAspectRatio();
+  const { currentRatio } = useAspectRatio();
+  // Everything in this component keys off the numeric ratio, never the option
+  // object — a primitive keeps the memo/dependency lists below stable.
+  const ratio = currentRatio.ratio;
   
   // All hooks must be called before any conditional logic or early returns
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -502,29 +556,24 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   const [circlePreview, setCirclePreview] = useState<{ x: number; y: number } | null>(null);
   const [circleStartPos, setCircleStartPos] = useState<{ x: number; y: number } | null>(null);  // Track initial circle position for click vs drag
   const [localCirclePosition, setLocalCirclePosition] = useState<{ x: number; y: number } | null>(null);  // Local circle position for smooth dragging
-  const pendingUpdateRef = useRef<number | null>(null);
-  const lastMoveTimeRef = useRef<number>(0);
-  const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [dragScaleFactor, setDragScaleFactor] = useState(1);
-  // Idle-based high quality rendering control
-  const [isIdleHQ, setIsIdleHQ] = useState(false);
   // `number`, not `ReturnType<typeof setTimeout>`: @types/node is in this
   // program (vite.config.ts) and its global `setTimeout` overload returns
   // `NodeJS.Timeout`, so the inferred alias disagreed with what the DOM
   // `window.setTimeout` below actually returns. Every timer in this file goes
   // through `window.*` for the same reason.
-  const idleTimerRef = useRef<number | null>(null);
+  const pendingUpdateRef = useRef<number | null>(null);
+  const tempCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Reusable effect buffer handed to renderPhotoOnCanvas so it stops
+  // allocating a ~1 MB canvas per draw.
+  const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [dragScaleFactor, setDragScaleFactor] = useState(1);
+  // Idle detection now lives in ONE module-level store shared by every editor
+  // instead of a listener pair + timer per editor, and only the modal editor
+  // subscribes: `useHighQuality` below is gated on `size === 'large'`, so a
+  // grid editor that re-rendered on every idle flip was redrawing its canvas
+  // for a value it could never use.
+  const isIdle = useIsUserIdle(size === 'large');
 
-  const markInteraction = useCallback(() => {
-    setIsIdleHQ(false);
-    if (idleTimerRef.current) {
-      window.clearTimeout(idleTimerRef.current);
-    }
-    idleTimerRef.current = window.setTimeout(() => {
-      setIsIdleHQ(true);
-    }, 3000);
-  }, []);
-  
   // Use cached image loading - provide safe defaults for when photo is null
   const { image: loadedImage, error: imageError } = useCachedImage(
     photo?.id || '',
@@ -541,55 +590,49 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
   // `applyWebGLEffects` (they fall back to the 2D path on their own), so this
   // component keeps no `webglSupported` flag of its own — nothing here ever
   // branched on it.
-  const webglManager = useWebGLContext();
+  // One stable handle per editor instance. `isAvailable` is a GETTER so
+  // `renderPhotoOnCanvas` reads the live pool state at draw time — a
+  // render-time boolean went stale as other editors borrowed contexts — and,
+  // more importantly, `useWebGLContext()` returned a fresh object literal on
+  // every render, which was one of the two things that changed `renderCanvas`'s
+  // identity (and therefore redrew the canvas) on EVERY React render.
+  const webglManager = useMemo(() => {
+    const manager = getWebGLContextManager();
+    return {
+      requestContext: () => manager.requestContext(),
+      releaseContext: (context: WebGLContext) => manager.releaseContext(context),
+      get isAvailable() { return manager.getAvailableContextCount() > 0; },
+    };
+  }, []);
   const [lowPerformanceMode, setLowPerformanceMode] = useState<boolean>(false);
 
-  // Dynamic canvas sizes based on aspect ratio
-  const gridCanvasSize = getCanvasSize(240);
-  const largeCanvasSize = getCanvasSize(600); // Match the canvas size used below
-  
-  // Dynamic canvas dimensions based on aspect ratio.
-  // Grid was previously 300 px wide — but the grid <canvas> is CSS-sized to
-  // 100% of its parent cell (typically 400–700 CSS px on a 1080p/1440p
-  // screen, often >1000 device px after devicePixelRatio scaling), so the
-  // browser was upscaling 2–4× and the preview looked pixelated even though
-  // the printed PDF was crisp (feedback 2026-05-10). Matching the modal's
-  // 600 px buffer means the grid canvas is now displayed at ≤1× scale on
-  // typical Windows displays. Drag stays fluid because `dragScaleFactor`
-  // already shrinks the temp canvas while the user is interacting.
-  const canvasSize = size === 'large'
-    ? getCanvasSize(600) // 2x scale for modal
-    : getCanvasSize(600); // Bumped from 300 — see comment above.
-
-  // Image is now loaded via useCachedImage hook above
-  useEffect(() => {
-    // Start idle timer on mount to allow HQ after initial load settles
-    markInteraction();
-    return () => {
-      if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current);
-    };
-  }, [markInteraction]);
-
-  // Global lightweight activity listeners to reset idle timer (pointer/key)
-  useEffect(() => {
-    const throttleMs = 250;
-    const lastRef = lastMoveTimeRef; // reuse existing ref
-    const handlePointerMove = () => {
-      const now = Date.now();
-      if (now - lastRef.current < throttleMs) return;
-      lastRef.current = now;
-      markInteraction();
-    };
-    const handleKeyDown = () => {
-      markInteraction();
-    };
-    window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    window.addEventListener('keydown', handleKeyDown, { passive: true });
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [markInteraction]);
+  // --- Canvas backing-store sizing -----------------------------------------
+  // The policy itself (and the reason it exists) lives in utils/canvasSizing.
+  // In short: a grid canvas is CSS-sized to its cell, so its backing store now
+  // tracks the cell (measured CSS px × DPR, rounded up to a 100 px quantum,
+  // clamped to 300–600) instead of being a flat 600 for everything down to a
+  // 144 px tray thumb. The modal stays at exactly LARGE_CANVAS_WIDTH because
+  // its CSS width equals its backing width and the drag / wheel /
+  // canvasToBaseCoords math converts CSS deltas with `canvas.width / BASE_WIDTH`
+  // — do not raise it without switching those four sites to
+  // `rect.width / BASE_WIDTH` first.
+  //
+  // A callback ref (not a `useRef`) because the wrapper Box is the LAST of four
+  // render branches and only exists after the image has loaded asynchronously;
+  // a ref read in a mount effect would be null forever.
+  const [wrapperEl, setWrapperEl] = useState<HTMLDivElement | null>(null);
+  const cssWidth = useElementWidth(wrapperEl, size === 'grid');
+  const dpr = useDevicePixelRatio();
+  const backingWidth = resolveCanvasWidth(size, cssWidth, dpr);
+  const canvasSize = useMemo(() => canvasSizeFor(backingWidth, ratio), [backingWidth, ratio]);
+  const largeCanvasSize = useMemo(() => canvasSizeFor(LARGE_CANVAS_WIDTH, ratio), [ratio]);
+  const gridPlaceholderSize = useMemo(() => canvasSizeFor(GRID_PLACEHOLDER_WIDTH, ratio), [ratio]);
+  // Grid draws wait for the measured cell width; without this gate the first
+  // draw lands at the 300 px fallback and is immediately followed by a second
+  // draw at the measured width — double work on every remount. Environments
+  // with no ResizeObserver (jsdom) never get a measurement, so they draw
+  // immediately at the minimum.
+  const isMeasured = size !== 'grid' || cssWidth !== null || typeof ResizeObserver === 'undefined';
 
   // Sync local states when photo changes
   useEffect(() => {
@@ -623,8 +666,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Create a temporary canvas to analyze the image
     const tempCanvas = document.createElement('canvas');
-    const baseHeight = BASE_WIDTH / currentRatio.ratio;
-    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, { width: BASE_WIDTH, height: baseHeight });
+    const baseHeight = BASE_WIDTH / ratio;
+    const croppedImage = cropImageToAspectRatio(loadedImage, ratio, { width: BASE_WIDTH, height: baseHeight });
     tempCanvas.width = croppedImage.width;
     tempCanvas.height = croppedImage.height;
     const tempCtx = getCanvasContext(tempCanvas);
@@ -702,10 +745,24 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     }
   }, [photo?.canvasState?.whiteBalance?.auto, loadedImage, onUpdate]);
 
+  // Enable high-quality (pica) rendering only for the modal, only while the
+  // user is not interacting. Hoisted above `renderCanvas` so it can be a
+  // dependency in its own right: an idle flip that lands while dragging or
+  // while showing the original no longer changes this value, so it no longer
+  // triggers a redraw that could not have looked different.
+  const useHighQuality = !isDragging && !showOriginal && size === 'large' && isIdle;
+
+  // Monotonic render id. `renderPhotoOnCanvas` awaits pica, so two renders can
+  // be in flight at once and the slower (older) one must not blit over the
+  // newer result — see the guard after the await.
+  const renderSeqRef = useRef(0);
+
   // Render canvas
   const renderCanvas = useCallback(async () => {
     const canvas = canvasRef.current;
-    if (!canvas || !loadedImage || !photo?.canvasState) return;
+    if (!canvas || !loadedImage || !photo?.canvasState || !isMeasured) return;
+
+    const seq = ++renderSeqRef.current;
 
     // Create or reuse a temporary canvas for atomic rendering to prevent distortion flash
     let tempCanvas = tempCanvasRef.current;
@@ -720,9 +777,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       tempCanvas.height = targetHeight;
     }
 
-    // Enable high-quality rendering for static (non-dragging) scenarios
-    const useHighQuality = !isDragging && !showOriginal && size === 'large' && isIdleHQ;
-
     // Render to temporary canvas first
     await renderPhotoOnCanvas(
       tempCanvas,
@@ -734,12 +788,17 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       isDragging,
       null, // WebGL context will be requested on-demand in renderCanvas
       webglManager,
-      currentRatio.ratio,
-      BASE_WIDTH / currentRatio.ratio,
+      ratio,
+      BASE_WIDTH / ratio,
       (showOriginal || isDragging),
       useHighQuality,
-      mode
+      mode,
+      (scratchCanvasRef.current ??= document.createElement('canvas'))
     );
+
+    // A newer render superseded this one while pica was working — blitting it
+    // now would paint a stale frame over the fresh one.
+    if (seq !== renderSeqRef.current) return;
 
     // Draw circle overlay if it exists
     if (photo.canvasState.circle && photo.canvasState.circle.visible) {
@@ -774,7 +833,16 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       }
       ctx.drawImage(tempCanvas, 0, 0, canvasSize.width, canvasSize.height);
     }
-  }, [loadedImage, photo?.canvasState, photo?.canvasState?.brightness, photo?.canvasState?.contrast, photo?.canvasState?.scale, photo?.canvasState?.circle, label, canvasSize, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, currentRatio, showOriginal, circleMode, circlePreview, dragScaleFactor, size, isIdleHQ, mode]);
+    // Dependency notes (this list is the whole point of the WP): the individual
+    // `photo?.canvasState?.*` fields are gone because `photo?.canvasState` already
+    // subsumes them; `currentRatio` (a fresh-per-render object under the old
+    // context) became the primitive `ratio`; `isIdleHQ` became the derived
+    // `useHighQuality`; and `isMeasured` is REQUIRED — when the measured width
+    // happens to resolve to the same value as the unmeasured fallback,
+    // `canvasSize` is memo-identical and nothing else here would re-fire the
+    // effect. Everything that remains is per-editor local state, so an edit to
+    // one photo no longer redraws the other ~19 mounted canvases.
+  }, [loadedImage, photo?.canvasState, label, canvasSize, isMeasured, localPosition, localLabelPosition, isDragging, isDraggingCircle, localCirclePosition, webglManager, ratio, showOriginal, useHighQuality, circleMode, circlePreview, dragScaleFactor, size, mode]);
 
   useEffect(() => {
     renderCanvas().catch(error => {
@@ -803,8 +871,9 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Mouse move handler - no throttling for smoother movement
     const handleDocumentMouseMove = (e: MouseEvent) => {
-      markInteraction();
-
+      // No markInteraction() here any more — the shared activity store listens
+      // for pointermove/pointerup on the window and covers this (and the wheel
+      // and mousedown sites below).
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -832,7 +901,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
         // Constrain circle to canvas bounds
         const constrainedX = Math.max(circle.radius, Math.min(BASE_WIDTH - circle.radius, baseX));
-        const constrainedY = Math.max(circle.radius, Math.min(BASE_WIDTH / currentRatio.ratio - circle.radius, baseY));
+        const constrainedY = Math.max(circle.radius, Math.min(BASE_WIDTH / ratio - circle.radius, baseY));
         
         // Update local position immediately for smooth visual feedback
         setLocalCirclePosition({ x: constrainedX, y: constrainedY });
@@ -872,7 +941,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       };
 
       // Apply constraints in base coordinate system using original image dimensions
-      const baseHeight = BASE_WIDTH / currentRatio.ratio;
+      const baseHeight = BASE_WIDTH / ratio;
       
       // Calculate scale to fit original image to base dimensions
       const baseScaleX = BASE_WIDTH / loadedImage.width;
@@ -933,13 +1002,12 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     };
 
     const handleDocumentMouseUp = () => {
-      markInteraction();
       // Handle circle placement
       if (isDraggingCircle) {
         if (circleStartPos && photo.canvasState.circle) {
           // If circleStartPos is still set, it means we didn't drag - instant placement
           const constrainedX = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH - photo.canvasState.circle.radius, circleStartPos.x));
-          const constrainedY = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH / currentRatio.ratio - photo.canvasState.circle.radius, circleStartPos.y));
+          const constrainedY = Math.max(photo.canvasState.circle.radius, Math.min(BASE_WIDTH / ratio - photo.canvasState.circle.radius, circleStartPos.y));
           
           onUpdate({
             ...photo.canvasState,
@@ -1012,7 +1080,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
       document.body.style.webkitUserSelect = '';
       document.body.style.cursor = '';
     };
-  }, [isDragging, isDraggingCircle, dragStart, localPosition, loadedImage, photo.canvasState, currentRatio, onUpdate, circleStartPos, localCirclePosition, markInteraction]);
+  }, [isDragging, isDraggingCircle, dragStart, localPosition, loadedImage, photo.canvasState, ratio, onUpdate, circleStartPos, localCirclePosition]);
 
   // NB: no circle hit-test helper. In circle mode a press anywhere on the
   // canvas grabs the existing circle — a short click teleports it to the
@@ -1021,6 +1089,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
   // Helper function to convert canvas coordinates to base coordinates
   const canvasToBaseCoords = (canvasX: number, canvasY: number) => {
+    // Valid only in large mode, where backing width == CSS width. Every caller
+    // is behind a `size === 'grid'` early return for exactly that reason.
     const scaleRatio = canvasSize.width / BASE_WIDTH;
     return {
       x: canvasX / scaleRatio,
@@ -1035,8 +1105,7 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     
     // Ignore if already dragging (prevents double-start race condition)
     if (isDragging) return;
-    markInteraction();
-    
+
     // Clear any pending updates
     if (pendingUpdateRef.current) {
       window.clearTimeout(pendingUpdateRef.current);
@@ -1119,7 +1188,6 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     if (!loadedImage || !photo?.canvasState) return;
 
     event.preventDefault(); // Prevent page scrolling
-    markInteraction();
 
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
@@ -1156,8 +1224,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
 
     // Apply constraints in base coordinates
     // Use base dimensions for cropping to match render logic
-    const baseHeight = BASE_WIDTH / currentRatio.ratio;
-    const croppedImage = cropImageToAspectRatio(loadedImage, currentRatio.ratio, { width: BASE_WIDTH, height: baseHeight });
+    const baseHeight = BASE_WIDTH / ratio;
+    const croppedImage = cropImageToAspectRatio(loadedImage, ratio, { width: BASE_WIDTH, height: baseHeight });
     const minScaleX = BASE_WIDTH / croppedImage.width;
     const minScaleY = baseHeight / croppedImage.height;
     const minScale = Math.max(minScaleX, minScaleY);
@@ -1195,8 +1263,8 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     <>
       {!photo || !photo.canvasState ? (
         <Box sx={{
-          width: size === 'large' ? largeCanvasSize.width : gridCanvasSize.width,
-          height: size === 'large' ? largeCanvasSize.height : gridCanvasSize.height,
+          width: size === 'large' ? largeCanvasSize.width : gridPlaceholderSize.width,
+          height: size === 'large' ? largeCanvasSize.height : gridPlaceholderSize.height,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -1235,11 +1303,17 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
           Loading...
         </Box>
       ) : (
-        <Box sx={{ 
-          position: 'relative', 
-          width: size === 'large' ? largeCanvasSize.width : '100%',
-          height: size === 'large' ? largeCanvasSize.height : '100%'
-        }}>
+        <Box
+          // Callback ref: this Box is what useElementWidth measures, and it only
+          // exists in this branch (after the image loaded), so the hook has to
+          // be handed the node rather than read a ref.
+          ref={setWrapperEl}
+          sx={{
+            position: 'relative',
+            width: size === 'large' ? largeCanvasSize.width : '100%',
+            height: size === 'large' ? largeCanvasSize.height : '100%'
+          }}
+        >
           <canvas
             ref={canvasRef}
             data-photo-id={photo.id}
@@ -1282,3 +1356,12 @@ export const PhotoEditorApi: React.FC<PhotoEditorApiProps> = ({
     </>
   );
 };
+
+/**
+ * Memoized public export. Every per-photo prop the grid passes is either a
+ * primitive or an object whose identity is preserved for untouched photos
+ * (`updatePhotoState` maps only the edited photo), so the default shallow
+ * comparison is sufficient — editing photo A no longer re-renders B..N.
+ */
+export const PhotoEditorApi = React.memo(PhotoEditorApiImpl);
+PhotoEditorApi.displayName = 'PhotoEditorApi';

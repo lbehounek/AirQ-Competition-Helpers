@@ -1,7 +1,14 @@
 // WebGL Context Manager - Handles context pooling and resource management
 // Prevents browser WebGL context exhaustion by sharing contexts
 
-import { initWebGLContext, getFragmentShaderForEffects, type WebGLContext } from './webglUtils';
+import {
+  initWebGLContext,
+  getFragmentShaderForEffects,
+  isWebGLSupported,
+  loseWebGLContext,
+  type WebGLContext,
+} from './webglUtils';
+import { debugLog } from './debugLog';
 
 export interface WebGLContextManager {
   requestContext(): WebGLContext | null;
@@ -28,7 +35,7 @@ class WebGLContextPool implements WebGLContextManager {
         this.availableContexts.push(context);
       }
     }
-    console.log(`WebGL context pool initialized with ${this.availableContexts.length} pre-warmed contexts`);
+    debugLog(`WebGL context pool initialized with ${this.availableContexts.length} pre-warmed contexts`);
   }
 
   private createContext(): WebGLContext | null {
@@ -141,17 +148,63 @@ export function getWebGLContextManager(): WebGLContextManager {
   return contextManager;
 }
 
-// Hook for React components to use managed WebGL contexts
-export function useWebGLContext(): {
-  requestContext: () => WebGLContext | null;
-  releaseContext: (context: WebGLContext) => void;
-  isAvailable: boolean;
-} {
-  const manager = getWebGLContextManager();
-  
+/**
+ * A WebGL context owned by exactly one caller, with an idempotent teardown.
+ * `dispose()` releases the GL objects AND the drawing buffer (see
+ * `loseWebGLContext`), so calling it twice — eagerly plus from a `finally` —
+ * is safe and free.
+ */
+export interface DedicatedWebGLContext {
+  context: WebGLContext;
+  dispose: () => void;
+}
+
+/**
+ * Create a private WebGL context for one long, one-shot job (today: the PDF
+ * export). Returns `null` when WebGL is unavailable or the context is born
+ * lost — callers are expected to fall back to their CPU path.
+ *
+ * WHY not borrow from the shared pool:
+ * (i)  `applyWebGLEffects` resizes the context's canvas to the source size, so
+ *      a pooled 800x600 context borrowed for one 4800x3600 photo would return
+ *      to the editor grid carrying a ~69 MB drawing buffer for the rest of the
+ *      session. A private 1x1 context grows only for the export and is lost in
+ *      `dispose()`.
+ * (ii) `isWebGLSupported()` is the CACHED probe, so a machine without WebGL
+ *      does not emit `initWebGLContext`'s `console.warn` on every export.
+ * (iii) Same shader source as the pool (`getFragmentShaderForEffects(true)`) —
+ *      that identity is what makes the printed sheet match the live preview on
+ *      the same GPU.
+ */
+export function acquireDedicatedWebGLContext(): DedicatedWebGLContext | null {
+  if (!isWebGLSupported()) return null;
+
+  const context = initWebGLContext(1, 1, getFragmentShaderForEffects(true));
+  if (!context) return null;
+
+  // A context can be handed back already lost when the browser is at its
+  // per-page context cap and evicted this one immediately. Losing it properly
+  // (rather than dropping the reference) frees the slot for the editor pool.
+  if (context.gl.isContextLost()) {
+    loseWebGLContext(context);
+    return null;
+  }
+
+  let disposed = false;
   return {
-    requestContext: () => manager.requestContext(),
-    releaseContext: (context: WebGLContext) => manager.releaseContext(context),
-    isAvailable: manager.getAvailableContextCount() > 0
+    context,
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      loseWebGLContext(context);
+    },
   };
 }
+
+// NB: there is deliberately no `useWebGLContext()` hook here any more. It
+// returned a fresh object literal (with an `isAvailable` snapshot taken at
+// render time) on every render, which changed `renderCanvas`'s identity in
+// PhotoEditorApi and redrew every mounted canvas on every React render.
+// Consumers build their own `useMemo`'d handle around `getWebGLContextManager()`
+// with `isAvailable` as a getter, so the availability is read when the draw
+// actually happens rather than when the component last rendered.

@@ -2,6 +2,8 @@
  * Global image cache to prevent reloading images when photos are moved around
  */
 
+import { debugLog } from './debugLog';
+
 interface CachedImage {
   image: HTMLImageElement;
   url: string;
@@ -10,6 +12,8 @@ interface CachedImage {
 
 class ImageCacheManager {
   private cache = new Map<string, CachedImage>();
+  /** Loads started but not yet settled, keyed exactly like `cache` — see getImageByUrl. */
+  private inflight = new Map<string, Promise<HTMLImageElement>>();
   private maxAge = 5 * 60 * 1000; // 5 minutes cache lifetime
   private maxSize = 50; // Maximum number of cached images
 
@@ -22,12 +26,12 @@ class ImageCacheManager {
     // Check if we have a valid cached image
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.maxAge) {
-      console.log(`✨ Using cached image for ${photoId}`);
+      debugLog(`✨ Using cached image for ${photoId}`);
       return cached.image;
     }
 
     // Load the image
-    console.log(`📥 Loading image for ${photoId}`);
+    debugLog(`📥 Loading image for ${photoId}`);
     // `vite/client` types `import.meta.env` with a permissive index signature,
     // so reading a var straight off it hands back `any`. Take it as `unknown`
     // and check for a string before calling `.replace` — a non-string value
@@ -75,18 +79,52 @@ class ImageCacheManager {
   }
 
   /**
-   * Get an image by direct URL with caching and eviction
+   * Get an image by direct URL with caching and eviction.
+   *
+   * Returns the decoded `HTMLImageElement` for `url`, reusing the cached one
+   * when possible. Concurrent callers for the same key share one load, and
+   * `blob:` URLs are never age-expired (see the two comments below). Rejects
+   * with whatever `loadImage` rejects with (an `Event` from `img.onerror`).
    */
   async getImageByUrl(url: string, cacheKey?: string): Promise<HTMLImageElement> {
     const key = cacheKey || `url:${url}`;
     const cached = this.cache.get(key);
-    if (cached && Date.now() - cached.timestamp < this.maxAge) {
+    // `blob:` URLs are immutable for their lifetime — one is created per photo
+    // in useCompetitionSystem and revoked explicitly on removal / mode switch,
+    // so the bytes behind a live blob URL can never change. Expiring them after
+    // `maxAge` only forced a full-resolution re-decode on the next editor mount
+    // (modal open, aspect-ratio remount, tray → slot) and left the previously
+    // decoded element alive inside still-mounted editors while the cache held a
+    // second copy. Non-blob URLs keep the age check: a server-side asset can
+    // change behind a stable URL.
+    const isImmutable = url.startsWith('blob:');
+    if (cached && (isImmutable || Date.now() - cached.timestamp < this.maxAge)) {
       return cached.image;
     }
-    const img = await this.loadImage(url);
-    this.cache.set(key, { image: img, url, timestamp: Date.now() });
-    this.cleanup();
-    return img;
+
+    // De-duplicate concurrent loads of the same key. React runs child effects
+    // before parent effects, so every `useCachedImage` in a freshly mounted
+    // PhotoEditorApi misses the cache and starts a load BEFORE PhotoGridApi's
+    // `preloadImages` effect runs and starts a second load of the same URL —
+    // every photo was decoded twice on first mount, and the two resulting
+    // HTMLImageElements diverged between the cache and the mounted editors.
+    const pending = this.inflight.get(key);
+    if (pending) return pending;
+
+    const load = this.loadImage(url)
+      .then(img => {
+        this.cache.set(key, { image: img, url, timestamp: Date.now() });
+        this.cleanup();
+        return img;
+      })
+      // `finally` (not a `then` tail) so a failed load also clears the slot and
+      // a later retry actually re-issues the request instead of re-awaiting a
+      // permanently rejected promise.
+      .finally(() => {
+        this.inflight.delete(key);
+      });
+    this.inflight.set(key, load);
+    return load;
   }
 
   /**
@@ -101,7 +139,7 @@ class ImageCacheManager {
 
     const toRemove = entries.slice(0, this.cache.size - this.maxSize);
     toRemove.forEach(([key]) => {
-      console.log(`🗑️ Removing old cached image: ${key}`);
+      debugLog(`🗑️ Removing old cached image: ${key}`);
       this.cache.delete(key);
     });
   }
@@ -126,7 +164,7 @@ class ImageCacheManager {
     
     const results = await Promise.all(promises);
     const successful = results.filter(r => r !== null).length;
-    console.log(`✅ Preloaded ${successful} images`);
+    debugLog(`✅ Preloaded ${successful} images`);
   }
 
   /**
@@ -134,7 +172,7 @@ class ImageCacheManager {
    */
   clear() {
     this.cache.clear();
-    console.log('🗑️ Image cache cleared');
+    debugLog('🗑️ Image cache cleared');
   }
 
   /**

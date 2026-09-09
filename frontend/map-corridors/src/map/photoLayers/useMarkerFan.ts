@@ -18,6 +18,12 @@
 // preserves the markers' relative screen positions, so the offsets stay valid.
 // It also recomputes when the marker set changes or when a marker enters/leaves
 // drag (the dragged marker is excluded so its dot snaps cleanly to the cursor).
+//
+// The settle events ALWAYS recompute; the per-frame `zoom` recompute runs only
+// while a fan currently exists (`hasFanRef`). An un-fanned marker's offset is
+// [0,0] at every zoom level, so there is nothing to keep anchored mid-gesture —
+// only fanned dots need the per-frame re-projection. See the effect below for
+// the one behavioural consequence and the one-line revert.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
@@ -167,31 +173,48 @@ export function useMarkerFan(params: {
   const draggingRef = useRef(draggingMarkerId)
   useEffect(() => { draggingRef.current = draggingMarkerId }, [draggingMarkerId])
 
+  // Whether the LAST recompute produced any fanned cluster. Read only inside the
+  // per-frame `zoom` handler, never during render (react-hooks `refs` rule);
+  // synced in the effect below the memo.
+  const hasFanRef = useRef(false)
+
   useEffect(() => {
     if (!isMapLoaded || !mapRef.current) return
     const map = mapRef.current.getMap()
+    // Synchronous on purpose (no requestAnimationFrame): mapbox fires `zoomend`
+    // and `moveend` in ONE call stack and React 19 batches both setState calls
+    // into a single render, so there is nothing to coalesce — and deferring to a
+    // frame would put the re-projection one frame BEHIND the basemap, which is
+    // the exact drift this subscription exists to prevent.
     const bump = () => { if (draggingRef.current == null) setSettleTick(t => t + 1) }
+    // Per-frame during a continuous/animated zoom (wheel, pinch, +/- buttons,
+    // flyTo/fitBounds). Without this a fanned dot keeps its pre-zoom pixel offset
+    // layered on the (correctly re-projected) geo-anchor and visibly drifts
+    // relative to the basemap until the gesture settles — the "placed photo
+    // doesn't stay put on zoom" report. Gated on `hasFanRef` because an un-fanned
+    // marker carries a [0,0] offset at every zoom: with no fan on screen the
+    // per-frame recompute is pure cost. DECIDED behaviour change (WP2f): a
+    // cluster that only forms while zooming OUT from a fan-free state now fans at
+    // `zoomend` instead of mid-animation. Revert is one line: `map.on('zoom', bump)`.
+    // (A fan that DISSOLVES mid-zoom-in still dissolves mid-gesture — the gate is
+    // open while it exists, that frame returns EMPTY, and later frames skip.)
+    // The `draggingRef` guard inside `bump` keeps all of this a no-op during an
+    // edge-pan marker drag. Pan (`move`) stays unsubscribed because translation
+    // doesn't change markers' relative screen positions.
+    const bumpIfFanned = () => { if (hasFanRef.current) bump() }
     map.on('moveend', bump)
     map.on('zoomend', bump)
-    // Per-frame during a continuous/animated zoom (wheel, pinch, +/- buttons,
-    // flyTo/fitBounds). Without this the fanned dot keeps its pre-zoom pixel
-    // offset layered on the (correctly re-projected) geo-anchor and visibly
-    // drifts relative to the basemap until the gesture settles — the "placed
-    // photo doesn't stay put on zoom" report. The `draggingRef` guard keeps it a
-    // no-op during an edge-pan marker drag, preserving the ~60fps optimisation
-    // that motivated the settle-only choice. Pan (`move`) stays unsubscribed
-    // because translation doesn't change markers' relative screen positions.
-    map.on('zoom', bump)
+    map.on('zoom', bumpIfFanned)
     // Initial compute once the map is ready (no settle event fires on load).
     bump()
     return () => {
       map.off('moveend', bump)
       map.off('zoomend', bump)
-      map.off('zoom', bump)
+      map.off('zoom', bumpIfFanned)
     }
   }, [isMapLoaded, mapRef])
 
-  return useMemo<UseMarkerFanResult>(() => {
+  const result = useMemo<UseMarkerFanResult>(() => {
     if (!isMapLoaded || !mapRef.current || !markers) return EMPTY
     const visible = markers.filter(m => isPhotoMarkerVisible(m) && m.id !== draggingMarkerId)
     return buildMarkerFan(mapRef.current.getMap(), visible, thresholdPx)
@@ -199,4 +222,10 @@ export function useMarkerFan(params: {
     // moved and projections must be recomputed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMapLoaded, mapRef, markers, draggingMarkerId, thresholdPx, settleTick])
+
+  // Open/close the per-frame gate after every recompute. In an effect (not
+  // during render) so the ref is only ever written outside render.
+  useEffect(() => { hasFanRef.current = result.offsets.size > 0 }, [result])
+
+  return result
 }

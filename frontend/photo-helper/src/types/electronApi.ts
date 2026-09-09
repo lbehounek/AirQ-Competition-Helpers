@@ -74,7 +74,7 @@ declare module '@airq/shared-storage' {
      *
      * Optional like every channel here: the web build has no bridge, and older
      * desktop builds predate it — hence the `typeof api.savePdf === 'function'`
-     * feature-detect at the call site in `utils/pdfGenerator.ts`. Signature
+     * feature-detect at the call site in `utils/pdfGeneratorImpl.ts`. Signature
      * verified against `frontend/desktop/preload.js`, and it matches the
      * declaration map-corridors already carries in its own `types/electron.d.ts`,
      * so the two apps agree on the channel.

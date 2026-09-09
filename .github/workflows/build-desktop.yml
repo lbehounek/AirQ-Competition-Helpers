@@ -93,6 +93,21 @@ jobs:
         working-directory: frontend/desktop
         run: pnpm exec electron-builder --win --publish never
 
+      # Nothing else fails the build if a target silently drops out of
+      # `build.win.target` (e.g. the pwsh version rewrite above mangling the
+      # JSON), and the release would then ship one file instead of two.
+      - name: Verify both artifacts exist
+        working-directory: frontend/desktop
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist/*-setup.exe -ErrorAction SilentlyContinue
+          $portable = Get-ChildItem dist/*-portable.exe -ErrorAction SilentlyContinue
+          if (-not $setup -or -not $portable) {
+            Write-Error 'expected both photo-helper-v*-setup.exe and photo-helper-v*-portable.exe in dist/'
+            exit 1
+          }
+          Get-ChildItem dist/*.exe | Format-Table Name, Length
+
       - name: Upload executable
         uses: actions/upload-artifact@v7
         with:
@@ -132,7 +147,11 @@ jobs:
 
             Windows desktop application bundling Photo Editor and Photo Placement.
 
-            **Portable executable** - no installation required, just run.
+            **Which file?**
+            - `photo-helper-v${{ steps.tag_version.outputs.VERSION }}-setup.exe` — **recommended.** Installs for the current user only (no administrator rights), lets you choose the folder, adds Desktop and Start-menu shortcuts, and does not unpack itself on every launch.
+            - `photo-helper-v${{ steps.tag_version.outputs.VERSION }}-portable.exe` — run-from-anywhere build for USB sticks or machines where installing is not allowed. It unpacks its whole contents into a temporary folder on every launch, so it starts more slowly.
+
+            Both builds keep their data in the same per-user folder, so your competitions carry over when you switch. The app is unsigned by design — on first run click *More info → Run anyway* in SmartScreen.
 
             ### System Requirements
             - Windows 10/11 (64-bit)

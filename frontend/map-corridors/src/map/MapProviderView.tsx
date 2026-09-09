@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import React, { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import MapGL, { Layer, Source, Marker, Popup } from 'react-map-gl/mapbox'
 import type { MapRef } from 'react-map-gl/mapbox'
 import type { GeoJSON, Geometry, Position } from 'geojson'
@@ -16,6 +16,10 @@ import { CaptureDotsLayer } from './photoLayers/CaptureDotsLayer'
 import { useMarkerFan } from './photoLayers/useMarkerFan'
 import { resolveFanOffset } from './photoLayers/markerOffset'
 import { useEdgePanDrag } from './useEdgePanDrag'
+import type { ClickMods } from './useEdgePanDrag'
+import { PhotoMarkerPin } from './PhotoMarkerPin'
+import { isPhotoMoved } from './photoLayers/captureFeatures'
+import { FAN_PILL_BUTTON_STYLE, FAN_PILL_MARKER_STYLE } from './photoLayers/photoMarkerStyle'
 import { decideCompareOrSelect } from './compareSelection'
 import { MarkerDragHandle } from './MarkerDragHandle'
 import { PhotoMarkerPopup } from '../components/PhotoMarkerPopup'
@@ -28,10 +32,9 @@ import {
   LIVE_GROUND_MARKER_ICON_PX,
   LIVE_MARKER_DOT_BORDER_RADIUS_PX,
   LIVE_MARKER_DOT_PX,
-  LIVE_MARKER_HIT_PX,
 } from '../utils/markerSizes'
 
-type Overlay = {
+export type Overlay = {
   id: string
   data: GeoJSON
   type: 'line' | 'fill' | 'circle'
@@ -58,7 +61,12 @@ export type MapProviderViewHandle = {
   getCenter: () => { lng: number; lat: number } | null
 }
 
-export const MapProviderView = forwardRef<MapProviderViewHandle, {
+/**
+ * Every input the map view reads. Extracted from the inline generic argument so
+ * App can type its memoized prop objects against the same shape (WP2f) and so
+ * the props can be referenced in tests.
+ */
+export type MapProviderViewProps = {
   /**
    * Already-resolved Mapbox style: either a `mapbox://` URL, a
    * hosted style JSON URL, or an inline `StyleSpecification` (raster
@@ -134,7 +142,20 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
   onProvisionalDrag?: (lng: number, lat: number) => void
   onProvisionalCommit?: (flag: PhotoFlag | null) => void
   onProvisionalCancel?: () => void
-}>(function MapProviderView(props, ref) {
+}
+
+/**
+ * The Mapbox map surface: overlays, photo/KML/ground markers, popups and the
+ * compare bar.
+ *
+ * Memoized because App re-renders on state this view does not read — snack,
+ * import progress, dialog/preview flags, the drop-hint overlay — and each of
+ * those used to rebuild the whole map tree. App keeps every object, array and
+ * callback prop referentially stable (see the memo block in App.tsx) so the
+ * shallow comparison here actually hits. `forwardRef` is preserved inside the
+ * memo so `useImperativeHandle` still exposes the print/fly/getCenter handle.
+ */
+export const MapProviderView = memo(forwardRef<MapProviderViewHandle, MapProviderViewProps>(function MapProviderView(props, ref) {
   const { mapStyle, mapboxAccessToken, geojsonOverlays } = props
 
   const { t } = useI18n()
@@ -250,6 +271,26 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     }
   }, [onCompareVariants, clearPhotoSelection])
 
+  // Id of the pin currently being dragged (or null). Extracted as a primitive so
+  // each PhotoMarkerPin can be told "you are/aren't the dragged one" without
+  // every OTHER pin's props changing on every drag frame.
+  const draggingId = activeDrag?.id ?? null
+  // Destructured so the pins receive App's stable useCallback, not a member read
+  // off the always-fresh `props` object.
+  const { onMarkerDragEnd } = props
+  // Plain click → open the popup AND drop any pending compare selection (don't
+  // leave a hidden mode on); modifier click → toggle into the selection instead.
+  // ONE stable reference shared by every pin, so a re-render caused by an
+  // unrelated pin never invalidates this prop.
+  const handlePhotoMarkerClick = useCallback((id: string, mods: ClickMods) => {
+    if (mods.ctrl || mods.meta || mods.shift) {
+      togglePhotoSelection(id)
+    } else {
+      clearPhotoSelection()
+      setActivePhotoMarkerId(id)
+    }
+  }, [togglePhotoSelection, clearPhotoSelection, setActivePhotoMarkerId])
+
   // Google-Earth-style keyboard navigation (client request 2026-07): arrows
   // pan, Shift+arrows or Ctrl+arrows rotate/tilt, PageUp/PageDown and +/− zoom,
   // N north-up, U top-down, R reset — full key map in keyboardNav.ts.
@@ -279,7 +320,13 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
     return () => { window.removeEventListener('keydown', onKey) }
   }, [])
 
-  // Attach native DnD listeners on the canvas to support custom marker drops
+  // Attach native DnD listeners on the canvas to support custom marker drops.
+  // The three props are destructured OUTSIDE the effect so its dependency list
+  // names the handlers themselves rather than `props`: with App memoizing
+  // `groundMarkerProps`, the canvas listeners are attached once instead of being
+  // torn down and re-added on every App render. (Also silences the long-standing
+  // exhaustive-deps warning this effect carried.)
+  const { onMarkerAdd, groundMarkerProps, onNoGpsPhotoPlaced } = props
   useEffect(() => {
     if (!isMapLoaded || !mapRef.current) return
     const map = mapRef.current.getMap()
@@ -288,9 +335,9 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       const dt = e.dataTransfer
       if (!dt) return
       const types = Array.from(dt.types)
-      const wantsPhoto = types.includes('application/x-photo-marker') && !!props.onMarkerAdd
-      const wantsGround = types.includes('application/x-ground-marker') && !!props.groundMarkerProps
-      const wantsNoGps = types.includes(NO_GPS_PHOTO_DRAG_TYPE) && !!props.onNoGpsPhotoPlaced
+      const wantsPhoto = types.includes('application/x-photo-marker') && !!onMarkerAdd
+      const wantsGround = types.includes('application/x-ground-marker') && !!groundMarkerProps
+      const wantsNoGps = types.includes(NO_GPS_PHOTO_DRAG_TYPE) && !!onNoGpsPhotoPlaced
       if (wantsPhoto || wantsGround || wantsNoGps) {
         e.preventDefault()
         dt.dropEffect = wantsNoGps ? 'move' : 'copy'
@@ -306,28 +353,28 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
         return mapRef.current!.getMap().unproject([clientX - rect.left, clientY - rect.top])
       }
       if (types.includes('application/x-photo-marker')) {
-        if (!props.onMarkerAdd) {
+        if (!onMarkerAdd) {
           console.error('[MapProviderView] Photo marker drop received but onMarkerAdd is not configured')
           return
         }
         e.preventDefault()
         const lngLat = unprojectAt(e.clientX, e.clientY)
-        props.onMarkerAdd(lngLat.lng, lngLat.lat)
+        onMarkerAdd(lngLat.lng, lngLat.lat)
       } else if (types.includes('application/x-ground-marker')) {
-        if (!props.groundMarkerProps) {
+        if (!groundMarkerProps) {
           console.error('[MapProviderView] Ground marker drop received but groundMarkerProps is not configured')
           return
         }
         e.preventDefault()
         const lngLat = unprojectAt(e.clientX, e.clientY)
-        props.groundMarkerProps.onGroundMarkerAdd(lngLat.lng, lngLat.lat)
+        groundMarkerProps.onGroundMarkerAdd(lngLat.lng, lngLat.lat)
       } else if (types.includes(NO_GPS_PHOTO_DRAG_TYPE)) {
-        if (!props.onNoGpsPhotoPlaced) return
+        if (!onNoGpsPhotoPlaced) return
         const photoId = dt.getData(NO_GPS_PHOTO_DRAG_TYPE)
         if (!photoId) return
         e.preventDefault()
         const lngLat = unprojectAt(e.clientX, e.clientY)
-        props.onNoGpsPhotoPlaced(photoId, lngLat.lng, lngLat.lat)
+        onNoGpsPhotoPlaced(photoId, lngLat.lng, lngLat.lat)
       }
     }
     canvas.addEventListener('dragover', onDragOver)
@@ -336,7 +383,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       canvas.removeEventListener('dragover', onDragOver)
       canvas.removeEventListener('drop', onDrop)
     }
-  }, [isMapLoaded, props.onMarkerAdd, props.groundMarkerProps, props.onNoGpsPhotoPlaced])
+  }, [isMapLoaded, onMarkerAdd, groundMarkerProps, onNoGpsPhotoPlaced])
 
   // No MapGL.onClick / interactiveLayerIds needed in the
   // "every-photo-is-a-Marker" model — clicks land directly on the
@@ -644,7 +691,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           key={`fan-pill-${c.ids.join('-')}`}
           longitude={c.centroidLngLat.lng}
           latitude={c.centroidLngLat.lat}
-          style={{ zIndex: 3 }}
+          style={FAN_PILL_MARKER_STYLE}
         >
           <button
             type="button"
@@ -653,23 +700,7 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
               e.stopPropagation()
               compareOrSelect(markersByIdForCompare(c.ids))
             }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 3,
-              height: 22,
-              padding: '0 8px',
-              borderRadius: 11,
-              border: '1px solid #7b1fa2',
-              background: '#9c27b0',
-              color: '#ffffff',
-              fontSize: 12,
-              fontWeight: 700,
-              lineHeight: 1,
-              cursor: 'pointer',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.35)',
-              whiteSpace: 'nowrap',
-            }}
+            style={FAN_PILL_BUTTON_STYLE}
           >⇄ {c.ids.length}</button>
         </Marker>
       ))}
@@ -866,117 +897,38 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
           PhotoOverlayLayers render only for moved photos.
           Rejected photos (flag='reject') are hidden from the map
           entirely — they remain in the list's "Odmítnuté" group as the
-          undo path. Variant resolution (Phase 12) reuses this. */}
+          undo path. Variant resolution (Phase 12) reuses this.
+
+          The pin itself lives in PhotoMarkerPin (memoized): this loop only
+          derives per-marker VALUES, so a render caused by one dragging pin,
+          one fan frame or an unrelated App state change re-renders only the
+          pins whose values actually changed. `key` must stay `m.id` alone —
+          any other key remounts the pin's MarkerDragHandle mid-drag and drops
+          its native pointerdown listener. */}
       {props.markers?.filter(isPhotoMarkerVisible).map(m => {
-        const moved = !!m.capturedAt && (m.lng !== m.capturedAt.lng || m.lat !== m.capturedAt.lat)
-        // Yellow = "labelled, answer-sheet ready" — matches the KML
-        // marker color so a user scanning the map sees one consistent
-        // visual for "this is going on the score sheet" regardless of
-        // origin. Unlabelled photos colour by flag.
-        // Unflagged ("neutral") photos use a high-contrast amber instead of the
-        // old grey (#616161), which was nearly invisible on both street and
-        // satellite basemaps — feedback 2026-05-30 ("brown dots, invisible").
-        const ringColor = m.label ? '#facc15'
-          : m.flag === 'pick-track' ? '#1976d2'
-          : m.flag === 'pick-turning' ? '#7b1fa2'
-          : m.flag === 'reject' ? '#d32f2f'
-          : '#fb8c00'
-        const bg = moved ? ringColor : '#ffffff'
-        // Phase 13 — the active photo (popup open / selected in the side
-        // panel) gets a glow + scale-up and is lifted above its neighbours.
-        const isActive = activePhotoMarkerId === m.id
-        // Map-side compare selection (Ctrl/Cmd/Shift-click). Gets a distinct
-        // ring; can coexist with the active glow.
-        const isSelected = selectedIdSet.has(m.id)
-        const pos = liveDragPos(m.id, m.lng, m.lat)
+        const dragging = draggingId === m.id
+        // undefined when this marker isn't part of a fanned cluster → 0/0.
+        const fan = photoFan.offsets.get(m.id)
         return (
-          <Marker
+          <PhotoMarkerPin
             key={m.id}
-            longitude={pos.lng}
-            latitude={pos.lat}
-            // Auto-fan: nudge overlapping markers apart by a pixel offset
-            // (anchor stays at the true lng/lat). Suppressed while THIS marker
-            // is being dragged so its dot tracks the cursor without a jump.
-            // `resolveFanOffset` guarantees a non-undefined [0,0] when this
-            // marker isn't fanned — see markerOffset.ts. A falsy offset would
-            // leave a stale fan offset stuck on the marker (the "placed photo
-            // drifts off the map on zoom-out" bug). Suppressed to [0,0] while
-            // THIS marker is dragged so its dot tracks the cursor without a jump.
-            offset={activeDrag?.id === m.id ? [0, 0] : resolveFanOffset(photoFan.offsets.get(m.id))}
-            style={isActive || isSelected ? { zIndex: 2 } : undefined}
-          >
-            <MarkerDragHandle
-              controller={dragController}
-              id={m.id}
-              lng={m.lng}
-              lat={m.lat}
-              // Tap → open the photo popup. Real drag → commit the new subject
-              // coords; intentionally do NOT auto-open the popup afterwards, so
-              // it doesn't interrupt the user who has just placed the subject.
-              onCommit={(lng, lat) => props.onMarkerDragEnd?.(m.id, lng, lat)}
-              // Ctrl/Cmd/Shift-click → toggle into the compare selection
-              // instead of opening the popup. Plain click → open the popup AND
-              // drop any pending selection (don't leave a hidden mode on).
-              onClick={(mods) => {
-                if (mods.ctrl || mods.meta || mods.shift) {
-                  togglePhotoSelection(m.id)
-                } else {
-                  clearPhotoSelection()
-                  setActivePhotoMarkerId(m.id)
-                }
-              }}
-            >
-            <div style={{
-              width: LIVE_MARKER_DOT_PX,
-              height: LIVE_MARKER_DOT_PX,
-              borderRadius: '50%',
-              background: bg,
-              border: `2px solid ${ringColor}`,
-              position: 'relative',
-              // Layered halos: active = white + blue glow; selected-for-compare
-              // = purple ring (distinct from the blue active glow, and the two
-              // stack when a marker is both). Else the subtle moved-photo shadow.
-              boxShadow: [
-                isSelected ? '0 0 0 3px #ffffff, 0 0 0 5px #9c27b0' : null,
-                isActive ? '0 0 0 3px rgba(255,255,255,0.9), 0 0 10px 4px rgba(25,118,210,0.65)' : null,
-                !isActive && !isSelected && moved ? '0 1px 2px rgba(0,0,0,0.25)' : null,
-              ].filter(Boolean).join(', ') || 'none',
-              transform: isActive ? 'scale(1.3)' : isSelected ? 'scale(1.15)' : undefined,
-              transition: 'transform 120ms ease, box-shadow 120ms ease',
-              cursor: 'pointer',
-            }}>
-              {/* Transparent click/tap halo — enlarges the hit target a few px
-                  beyond the visible dot so markers are easier to grab without
-                  making the dot itself huge (feedback 2026-05-30). Centered on
-                  the dot; does not affect layout or the label offset. */}
-              <div style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                width: LIVE_MARKER_HIT_PX,
-                height: LIVE_MARKER_HIT_PX,
-                transform: 'translate(-50%, -50%)',
-                borderRadius: '50%',
-                background: 'transparent',
-                cursor: 'pointer',
-              }} />
-            </div>
-            {m.label && (
-              <div style={{
-                position: 'absolute',
-                transform: 'translate(10px, -6px)',
-                background: 'rgba(255,255,255,0.85)',
-                borderRadius: 4,
-                padding: '1px 4px',
-                fontSize: 14,
-                lineHeight: '18px',
-                fontWeight: 600,
-                color: '#111',
-                border: '1px solid #e5e7eb',
-              }}>{m.label}</div>
-            )}
-            </MarkerDragHandle>
-          </Marker>
+            id={m.id}
+            lng={m.lng}
+            lat={m.lat}
+            liveLng={dragging ? activeDrag!.lng : m.lng}
+            liveLat={dragging ? activeDrag!.lat : m.lat}
+            label={m.label}
+            flag={m.flag}
+            moved={isPhotoMoved(m)}
+            isActive={activePhotoMarkerId === m.id}
+            isSelected={selectedIdSet.has(m.id)}
+            isDragging={dragging}
+            fanDx={fan ? fan[0] : 0}
+            fanDy={fan ? fan[1] : 0}
+            controller={dragController}
+            onDragEnd={onMarkerDragEnd}
+            onClick={handlePhotoMarkerClick}
+          />
         )
       })}
       {/* Set-break marker — a scissors badge pinned at the chosen route turning
@@ -1336,8 +1288,4 @@ export const MapProviderView = forwardRef<MapProviderViewHandle, {
       })()}
     </MapGL>
   )
-})
-
-
-
-
+}))

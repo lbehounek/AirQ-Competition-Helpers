@@ -1,4 +1,8 @@
-import { booleanPointInPolygon, point as turfPoint, polygon as turfPolygon, lineString as turfLineString, pointToLineDistance } from '@turf/turf'
+// Individual @turf subpackages rather than the `@turf/turf` barrel (see
+// setSplit/partitionPicksBySet.ts) — same modules, no phantom dependency.
+import { point as turfPoint, polygon as turfPolygon, lineString as turfLineString } from '@turf/helpers'
+import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon'
+import { pointToLineDistance } from '@turf/point-to-line-distance'
 import { calculateDistance } from './segments'
 
 export type CorridorPolygon = {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Box, Paper, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { GridSizedDropZone } from './GridSizedDropZone';
 import { PhotoGridApi } from './PhotoGridApi';
@@ -73,8 +73,68 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
   // mode set2 is hidden, so we pass 0 for its count — the label generator
   // produces SP + TP1..TPn + FP from the (capped) total.
   const effectiveSet2Count = isPrecision ? 0 : set2.photos.length;
-  const turningPointLabels = generateTurningPointLabels(set1.photos.length, effectiveSet2Count, layoutMode);
+  // Memoized: the label arrays are handed to `PhotoGridApi`, whose memo
+  // comparator compares them by CONTENT precisely because this used to be a
+  // fresh pair of arrays on every render of this component.
+  const turningPointLabels = useMemo(
+    () => generateTurningPointLabels(set1.photos.length, effectiveSet2Count, layoutMode),
+    [set1.photos.length, effectiveSet2Count, layoutMode],
+  );
   const initialDropMax = isPrecision ? PRECISION_TURNING_MAX_PHOTOS : RALLY_TURNING_MAX_PHOTOS;
+
+  // Per-set adapters for the (setKey, …) props this component receives. All of
+  // them used to be inline arrows, which made every prop of both grids change
+  // identity on every render and defeated `React.memo(PhotoGridApi)` outright.
+  const handleSet1Update = useCallback(
+    (photoId: string, canvasState: ApiPhoto['canvasState']) => onPhotoUpdate('set1', photoId, canvasState),
+    [onPhotoUpdate],
+  );
+  const handleSet2Update = useCallback(
+    (photoId: string, canvasState: ApiPhoto['canvasState']) => onPhotoUpdate('set2', photoId, canvasState),
+    [onPhotoUpdate],
+  );
+  const handleSet1Remove = useCallback((photoId: string) => onPhotoRemove('set1', photoId), [onPhotoRemove]);
+  const handleSet2Remove = useCallback((photoId: string) => onPhotoRemove('set2', photoId), [onPhotoRemove]);
+  const handleSet1Click = useCallback((photo: ApiPhoto) => onPhotoClick(photo, 'set1'), [onPhotoClick]);
+  const handleSet2Click = useCallback((photo: ApiPhoto) => onPhotoClick(photo, 'set2'), [onPhotoClick]);
+  const handleSet1Move = useCallback(
+    (fromIndex: number, toIndex: number) => onPhotoMove('set1', fromIndex, toIndex),
+    [onPhotoMove],
+  );
+  const handleSet2Move = useCallback(
+    (fromIndex: number, toIndex: number) => onPhotoMove('set2', fromIndex, toIndex),
+    [onPhotoMove],
+  );
+  const handleSet1Files = useCallback((files: File[]) => onFilesDropped('set1', files), [onFilesDropped]);
+  const handleSet2Files = useCallback((files: File[]) => onFilesDropped('set2', files), [onFilesDropped]);
+  // These three stay conditionally undefined — the grid treats "absent" as
+  // "this affordance does not exist", so a wrapper must not be substituted.
+  const handleSet1Candidate = useMemo(
+    () => (onCandidateDropped ? (id: string, idx: number) => onCandidateDropped('set1', id, idx) : undefined),
+    [onCandidateDropped],
+  );
+  const handleSet2Candidate = useMemo(
+    () => (onCandidateDropped ? (id: string, idx: number) => onCandidateDropped('set2', id, idx) : undefined),
+    [onCandidateDropped],
+  );
+  const handleSet1AddPlaceholder = useMemo(
+    () => (onAddPlaceholder ? (idx: number) => onAddPlaceholder('set1', idx) : undefined),
+    [onAddPlaceholder],
+  );
+  const handleSet2AddPlaceholder = useMemo(
+    () => (onAddPlaceholder ? (idx: number) => onAddPlaceholder('set2', idx) : undefined),
+    [onAddPlaceholder],
+  );
+  // Empty-state zone: `onInitialFilesDropped` wins, otherwise everything lands
+  // in set1 (an empty set always fills slot 0).
+  const handleInitialFiles = useCallback(
+    (files: File[]) => (onInitialFilesDropped ? onInitialFilesDropped(files) : onFilesDropped('set1', files)),
+    [onInitialFilesDropped, onFilesDropped],
+  );
+  const handleInitialCandidate = useMemo(
+    () => (onCandidateDropped ? (id: string) => onCandidateDropped('set1', id, 0) : undefined),
+    [onCandidateDropped],
+  );
 
   // Per-set cap is 10 in both orientations. Logic is in `utils/gridShapeFor.ts`
   // so the boundary at count === 10 is unit-testable (round-5 follow-up to
@@ -96,14 +156,14 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
             </Typography>
           </Box>
           <GridSizedDropZone
-            onFilesDropped={(files) => (onInitialFilesDropped || ((f) => onFilesDropped('set1', f)))(files)}
+            onFilesDropped={handleInitialFiles}
             maxPhotos={initialDropMax}
             loading={loading}
             error={error}
             // The empty TP zone's file drops default to set1, so candidate-tray
             // drops land there too (an empty set always fills slot 0).
             setKey="set1"
-            onCandidateDropped={onCandidateDropped ? (id) => onCandidateDropped('set1', id, 0) : undefined}
+            onCandidateDropped={handleInitialCandidate}
           />
         </Paper>
       ) : (
@@ -119,13 +179,13 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
               <PhotoGridApi
                 photoSet={set1}
                 setKey="set1"
-                onPhotoUpdate={(photoId, canvasState) => onPhotoUpdate('set1', photoId, canvasState)}
-                onPhotoRemove={(photoId) => onPhotoRemove('set1', photoId)}
-                onPhotoClick={(photo) => onPhotoClick(photo, 'set1')}
-                onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set1', fromIndex, toIndex)}
-                onFilesDropped={(files) => onFilesDropped('set1', files)}
-                onCandidateDropped={onCandidateDropped ? (id, idx) => onCandidateDropped('set1', id, idx) : undefined}
-                onAddPlaceholder={onAddPlaceholder ? (idx) => onAddPlaceholder('set1', idx) : undefined}
+                onPhotoUpdate={handleSet1Update}
+                onPhotoRemove={handleSet1Remove}
+                onPhotoClick={handleSet1Click}
+                onPhotoMove={handleSet1Move}
+                onFilesDropped={handleSet1Files}
+                onCandidateDropped={handleSet1Candidate}
+                onAddPlaceholder={handleSet1AddPlaceholder}
                 customLabels={turningPointLabels.set1}
                 maxPhotosOverride={rallyMaxPerSet}
                 slotsOverride={set1Grid?.slots}
@@ -144,13 +204,13 @@ export const TurningPointLayout: React.FC<TurningPointLayoutProps> = ({
               <PhotoGridApi
                 photoSet={set2}
                 setKey="set2"
-                onPhotoUpdate={(photoId, canvasState) => onPhotoUpdate('set2', photoId, canvasState)}
-                onPhotoRemove={(photoId) => onPhotoRemove('set2', photoId)}
-                onPhotoClick={(photo) => onPhotoClick(photo, 'set2')}
-                onPhotoMove={(fromIndex, toIndex) => onPhotoMove('set2', fromIndex, toIndex)}
-                onFilesDropped={(files) => onFilesDropped('set2', files)}
-                onCandidateDropped={onCandidateDropped ? (id, idx) => onCandidateDropped('set2', id, idx) : undefined}
-                onAddPlaceholder={onAddPlaceholder ? (idx) => onAddPlaceholder('set2', idx) : undefined}
+                onPhotoUpdate={handleSet2Update}
+                onPhotoRemove={handleSet2Remove}
+                onPhotoClick={handleSet2Click}
+                onPhotoMove={handleSet2Move}
+                onFilesDropped={handleSet2Files}
+                onCandidateDropped={handleSet2Candidate}
+                onAddPlaceholder={handleSet2AddPlaceholder}
                 customLabels={turningPointLabels.set2}
                 maxPhotosOverride={rallyMaxPerSet}
                 slotsOverride={set2Grid?.slots}

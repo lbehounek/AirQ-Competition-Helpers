@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { locales, DEFAULT_LOCALE, SUPPORTED_LOCALES } from '../locales';
 import type { Locale, Translation } from '../locales';
@@ -95,7 +95,10 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
     }
   }, [locale, initialized]);
 
-  const setLocale = async (newLocale: Locale) => {
+  // Empty dep list: the body reads only module constants, `window.electronAPI`
+  // and the state setter, so this identity can be stable for the provider's
+  // lifetime. It is passed straight into memoized language menus.
+  const setLocale = useCallback(async (newLocale: Locale) => {
     const codes = SUPPORTED_LOCALES.map(l => l.code);
     const safeLocale = (codes as string[]).includes(newLocale) ? newLocale : DEFAULT_LOCALE;
     setLocaleState(safeLocale as Locale);
@@ -122,20 +125,24 @@ export const I18nProvider: React.FC<I18nProviderProps> = ({ children }) => {
       console.warn('Failed to save locale:', e);
     }
     console.log(`🌍 Language changed to: ${safeLocale}`);
-  };
+  }, []);
 
-  // Translation function with interpolation support
-  const t = (key: string, params?: Record<string, string | number>): string => {
-    const value = getNestedValue(translations, key);
-    return interpolate(value, params);
-  };
+  // `t` is consumed by nearly every component and appears in a long list of
+  // useCallback/useMemo dependency arrays; a fresh identity per provider render
+  // invalidated all of them and every memoized child below. Keyed on
+  // `translations` (what it actually reads), not on `locale`: `translations` is
+  // set by an effect AFTER `locale` changes, so for exactly one render the new
+  // locale is paired with the old table — pre-existing behavior, kept.
+  const t = useCallback(
+    (key: string, params?: Record<string, string | number>): string =>
+      interpolate(getNestedValue(translations, key), params),
+    [translations],
+  );
 
-  const value = {
-    locale,
-    setLocale,
-    t,
-    translations
-  };
+  const value = useMemo(
+    () => ({ locale, setLocale, t, translations }),
+    [locale, setLocale, t, translations],
+  );
 
   return (
     <I18nContext.Provider value={value}>

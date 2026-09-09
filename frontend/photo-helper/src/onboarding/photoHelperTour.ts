@@ -4,7 +4,9 @@
 // steps for the sets / editing / tray which depend on the user's data — so the
 // tour works on a brand-new empty session. See mapCorridorsTour.ts.
 
-import { driver, type DriveStep } from 'driver.js';
+import type { Config, Driver, DriveStep } from 'driver.js';
+// The stylesheet stays EAGER (≈3 kB): keeping it in `index-*.css` avoids a
+// runtime <style> injection from an async chunk under Electron's `app://`.
 import 'driver.js/dist/driver.css';
 
 /** Bumped if the tour changes materially → re-shows once for returning users. */
@@ -111,8 +113,35 @@ export function buildEditorTourSteps(t: T): DriveStep[] {
   ];
 }
 
-/** Launch the in-modal editor tour (the modal's "?" button). */
-export function startEditorModalTour(t: T): void {
+/**
+ * driver.js's `driver` factory, injected into the `run*Tour` functions so the
+ * tour choreography is unit-testable with a fake and so this module never
+ * imports driver.js statically.
+ */
+export type DriverFactory = (options?: Config) => Driver;
+
+/** Load driver.js (≈26 kB) on demand — one `import()` → one async chunk. */
+const loadDriver = (): Promise<DriverFactory> => import('driver.js').then((m) => m.driver);
+
+/**
+ * Swallow-and-log a tour start failure. A tour is started from an onClick or a
+ * timer, where a rejected promise would be an unhandled rejection: the tour is
+ * an optional nicety, so a missing chunk (web build, tab open across a deploy)
+ * must never break the click that triggered it.
+ */
+const onTourFailure = (err: unknown): void => {
+  console.error(
+    '[onboarding] tour failed to start — on the web build a new version was probably deployed; reload the page',
+    err,
+  );
+};
+
+/**
+ * Run the in-modal editor tour with an already-loaded driver factory.
+ * Returns the live `Driver` (so a caller/test can inspect or destroy it).
+ * Pure with respect to module state — everything it needs is an argument.
+ */
+export function runEditorModalTour(driver: DriverFactory, t: T): Driver {
   const d = driver({
     showProgress: true,
     allowClose: true,
@@ -123,6 +152,18 @@ export function startEditorModalTour(t: T): void {
     steps: buildEditorTourSteps(t),
   });
   d.drive();
+  return d;
+}
+
+/** Launch the in-modal editor tour (the modal's "?" button). Loads driver.js
+ *  lazily, so the popover appears once the chunk resolves (ms from disk/cache)
+ *  rather than synchronously; failures are logged, never thrown. */
+export function startEditorModalTour(t: T): void {
+  void loadDriver()
+    .then((driver) => {
+      runEditorModalTour(driver, t);
+    })
+    .catch(onTourFailure);
 }
 
 export interface PhotoHelperTourOpts {
@@ -134,13 +175,20 @@ export interface PhotoHelperTourOpts {
 }
 
 /**
- * Start the guided tour (Help button / first-run). When `openEditor`/`closeEditor`
- * are provided, the tour OPENS the editing modal as it reaches the editor section
- * (so its controls are highlighted on a real photo) and closes it when leaving —
- * driven through the global `onNextClick` so no per-step hooks are needed. If no
- * photo can be opened, the editor steps fall back to centered popovers.
+ * Run the guided tour with an already-loaded driver factory; returns the live
+ * `Driver`. When `openEditor`/`closeEditor` are provided, the tour OPENS the
+ * editing modal as it reaches the editor section (so its controls are
+ * highlighted on a real photo) and closes it when leaving — driven through the
+ * global `onNextClick` so no per-step hooks are needed. If no photo can be
+ * opened, the editor steps fall back to centered popovers.
+ *
+ * `opts` accepts a bare boolean for back-compat (the old `isPrecision` arg).
  */
-export function startPhotoHelperTour(t: T, opts: PhotoHelperTourOpts | boolean = {}): void {
+export function runPhotoHelperTour(
+  driver: DriverFactory,
+  t: T,
+  opts: PhotoHelperTourOpts | boolean = {},
+): Driver {
   // Back-compat: a bare boolean was the old `isPrecision` arg.
   const o: PhotoHelperTourOpts = typeof opts === 'boolean' ? { isPrecision: opts } : opts;
   const { isPrecision = false, openEditor, closeEditor } = o;
@@ -148,7 +196,7 @@ export function startPhotoHelperTour(t: T, opts: PhotoHelperTourOpts | boolean =
   const photoIdx = steps.findIndex((s) => s.element === '[data-tour="editor-photo"]');
   const controlsIdx = steps.findIndex((s) => s.element === '[data-tour="editor"]');
 
-  let d: ReturnType<typeof driver>;
+  let d: Driver;
   d = driver({
     showProgress: true,
     allowClose: true,
@@ -176,6 +224,21 @@ export function startPhotoHelperTour(t: T, opts: PhotoHelperTourOpts | boolean =
     steps,
   });
   d.drive();
+  return d;
+}
+
+/**
+ * Start the guided tour (Help button / first-run). Thin lazy wrapper around
+ * {@link runPhotoHelperTour}: loads driver.js on demand and logs — never
+ * throws — if the chunk cannot be fetched. Returns immediately (`void`), so
+ * the popover appears one microtask-plus-fetch later than it used to.
+ */
+export function startPhotoHelperTour(t: T, opts: PhotoHelperTourOpts | boolean = {}): void {
+  void loadDriver()
+    .then((driver) => {
+      runPhotoHelperTour(driver, t, opts);
+    })
+    .catch(onTourFailure);
 }
 
 /** True if the first-run tour hasn't been shown yet (never throws). */

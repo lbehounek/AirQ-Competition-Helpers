@@ -370,6 +370,7 @@
     "reflowFailed": "Nepodařilo se přeřadit fotografie podle nového rozdělení sad ({{count}}) – mohou být ve špatné sadě. Akce se automaticky zopakuje.",
     "crossSetHint": "Přesun mezi sadami jde přes Kandidáty. Přetáhněte fotografii nejprve sem a pak do druhé sady.",
     "allFiltered": "Všichni kandidáti jsou skryti filtrem.",
+    "thumbMissing": "Obrázek není k dispozici",
     "flag": {
       "pick": "Označit jako vybrané",
       "neutral": "Zrušit označení",
@@ -402,7 +403,13 @@
     },
     "error": {
       "renderFailed": "PDF se nepodařilo vytvořit. Některé fotky ({{count}}) nemají obrazová data a nelze je vykreslit – pravděpodobně byly dříve smazány. Naimportujte je znovu v Koridorech a pošlete do editoru, nebo je v editoru odeberte, a export zopakujte.",
-      "generic": "PDF se nepodařilo vytvořit. Zkuste to prosím znovu."
+      "generic": "PDF se nepodařilo vytvořit. Zkuste to prosím znovu.",
+      "moduleLoad": "Modul pro export PDF se nepodařilo načíst — pravděpodobně byla nasazena nová verze. Načtěte stránku znovu a zkuste to znovu."
+    },
+    "progress": {
+      "rendering": "Vykresluji fotku {{done}} z {{total}}…",
+      "composing": "Sestavuji PDF…",
+      "saving": "Ukládám…"
     }
   }
 }

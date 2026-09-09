@@ -25,8 +25,8 @@ frontend/
 Use the build script:
 
 ```bash
-cd frontend/desktop && bash build.sh          # unpacked directory (always works)
-cd frontend/desktop && bash build.sh portable # single portable .exe
+cd frontend/desktop && bash build.sh         # unpacked directory (always works)
+cd frontend/desktop && bash build.sh package # NSIS installer + portable .exe
 ```
 
 Or manually:
@@ -42,7 +42,9 @@ ELECTRON_VERSION=$(node -e "console.log(require('electron/package.json').version
 # 3. Package
 cd frontend/desktop
 npx electron-builder --win --dir -c.electronVersion=$ELECTRON_VERSION   # unpacked
-npx electron-builder --win -c.electronVersion=$ELECTRON_VERSION          # portable .exe
+npx electron-builder --win -c.electronVersion=$ELECTRON_VERSION          # both targets
+npx electron-builder --win nsis -c.electronVersion=$ELECTRON_VERSION     # installer only
+npx electron-builder --win portable -c.electronVersion=$ELECTRON_VERSION # portable only
 ```
 
 Output: `frontend/desktop/dist/win-unpacked/AirQ Competition Helpers.exe`
@@ -91,7 +93,8 @@ hand it.
 
 ### Known Issue: winCodeSign symlink error
 
-On Windows without Developer Mode, the portable .exe build fails with "Cannot create symbolic link" during winCodeSign extraction. This happens because the winCodeSign archive contains macOS symlinks.
+On Windows without Developer Mode, the .exe builds (both `nsis` and `portable`)
+fail with "Cannot create symbolic link" during winCodeSign extraction. This happens because the winCodeSign archive contains macOS symlinks.
 
 **Fixes:**
 - Enable Windows Developer Mode (Settings > For Developers > Developer Mode)
@@ -133,9 +136,69 @@ gh run download <run-id>
   - `electronAPI.openExternal(url)` - Open URL in browser
   - `electronAPI.openMapboxSettings()` - Open token config dialog
 
-- **Config storage** - User config stored in:
-  - Windows: `%APPDATA%/airq-competition-helpers/config.json`
-  - Mac: `~/Library/Application Support/airq-competition-helpers/config.json`
+- **Config storage** - User config stored under `app.getPath('userData')`,
+  which Electron derives from `productName` ("AirQ Competition Helpers"), NOT
+  from the package name `@airq/desktop`. The same folder holds `photo-sessions/`
+  (competitions, photos, `competitions-index.json`):
+  - Windows: `%APPDATA%\AirQ Competition Helpers\config.json`
+  - Mac: `~/Library/Application Support/AirQ Competition Helpers/config.json`
+
+  (Verify the exact Windows string once by logging `app.getPath('userData')` —
+  the path above is derived from Electron's `getName()` rules, not measured.)
+
+## Installer vs portable
+
+The Windows build produces **two** files from one `electron-builder --win` run
+(`build.win.target` in `frontend/desktop/package.json` lists both targets):
+
+- **`photo-helper-vX.Y.Z-setup.exe`** — assisted NSIS installer. `oneClick:
+  false` + `perMachine: false` compiles `RequestExecutionLevel user`, so it
+  installs **per-user with no admin rights** into `%LOCALAPPDATA%\Programs\AirQ
+  Competition Helpers`, shows a folder-choice page and creates Desktop +
+  Start-menu shortcuts. UAC appears only if the user actively picks "Anyone who
+  uses this computer" on the install-mode page.
+- **`photo-helper-vX.Y.Z-portable.exe`** — portable build. It extracts its
+  entire contents into a temp folder on **every** launch (`portable.nsi` does
+  `RMDir /r $INSTDIR` before and after the run), which is why it starts slowly.
+  This is by design and cannot be cached away: `unpackDirName` only renames the
+  temp folder, and `compression: 'store'` is a global option that would bloat
+  the installer too.
+
+Both share `app.getPath('userData')`, so switching between them keeps every
+competition, and `deleteAppDataOnUninstall: false` means uninstalling never
+removes it.
+
+The whole NSIS config lives in `package.json` under `build.nsis` — there is **no
+custom `.nsh` script**. If one is ever needed, put it in
+`frontend/desktop/nsis/` and point `nsis.include` at it: the repo-root `build/`
+directory (electron-builder's default `buildResources` location) is gitignored,
+so a script placed there would silently never be committed.
+
+## Startup / sample competition
+
+The bundled sample competition is copied in the background **after** the window
+is created, not before it (it used to be a synchronous multi-megabyte copy on
+the pre-paint path). The logic lives in `frontend/desktop/lib/sampleCompetition.js`
+and is unit-tested (`__tests__/sampleCompetition.test.js`); `main.js` starts it
+from `app.whenReady()` and exposes the promise as `sampleReady`.
+
+- **Gated** through `afterSample(...)` — they observe the competitions index or
+  the `.sample-pending` marker: `competition-list`, `storage-init`,
+  `sample-is-pending`, `sample-clear-pending`, `navigate-to-app`.
+- **Not gated**: `sample-manifest` and `sample-read-file` (the e2e spec calls
+  `manifest()` first to decide whether to skip) and the menu's Alt+1/Alt+2
+  handlers (sync, and they only look at the *active* competition).
+- **Rule:** any new IPC handler that reads `competitions-index.json` or
+  `.sample-pending` must be wrapped in `afterSample`, or it can observe an index
+  without the sample.
+- Callers worth remembering: `renderer/app.js` `loadCompetitions()`;
+  map-corridors' `App.tsx`, which calls `competitions.list()` directly at mount;
+  and both sub-apps' `storage.init()`.
+
+**Never quote e2e timings as packaged-build performance.** The e2e harness
+launches `electron .`, so `isDev` (`!app.isPackaged`) is always true there —
+which means `v8CacheOptions: 'none'`, `Cache-Control: no-store` on every `app://`
+response and a `clearCache()` on every navigation are all active.
 
 ## Testing Checklist
 
@@ -166,8 +229,16 @@ When locale changes:
 
 ## Versioning & Releasing
 
-The version in `frontend/desktop/package.json` controls the .exe filename (`photo-helper-v${version}.exe`).
-The latest release tag is the source of truth for the current version.
+The version controls both .exe filenames:
+`photo-helper-v${version}-setup.exe` and `photo-helper-v${version}-portable.exe`.
+
+**The tag, not `package.json`, decides the version.** `tag-on-merge` derives the
+next tag from the last `desktop-v*` git tag plus a `#minor` / `#major` /
+`#patch` hint in the PR title (default: patch) and ignores `package.json`
+entirely; `build-desktop.yml` then rewrites `package.json` from the tag. So in
+the PR: set `package.json` to the version the hint will produce, and fill in the
+CHANGELOG date **before merging** — the merge dispatches the release build
+immediately, and the release notes link the CHANGELOG on `main`.
 
 ### Every build: bump the version
 
@@ -193,8 +264,8 @@ git push origin desktop-v2.1.0
 
 This triggers `.github/workflows/build-desktop.yml` which:
 1. Builds both React apps
-2. Packages Windows portable .exe
-3. Creates GitHub Release with .exe attached
+2. Packages the NSIS installer + portable .exe
+3. Creates GitHub Release with both .exe files attached
 
 Version is auto-detected from the tag name (`desktop-v2.1.0` → `2.1.0`).
 

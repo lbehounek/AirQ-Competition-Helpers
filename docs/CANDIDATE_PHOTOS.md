@@ -124,7 +124,24 @@ existing UX is untouched for users who don't use the feature.
 
 ### Thumb anatomy
 
-- Image
+- **Source-photo thumbnail**: a 320x240 JPEG (contain-fit, displayed
+  centre-cropped with `object-fit: cover`) persisted at
+  `competitions/{compId}/photos/thumbs/{photoId}.jpg` through
+  `StorageInterface.savePhotoThumb` / `getPhotoThumb` (identical on OPFS and
+  Electron). Generated lazily on first tray render from the photo's in-memory
+  `blob:` URL, at most 2 generations in flight, cached in memory (≤ 400
+  entries). Map-originated `pm-` photos reuse the 200x150 thumb map-corridors
+  already wrote at import. Orchestration lives in
+  `photo-helper/src/utils/candidateThumbs.ts`; synthesis is the shared
+  `generateThumb` in `@airq/shared-storage`.
+  **Adjustments (pan / zoom / brightness / white balance / circle) are NOT
+  reflected in the tray** — the tray shows the source photo, the modal shows
+  the edit. Thumb bytes are immutable per photo id (ids are minted per imported
+  File; ADR-020 dedups re-imports), so a thumb is only ever deleted, never
+  refreshed.
+  States: skeleton while resolving → thumb, or the full-resolution source image
+  as a fallback if generation fails, or an "Image unavailable" caption when the
+  photo has no bytes at all (placeholder / lost file).
 - Small flag badge: `★` (yellow), no badge (neutral), `✗` (red)
 - Click → opens the same `PhotoEditorApi` modal as slot photos
 - Right-click / long-press → context menu (Pick / Neutral / Reject / Delete / Send to Set 1 / Send to Set 2)
@@ -266,6 +283,12 @@ The modal works identically for tray and slot photos. The only differences:
 Edits to tray photos travel with the photo id when promoted. `canvasState` is
 already on the photo object, so this is automatic.
 
+Opening a candidate from the tray decodes the full-resolution image **on
+demand**: the tray no longer pre-warms the image cache. It used to mount a
+whole `PhotoEditorApi` per thumb, which incidentally kept every candidate's
+full-resolution decode in `imageCache`; that is exactly the cost the thumbnail
+tier removed.
+
 ---
 
 ## PDF export
@@ -301,7 +324,9 @@ acting.
 | Shuffle button | Unchanged — shuffles slots only. Tooltip clarifies. |
 | Apply-to-all (brightness etc.) | Slot-only, as today. Out of scope to extend to candidates. |
 | 20MB image cap | Unchanged — applies whether dropping to slots or candidates. |
-| Blob URL lifecycle | Tray photos get URLs the same way slot photos do (`getPhotoURL`). On removal: revoke. On mode switch: candidates' URLs are NOT revoked (global pool, stays loaded). |
+| Blob URL lifecycle | Tray photos get URLs the same way slot photos do (`getPhotoURL`). On removal: revoke. On mode switch: candidates' URLs are NOT revoked (global pool, stays loaded). Thumb object URLs are owned separately by `useCandidateThumbUrl` and revoked when the thumb changes or the thumb unmounts; a *fallback* URL is the session's own photo URL and is never revoked by the tray. |
+| Delete candidate | The in-memory thumb is dropped and the photo's epoch bumped *before* the delete, so a generation still queued behind the limiter cannot repopulate the cache or write an orphan file. The on-disk thumb is removed by `competitionService.deletePhotosByIds`. |
+| Competition switch | `AppApi` clears the resolved `photos/` dir before resolving the new one, so `CandidateTray`'s `photosDir` prop is `undefined` ("resolving") rather than the previous competition's handle. Thumbs wait (skeleton) until the new dir arrives — nothing is ever read from, or written into, the previous competition's `thumbs/`. |
 
 ---
 
@@ -348,3 +373,26 @@ Single PR, single squash on merge.
 - **Per-mode candidates:** if users complain about cross-mode pool confusion, split into `setsTrack.candidates` / `setsTurning.candidates` mirroring slots. Migration is straightforward.
 - **Compare view:** the deferred 1v1 / 2x2 compare modal would slot in naturally — open from a multi-select in the tray.
 - **Auto-suggest picks:** ML/heuristic-based pick scoring (sharpness, faces, exposure) — possible future.
+- **Adjusted tray previews.** *Add when:* users need crop/effects/circle visible
+  without opening the modal. Render the 320 px thumb bitmap through
+  `renderPhotoOnCanvas` onto a small canvas — the math is resolution-independent
+  (scale relative to `BASE_WIDTH`/image width, circle in base coords) — gated on
+  "this photo actually has edits". A cheaper half-measure is an "edited" badge on
+  the thumb; both were deliberately left out of the thumbnail tier as product
+  scope.
+- **Pre-warm the modal on hover.** *Add when:* opening a candidate from the tray
+  feels slow. On the thumb's `pointerenter`, call
+  `getImageCache().getImageByUrl(photo.url)`.
+- **Memoize `CandidateThumb` for real.** *Add when:* tray re-render cost on
+  flag/label updates is measurable. Needs stable per-thumb callbacks — see
+  `docs/TECH_DEBT.md` item 12.
+- **Regenerate soft `pm-` thumbs.** *Add when:* the 200x150 thumbs map-corridors
+  writes look soft in the 144x100 box at DPR ≥ 1.5. Regenerate when the stored
+  blob decodes below ~288 px wide.
+- **Raise the thumb cache bound.** *Add when:* a session holds more than 400
+  candidates (`THUMB_CACHE_MAX`), or evict by bytes instead of count.
+- **Electron session load is still the first-paint bound.** `loadSessionPhotos`
+  reads EVERY candidate's full-resolution file over IPC as base64 at session
+  load. The thumbnail tier does not change that; see `docs/TECH_DEBT.md`
+  ("defer full-resolution blob URLs for candidates"). The tier's win shows after
+  load and on every subsequent tray re-render.

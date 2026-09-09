@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { canvasSizeFor } from '../utils/canvasSizing';
 
 export interface AspectRatioOption {
   id: string;
@@ -65,7 +66,9 @@ export const AspectRatioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [isTransitioning, setIsTransitioning] = useState(false);
   const transitionTimeoutRef = useRef<number | null>(null);
 
-  const setAspectRatio = (ratio: AspectRatioOption) => {
+  // Memoized so consumers (PhotoEditorApi, PhotoGridApi, AspectRatioSelector)
+  // keep a stable handler identity across unrelated provider re-renders.
+  const setAspectRatio = useCallback((ratio: AspectRatioOption) => {
     if (ratio.id === currentRatio.id) return; // No change needed
     
     // Immediately start transition to hide any visual jump
@@ -84,7 +87,7 @@ export const AspectRatioProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setIsTransitioning(false);
       transitionTimeoutRef.current = null;
     }, 250);
-  };
+  }, [currentRatio.id]);
   
   // Cleanup on unmount
   useEffect(() => {
@@ -95,29 +98,42 @@ export const AspectRatioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
   }, []);
 
-  const getCanvasSize = (baseWidth: number) => ({
-    width: baseWidth,
-    height: Math.round(baseWidth / currentRatio.ratio)
-  });
+  // All three delegate to `utils/canvasSizing` so there is exactly one width →
+  // height formula in the app, and all three are identity-stable per ratio:
+  // they are listed in `useCallback`/`useMemo` dependency arrays all over the
+  // photo components, where a fresh identity per provider render used to
+  // invalidate every downstream memo.
+  const getCanvasSize = useCallback(
+    (baseWidth: number) => canvasSizeFor(baseWidth, currentRatio.ratio),
+    [currentRatio.ratio],
+  );
 
-  const getPDFCellHeight = (cellWidth: number) => {
-    return cellWidth / currentRatio.ratio;
-  };
+  const getPDFCellHeight = useCallback(
+    (cellWidth: number) => cellWidth / currentRatio.ratio,
+    [currentRatio.ratio],
+  );
 
-  const getCroppedCanvasSize = (baseWidth: number) => ({
-    width: baseWidth,
-    height: Math.round(baseWidth / currentRatio.ratio)
-  });
+  const getCroppedCanvasSize = useCallback(
+    (baseWidth: number) => canvasSizeFor(baseWidth, currentRatio.ratio),
+    [currentRatio.ratio],
+  );
 
-  return (
-    <AspectRatioContext.Provider value={{
+  // A new object literal here would re-render every consumer on every provider
+  // render regardless of the callbacks above being stable.
+  const value = useMemo(
+    () => ({
       currentRatio,
       isTransitioning,
       setAspectRatio,
       getCanvasSize,
       getPDFCellHeight,
-      getCroppedCanvasSize
-    }}>
+      getCroppedCanvasSize,
+    }),
+    [currentRatio, isTransitioning, setAspectRatio, getCanvasSize, getPDFCellHeight, getCroppedCanvasSize],
+  );
+
+  return (
+    <AspectRatioContext.Provider value={value}>
       {children}
     </AspectRatioContext.Provider>
   );

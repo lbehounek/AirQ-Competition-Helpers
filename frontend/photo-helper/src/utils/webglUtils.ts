@@ -7,6 +7,12 @@ export interface WebGLContext {
   program: WebGLProgram;
   positionBuffer: WebGLBuffer;
   textureCoordBuffer: WebGLBuffer;
+  /**
+   * `gl.MAX_TEXTURE_SIZE` read once at creation. Cached on the context rather
+   * than queried per draw: `getParameter` is cheap but it is on the interactive
+   * slider path, and the limit cannot change for the life of a context.
+   */
+  maxTextureSize: number;
   cleanup: () => void;
 }
 
@@ -168,12 +174,18 @@ export function initWebGLContext(width: number, height: number, fragmentShaderSo
       gl.deleteBuffer(textureCoordBuffer);
     };
     
+    // Read the driver's texture limit once — `applyWebGLEffects` compares the
+    // source size against it before uploading, because `texImage2D` beyond the
+    // limit fails *silently* into a black texture rather than throwing.
+    const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+
     return {
       gl,
       canvas,
       program,
       positionBuffer,
       textureCoordBuffer,
+      maxTextureSize,
       cleanup
     };
   } catch (error) {
@@ -196,20 +208,48 @@ export function applyWebGLEffects(
   webglContext?: WebGLContext
 ): HTMLCanvasElement | null {
   if (!webglContext) return null;
-  
-  const { gl, canvas, program, positionBuffer, textureCoordBuffer } = webglContext;
-  
+
+  const { gl, canvas, program, positionBuffer, textureCoordBuffer, maxTextureSize } = webglContext;
+
+  // Refuse sources the driver cannot hold in a texture. The PDF export feeds
+  // this up to 4800x3600 (PDF_PHOTO_TARGET_WIDTH 1600 × the editor's max zoom
+  // of 3.0), while old Intel/ANGLE devices report a 4096 limit — and
+  // `texImage2D` past the limit does not throw, it produces a black texture
+  // that would be printed onto the answer sheet. Checked BEFORE the resize
+  // below so an oversize source never grows a pooled context's drawing buffer
+  // for a draw we are about to abandon. Returning null hands the caller back
+  // to its CPU fallback.
+  if (sourceCanvas.width > maxTextureSize || sourceCanvas.height > maxTextureSize) {
+    return null;
+  }
+
   try {
     // Use the program
     gl.useProgram(program);
-    
+
     // Ensure context size matches source to avoid scaling artifacts
     if (canvas.width !== sourceCanvas.width || canvas.height !== sourceCanvas.height) {
       canvas.width = sourceCanvas.width;
       canvas.height = sourceCanvas.height;
     }
     gl.viewport(0, 0, canvas.width, canvas.height);
-    
+
+    // Verify the drawing buffer actually became the size we asked for.
+    // Chromium silently allocates a SMALLER buffer when the request exceeds
+    // MAX_VIEWPORT_DIMS / MAX_RENDERBUFFER_SIZE or available GPU memory, and a
+    // context that was lost between draws turns every subsequent gl call into
+    // a no-op. Either way the caller's `drawImage(processedCanvas, …)` would
+    // paint a stretched or black cell. Both reads are client-side state — no
+    // GPU sync, unlike `gl.getError()`, which is deliberately never called
+    // here because it would stall the interactive slider path.
+    if (
+      gl.isContextLost() ||
+      gl.drawingBufferWidth !== canvas.width ||
+      gl.drawingBufferHeight !== canvas.height
+    ) {
+      return null;
+    }
+
     // Create texture from source canvas
     const texture = gl.createTexture();
     if (!texture) return null;
@@ -255,13 +295,37 @@ export function applyWebGLEffects(
     
     // Clean up texture
     gl.deleteTexture(texture);
-    
+
+    // A context lost *during* the draw leaves the canvas blank while every gl
+    // call above returns without error, so this last check is what stops a
+    // black cell reaching the PDF.
+    if (gl.isContextLost()) return null;
+
     return canvas;
-    
+
   } catch (error) {
     console.warn('WebGL processing failed:', error);
     return null;
   }
+}
+
+/**
+ * Release a context's GL resources AND the underlying drawing buffer.
+ *
+ * Returns nothing. Safe to call on an already-lost context (no-op) and safe to
+ * call twice, so callers can dispose eagerly and still keep a `finally` net.
+ *
+ * WHY this exists next to `cleanup()`: `cleanup()` only deletes the program,
+ * shaders and buffers — the context itself (and its drawing buffer, up to
+ * ~69 MB for a 4800x3600 export) stays alive until the GC gets around to it.
+ * Chromium caps live WebGL contexts per page (~16) and evicts the OLDEST when
+ * the cap is passed, so leaking export contexts would eventually kill the
+ * editor's pooled ones. `WEBGL_lose_context` frees both immediately.
+ */
+export function loseWebGLContext(context: WebGLContext): void {
+  if (context.gl.isContextLost()) return;
+  context.cleanup();
+  context.gl.getExtension('WEBGL_lose_context')?.loseContext();
 }
 
 // Check if WebGL is supported (cached result to avoid creating contexts)

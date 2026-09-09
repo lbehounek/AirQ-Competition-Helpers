@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -58,7 +58,25 @@ interface PhotoControlsProps {
     canvasState: Photo['canvasState'];
   };
   label: string;
-  onUpdate: (canvasState: Photo['canvasState']) => void;
+  /**
+   * Commit a canvas-state DELTA immediately — the discrete actions (reset,
+   * label corner, circle colour/remove, auto white balance, quick zoom).
+   * A delta rather than a full snapshot so two panels editing the same photo
+   * cannot clobber each other's fields; a full state object is a valid delta.
+   */
+  onUpdate: (canvasState: Partial<Photo['canvasState']>) => void;
+  /**
+   * Live value while a slider moves. The caller is expected to update only its
+   * own preview copy — nothing is persisted. Optional: omitted → falls back to
+   * `onUpdate`, i.e. today's write-on-every-tick behaviour.
+   */
+  onPreview?: (delta: Partial<Photo['canvasState']>) => void;
+  /**
+   * Final value of one slider interaction (pointer release, key step, +/-,
+   * wheel, typed value). The caller debounces these into one write. Optional:
+   * omitted → falls back to `onUpdate`.
+   */
+  onCommit?: (delta: Partial<Photo['canvasState']>) => void;
   onClose?: () => void; // Close modal callback
   mode?: 'full' | 'sidebar' | 'sliders' | 'compact-left' | 'compact-right';
   showOriginal?: boolean;
@@ -200,7 +218,10 @@ const EditableValueDisplay: React.FC<EditableValueDisplayProps> = ({
 // Reusable slider component with plus/minus buttons and editable value
 interface SliderWithControlsProps {
   value: number;
+  /** Live value on every tick of the interaction (preview only). */
   onChange: (value: number) => void;
+  /** Final value of the interaction — the caller persists this one. */
+  onCommit: (value: number) => void;
   min: number;
   max: number;
   step: number;
@@ -218,6 +239,7 @@ interface SliderWithControlsProps {
 const SliderWithControls: React.FC<SliderWithControlsProps> = ({
   value,
   onChange,
+  onCommit,
   min,
   max,
   step,
@@ -232,10 +254,26 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
   onApplyToAll
 }) => {
   const { t } = useI18n();
+
+  /**
+   * Whether the CURRENT pointer/keyboard interaction actually moved the value.
+   *
+   * WHY a flag and not a comparison: MUI 7 fires `onChangeCommitted` on every
+   * handled key — including at the bounds, where it suppressed `onChange`
+   * (Slider/useSlider.js:288-293) — and after a pointer release the parent has
+   * already re-rendered with the PREVIEWED value, so `newValue === value` is
+   * true for a real change too. Only "did onChange fire during this gesture?"
+   * distinguishes the two.
+   */
+  const dirtyRef = useRef(false);
+
+  // Discrete steppers are one interaction each: preview and commit together.
+  // The `!== value` guards keep an at-the-bound click from writing anything.
   const handleDecrement = () => {
     const newValue = Math.max(min, value - step);
     if (newValue !== value) {
       onChange(newValue);
+      onCommit(newValue);
     }
   };
 
@@ -243,6 +281,7 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
     const newValue = Math.min(max, value + step);
     if (newValue !== value) {
       onChange(newValue);
+      onCommit(newValue);
     }
   };
 
@@ -255,6 +294,7 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
     
     if (newValue !== value) {
       onChange(newValue);
+      onCommit(newValue);
     }
   };
 
@@ -275,7 +315,7 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
           <Box sx={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
             <EditableValueDisplay
               value={value}
-              onChange={onChange}
+              onChange={(newValue) => { onChange(newValue); onCommit(newValue); }}
               min={min}
               max={max}
               formatDisplay={formatDisplay}
@@ -322,7 +362,14 @@ const SliderWithControls: React.FC<SliderWithControlsProps> = ({
         </IconButton>
         <Slider
           value={value}
-          onChange={(_, newValue) => onChange(newValue as number)}
+          onChange={(_, newValue) => { dirtyRef.current = true; onChange(newValue as number); }}
+          onChangeCommitted={(_, newValue) => {
+            // Nothing moved during this gesture (a key press at the bound, or
+            // a click that landed on the current value) — nothing to persist.
+            if (!dirtyRef.current) return;
+            dirtyRef.current = false;
+            onCommit(newValue as number);
+          }}
           min={min}
           max={max}
           step={step}
@@ -353,6 +400,8 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   photo,
   label,
   onUpdate,
+  onPreview,
+  onCommit,
   onClose,
   mode = 'full',
   showOriginal = false,
@@ -363,6 +412,11 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
   onSyncLabelPositionToAll
 }) => {
   const { t } = useI18n();
+  // Preview/commit split is OPTIONAL: a caller that passes neither (the grid,
+  // tests, any future embedder) gets exactly the old behaviour — every tick
+  // goes straight to `onUpdate`.
+  const preview = onPreview ?? onUpdate;
+  const commit = onCommit ?? onUpdate;
   // Local state for immediate UI feedback
   const [localLabelPosition, setLocalLabelPosition] = useState(photo.canvasState.labelPosition);
   const [circleMode, setCircleMode] = useState(externalCircleMode || false);
@@ -391,94 +445,79 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     }
   }, [externalCircleMode]);
 
-  const handleScaleChange = (newScale: number) => {
+  // ── Slider deltas ─────────────────────────────────────────────────────────
+  // Each builder turns a slider value into the SMALLEST canvas-state patch
+  // that expresses it, or `null` when the control has nothing to say (no
+  // circle to resize). Deltas, not full snapshots: two PhotoControls instances
+  // are mounted on the same photo, and a snapshot from one would silently undo
+  // a field the other just changed.
+  type CanvasDelta = Partial<Photo['canvasState']>;
+
+  // Scale is clamped at 1.0 — below that the photo no longer fills the canvas
+  // and white borders appear. Position constraints are PhotoEditorApi's job.
+  //
+  // NOTE: there is deliberately NO "unchanged, skip" early-out here. Once a
+  // preview has written the value, the incoming commit compares equal to the
+  // photo's own state and the guard would swallow the only call that persists.
+  const buildScale = (v: number): CanvasDelta => ({ scale: Math.max(1.0, v) });
+  const buildBrightness = (v: number): CanvasDelta => ({ brightness: v });
+  const buildContrast = (v: number): CanvasDelta => ({ contrast: v });
+  const buildSharpness = (v: number): CanvasDelta => ({ sharpness: v });
+  // Manual adjustment always turns auto off — otherwise the editor's AWB pass
+  // would recompute over the top of the value the user just dialled in.
+  const buildWbTemperature = (v: number): CanvasDelta =>
+    ({ whiteBalance: { ...whiteBalance, temperature: v, auto: false } });
+  const buildWbTint = (v: number): CanvasDelta =>
+    ({ whiteBalance: { ...whiteBalance, tint: v, auto: false } });
+  const buildCircleRadius = (v: number): CanvasDelta | null =>
+    circle ? { circle: { ...circle, radius: v } } : null;
+
+  /**
+   * Wire one `SliderWithControls` to the preview/commit split.
+   *
+   * Returns the `{ onChange, onCommit }` pair to spread onto the slider: the
+   * live value only re-renders the caller's preview (in the modal that is one
+   * canvas plus two panels, not the whole app), while the final value of the
+   * interaction is what the caller debounces into a single write and a single
+   * grid redraw.
+   */
+  const sliderHandlers = (build: (v: number) => CanvasDelta | null) => ({
+    onChange: (v: number) => { const d = build(v); if (d) { ensureEdited(); preview(d); } },
+    onCommit: (v: number) => { const d = build(v); if (d) commit(d); },
+  });
+
+  /**
+   * Commit one slider's per-field reset button (the little ↻ next to the
+   * label). Discrete action, so it bypasses the debounce and writes at once;
+   * a `null` delta (no circle) is simply dropped.
+   */
+  const handleImmediate = (delta: CanvasDelta | null) => {
+    if (!delta) return;
     ensureEdited();
-    // Ensure scale is at least 1.0 to prevent white borders
-    const clampedScale = Math.max(1.0, newScale);
-    
-    // If scale didn't actually change, don't update
-    if (Math.abs(clampedScale - photo.canvasState.scale) < 0.01) return;
-    
-    // Note: Position constraints are handled in PhotoEditorApi
-    // We just update the scale here and let the editor component handle positioning
-    onUpdate({
-      ...photo.canvasState,
-      scale: clampedScale
-    });
+    onUpdate(delta);
   };
 
-  const handleBrightnessChange = (newBrightness: number) => {
+  /**
+   * Quick-zoom presets and the reset-zoom button: one discrete action, so it
+   * commits immediately. The guard keeps a click on the preset the photo is
+   * already at from costing a write.
+   */
+  const handleQuickScale = (value: number) => {
+    if (Math.abs(value - photo.canvasState.scale) < 0.01) return;
     ensureEdited();
-    onUpdate({
-      ...photo.canvasState,
-      brightness: newBrightness
-    });
-  };
-
-  const handleContrastChange = (newContrast: number) => {
-    ensureEdited();
-    onUpdate({
-      ...photo.canvasState,
-      contrast: newContrast
-    });
-  };
-
-  // Immediate sharpness handler - modern browsers handle this easily
-  const handleSharpnessChange = useCallback((newSharpness: number) => {
-    ensureEdited();
-    onUpdate({
-      ...photo.canvasState,
-      sharpness: newSharpness
-    });
-  }, [onUpdate, photo.canvasState]);
-
-  const handleWhiteBalanceTemperatureChange = (newTemperature: number) => {
-    ensureEdited();
-    onUpdate({
-      ...photo.canvasState,
-      whiteBalance: {
-        ...whiteBalance,
-        temperature: newTemperature,
-        auto: false // Disable auto when manually adjusting
-      }
-    });
-  };
-
-  const handleWhiteBalanceTintChange = (newTint: number) => {
-    ensureEdited();
-    onUpdate({
-      ...photo.canvasState,
-      whiteBalance: {
-        ...whiteBalance,
-        tint: newTint,
-        auto: false // Disable auto when manually adjusting
-      }
-    });
+    onUpdate({ scale: value });
   };
 
   const handleAutoWhiteBalance = () => {
     ensureEdited();
     // Set auto flag temporarily to trigger calculation
     // The PhotoEditorApi component will calculate the actual values
-    onUpdate({
-      ...photo.canvasState,
-      whiteBalance: {
-        ...whiteBalance,
-        auto: true
-      }
-    });
+    onUpdate({ whiteBalance: { ...whiteBalance, auto: true } });
   };
 
   const handleResetWhiteBalance = () => {
     ensureEdited();
-    onUpdate({
-      ...photo.canvasState,
-      whiteBalance: {
-        temperature: 0,
-        tint: 0,
-        auto: false
-      }
-    });
+    onUpdate({ whiteBalance: { temperature: 0, tint: 0, auto: false } });
   };
 
   const handleLabelPositionChange = (position: LabelPosition) => {
@@ -486,14 +525,12 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     // Update local state immediately for instant UI feedback
     setLocalLabelPosition(position);
     // Then update backend
-    onUpdate({
-      ...photo.canvasState,
-      labelPosition: position
-    });
+    onUpdate({ labelPosition: position });
   };
 
   const handleReset = () => {
     ensureEdited();
+    // A full state IS a valid delta — reset means "every field back to default".
     onUpdate({
       position: { x: 0, y: 0 },
       scale: 1.0, // Default 100% scale (fills canvas)
@@ -529,28 +566,10 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
     }
   };
 
-  const handleCircleRadiusChange = (newRadius: number) => {
-    if (!circle) return;
-    ensureEdited();
-    onUpdate({
-      ...photo.canvasState,
-      circle: {
-        ...circle,
-        radius: newRadius
-      }
-    });
-  };
-
   const handleCircleColorChange = (newColor: 'white' | 'red' | 'yellow') => {
     if (!circle) return;
     ensureEdited();
-    onUpdate({
-      ...photo.canvasState,
-      circle: {
-        ...circle,
-        color: newColor
-      }
-    });
+    onUpdate({ circle: { ...circle, color: newColor } });
   };
 
   // NB: there is deliberately no circle *position* handler here. The panel only
@@ -559,10 +578,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
 
   const handleRemoveCircle = () => {
     ensureEdited();
-    onUpdate({
-      ...photo.canvasState,
-      circle: null // Use null to ensure it's sent to backend
-    });
+    onUpdate({ circle: null }); // explicit null so the removal reaches storage
     // Disable circle mode when circle is removed
     if (onCircleModeToggle && circleMode) {
       onCircleModeToggle();
@@ -724,7 +740,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 2 }}>
               <SliderWithControls
                 value={circle.radius}
-                onChange={handleCircleRadiusChange}
+                {...sliderHandlers(buildCircleRadius)}
                 min={10}
                 max={100}
                 step={5}
@@ -807,7 +823,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         
         <SliderWithControls
           value={Math.max(1.0, photo.canvasState.scale)}
-          onChange={handleScaleChange}
+          {...sliderHandlers(buildScale)}
           min={1.0}
           max={3}
           step={0.05}
@@ -818,7 +834,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Tooltip title={t('controls.resetZoom')}>
               <IconButton 
                 size="small" 
-                onClick={() => handleScaleChange(1.0)}
+                onClick={() => handleQuickScale(1.0)}
                 sx={{ padding: 0.5 }}
               >
                 <Refresh fontSize="small" />
@@ -838,7 +854,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           {quickScaleOptions.map((option) => (
             <Button
               key={option.value}
-              onClick={() => handleScaleChange(option.value)}
+              onClick={() => handleQuickScale(option.value)}
               variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
               size="small"
               sx={{ fontSize: '0.75rem' }}
@@ -867,7 +883,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 2 }}>
               <SliderWithControls
                 value={Math.max(1.0, photo.canvasState.scale)}
-                onChange={handleScaleChange}
+                {...sliderHandlers(buildScale)}
                 min={1.0}
                 max={3}
                 step={0.05}
@@ -883,7 +899,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetZoom')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleScaleChange(1.0)}
+                      onClick={() => handleQuickScale(1.0)}
                       sx={{ padding: 0.5 }}
                     >
                       <Refresh fontSize="small" />
@@ -902,7 +918,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box>
               <SliderWithControls
                 value={sharpness}
-                onChange={handleSharpnessChange}
+                {...sliderHandlers(buildSharpness)}
                 min={0}
                 max={100}
                 step={5}
@@ -918,7 +934,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetSharpness')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleSharpnessChange(0)}
+                      onClick={() => handleImmediate(buildSharpness(0))}
                       sx={{ padding: 0.5 }}
                     >
                       <Refresh fontSize="small" />
@@ -948,7 +964,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 2 }}>
               <SliderWithControls
                 value={photo.canvasState.brightness}
-                onChange={handleBrightnessChange}
+                {...sliderHandlers(buildBrightness)}
                 min={-100}
                 max={100}
                 step={1}
@@ -964,7 +980,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetBrightness')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleBrightnessChange(0)}
+                      onClick={() => handleImmediate(buildBrightness(0))}
                       sx={{ padding: 0.5 }}
                     >
                       <Refresh fontSize="small" />
@@ -984,7 +1000,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box>
               <SliderWithControls
                 value={photo.canvasState.contrast}
-                onChange={handleContrastChange}
+                {...sliderHandlers(buildContrast)}
                 min={0.5}
                 max={2}
                 step={0.01}
@@ -1000,7 +1016,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetContrast')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleContrastChange(1)}
+                      onClick={() => handleImmediate(buildContrast(1))}
                       sx={{ padding: 0.5 }}
                     >
                       <Refresh fontSize="small" />
@@ -1053,7 +1069,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 2 }}>
               <SliderWithControls
                 value={whiteBalance.temperature}
-                onChange={handleWhiteBalanceTemperatureChange}
+                {...sliderHandlers(buildWbTemperature)}
                 min={-50}
                 max={50}
                 step={1}
@@ -1069,7 +1085,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetTemperature')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleWhiteBalanceTemperatureChange(0)}
+                      onClick={() => handleImmediate(buildWbTemperature(0))}
                       sx={{ padding: 0.5 }}
                       disabled={whiteBalance.auto}
                     >
@@ -1095,7 +1111,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box>
               <SliderWithControls
                 value={whiteBalance.tint}
-                onChange={handleWhiteBalanceTintChange}
+                {...sliderHandlers(buildWbTint)}
                 min={-50}
                 max={50}
                 step={1}
@@ -1111,7 +1127,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetTint')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleWhiteBalanceTintChange(0)}
+                      onClick={() => handleImmediate(buildWbTint(0))}
                       sx={{ padding: 0.5 }}
                       disabled={whiteBalance.auto}
                     >
@@ -1234,7 +1250,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
         </Box>
         <SliderWithControls
           value={Math.max(1.0, photo.canvasState.scale)}
-          onChange={handleScaleChange}
+          {...sliderHandlers(buildScale)}
           min={1.0}
           max={3}
           step={0.05}
@@ -1248,7 +1264,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
           {quickScaleOptions.map((option) => (
             <Button
               key={option.value}
-              onClick={() => handleScaleChange(option.value)}
+              onClick={() => handleQuickScale(option.value)}
               variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
               size="small"
               sx={{ fontSize: '0.7rem', py: 0.25 }}
@@ -1388,7 +1404,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
               </Box>
               <SliderWithControls
                 value={circle.radius}
-                onChange={handleCircleRadiusChange}
+                {...sliderHandlers(buildCircleRadius)}
                 min={10}
                 max={100}
                 step={5}
@@ -1504,7 +1520,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 3 }}>
               <SliderWithControls
                 value={Math.max(1.0, photo.canvasState.scale)}
-                onChange={handleScaleChange}
+                {...sliderHandlers(buildScale)}
                 min={1.0}
                 max={3}
                 step={0.05}
@@ -1520,7 +1536,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetZoom')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleScaleChange(1.0)}
+                      onClick={() => handleQuickScale(1.0)}
                       sx={{ padding: 0.5 }}
                     >
                       <Refresh fontSize="small" />
@@ -1540,7 +1556,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 {quickScaleOptions.map((option) => (
                   <Button
                     key={option.value}
-                    onClick={() => handleScaleChange(option.value)}
+                    onClick={() => handleQuickScale(option.value)}
                     variant={photo.canvasState.scale === option.value ? 'contained' : 'outlined'}
                     size="small"
                   >
@@ -1556,7 +1572,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 3 }}>
               <SliderWithControls
                 value={photo.canvasState.brightness}
-                onChange={handleBrightnessChange}
+                {...sliderHandlers(buildBrightness)}
                 min={-100}
                 max={100}
                 step={1}
@@ -1572,7 +1588,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetBrightness')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleBrightnessChange(0)}
+                      onClick={() => handleImmediate(buildBrightness(0))}
                       sx={{ padding: 0.5 }}
                     >
                       <Refresh fontSize="small" />
@@ -1592,7 +1608,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 3 }}>
               <SliderWithControls
                 value={photo.canvasState.contrast}
-                onChange={handleContrastChange}
+                {...sliderHandlers(buildContrast)}
                 min={0.5}
                 max={2}
                 step={0.01}
@@ -1608,7 +1624,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetContrast')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleContrastChange(1)}
+                      onClick={() => handleImmediate(buildContrast(1))}
                       sx={{ padding: 0.5 }}
                     >
                       <Refresh fontSize="small" />
@@ -1628,7 +1644,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box>
               <SliderWithControls
                 value={sharpness}
-                onChange={handleSharpnessChange}
+                {...sliderHandlers(buildSharpness)}
                 min={0}
                 max={100}
                 step={5}
@@ -1644,7 +1660,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetSharpness')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleSharpnessChange(0)}
+                      onClick={() => handleImmediate(buildSharpness(0))}
                       sx={{ padding: 0.5 }}
                     >
                       <Refresh fontSize="small" />
@@ -1698,7 +1714,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box sx={{ mb: 3 }}>
               <SliderWithControls
                 value={whiteBalance.temperature}
-                onChange={handleWhiteBalanceTemperatureChange}
+                {...sliderHandlers(buildWbTemperature)}
                 min={-50}
                 max={50}
                 step={1}
@@ -1710,7 +1726,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetTemperature')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleWhiteBalanceTemperatureChange(0)}
+                      onClick={() => handleImmediate(buildWbTemperature(0))}
                       sx={{ padding: 0.5 }}
                       disabled={whiteBalance.auto}
                     >
@@ -1736,7 +1752,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <Box>
               <SliderWithControls
                 value={whiteBalance.tint}
-                onChange={handleWhiteBalanceTintChange}
+                {...sliderHandlers(buildWbTint)}
                 min={-50}
                 max={50}
                 step={1}
@@ -1748,7 +1764,7 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                   <Tooltip title={t('controls.resetTint')}>
                     <IconButton 
                       size="small" 
-                      onClick={() => handleWhiteBalanceTintChange(0)}
+                      onClick={() => handleImmediate(buildWbTint(0))}
                       sx={{ padding: 0.5 }}
                       disabled={whiteBalance.auto}
                     >

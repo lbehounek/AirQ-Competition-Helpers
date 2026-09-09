@@ -12,43 +12,58 @@ This Electron-based desktop app wraps the two web applications into a single Win
 ## Prerequisites
 
 - **Node.js** 18+ (LTS recommended)
-- **npm** 9+
+- **pnpm** 10+ (the repo is a pnpm workspace — never use npm)
 - **Windows** (for building Windows executables)
 
 ## Quick Start
 
 ### 1. Install Dependencies
 
+Install once from the workspace root — pnpm links every package:
+
 ```bash
-cd frontend/desktop
-npm install
+cd frontend
+pnpm install
 ```
 
 ### 2. Build and Package
 
 ```bash
-# Build both apps and create Windows installer + portable executable
-npm run package
+# Build both apps and create BOTH Windows executables
+cd frontend/desktop
+pnpm run package
 ```
 
 The outputs will be in the `dist/` folder:
-- `AirQ Competition Helpers Setup X.X.X.exe` - Windows installer (NSIS)
-- `AirQ Competition Helpers-Portable-X.X.X.exe` - Portable executable
+- `photo-helper-vX.Y.Z-setup.exe` — NSIS installer, per-user (no admin rights),
+  lets you choose the folder, creates Desktop + Start-menu shortcuts.
+  **Recommended download.**
+- `photo-helper-vX.Y.Z-portable.exe` — portable executable; re-extracts itself
+  into `%TEMP%` on every launch (USB sticks / machines where installing is not
+  allowed), which makes it slower to start.
 
 ### Alternative Commands
 
 ```bash
-# Build only (no packaging) - useful for testing
-npm run build:apps
+# Build both apps + both installers (same as above)
+pnpm run package
 
-# Run in development mode (requires built apps)
-npm run dev
+# Only one of the two targets
+pnpm run package:nsis
+pnpm run package:portable
 
 # Package as directory (faster, for testing)
-npm run package:dir
+pnpm run package:dir
 
-# Package portable only
-npm run package:portable
+# Build only (no packaging) - useful for testing
+pnpm run build:apps
+
+# Run in development mode (requires built apps)
+pnpm run dev
+
+# Or use the build script (detects the hoisted Electron version for you)
+bash build.sh          # unpacked directory
+bash build.sh package  # NSIS installer + portable .exe
 ```
 
 ## Project Structure
@@ -97,13 +112,38 @@ magick convert -background none icons/icon.svg -resize 512x512 icons/icon.png
 3. **Landing Page** allows switching between Photo Helper and Map Corridors
 4. **electron-builder** packages everything into Windows executables
 
+### Startup
+
+The bundled sample competition (developer builds only — `sample-data/` is
+gitignored, so release builds contain none) is copied in the **background**
+after the window opens, not before it. The IPC channels that observe the
+competitions index — `competition-list`, `storage-init`, `sample-is-pending`,
+`sample-clear-pending`, `navigate-to-app` — await that copy via `sampleReady`
+(`main.js`), so nothing can ever see an index without the sample. The logic
+itself lives in `lib/sampleCompetition.js` and is unit-tested; the *wiring* —
+that each of those five channels is still wrapped in `afterSample` — is pinned by
+`__tests__/sampleGate.test.js`, so adding a sixth gated channel means adding it
+to that test's `GATED_CHANNELS` list.
+
 ## Build Configuration
 
 The build is configured in `package.json` under the `"build"` key:
 
 - **appId**: `com.airq.competition-helpers`
-- **Targets**: NSIS installer + Portable executable
+- **Targets**: NSIS installer (assisted: `oneClick: false`, `perMachine: false`,
+  `allowToChangeInstallationDirectory: true`, `differentialPackage: false` —
+  there is no auto-updater, so the blockmap it would produce is dead weight)
+  + Portable executable
 - **Architecture**: x64 only
+
+### User data
+
+Both builds store `config.json` and `photo-sessions/` under
+`app.getPath('userData')` — on Windows `%APPDATA%\AirQ Competition Helpers`
+(Electron derives the folder from `productName`, not from the package name;
+confirm the exact string once on Windows). The uninstaller never touches it
+(`deleteAppDataOnUninstall: false`), and the two builds share it — so moving
+from the portable build to the installer keeps every competition.
 
 ### Customizing the Build
 
@@ -116,19 +156,17 @@ Edit `package.json` to modify:
 
 ### Build Fails with "Cannot find module"
 
-Make sure to install dependencies in all three locations:
+Install once from the workspace root — pnpm links all three packages:
 ```bash
-cd frontend/photo-helper && npm install
-cd frontend/map-corridors && npm install
-cd frontend/desktop && npm install
+cd frontend && pnpm install
 ```
 
 ### App Shows Blank Screen
 
 The web apps must be built before running:
 ```bash
-npm run build:apps
-npm run dev
+pnpm run build:apps
+pnpm run dev
 ```
 
 ### Icon Not Showing
@@ -140,8 +178,8 @@ Ensure `icons/icon.ico` exists. Generate it from the SVG source.
 ### Testing Changes
 
 1. Make changes to either web app
-2. Run `npm run build:apps` to rebuild
-3. Run `npm run dev` to test in Electron
+2. Run `pnpm run build:apps` to rebuild
+3. Run `pnpm run dev` to test in Electron
 
 ### Debugging
 
@@ -171,8 +209,8 @@ git push origin desktop-v1.2.0
 
 This triggers the workflow which:
 1. Builds both React apps (photo-helper, map-corridors)
-2. Packages into Windows portable .exe
-3. Creates a GitHub Release with the .exe attached
+2. Packages a Windows NSIS installer and a portable .exe
+3. Creates a GitHub Release with both .exe files attached
 
 ### Version Detection
 
