@@ -1,11 +1,15 @@
 # Corridor bug — a turning point is skipped and two non-consecutive TPs are joined
 
-**Status:** diagnosed, not fixed. Reported by Lukáš, investigated 2026-09-06.
+**Status:** diagnosed 2026-09-06 *without* a failing file; **root cause confirmed
+against the real failing file 2026-09-09** — see the update immediately below,
+which re-ranks the causes and invalidates one of the fix sketches.
 **Fix handover:** [issue #117](https://github.com/lbehounek/AirQ-Competition-Helpers/issues/117)
 carries the implementation brief as a numbered, checkable list (F1-F8).
 **Reported symptom:** "sometimes one TP is skipped, and two non-consecutive TPs
-are connected by a corridor." No failing KML was available, so every cause below
-was reproduced by constructing input and running the real pipeline.
+are connected by a corridor." No failing KML was available at the time, so every
+cause below was reproduced by constructing input and running the real pipeline.
+One has since arrived and is committed as
+`frontend/map-corridors/src/__tests__/fixtures/MZB_2026_RED.kml`.
 
 All line numbers refer to `main` at `d072a93`. Function names are the stable
 anchor; prefer them if the file has moved on.
@@ -17,6 +21,106 @@ waypoints and therefore much shorter hops between them, and it loops back on
 itself around landmarks. Those two properties are what trip causes A and B below.
 
 ---
+
+## UPDATE 2026-09-09 — the failing file arrived, and it re-ranks everything below
+
+Everything after this section was written **without a failing KML**; every cause
+was reproduced by constructing input. The real course files from the **MZB 2026
+rally** have since been obtained (`RED.kml`, now committed as
+`frontend/map-corridors/src/__tests__/fixtures/MZB_2026_RED.kml`) and they
+reproduce the report exactly. Read this section first — it changes the ranking,
+and it invalidates one of the fix sketches.
+
+### What the real file actually does
+
+The course has SP, TP 1…TP 7, FP. **Five of its eight legs are drawn as dashed
+lines**: not one continuous LineString, but 13 separate 2-point LineStrings laid
+end-to-gap-to-end along the leg.
+
+| Leg | Drawn as | Dash | Outcome before the fix |
+|---|---|---|---|
+| SP→TP 1 | solid, 11 110 m | — | correct |
+| TP 1→TP 2 | 13 dashes | 1267 m | **no corridor** |
+| TP 2→TP 3 | 13 dashes | 524 m | **no corridor** |
+| TP 3→TP 4 | solid, 17 499 m | — | correct |
+| TP 4→TP 5 | 13 dashes | **387 m** | **geometry deleted** |
+| TP 5→TP 6 | 13 dashes | **308 m** | **geometry deleted** |
+| TP 6→TP 7 | solid, 21 901 m | — | correct |
+| TP 7→FP | 13 dashes | 306 m | **geometry deleted** |
+
+### The causal chain, measured end to end
+
+1. `isDashedConnectorLine` (`segments.ts:23`) drops every 2-point LineString
+   under 500 m. The TP 4→TP 5 and TP 5→TP 6 dashes are 387 m and 308 m, so
+   **100 % of both legs' geometry is deleted**.
+2. `buildContinuousTrackWithSources` welds the survivors together: seg#27 (ends
+   72 m from TP 4) straight to seg#54 (starts 71 m from TP 6), an **11 605 m gap
+   chord**.
+3. TP 5 now has **no track within 7 730 m**. Its label snaps onto that chord,
+   landing **6 437 m** from its true position.
+4. The TP 4 gate and the TP 5 / TP 6 snap points all land on that *single* chord
+   segment, so `isSpanOnMain` takes its `fromIdx === toIdx` early return — F1,
+   the branch that never consults `gapAfterIndex` — and approves corridors along
+   it.
+5. Two 2-vertex legs are drawn straight from TP 4 to TP 6 with a phantom TP 5 on
+   the line. **That is the reported picture.**
+
+Confirmed by running the unmodified pipeline against a repaired copy of the same
+file with the dash runs spliced back together:
+
+```
+AS SHIPPED   55 vertices, 25 gap chords, 106.90 km, 5/8 legs, TP 5 6437 m off
+REPAIRED      9 vertices,  0 gap chords, 120.31 km, 8/8 legs, TP 5   74 m off
+```
+
+The 13.41 km difference (−11.2 %) is the **"wrong measurement"** half of the
+report: the app substituted an 11.6 km straight chord for the real ~17 km
+TP 4→TP 5→TP 6 path and dropped TP 7→FP entirely.
+
+### Two corrections to the fix list below
+
+1. **F7 was ranked last ("most invasive, do it last"). It is cause #1.** And its
+   sketched heuristic — *"a genuine short hop shares an endpoint with its
+   neighbours"* — **would not have fixed this file**: these dashes deliberately
+   do **not** share endpoints; they are separated by a gap equal to the dash
+   length. The real discriminator is *repetition*: a run of ≥ 3 consecutive short
+   lines of near-equal length, each continuing the previous one's heading across
+   a gap no wider than a few dash lengths. On this file that separates the five
+   dashed legs from the two genuine 200 m decorations near FP with no tuning.
+2. **Dash length is not the only problem.** TP 1→TP 2 (1267 m dashes) and
+   TP 2→TP 3 (524 m dashes) are *kept* by the 500 m filter and still produce **no
+   corridor at all**, because every inter-dash space becomes a `gapAfterIndex`
+   chord. Any dashed leg breaks, at any dash length. A fix confined to the
+   threshold would have repaired two legs of five.
+
+Net: the map was wrong in **5 of 8 legs**, and every part of it failed silently —
+which is the whole argument for F3.
+
+### A separate defect the same data exposed
+
+Photo-to-turning-point attribution was wrong for **6 of 18** en-route photos, by
+up to 25.9 km, and this is **not** downstream of the shredded track. In
+`matchPoints.ts` the `coveredLegs` set was applied as a *hard exclusion*: a photo
+falling outside its own leg's 300 m corridor was barred from that leg and
+attached to the nearest leg that happened to have no corridor. Two of the six
+(s2,7 and s2,9) sit on the solid, undamaged TP 6→TP 7 leg, 42 m and 52 m outside
+its corridor; their misattribution is byte-identical on a repaired track.
+
+Worth knowing for anyone re-testing: repairing the track *alone* made attribution
+**worse**, 11 of 18 wrong, because with all legs covered every photo outside its
+corridor was excluded from its own leg and dumped on the single remaining
+uncovered one. A second bug fed this: the SP leg's corridor name was hardcoded
+`` `${spAfterNm}NM-after-SP→TP1` `` — literal `TP1`, no space — while every other
+leg used the KML's own name (`TP 1` here), so the SP leg's key never matched the
+route and it was permanently treated as uncovered.
+
+### Not usable as ground truth
+
+`Vzdálenosti.pdf` shipped with the competition data is **the app's own output**,
+not an independent distance table: running the real pipeline over the real photo
+positions reproduces all 18 of its rows to 0.01 NM, including the wrong ones. It
+carries the defect and cannot be used to check a fix.
+
 
 ## How the pipeline works
 
