@@ -19,7 +19,7 @@ export type TrackDiagnostics = {
   /** Isolated short lines discarded as map decoration (arrowheads, ticks). */
   droppedShortSegments: number
   /** Dashed legs reconstructed into continuous track — see mergeDashRuns. */
-  mergedDashRuns: Array<{ dashes: number, dashLengthM: number, spanM: number }>
+  mergedDashRuns: Array<{ dashes: number, dashLengthMinM: number, dashLengthMaxM: number, spanM: number }>
   /** Straight chords welded across a real discontinuity in the source. */
   gapCount: number
 }
@@ -79,14 +79,23 @@ export function isTpGatePerpendicular(coords: LonLatAlt[]): boolean {
 // than decoration. Two is not enough: RED.kml carries exactly two isolated
 // 200 m decorations near FP that must keep being discarded.
 const MIN_DASHES_IN_RUN = 3
-// Per-step tolerances. Deliberately loose so a dashed leg drawn along a curve
-// still reads as one run; still far too tight for unrelated decorations, which
-// do not repeat, do not match length, and do not continue each other's heading.
+// Per-step tolerances. Loose enough that a dashed leg drawn along a curve still
+// reads as one run; far too tight for unrelated decoration, which does not
+// repeat, does not match length, and does not continue its neighbour's heading.
 const DASH_LENGTH_TOLERANCE = 0.25
 const DASH_BEARING_TOLERANCE_DEG = 30
-const MAX_GAP_TO_DASH_RATIO = 3
+// Every gap in the real MZB file measures gap/dash = 1.00 exactly. 1.5 leaves
+// half a dash of headroom for uneven authoring while refusing to swallow a
+// genuine discontinuity: anything wider stays a gap chord, so isSpanOnMain can
+// still refuse to draw a corridor across it. At the old value of 3 a 3.8 km
+// jump between MZB's 1267 m dashes would have been welded into ordinary track,
+// destroying the very guarantee the gap check exists to provide.
+const MAX_GAP_TO_DASH_RATIO = 1.5
 // Two vertices closer than this are the same point drawn twice.
 const COINCIDENT_VERTEX_M = 1
+// Mirrors the 50 m weld threshold in buildContinuousTrackWithSources: a gap at
+// least this wide is what would have become a gap chord.
+const WELD_THRESHOLD_M = 50
 
 /**
  * Rebuild legs that the course author drew as a *dashed line*.
@@ -129,6 +138,10 @@ export function mergeDashRuns(segments: Segment[]): { segments: Segment[], merge
 
     // Greedily extend a run of dashes that continue one another.
     let end = i
+    // Widest space inside the run, needed to tell a dashed leg (whose spaces
+    // would have become gap chords) from a course simply drawn in touching
+    // pieces (which needs no repair at all).
+    let maxGapInRun = 0
     while (end + 1 < segments.length && isDash(segments[end + 1])) {
       const prev = segments[end].coordinates
       const next = segments[end + 1].coordinates
@@ -147,11 +160,22 @@ export function mergeDashRuns(segments: Segment[]): { segments: Segment[], merge
       if (gap > MAX_GAP_TO_DASH_RATIO * prevLen) break
       if (gap > COINCIDENT_VERTEX_M && bearingDelta(prevBearing, bearingBetween(prev[1], next[0])) > DASH_BEARING_TOLERANCE_DEG) break
 
+      if (gap > maxGapInRun) maxGapInRun = gap
       end++
     }
 
     const runLength = end - i + 1
-    if (runLength >= MIN_DASHES_IN_RUN) {
+    const dashLengths: number[] = []
+    for (let k = i; k <= end; k++) dashLengths.push(calculateDistance(segments[k].coordinates[0], segments[k].coordinates[1]))
+    // Only repair what the naive pipeline would actually have destroyed. A run
+    // of long, touching 2-point legs is an ordinarily authored course: merging
+    // it changes nothing, and announcing it as a reconstruction spends the
+    // banner's credibility on every file that genuinely needs it.
+    const wouldHaveBeenDestroyed =
+      Math.max(...dashLengths) < 500 ||   // each dash deleted by isDashedConnectorLine
+      maxGapInRun >= WELD_THRESHOLD_M     // each space turned into a gap chord
+
+    if (runLength >= MIN_DASHES_IN_RUN && wouldHaveBeenDestroyed) {
       const coordinates: LonLatAlt[] = []
       for (let k = i; k <= end; k++) {
         const [a, b] = segments[k].coordinates
@@ -161,10 +185,17 @@ export function mergeDashRuns(segments: Segment[]): { segments: Segment[], merge
         if (coordinates.length === 0 || calculateDistance(coordinates[coordinates.length - 1], a) > COINCIDENT_VERTEX_M) coordinates.push(a)
         coordinates.push(b)
       }
-      const dashLengthM = calculateDistance(segments[i].coordinates[0], segments[i].coordinates[1])
       let spanM = 0
       for (let k = 1; k < coordinates.length; k++) spanM += calculateDistance(coordinates[k - 1], coordinates[k])
-      merged.push({ dashes: runLength, dashLengthM, spanM })
+      // Report the real range. Quoting the first dash alone stated one measured
+      // number as if it described all of them, and DASH_LENGTH_TOLERANCE
+      // compounds per step, so a long run can end far from where it started.
+      merged.push({
+        dashes: runLength,
+        dashLengthMinM: Math.min(...dashLengths),
+        dashLengthMaxM: Math.max(...dashLengths),
+        spanM,
+      })
       // Keep the first dash's index so the merged leg holds the run's position
       // in source order, which sourceSegIdx and mainSegmentIndexSet rely on.
       out.push({ index: segments[i].index, coordinates })

@@ -234,10 +234,20 @@ function trackDistanceBetween(track: LonLatAlt[], fromIdx: number, toIdx: number
  * Clamp the walk to this leg, and report null when the leg cannot hold a gate
  * at all so the caller can say so instead of drawing nonsense.
  */
-function clampedGateOffset(track: LonLatAlt[], fromIdx: number, toIdx: number, desiredM: number): number | null {
-  const usable = trackDistanceBetween(track, fromIdx, toIdx) - GATE_MARGIN_M
+function clampedGateOffset(track: LonLatAlt[], fromIdx: number, toIdx: number, desiredM: number): { offsetM: number, clamped: boolean, legM: number } | null {
+  const legM = trackDistanceBetween(track, fromIdx, toIdx)
+  const usable = legM - GATE_MARGIN_M
   if (usable <= 0) return null
-  return Math.min(desiredM, usable)
+  // `clamped` matters to the reader, not just to us: a clamped gate is NOT at
+  // the rule-defined 5 NM / 1 NM, yet the gate feature and the corridor label
+  // both still say it is. Moving it silently is the same class of defect this
+  // whole change exists to remove.
+  return { offsetM: Math.min(desiredM, usable), clamped: usable < desiredM, legM }
+}
+
+/** One phrasing for the clamp notice, used by all three gate call sites. */
+function clampWarning(fromName: string, toName: string, offsetNm: number, g: { offsetM: number, legM: number }): string {
+  return `${fromName} → ${toName}: the leg is only ${(g.legM / 1852).toFixed(2)} NM, so the ${offsetNm} NM gate was moved to ${(g.offsetM / 1852).toFixed(2)} NM after ${fromName}.`
 }
 
 function isSpanOnMain(fromIdx: number, toIdx: number, sourceSegIdx: number[], gapAfterIndex: boolean[], mainSegmentIndexSet: Set<number>): boolean {
@@ -386,12 +396,13 @@ export function generateSegmentedCorridors(
     const fromIdx = nearestTrackIndex(track, from.coord)
     const toIdx = nearestTrackIndex(track, to.coord)
 
-    const offsetM = clampedGateOffset(track, fromIdx, toIdx, offsetNm * NM)
-    if (offsetM === null) {
+    const gateOffset = clampedGateOffset(track, fromIdx, toIdx, offsetNm * NM)
+    if (gateOffset === null) {
       warnings.push(`No corridor ${from.name} → ${to.name}: the leg is too short to place the ${offsetNm} NM gate.`)
       continue
     }
-    const gateAlong = pointAtDistanceAlongTrack(track, fromIdx, offsetM)
+    if (gateOffset.clamped) warnings.push(clampWarning(from.name, to.name, offsetNm, gateOffset))
+    const gateAlong = pointAtDistanceAlongTrack(track, fromIdx, gateOffset.offsetM)
     if (!gateAlong) {
       warnings.push(`No corridor ${from.name} → ${to.name}: no usable track after ${from.name}.`)
       continue
@@ -430,6 +441,10 @@ export function generateSegmentedCorridors(
 
 function extractGateCenterCandidates(input: GeoJSON): Array<{ center: LonLatAlt, line: Feature<LineString> } > {
   const out: Array<{ center: LonLatAlt, line: Feature<LineString> }> = []
+  const consider = (coords: LonLatAlt[]) => {
+    if (!coords || !isTpGatePerpendicular(coords)) return
+    out.push({ center: coords[1], line: lineString(coords as Position[]) })
+  }
   function scan(g: any) {
     if (!g) return
     if (g.type === 'FeatureCollection') {
@@ -437,28 +452,22 @@ function extractGateCenterCandidates(input: GeoJSON): Array<{ center: LonLatAlt,
     } else if (g.type === 'Feature') {
       const f = g as Feature
       const geom = f.geometry
-      if (geom?.type === 'LineString') {
-        const ls = geom as LineString
-        const coords = ls.coordinates as LonLatAlt[]
-        if (isTpGatePerpendicular(coords)) {
-          const center = coords[1]
-          out.push({ center, line: lineString(coords as Position[]) })
-        }
-      }
+      scan(geom)
+    } else if (g.type === 'GeometryCollection') {
+      // extractAllSegments learned to read a KML <MultiGeometry>; without the
+      // same here, such a file yields a track but no gates at all.
+      for (const geom of (g.geometries ?? [])) scan(geom)
+    } else if (g.type === 'MultiLineString') {
+      for (const line of (g.coordinates ?? [])) consider(line as LonLatAlt[])
     } else if (g.type === 'LineString') {
-      const ls = g as LineString
-      const coords = ls.coordinates as LonLatAlt[]
-      if (isTpGatePerpendicular(coords)) {
-        const center = coords[1]
-        out.push({ center, line: lineString(coords as Position[]) })
-      }
+      consider((g as LineString).coordinates as LonLatAlt[])
     }
   }
   scan(input)
   return out
 }
 
-function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[]): { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt, exactPointFeatures: Feature<Point>[] } {
+function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[], warnings: string[]): { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt, exactPointFeatures: Feature<Point>[] } {
   const named = findNamedPoints(input)
   const candidates = extractGateCenterCandidates(input)
   const exactPointFeatures: Feature<Point>[] = []
@@ -506,11 +515,18 @@ function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[]): { sp?: LonLa
           exactPointFeatures.push(point([lon, lat], { name, role: 'exact' }) as Feature<Point>)
           return exact
         }
-        // Every crossing of this gate is implausibly far from the label; fall
-        // through to the plain snap rather than trust it.
+        // Every crossing of this gate is implausibly far from the label. Fall
+        // through to the plain snap rather than trust it — but say so: this is
+        // precisely the case where the label is least trustworthy, and the
+        // result moves the gate, the corridor start and the answer-sheet
+        // distances that hang off this waypoint.
+        warnings.push(`${name}: its gate crosses the track ${Math.round(bestDist)} m from the label (limit ${MAX_EXACT_SNAP_M} m) — the label was snapped straight to the track instead.`)
       }
     }
-    // Fallback: snap the label to the track as the exact point
+    // Fallback: snap the label to the track as the exact point.
+    if (bestIdx === -1) {
+      warnings.push(`${name}: no gate line found within ${MAX_GATE_SEARCH_M} m that crosses the track — the label was snapped straight to the track, so this point is only as accurate as the label.`)
+    }
     const snapped = nearestPointOnLine(trackLine, point([approx[0], approx[1]]))
     const [lon, lat] = getCoord(snapped)
     const exact: LonLatAlt = [lon, lat, approx[2] || 0]
@@ -548,7 +564,7 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, config: Discipline
   const rightSegments: Feature<LineString>[] = []
   
   const named = findNamedPoints(input)
-  const { sp, tps, fp, exactPointFeatures } = computeExactWaypoints(input, track)
+  const { sp, tps, fp, exactPointFeatures } = computeExactWaypoints(input, track, warnings)
   exactPoints.push(...exactPointFeatures)
   const NM = 1852
   
@@ -559,9 +575,14 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, config: Discipline
     // Clamp to the SP→TP1 leg. A first leg shorter than spAfterNm used to put
     // this gate beyond TP 1, collapsing the corridor into a backwards stub.
     const nextAfterSp = tps[0]?.coord ?? fp
-    const spOffsetM = nextAfterSp ? clampedGateOffset(track, idx, nearestTrackIndex(track, nextAfterSp), spAfterNm * NM) : spAfterNm * NM
-    const gate = spOffsetM === null ? null : maybeBuildGateFromStartIdxDistance(track, idx, spOffsetM, leftDistanceM, rightDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
-    if (gate) gates.push(gate)
+    const spOffset = nextAfterSp ? clampedGateOffset(track, idx, nearestTrackIndex(track, nextAfterSp), spAfterNm * NM) : { offsetM: spAfterNm * NM, clamped: false, legM: 0 }
+    if (spOffset === null) {
+      warnings.push(`No gate after SP: the first leg is too short to place the ${spAfterNm} NM gate.`)
+    } else {
+      if (spOffset.clamped) warnings.push(clampWarning('SP', tps[0]?.name ?? 'FP', spAfterNm, spOffset))
+      const gate = maybeBuildGateFromStartIdxDistance(track, idx, spOffset.offsetM, leftDistanceM, rightDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
+      if (gate) gates.push(gate)
+    }
   }
   
   // Add TP point labels and gates 1NM AFTER each TP
@@ -575,9 +596,14 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, config: Discipline
     const idx = nearestTrackIndex(track, tp.coord)
     // Same clamp, against whichever waypoint follows this one.
     const nextAfterTp = tps[i + 1]?.coord ?? fp
-    const tpOffsetM = nextAfterTp ? clampedGateOffset(track, idx, nearestTrackIndex(track, nextAfterTp), tpAfterNm * NM) : tpAfterNm * NM
-    const gate = tpOffsetM === null ? null : maybeBuildGateFromStartIdxDistance(track, idx, tpOffsetM, leftDistanceM, rightDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
-    if (gate) gates.push(gate)
+    const tpOffset = nextAfterTp ? clampedGateOffset(track, idx, nearestTrackIndex(track, nextAfterTp), tpAfterNm * NM) : { offsetM: tpAfterNm * NM, clamped: false, legM: 0 }
+    if (tpOffset === null) {
+      warnings.push(`No gate after ${tp.name}: the leg is too short to place the ${tpAfterNm} NM gate.`)
+    } else {
+      if (tpOffset.clamped) warnings.push(clampWarning(tp.name, tps[i + 1]?.name ?? 'FP', tpAfterNm, tpOffset))
+      const gate = maybeBuildGateFromStartIdxDistance(track, idx, tpOffset.offsetM, leftDistanceM, rightDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
+      if (gate) gates.push(gate)
+    }
   }
   
   // Add FP point label (no gate after FP)
@@ -601,7 +627,10 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, config: Discipline
     warnings.push(`${named.unrecognised.length} placemark(s) not recognised as turning points: ${named.unrecognised.map(n => `"${n}"`).join(', ')}.`)
   }
   for (const run of diagnostics.mergedDashRuns) {
-    warnings.push(`Reconstructed a leg drawn as ${run.dashes} dashes of ${Math.round(run.dashLengthM)} m (${(run.spanM / 1000).toFixed(1)} km total) into continuous track.`)
+    const dashLen = Math.round(run.dashLengthMinM) === Math.round(run.dashLengthMaxM)
+      ? `${Math.round(run.dashLengthMinM)} m`
+      : `${Math.round(run.dashLengthMinM)}-${Math.round(run.dashLengthMaxM)} m`
+    warnings.push(`Reconstructed a leg drawn as ${run.dashes} dashes of ${dashLen} (${(run.spanM / 1000).toFixed(1)} km total) into continuous track.`)
   }
   if (diagnostics.gapCount > 0) {
     warnings.push(`The track has ${diagnostics.gapCount} gap(s); no corridor is drawn across a gap.`)

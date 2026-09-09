@@ -408,11 +408,10 @@ function App() {
   const routeWaypoints = useMemo(() => buildRouteWaypoints(session?.exactPoints), [session?.exactPoints])
 
   // Set of legs already covered by a corridor, keyed `${from}→${to}`.
-  // The leg-projection fallback skips these so a marker outside any
-  // polygon only attaches to a SCENIC leg (one whose corridor was
-  // dropped because the leg is a chain of dashed connectors) — feedback
-  // 2026-05-03 follow-up: "outside corridor → assigned to nearest leg
-  // WITHOUT a corridor". Built from the corridor names directly so a
+  // A TIE-BREAK PREFERENCE ONLY — never an exclusion. See the `CoveredLegKey`
+  // doc-comment in corridors/matchPoints.ts for why the hard exclusion was
+  // removed (it misattributed 6 of 18 photos by up to 25.9 km on the MZB 2026
+  // rally) and why it must not come back. Built from the corridor names so a
   // future change to the naming template only needs to update the
   // `extractStartName`/`extractEndName` parsers.
   const coveredLegs = useMemo(() => {

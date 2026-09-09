@@ -84,8 +84,9 @@ export const NEAREST_CORRIDOR_MAX_METERS = 50_000
  * corridor, and for those the governing invariant is: a photo must never
  * be attributed to a leg further away than the geometrically nearest leg.
  *
- * Build keys as `${from}→${to}` (no spaces, exactly as written in the
- * corridor segment name template at preciseCorridor.ts:281,292,376).
+ * Build keys as `${from}→${to}`, exactly as written by the `segmentName`
+ * template in `generateSegmentedCorridors` (which now uses each waypoint's own
+ * name, so a course authored `TP 1` keys as `SP→TP 1`, spaces included).
  */
 export type CoveredLegKey = `${string}→${string}`
 

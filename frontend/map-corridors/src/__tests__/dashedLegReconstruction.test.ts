@@ -106,7 +106,11 @@ describe('MZB 2026 — the reported failure', () => {
 
   it('reconstructs exactly the five dashed legs, and says so', () => {
     const { diagnostics } = buildContinuousTrackWithSources(gj)
-    expect(diagnostics.mergedDashRuns.map(r => Math.round(r.dashLengthM))).toEqual([1267, 524, 387, 308, 306])
+    expect(diagnostics.mergedDashRuns.map(r => Math.round(r.dashLengthMinM))).toEqual([1267, 524, 387, 308, 305])
+    // The dashes within a run are near-identical but NOT exactly equal (the
+    // last run spans 305-306 m), which is why the range is reported rather
+    // than the first dash quoted as if it described all thirteen.
+    expect(diagnostics.mergedDashRuns.every(r => r.dashLengthMaxM - r.dashLengthMinM < 2)).toBe(true)
     expect(diagnostics.mergedDashRuns.every(r => r.dashes === 13)).toBe(true)
     // The two isolated 200 m decorations near FP are still discarded.
     expect(diagnostics.droppedShortSegments).toBe(2)
@@ -226,6 +230,41 @@ describe('mergeDashRuns — what counts as a dashed leg', () => {
   it('handles an empty input', () => {
     expect(mergeDashRuns([])).toEqual({ segments: [], merged: [] })
   })
+
+  it('leaves a normally-authored course alone instead of calling it a dashed leg', () => {
+    // Three 11 km legs drawn as touching 2-point LineStrings with 20° turns —
+    // an ordinary course. Merging changes nothing here; the defect was the
+    // banner announcing a "reconstruction", which spends its credibility on
+    // every file that genuinely needs one.
+    const segs: Segment[] = []
+    let lon = 14, lat = 50
+    for (let i = 0; i < 3; i++) {
+      const bearing = (i * 20) * Math.PI / 180
+      const endLon = lon + Math.sin(bearing) * 11_000 * M_LAT / Math.cos(lat * Math.PI / 180)
+      const endLat = lat + Math.cos(bearing) * 11_000 * M_LAT
+      segs.push({ index: i, coordinates: [[lon, lat], [endLon, endLat]] })
+      lon = endLon; lat = endLat
+    }
+    expect(mergeDashRuns(segs).merged).toHaveLength(0)
+    expect(mergeDashRuns(segs).segments).toHaveLength(3)
+  })
+
+  it('does not weld a discontinuity wider than the dash spacing', () => {
+    // Real MZB spacing is gap/dash = 1.00 exactly. A 2.75x jump is a genuine
+    // break in the source and must survive as a gap chord, or isSpanOnMain
+    // loses the guarantee it exists to provide and draws a corridor across it.
+    const first = dashRun(14, 50, 3, 400, 400)
+    const afterJump = 50 + (3 * 800 - 400 + 1100) * M_LAT
+    const second = dashRun(14, afterJump, 3, 400, 400)
+    const segs = [...first, ...second].map((seg, index) => ({ ...seg, index }))
+    const { merged, segments } = mergeDashRuns(segs)
+    // Two separate dashed legs, not one welded run.
+    expect(merged).toHaveLength(2)
+    const { gapAfterIndex } = buildContinuousTrackWithSources(
+      featureCollection(segments.map(seg => lineFeature(seg.coordinates as number[][]))) as GeoJSON,
+    )
+    expect(gapAfterIndex.filter(Boolean).length).toBeGreaterThan(0)
+  })
 })
 
 describe('extractAllSegments — geometry shapes that used to render nothing', () => {
@@ -305,6 +344,11 @@ describe('a leg shorter than its gate offset', () => {
     // Neither neighbour may be collateral damage.
     expect(legNames(out)).toContain('1NM-after-TP 2→FP')
     expect(legNames(out)).toContain('5NM-after-SP→TP 1')
+
+    // And the move is announced. A clamped gate is NOT at the rule-defined
+    // distance, while the gate feature and the corridor label both still say
+    // it is — moving it quietly is the defect this whole change exists to end.
+    expect(out.warnings.some(w => w.includes('TP 1 → TP 2') && w.includes('moved to'))).toBe(true)
   })
 
   it('warns when the leg cannot hold a gate at all', () => {

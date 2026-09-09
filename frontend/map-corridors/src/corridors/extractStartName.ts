@@ -40,8 +40,9 @@ export function extractStartName(corridorName: string): string {
  * leg-projection fallback (feedback 2026-05-03 follow-up): photos
  * outside any polygon must project onto the NEAREST scenic leg —
  * meaning a leg whose corridor was dropped because it's a chain of
- * dashed connectors. To skip legs that already have a corridor we need
- * the (start → end) waypoint pair from each corridor name.
+ * dashed connectors. We need the (start → end) waypoint pair from each
+ * corridor name so the matcher can PREFER an uncovered leg when two legs are
+ * exactly equidistant — it is a tie-break, never a skip.
  *
  * Examples (real shapes from preciseCorridor.ts):
  *   "5NM-after-SP→TP1"   → "TP1"
