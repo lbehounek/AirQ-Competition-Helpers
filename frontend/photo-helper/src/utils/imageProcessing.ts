@@ -24,7 +24,9 @@
  * In rally flying the turning-point photographs are a true/false task: the
  * organiser supplies 11-17 of them, some showing the real turning point and
  * some showing a feature that is NOT within 1.0 NM of it, and identifying
- * which is which is the crew's job (FAI GAC Rally rules, Observation Task).
+ * which is which is the crew's job (FAI GAC Rally Flying Rules 2025, A 3.4
+ * Observation Test — A 3.4.3(a) sets 11-17 TP photographs, A 3.4.4 defines an
+ * incorrect one as a feature not within 1.0 NM of the turn point).
  * The slot label is therefore the *claim* the crew has to verify, never a
  * measurement. A false photograph is deliberately taken somewhere else, so its
  * EXIF position is expected to be far from the turning point it is filed
@@ -33,10 +35,16 @@
  *
  * So: never GPS-validate these, never warn that one "looks wrong", never
  * reorder them by proximity. Any of those hands the crew the answer and
- * destroys the task. Only EN-ROUTE photographs are measured, and only they go
- * through the corridor/leg matching in map-corridors.
+ * destroys the task. Only en-route photographs are SCORED by distance — the
+ * corridor/leg matching in map-corridors exists for them.
  *
- * See ~/.claude/skills/flying-competitions/rally-flying.md, Observation Task.
+ * Note this is a rule about scoring, NOT a guarantee the code enforces: today
+ * map-corridors runs `matchPointsToCorridors` over the unfiltered marker list
+ * (App.tsx), so a `pick-turning` marker still gets a distance computed, and can
+ * surface one on the answer sheet if it carries a letter. Harmless as long as
+ * nobody treats that number as meaningful — do not build on it.
+ *
+ * See docs/RALLY_TP_PHOTOS.md.
  */
 export const generateTurningPointLabels = (
   set1Count: number,
