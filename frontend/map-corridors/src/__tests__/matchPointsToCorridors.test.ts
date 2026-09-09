@@ -134,12 +134,18 @@ describe('matchPointsToCorridors', () => {
     expect(out.scenic?.startName).toBe('TP8')
   })
 
-  // Strict variant of the rule (2026-05-03 follow-up): "photo outside
-  // corridor must be assigned to nearest leg WITHOUT a corridor". A
-  // marker that overshoots its own leg's corridor must NOT snap back
-  // onto that leg via projection — the leg has a corridor, so the
-  // matcher must keep looking.
-  it('with coveredLegs supplied, leg-projection skips legs that have a corridor', () => {
+  // BEHAVIOUR CHANGE, deliberate — this test previously asserted the
+  // opposite (that `coveredLegs` made a leg unreachable), which is the
+  // defect measured on the real MZB 2026 course: 6 of 18 en-route photos
+  // attributed to the wrong turning point, by up to 25.9 km. A rally
+  // corridor is 300 m left + 300 m right; a photo that misses it by 42 m
+  // is still unambiguously ON that leg, but the hard exclusion forbade
+  // that leg for good and handed the photo to the nearest leg that
+  // happened to have NO corridor — 10-26 km away. The rule it encoded
+  // ("outside corridor → nearest leg WITHOUT a corridor") is honoured by
+  // ORDER instead: polygon containment runs first, so anything inside a
+  // corridor is still attributed by that corridor.
+  it('a marker that overshoots its own corridor still resolves to that leg (no hard exclusion)', () => {
     const waypoints = [
       { name: 'TP7', coord: [14.0, 50.0] as [number, number] },
       { name: 'TP8', coord: [15.0, 50.0] as [number, number] },
@@ -147,23 +153,43 @@ describe('matchPointsToCorridors', () => {
     ]
     // TP7→TP8 is covered (has corridor); TP8→TP9 is the scenic leg.
     // Polygon is intentionally tiny so the marker is NOT inside it,
-    // forcing the fallback chain.
+    // forcing the fallback chain — the synthetic twin of MZB's s2,7.
     const corridors = [
       squareCorridor(14.5, 50.0, 0.001, 'TP7', [14.0, 50.0], '1NM-after-TP7→TP8'),
     ]
     const covered = new Set<string>([legKey('TP7', 'TP8')])
-    // Marker at lng=14.7: closer to the TP7→TP8 leg axis (perpendicular
-    // distance ~0) than to the TP8→TP9 leg axis. Without the
-    // `coveredLegs` filter the projector would pick TP7. With the
-    // filter, the TP7→TP8 leg is skipped and the only remaining leg is
-    // TP8→TP9, so the marker is attributed to TP8.
+    // Marker at lng=14.7 sits on the TP7→TP8 leg axis (perpendicular
+    // distance ~5.5 km at lat 50.05) and far off the TP8→TP9 axis. It
+    // must be attributed to TP7 — the preceding waypoint of the leg it
+    // is actually on — not to TP8 just because TP8→TP9 has no corridor.
     const out = matchPointsToCorridors(
       [{ id: 'overshoot', lng: 14.7, lat: 50.05 }],
       corridors,
       waypoints,
       covered,
     )
-    expect(out.overshoot?.startName).toBe('TP8')
+    expect(out.overshoot?.startName).toBe('TP7')
+  })
+
+  // The invariant, stated directly: coverage may reorder equals, never
+  // reach past geometry. Mirrors MZB's s2,7/s2,9 at toy scale — the
+  // covered leg is 100x closer than the uncovered one.
+  it('coveredLegs never makes a leg unreachable — the nearest leg always wins', () => {
+    const waypoints = [
+      { name: 'TP1', coord: [14.0, 50.0] as [number, number] },
+      { name: 'TP2', coord: [15.0, 50.0] as [number, number] },
+      { name: 'TP3', coord: [15.0, 50.3] as [number, number] },
+    ]
+    // Every leg covered except TP2→TP3, which runs due north away from
+    // the marker. Under the old exclusion the marker was forced onto it.
+    const covered = new Set<string>([legKey('TP1', 'TP2')])
+    const out = matchPointsToCorridors(
+      [{ id: 'onLeg', lng: 14.2, lat: 50.0005 }],
+      [],
+      waypoints,
+      covered,
+    )
+    expect(out.onLeg?.startName).toBe('TP1')
   })
 
   it('without waypoints, retains the legacy nearest-startCoord fallback', () => {
@@ -225,23 +251,25 @@ describe('matchPointsToCorridors', () => {
     expect(out.far).toBeNull()
   })
 
-  // Round-5 follow-up: when EVERY leg is covered by a corridor, the
-  // leg-projection branch returns null (no eligible scenic leg) and the
-  // matcher falls through to the legacy nearest-startCoord branch. This
-  // graceful-degradation is documented in the matcher's comments but
-  // wasn't pinned by a test — a future refactor that short-circuits to
-  // null on bestIdx<0 would break the fall-through silently.
-  it('falls through to legacy nearest-startCoord when every leg is covered', () => {
+  // BEHAVIOUR CHANGE, deliberate — the twin of the test above. This one
+  // used to assert that with EVERY leg covered the projection branch
+  // gives up and the legacy nearest-startCoord branch answers instead.
+  // That fall-through is precisely what made the defect scale with
+  // success: the more corridors the track repair managed to build, the
+  // more photos were excluded from their own leg (on MZB, 11 of 18 wrong
+  // once all 8 legs were covered, versus 6 with 3 legs uncovered).
+  // Projection now answers from the leg the marker is on, whatever its
+  // coverage; the legacy branch remains for callers with no waypoints.
+  it('resolves by leg projection even when every leg is covered', () => {
     const waypoints = [
       { name: 'TP1', coord: [14.0, 50.0] as [number, number] },
       { name: 'TP2', coord: [15.0, 50.0] as [number, number] },
     ]
-    // The TP1→TP2 leg has a corridor (registered in coveredLegs).
-    // Polygon is intentionally tiny (0.001°) so the marker at lng=14.95
-    // is OUTSIDE every polygon, forcing the fallback chain. Leg-
-    // projection skips TP1→TP2 (covered), bestIdx stays -1, returns
-    // null — and the matcher then runs the legacy nearest-startCoord
-    // branch which picks TP2 (closest startCoord).
+    // Polygons are intentionally tiny (0.001°) so the marker at lng=14.95
+    // is OUTSIDE every polygon, forcing the fallback chain. The marker is
+    // dead on the TP1→TP2 axis, so TP1 (the leg's preceding waypoint) is
+    // the right answer — the legacy branch would have said TP2 merely
+    // because its startCoord is 5 km nearer than TP1's.
     const corridors = [
       squareCorridor(14.5, 50.0, 0.001, 'TP1', [14.0, 50.0], '1NM-after-TP1→TP2'),
       squareCorridor(15.0, 50.0, 0.001, 'TP2', [15.0, 50.0], 'TP2'),
@@ -253,7 +281,207 @@ describe('matchPointsToCorridors', () => {
       waypoints,
       covered,
     )
-    expect(out.fallthrough?.startName).toBe('TP2')
+    expect(out.fallthrough?.startName).toBe('TP1')
+  })
+
+  // The legacy branch is still reachable — it is what callers without
+  // ordered waypoints get, and what a route of fewer than two waypoints
+  // degrades to. Pin it so the projection rewrite above cannot quietly
+  // delete a code path that App.tsx relies on before a KML is loaded.
+  it('a single-waypoint route cannot form a leg and falls through to nearest-startCoord', () => {
+    const corridors = [
+      squareCorridor(14.5, 50.0, 0.001, 'TP1', [14.0, 50.0], '1NM-after-TP1→TP2'),
+      squareCorridor(15.0, 50.0, 0.001, 'TP2', [15.0, 50.0], 'TP2'),
+    ]
+    const out = matchPointsToCorridors(
+      [{ id: 'p', lng: 14.95, lat: 50.0 }],
+      corridors,
+      [{ name: 'TP1', coord: [14.0, 50.0] }],
+      new Set<string>([legKey('TP1', 'TP2')]),
+    )
+    expect(out.p?.startName).toBe('TP2')
+  })
+
+  describe('coverage as a tie-break only', () => {
+    // Symmetric geometry: the marker is exactly equidistant from two
+    // legs that fan out from the same point. Coverage decides — the
+    // uncovered (scenic) leg wins, because a marker inside the covered
+    // leg's corridor would already have been answered by containment.
+    const forkWaypoints = [
+      { name: 'A', coord: [14.0, 50.0] as [number, number] },
+      { name: 'B', coord: [14.0, 50.1] as [number, number] },
+      { name: 'C', coord: [14.0, 50.2] as [number, number] },
+    ]
+
+    it('prefers the uncovered leg when two legs are exactly equidistant', () => {
+      // The marker sits due east of the shared waypoint B, so its
+      // perpendicular distance to A→B and to B→C is the same value
+      // (both clamp to B). A→B is covered, B→C is not.
+      const out = matchPointsToCorridors(
+        [{ id: 'tie', lng: 14.05, lat: 50.1 }],
+        [],
+        forkWaypoints,
+        new Set<string>([legKey('A', 'B')]),
+      )
+      expect(out.tie?.startName).toBe('B')
+    })
+
+    it('prefers the uncovered leg regardless of leg order', () => {
+      // Same tie, opposite coverage: now B→C is covered and A→B is not,
+      // so the EARLIER leg must win. Guards against the preference
+      // degenerating into "last leg wins" or "first leg wins".
+      const out = matchPointsToCorridors(
+        [{ id: 'tie', lng: 14.05, lat: 50.1 }],
+        [],
+        forkWaypoints,
+        new Set<string>([legKey('B', 'C')]),
+      )
+      expect(out.tie?.startName).toBe('A')
+    })
+
+    it('with no coverage information an exact tie goes to the earlier leg', () => {
+      // Deterministic ordering matters more than which leg is picked:
+      // the same course + same photo must always produce the same
+      // answer sheet across runs and machines.
+      const out = matchPointsToCorridors(
+        [{ id: 'tie', lng: 14.05, lat: 50.1 }],
+        [],
+        forkWaypoints,
+      )
+      expect(out.tie?.startName).toBe('A')
+      const withEmptySet = matchPointsToCorridors(
+        [{ id: 'tie', lng: 14.05, lat: 50.1 }],
+        [],
+        forkWaypoints,
+        new Set<string>(),
+      )
+      expect(withEmptySet.tie?.startName).toBe('A')
+    })
+  })
+
+  describe('photos outside the SP…FP span', () => {
+    const waypoints = [
+      { name: 'SP', coord: [14.0, 50.0] as [number, number] },
+      { name: 'TP1', coord: [15.0, 50.0] as [number, number] },
+      { name: 'FP', coord: [16.0, 50.0] as [number, number] },
+    ]
+
+    it('a photo taken before SP belongs to the SP→TP1 leg', () => {
+      // Projection clamps at the segment endpoints, so a marker behind
+      // SP is nearest to the SP end of the first leg — attributed to SP.
+      const out = matchPointsToCorridors(
+        [{ id: 'preSP', lng: 13.9, lat: 50.0 }],
+        [],
+        waypoints,
+      )
+      expect(out.preSP?.startName).toBe('SP')
+    })
+
+    it('a photo taken after FP belongs to the TP1→FP leg', () => {
+      const out = matchPointsToCorridors(
+        [{ id: 'postFP', lng: 16.1, lat: 50.0 }],
+        [],
+        waypoints,
+      )
+      expect(out.postFP?.startName).toBe('TP1')
+    })
+
+    it('a photo beyond the 50 km cap before SP gets no attribution', () => {
+      // 1° lng at 50° N is ~71 km, so 13.0 is ~71 km behind SP.
+      const out = matchPointsToCorridors(
+        [{ id: 'wayOff', lng: 13.0, lat: 50.0 }],
+        [],
+        waypoints,
+      )
+      expect(out.wayOff).toBeNull()
+    })
+  })
+
+  describe('degenerate route geometry', () => {
+    it('a zero-length leg does not break matching of the real legs', () => {
+      // TP2 authored twice at the same coordinate (a duplicated KML
+      // point, or an FP dropped on top of a TP). The degenerate TP2→TP2b
+      // leg measures point distance and can only tie — never beat — the
+      // real leg the marker lies on.
+      const waypoints = [
+        { name: 'TP1', coord: [14.0, 50.0] as [number, number] },
+        { name: 'TP2', coord: [15.0, 50.0] as [number, number] },
+        { name: 'TP2b', coord: [15.0, 50.0] as [number, number] },
+        { name: 'TP3', coord: [15.0, 50.5] as [number, number] },
+      ]
+      const out = matchPointsToCorridors(
+        [{ id: 'onFirstLeg', lng: 14.5, lat: 50.001 }],
+        [],
+        waypoints,
+      )
+      expect(out.onFirstLeg?.startName).toBe('TP1')
+    })
+
+    it('a route whose every waypoint shares one coordinate still answers by point distance', () => {
+      // Pathological but reachable (a KML where every placemark landed on
+      // the same spot). Every leg is degenerate; the marker 11 km north
+      // is inside the 50 km cap, so it resolves rather than returning
+      // null on a divide-by-zero NaN.
+      const waypoints = [
+        { name: 'SP', coord: [14.0, 50.0] as [number, number] },
+        { name: 'TP1', coord: [14.0, 50.0] as [number, number] },
+        { name: 'FP', coord: [14.0, 50.0] as [number, number] },
+      ]
+      const out = matchPointsToCorridors(
+        [{ id: 'p', lng: 14.0, lat: 50.1 }],
+        [],
+        waypoints,
+      )
+      expect(out.p?.startName).toBe('SP')
+    })
+
+    it('a degenerate route farther than the cap returns null, not a spurious match', () => {
+      const waypoints = [
+        { name: 'SP', coord: [14.0, 50.0] as [number, number] },
+        { name: 'FP', coord: [14.0, 50.0] as [number, number] },
+      ]
+      const out = matchPointsToCorridors(
+        [{ id: 'p', lng: 14.0, lat: 50.6 }],
+        [],
+        waypoints,
+      )
+      expect(out.p).toBeNull()
+    })
+  })
+
+  describe('photos without usable GPS', () => {
+    // A photo whose EXIF carried no position reaches the matcher with a
+    // non-finite lng/lat. It must produce a blank answer-sheet cell, and
+    // must not spray polygon-evaluation errors into the console on the
+    // way there (turf throws on a NaN point).
+    let err: ReturnType<typeof vi.spyOn>
+    beforeEach(() => { err = vi.spyOn(console, 'error').mockImplementation(() => {}) })
+    afterEach(() => { err.mockRestore() })
+
+    it('returns null for NaN / Infinity coordinates without touching turf', () => {
+      const corridors = [squareCorridor(14.0, 50.0, 0.05, 'SP')]
+      const waypoints = [
+        { name: 'SP', coord: [14.0, 50.0] as [number, number] },
+        { name: 'TP1', coord: [15.0, 50.0] as [number, number] },
+      ]
+      const out = matchPointsToCorridors(
+        [
+          { id: 'noGps', lng: NaN, lat: NaN },
+          { id: 'halfGps', lng: 14.0, lat: NaN },
+          { id: 'infinite', lng: Infinity, lat: 50.0 },
+          { id: 'good', lng: 14.01, lat: 50.01 },
+        ],
+        corridors,
+        waypoints,
+        new Set<string>([legKey('SP', 'TP1')]),
+      )
+      expect(out.noGps).toBeNull()
+      expect(out.halfGps).toBeNull()
+      expect(out.infinite).toBeNull()
+      // The positioned photo in the same batch is unaffected.
+      expect(out.good?.startName).toBe('SP')
+      expect(err).not.toHaveBeenCalled()
+    })
   })
 
   it('lat-aware distance: at 50° N a point 0.05° east-of-TP is closer than 0.05° north-of-SP', () => {
