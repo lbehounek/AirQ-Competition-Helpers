@@ -1,10 +1,27 @@
-import type { FeatureCollection, GeoJSON, LineString } from 'geojson'
+import type { FeatureCollection, GeoJSON, LineString, MultiLineString, GeometryCollection } from 'geojson'
 
 export type LonLatAlt = [number, number, number?]
 
 export type Segment = {
   index: number
   coordinates: LonLatAlt[]
+}
+
+/**
+ * What the track builder had to do to the input to make a usable track.
+ *
+ * Every one of these used to happen silently, which is why the MZB 2026 rally
+ * shipped a map with five wrong legs and nobody could produce a failing file:
+ * the app rendered a plausible-looking course and said nothing. Callers are
+ * expected to surface these to the user.
+ */
+export type TrackDiagnostics = {
+  /** Isolated short lines discarded as map decoration (arrowheads, ticks). */
+  droppedShortSegments: number
+  /** Dashed legs reconstructed into continuous track — see mergeDashRuns. */
+  mergedDashRuns: Array<{ dashes: number, dashLengthM: number, spanM: number }>
+  /** Straight chords welded across a real discontinuity in the source. */
+  gapCount: number
 }
 
 export function calculateDistance(coord1: LonLatAlt, coord2: LonLatAlt): number {
@@ -15,9 +32,24 @@ export function calculateDistance(coord1: LonLatAlt, coord2: LonLatAlt): number 
   const lat2Rad = lat2 * Math.PI / 180
   const deltaLat = (lat2 - lat1) * Math.PI / 180
   const deltaLon = (lon2 - lon1) * Math.PI / 180
-  const a = Math.sin(deltaLat/2) ** 2 + Math.cos(lat1Rad) * Math.cos(lat2Rad) * Math.sin(deltaLon/2) ** 2
+  const a = Math.sin(deltaLat / 2) ** 2 + Math.cos(lat1Rad) * Math.cos(lat2Rad) * Math.sin(deltaLon / 2) ** 2
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return R * c
+}
+
+/** Initial great-circle bearing a to b, degrees clockwise from north. */
+function bearingBetween(a: LonLatAlt, b: LonLatAlt): number {
+  const lat1 = a[1] * Math.PI / 180
+  const lat2 = b[1] * Math.PI / 180
+  const dLon = (b[0] - a[0]) * Math.PI / 180
+  const y = Math.sin(dLon) * Math.cos(lat2)
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon)
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
+}
+
+/** Smallest absolute angle between two bearings, 0..180. */
+function bearingDelta(a: number, b: number): number {
+  return Math.abs(((a - b + 180) % 360 + 360) % 360 - 180)
 }
 
 export function isDashedConnectorLine(coords: LonLatAlt[]): boolean {
@@ -43,36 +75,147 @@ export function isTpGatePerpendicular(coords: LonLatAlt[]): boolean {
   return total < 3000
 }
 
+// A run must reach this many dashes before it reads as a dashed leg rather
+// than decoration. Two is not enough: RED.kml carries exactly two isolated
+// 200 m decorations near FP that must keep being discarded.
+const MIN_DASHES_IN_RUN = 3
+// Per-step tolerances. Deliberately loose so a dashed leg drawn along a curve
+// still reads as one run; still far too tight for unrelated decorations, which
+// do not repeat, do not match length, and do not continue each other's heading.
+const DASH_LENGTH_TOLERANCE = 0.25
+const DASH_BEARING_TOLERANCE_DEG = 30
+const MAX_GAP_TO_DASH_RATIO = 3
+// Two vertices closer than this are the same point drawn twice.
+const COINCIDENT_VERTEX_M = 1
+
+/**
+ * Rebuild legs that the course author drew as a *dashed line*.
+ *
+ * KML has no dash style that survives export from every planning tool, so
+ * authors draw a dashed leg literally: N separate 2-point LineStrings laid
+ * end-to-gap-to-end along the leg. The MZB 2026 rally drew five of its eight
+ * legs this way, in dashes of 200-1267 m.
+ *
+ * That representation defeats both downstream rules at once. Dashes under
+ * 500 m are deleted outright by isDashedConnectorLine, so the leg's geometry
+ * vanishes and the track builder welds a straight chord across two turning
+ * points — on MZB, an 11.6 km chord from TP 4 to TP 6 that left TP 5 with no
+ * track within 7.7 km and drew a corridor straight past it. Dashes *over*
+ * 500 m survive, but every inter-dash space becomes a gap chord, so no
+ * corridor can be built along the leg at all. Either way the leg is lost.
+ *
+ * So: detect the dash pattern before either rule runs and splice each run back
+ * into one continuous segment. The discriminator is NOT length and NOT shared
+ * endpoints — dashes deliberately do not touch, which is why the "shares an
+ * endpoint with its neighbours" heuristic proposed during the investigation
+ * would not have fixed this file. It is *repetition*: three or more
+ * consecutive short lines of near-equal length, each continuing the previous
+ * one's heading across a gap no wider than a few dash lengths. Decoration
+ * never does that.
+ *
+ * All dash endpoints are kept, in order, so a dashed leg drawn along a curve
+ * keeps its shape instead of collapsing to a chord.
+ */
+export function mergeDashRuns(segments: Segment[]): { segments: Segment[], merged: TrackDiagnostics['mergedDashRuns'] } {
+  const merged: TrackDiagnostics['mergedDashRuns'] = []
+  const out: Segment[] = []
+
+  // Only 2-point lines participate; anything richer is already real geometry.
+  const isDash = (s: Segment) => s.coordinates.length === 2
+
+  let i = 0
+  while (i < segments.length) {
+    if (!isDash(segments[i])) { out.push(segments[i]); i++; continue }
+
+    // Greedily extend a run of dashes that continue one another.
+    let end = i
+    while (end + 1 < segments.length && isDash(segments[end + 1])) {
+      const prev = segments[end].coordinates
+      const next = segments[end + 1].coordinates
+      const prevLen = calculateDistance(prev[0], prev[1])
+      const nextLen = calculateDistance(next[0], next[1])
+      // A zero-length dash has no heading to continue, so it cannot extend a run.
+      if (prevLen === 0 || nextLen === 0) break
+      if (Math.abs(prevLen - nextLen) / Math.max(prevLen, nextLen) > DASH_LENGTH_TOLERANCE) break
+
+      const prevBearing = bearingBetween(prev[0], prev[1])
+      if (bearingDelta(prevBearing, bearingBetween(next[0], next[1])) > DASH_BEARING_TOLERANCE_DEG) break
+
+      // The space between dashes must be a forward continuation, not a jump to
+      // somewhere else on the map.
+      const gap = calculateDistance(prev[1], next[0])
+      if (gap > MAX_GAP_TO_DASH_RATIO * prevLen) break
+      if (gap > COINCIDENT_VERTEX_M && bearingDelta(prevBearing, bearingBetween(prev[1], next[0])) > DASH_BEARING_TOLERANCE_DEG) break
+
+      end++
+    }
+
+    const runLength = end - i + 1
+    if (runLength >= MIN_DASHES_IN_RUN) {
+      const coordinates: LonLatAlt[] = []
+      for (let k = i; k <= end; k++) {
+        const [a, b] = segments[k].coordinates
+        // Skip a dash's start vertex when it coincides with the previous dash's
+        // end, so a solid polyline that was merely split into pieces does not
+        // gain duplicate vertices.
+        if (coordinates.length === 0 || calculateDistance(coordinates[coordinates.length - 1], a) > COINCIDENT_VERTEX_M) coordinates.push(a)
+        coordinates.push(b)
+      }
+      const dashLengthM = calculateDistance(segments[i].coordinates[0], segments[i].coordinates[1])
+      let spanM = 0
+      for (let k = 1; k < coordinates.length; k++) spanM += calculateDistance(coordinates[k - 1], coordinates[k])
+      merged.push({ dashes: runLength, dashLengthM, spanM })
+      // Keep the first dash's index so the merged leg holds the run's position
+      // in source order, which sourceSegIdx and mainSegmentIndexSet rely on.
+      out.push({ index: segments[i].index, coordinates })
+    } else {
+      for (let k = i; k <= end; k++) out.push(segments[k])
+    }
+    i = end + 1
+  }
+
+  return { segments: out, merged }
+}
+
 export function extractAllSegments(input: GeoJSON): Segment[] {
   const segments: Segment[] = []
   let index = 0
-  function extract(g: any) {
-    if (!g) return
-    if (g.type === 'FeatureCollection') {
-      for (const f of (g as FeatureCollection).features) extract(f)
-    } else if (g.type === 'Feature') {
-      const f = g
-      const geom = f.geometry
-      if (geom?.type === 'LineString') {
-        const ls = geom as LineString
-        const coords = ls.coordinates as LonLatAlt[]
-        if (isTpGatePerpendicular(coords)) return
-        segments.push({ index: index++, coordinates: coords })
-      }
-    } else if (g.type === 'LineString') {
-      const ls = g as LineString
-      const coords = ls.coordinates as LonLatAlt[]
-      if (isTpGatePerpendicular(coords)) return
-      segments.push({ index: index++, coordinates: coords })
+  const push = (coords: LonLatAlt[]) => {
+    if (!coords || coords.length < 2) return
+    if (isTpGatePerpendicular(coords)) return
+    segments.push({ index: index++, coordinates: coords })
+  }
+  function extract(g: unknown) {
+    if (!g || typeof g !== 'object') return
+    const node = g as { type?: string }
+    if (node.type === 'FeatureCollection') {
+      for (const f of ((g as FeatureCollection).features ?? [])) extract(f)
+    } else if (node.type === 'Feature') {
+      extract((g as { geometry?: unknown }).geometry)
+    } else if (node.type === 'GeometryCollection') {
+      // A KML <MultiGeometry> arrives as a GeometryCollection.
+      for (const geom of ((g as GeometryCollection).geometries ?? [])) extract(geom)
+    } else if (node.type === 'LineString') {
+      push((g as LineString).coordinates as LonLatAlt[])
+    } else if (node.type === 'MultiLineString') {
+      // A GPX <trk> holding several <trkseg> — what any receiver that pauses
+      // recording emits — parses to MultiLineString. Ignoring it left the track
+      // empty and made turf throw "coordinates must be an array of two or more
+      // positions", so nothing rendered at all.
+      for (const line of ((g as MultiLineString).coordinates ?? [])) push(line as LonLatAlt[])
     }
   }
   extract(input)
   return segments
 }
 
-export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLatAlt[], sourceSegIdx: number[], gapAfterIndex: boolean[], segments: Segment[], mainSegmentIndexSet: Set<number> } {
-  const allSegments = extractAllSegments(input)
+export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLatAlt[], sourceSegIdx: number[], gapAfterIndex: boolean[], segments: Segment[], mainSegmentIndexSet: Set<number>, diagnostics: TrackDiagnostics } {
+  const rawSegments = extractAllSegments(input)
+  // Reconstruct dashed legs BEFORE the short-line filter, or their dashes are
+  // deleted one by one and the leg is gone before anything can notice.
+  const { segments: allSegments, merged } = mergeDashRuns(rawSegments)
   const mainTrackSegments = allSegments.filter(seg => !isDashedConnectorLine(seg.coordinates))
+  const droppedShortSegments = allSegments.length - mainTrackSegments.length
   const sortedSegments = mainTrackSegments.sort((a, b) => a.index - b.index)
 
   const detailedTrack: LonLatAlt[] = []
@@ -112,11 +255,16 @@ export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLat
   }
 
   const mainSet = new Set<number>(mainTrackSegments.map(s => s.index))
-  return { track: detailedTrack, sourceSegIdx, gapAfterIndex, segments: allSegments, mainSegmentIndexSet: mainSet }
+  return {
+    track: detailedTrack,
+    sourceSegIdx,
+    gapAfterIndex,
+    segments: allSegments,
+    mainSegmentIndexSet: mainSet,
+    diagnostics: { droppedShortSegments, mergedDashRuns: merged, gapCount: gapAfterIndex.filter(Boolean).length },
+  }
 }
 
 export function buildContinuousTrack(input: GeoJSON): LonLatAlt[] {
   return buildContinuousTrackWithSources(input).track
 }
-
-
