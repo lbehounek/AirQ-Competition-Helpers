@@ -17,6 +17,26 @@
  * - First photo: SP (Start Point)
  * - Middle photos: TP1, TP2, etc.
  * - Last photo: FP (Final Point)
+ *
+ * The label is PURELY POSITIONAL, and that is deliberate — do not "improve" it
+ * by checking the photo against its waypoint's coordinates.
+ *
+ * In rally flying the turning-point photographs are a true/false task: the
+ * organiser supplies 11-17 of them, some showing the real turning point and
+ * some showing a feature that is NOT within 1.0 NM of it, and identifying
+ * which is which is the crew's job (FAI GAC Rally rules, Observation Task).
+ * The slot label is therefore the *claim* the crew has to verify, never a
+ * measurement. A false photograph is deliberately taken somewhere else, so its
+ * EXIF position is expected to be far from the turning point it is filed
+ * under, and is often near a different waypoint entirely — in the MZB 2026 set
+ * `tp1.JPG` sits 16.5 NM from TP 1 and 0.57 NM from TP 5.
+ *
+ * So: never GPS-validate these, never warn that one "looks wrong", never
+ * reorder them by proximity. Any of those hands the crew the answer and
+ * destroys the task. Only EN-ROUTE photographs are measured, and only they go
+ * through the corridor/leg matching in map-corridors.
+ *
+ * See ~/.claude/skills/flying-competitions/rally-flying.md, Observation Task.
  */
 export const generateTurningPointLabels = (
   set1Count: number,
