@@ -71,7 +71,8 @@
     "openEditor": "Photo Editor",
     "loadSample": "Load sample",
     "loadSampleFailed": "Couldn't load the sample competition.",
-    "sampleName": "SAMPLE – {{label}}"
+    "sampleName": "SAMPLE – {{label}}",
+    "courseWarnings": "Building corridors from this file required the following — check the map before printing it:"
   },
   "photo": {
     "import": {

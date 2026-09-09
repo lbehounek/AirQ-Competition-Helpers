@@ -10,6 +10,66 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.31.1] - 2026-09-09
+
+Fixes a serious map error found in the real course files from the **MZB 2026
+rally**. Where a course draws a leg as a *dashed* line — many short separate
+line pieces instead of one continuous line — the app used to delete those
+pieces and join whatever survived with a straight line. On that course it drew
+one straight corridor from TP 4 to TP 6, ignoring TP 5 entirely, put the TP 5
+marker 6.4 km away from where TP 5 actually is, and measured the route 13.4 km
+(11 %) shorter than it really is. Five of the eight legs were wrong, and
+nothing warned about any of it.
+
+**If you have printed maps, answer sheets or distance tables from a course
+whose legs are drawn dashed, re-generate them.** The new warning banner tells
+you when a file is of that kind.
+
+### Fixed
+- **Map Corridors:** legs drawn as dashed lines are recognised and rebuilt into
+  one continuous route before anything else runs. Previously each dash shorter
+  than 500 m was discarded as map decoration, and dashes longer than that were
+  each treated as a separate piece of route with a hole between them — so a
+  dashed leg either vanished or produced no corridor at all, whatever the dash
+  length. Isolated decorative marks are still discarded as before.
+- **Map Corridors:** no corridor is ever drawn along a straight line the app
+  invented to bridge a hole in the route. One case slipped through this check —
+  the case where both ends of the corridor landed on the same invented line,
+  which is exactly what produced the straight TP 4 to TP 6 corridor.
+- **Map Corridors:** en-route photos are matched to the nearest leg. A photo
+  falling just outside its own leg's corridor — 42 m outside, in one measured
+  case — used to be barred from that leg entirely and attached to a completely
+  different one, up to 26 km away. On the MZB course 6 of 18 photos were
+  attributed to the wrong turning point.
+- **Photo Helper:** the answer-sheet letter you assign to a photo on the map is
+  kept when the photo sheet is generated. It used to be replaced by a letter
+  derived purely from the photo's position in the grid, so the printed sheet
+  could disagree with the answer sheet. Photos with no assigned letter still
+  get one from their position.
+- **Map Corridors:** where a course passes close to itself, a turning point's
+  gate line can cross the route twice. The app now takes the crossing nearest
+  the turning point instead of an arbitrary one.
+- **Map Corridors:** a leg shorter than the gate distance (5 NM after SP, 1 NM
+  after each turning point) no longer pushes its gate past the next turning
+  point, which used to produce a corridor running backwards, or silently delete
+  two legs at once. The gate is placed within its own leg; if the leg is too
+  short for even that, you are told.
+- **Map Corridors:** GPX files recorded with the receiver paused (several track
+  segments inside one track) now load. They previously produced an empty track
+  and nothing rendered at all.
+- **Map Corridors:** turning points named `TP-3`, `CP_15` and similar are
+  recognised, and `TP 10` now sorts after `TP 9` rather than by its digits
+  alone. Any placemark that looks like a waypoint but is not recognised is
+  reported instead of silently ignored.
+
+### Added
+- **Map Corridors:** a warning banner above the map listing everything the app
+  had to work around in your course file — legs rebuilt from dashes, holes in
+  the route, unrecognised placemarks, and every leg for which no corridor could
+  be drawn, with the reason. Every one of these used to happen silently, which
+  is why a whole competition could be flown on a wrong map without anyone
+  seeing a problem.
+
 ## [2.31.0] - 2026-09-05
 
 The desktop app now ships as a proper Windows **installer** alongside the

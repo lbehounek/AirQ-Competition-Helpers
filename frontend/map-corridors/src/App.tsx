@@ -508,6 +508,12 @@ function App() {
   // hints. Severity drives the MUI Alert color.
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null)
   const [snack, setSnack] = useState<{ severity: 'success' | 'info' | 'warning' | 'error'; text: string } | null>(null)
+  // Everything the corridor builder had to work around in this course. Held in
+  // its own persistent banner rather than the snackbar: these decide whether
+  // the printed map is trustworthy, and a toast that fades after six seconds is
+  // exactly how the MZB 2026 rally shipped with five wrong legs unnoticed.
+  const [courseWarnings, setCourseWarnings] = useState<string[]>([])
+  const [warningsDismissed, setWarningsDismissed] = useState(false)
   // One serialized import queue per mounted App. Lazy `useState` initializer
   // rather than `useRef(createImportQueue(...))` so the queue is constructed
   // exactly once — the ref form would allocate (and throw away) a queue on every
@@ -570,7 +576,9 @@ function App() {
     // compute corridors using discipline from URL param (desktop) or session fallback (web).
     // Rally honors the `use1NmAfterSp` flag; see `effectiveConfig` for details.
     try {
-      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(parsed, effectiveConfig)
+      const { gates, points, exactPoints, leftSegments, rightSegments, warnings } = buildPreciseCorridorsAndGates(parsed, effectiveConfig)
+      setCourseWarnings(warnings)
+      setWarningsDismissed(false)
       await setComputedData({
         geojson: parsed,
         gates: gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null,
@@ -583,6 +591,8 @@ function App() {
       // Never silently drop everything — users previously lost corridors and
       // TP markers with no visible hint (feedback 2026-04-23: 16-section race).
       console.error('buildPreciseCorridorsAndGates failed on upload:', err)
+      setCourseWarnings([`Corridors could not be built from this file: ${err instanceof Error ? err.message : String(err)}`])
+      setWarningsDismissed(false)
       await setComputedData({ geojson: parsed, gates: null, points: null, exactPoints: null, leftSegments: null, rightSegments: null })
     }
   }, [saveOriginalKmlText, effectiveConfig, setComputedData, competitionId])
@@ -595,7 +605,9 @@ function App() {
     // Only recompute when input, discipline, or the 1NM flag changed
     if (last && last.geojson === input && last.discipline === effectiveDiscipline && last.use1NmAfterSp === use1NmAfterSp) return
     try {
-      const { gates, points, exactPoints, leftSegments, rightSegments } = buildPreciseCorridorsAndGates(input, effectiveConfig)
+      const { gates, points, exactPoints, leftSegments, rightSegments, warnings } = buildPreciseCorridorsAndGates(input, effectiveConfig)
+      setCourseWarnings(warnings)
+      setWarningsDismissed(false)
       setComputedData({
         geojson: input,
         gates: gates && gates.length ? ({ type: 'FeatureCollection', features: gates } as any) : null,
@@ -606,6 +618,8 @@ function App() {
       })
     } catch (err) {
       console.error('buildPreciseCorridorsAndGates failed on recompute:', err)
+      setCourseWarnings([`Corridors could not be built from this file: ${err instanceof Error ? err.message : String(err)}`])
+      setWarningsDismissed(false)
       setComputedData({ geojson: input, gates: null, points: null, exactPoints: null, leftSegments: null, rightSegments: null })
     } finally {
       lastComputeSigRef.current = { geojson: input, discipline: effectiveDiscipline, use1NmAfterSp }
@@ -1619,6 +1633,19 @@ function App() {
           )}
         </Box>
       </Box>
+      {courseWarnings.length > 0 && !warningsDismissed && (
+        <Alert
+          severity="warning"
+          onClose={() => setWarningsDismissed(true)}
+          sx={{ borderRadius: 0, alignItems: 'flex-start' }}
+          data-testid="course-warnings"
+        >
+          <Typography variant="subtitle2" component="div">{t('app.courseWarnings')}</Typography>
+          <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+            {courseWarnings.map((w, i) => <li key={i}>{w}</li>)}
+          </Box>
+        </Alert>
+      )}
       <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>
         <Box
           sx={{ height: '100%', width: '100vw', position: 'relative' }}
