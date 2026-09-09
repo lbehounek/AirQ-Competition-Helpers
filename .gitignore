@@ -143,3 +143,6 @@ frontend/desktop/sample-data/*
 
 # Real competition photos used for manual/E2E testing — large binaries, never committed
 /Plasy Red/
+
+# Competition data dumps shared for debugging (large, not source)
+mzb2026.zip

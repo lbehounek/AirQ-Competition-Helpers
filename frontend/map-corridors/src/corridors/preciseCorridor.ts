@@ -37,6 +37,14 @@ export const DISCIPLINE_CONFIGS: Record<Discipline, DisciplineConfig> = {
   rally:     { spAfterNm: 5.0, tpAfterNm: 1.0, leftDistanceM: 300, rightDistanceM: 300 },
 }
 
+// How far from a waypoint label we will look for its gate perpendicular.
+const MAX_GATE_SEARCH_M = 2000
+// A gate crossing further than this from the label is not this waypoint's.
+const MAX_EXACT_SNAP_M = 500
+// A gate is placed this far short of the next waypoint at the latest, so a
+// short leg still leaves a corridor between the gate and the turn.
+const GATE_MARGIN_M = 200
+
 function calculateBearing(a: LonLatAlt, b: LonLatAlt): number {
   return turfBearing(point([a[0], a[1]]), point([b[0], b[1]]))
 }
@@ -104,8 +112,21 @@ export function generateLeftRightCorridor(track: LonLatAlt[], leftDistanceM = 30
   }
 }
 
-export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt } {
-  const out: { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt } = { tps: [] }
+/** `TP`/`CP` prefix, optional space/hyphen/underscore, then the number. */
+const TP_NAME_PATTERN = /^(TP|CP)[\s\-_]?\d+\b/i
+
+/**
+ * The first run of digits in a waypoint name, used to order turning points.
+ * Stripping every non-digit instead — the old behaviour — turned `CP 1 A` into
+ * 11, which sorted it after `TP 10`.
+ */
+export function turningPointNumber(name: string): number {
+  const m = name.match(/\d+/)
+  return m ? parseInt(m[0], 10) : 0
+}
+
+export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt, unrecognised: string[] } {
+  const out: { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt, unrecognised: string[] } = { tps: [], unrecognised: [] }
   function scan(g: any) {
     if (!g) return
     if (g.type === 'FeatureCollection') {
@@ -124,28 +145,38 @@ export function findNamedPoints(input: GeoJSON): { sp?: LonLatAlt, tps: Array<{ 
         // `CP n` (Control Point) depending on the authoring tool.
         // Accept either prefix, optional space, one or more digits
         // (e.g. `TP1`, `TP 1`, `TP10`, `CP 15`) — feedback 2026-04-23.
-        else if (/^(TP|CP)\s?\d+\b/i.test(name)) out.tps.push({ name, coord: c })
+        // Separator is optional and may be a space, hyphen or underscore:
+        // `TP1`, `TP 1`, `TP-3`, `CP_15` all occur in the wild. Still anchored
+        // on the prefix so a settlement named "Tperice" cannot match.
+        else if (TP_NAME_PATTERN.test(name)) out.tps.push({ name, coord: c })
+        // Anything else that is named but unmatched gets reported rather than
+        // silently ignored. A placemark the author meant as a turning point but
+        // typed as `OT 4` used to vanish, taking its corridor leg with it.
+        // `SC n` scenic points are a deliberate, known exclusion.
+        else if (!/^SC\s?\d*/i.test(name)) out.unrecognised.push(name)
       }
     }
   }
   scan(input)
   // sort TPs by number if present
-  out.tps.sort((a, b) => {
-    const na = parseInt(a.name.replace(/\D/g, '') || '0', 10)
-    const nb = parseInt(b.name.replace(/\D/g, '') || '0', 10)
-    return na - nb
-  })
+  out.tps.sort((a, b) => turningPointNumber(a.name) - turningPointNumber(b.name))
   return out
 }
 
 // Removed redundant dashed-pair heuristics; rely on continuity and main-track-only build
 
 export function nearestTrackIndex(track: LonLatAlt[], target: LonLatAlt): number {
-  // approximate: choose the index minimizing distance along vertices
+  // Approximate: the vertex minimising planar distance. A degree of longitude
+  // is only cos(latitude) as long as a degree of latitude — 0.64 at 50°N — so
+  // comparing raw degrees stretches the east-west axis and can prefer a vertex
+  // that is further away on the ground. Measured over 1680 waypoint
+  // resolutions the raw and corrected metrics disagreed 19 times; correctness,
+  // not a fix for any reported symptom.
+  const cosLat = Math.cos(target[1] * Math.PI / 180)
   let bestIdx = 0
   let bestDist = Infinity
   for (let i = 0; i < track.length; i++) {
-    const dx = track[i][0] - target[0]
+    const dx = (track[i][0] - target[0]) * cosLat
     const dy = track[i][1] - target[1]
     const d = dx * dx + dy * dy
     if (d < bestDist) { bestDist = d; bestIdx = i }
@@ -154,6 +185,10 @@ export function nearestTrackIndex(track: LonLatAlt[], target: LonLatAlt): number
 }
 
 export function pointAtDistanceAlongTrack(track: LonLatAlt[], startIdx: number, distanceMeters: number): { point: LonLatAlt, bearing: number, segmentIndex: number } | null {
+  // A one-vertex track has no segment to walk, and the tail return below would
+  // read track[-1]. The `| null` in the signature existed for this case but was
+  // never actually produced, so callers' guards were dead code.
+  if (track.length < 2) return null
   // walk segments from startIdx and interpolate
   let remaining = distanceMeters
   for (let i = startIdx; i < track.length - 1; i++) {
@@ -181,9 +216,50 @@ export function buildGateAtPoint(center: LonLatAlt, localBearingDeg: number, lef
   return lineString([left as Position, right as Position], { role: 'gate', color: 'red' })
 }
 
+/** Along-track distance in metres between two track vertex indices. */
+function trackDistanceBetween(track: LonLatAlt[], fromIdx: number, toIdx: number): number {
+  const lo = Math.min(fromIdx, toIdx)
+  const hi = Math.min(Math.max(fromIdx, toIdx), track.length - 1)
+  let total = 0
+  for (let i = lo; i < hi; i++) total += calculateDistance(track[i], track[i + 1])
+  return total
+}
+
+/**
+ * The gate sits a fixed distance after a waypoint — 5 NM after SP, 1 NM after
+ * each TP — with nothing stopping it from landing *past* the next waypoint.
+ * When it does, start and end snap to the same segment and the corridor becomes
+ * a two-point stub running backwards; when two consecutive legs together are
+ * shorter than the offset, the slice comes out empty and BOTH legs vanish.
+ * Clamp the walk to this leg, and report null when the leg cannot hold a gate
+ * at all so the caller can say so instead of drawing nonsense.
+ */
+function clampedGateOffset(track: LonLatAlt[], fromIdx: number, toIdx: number, desiredM: number): { offsetM: number, clamped: boolean, legM: number } | null {
+  const legM = trackDistanceBetween(track, fromIdx, toIdx)
+  const usable = legM - GATE_MARGIN_M
+  if (usable <= 0) return null
+  // `clamped` matters to the reader, not just to us: a clamped gate is NOT at
+  // the rule-defined 5 NM / 1 NM, yet the gate feature and the corridor label
+  // both still say it is. Moving it silently is the same class of defect this
+  // whole change exists to remove.
+  return { offsetM: Math.min(desiredM, usable), clamped: usable < desiredM, legM }
+}
+
+/** One phrasing for the clamp notice, used by all three gate call sites. */
+function clampWarning(fromName: string, toName: string, offsetNm: number, g: { offsetM: number, legM: number }): string {
+  return `${fromName} → ${toName}: the leg is only ${(g.legM / 1852).toFixed(2)} NM, so the ${offsetNm} NM gate was moved to ${(g.offsetM / 1852).toFixed(2)} NM after ${fromName}.`
+}
+
 function isSpanOnMain(fromIdx: number, toIdx: number, sourceSegIdx: number[], gapAfterIndex: boolean[], mainSegmentIndexSet: Set<number>): boolean {
   if (fromIdx > toIdx) return false
   if (fromIdx === toIdx) {
+    // A single-segment span can still BE the synthetic chord the track builder
+    // welds across a gap, so it must face the same gap test as the loop below.
+    // Without this the MZB 2026 rally drew a corridor straight along an 11.6 km
+    // chord from TP 4 to TP 6: both the gate and the next turning point landed
+    // on that one chord segment, fromIdx === toIdx, and the gap was never
+    // consulted. The result bypassed a real turn and looked plausible.
+    if (gapAfterIndex[fromIdx]) return false
     const segIdx = sourceSegIdx[fromIdx]
     return mainSegmentIndexSet.has(segIdx)
   }
@@ -266,147 +342,109 @@ export function generateSegmentedCorridors(
   _segments: Segment[],
   spAfterNm: number = 5,
   tpAfterNm: number = 1
-): { leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[], endGates: Feature<LineString>[] } {
+): { leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[], endGates: Feature<LineString>[], warnings: string[] } {
   log('\n=== GENERATING SEGMENTED CORRIDORS ===')
   
   const NM = 1852
   const leftSegments: Feature<LineString>[] = []
   const rightSegments: Feature<LineString>[] = []
   const endGates: Feature<LineString>[] = []
+  // Every abandoned leg appends here. Dropping a corridor silently is what
+  // let a whole competition ship on a map with five wrong legs.
+  const warnings: string[] = []
   
   // Step 1: Validate we have required waypoints
   if (!waypoints.sp || waypoints.tps.length === 0) {
-    console.log('❌ Missing SP or TPs - cannot generate corridors')
-    return { leftSegments, rightSegments, endGates }
+    warnings.push('No corridors: the course needs an SP and at least one turning point.')
+    return { leftSegments, rightSegments, endGates, warnings }
   }
   
   log(`✅ Found: SP + ${waypoints.tps.length} TPs + ${waypoints.fp ? 'FP' : 'no FP'}`)
   
-  // Step 2: Calculate all gate positions (where corridors START)
-  const gatePositions: Array<{ trackIdx: number, name: string, distanceNM: number }> = []
-  
-  // Gate 1: X NM after SP (default 5NM)
-  const spIdx = nearestTrackIndex(track, waypoints.sp)
-  const spNmResult = pointAtDistanceAlongTrack(track, spIdx, spAfterNm * NM)
-  if (spNmResult) {
-    const spNmIdx = nearestTrackIndex(track, spNmResult.point)
-    gatePositions.push({ trackIdx: spNmIdx, name: `${spAfterNm}NM-after-SP`, distanceNM: spAfterNm })
-    log(`📍 Gate 1: ${spAfterNm}NM after SP at track index ${spNmIdx}`)
-  }
-  
-  // Gates 2+: tpAfterNm after each TP
-  for (let i = 0; i < waypoints.tps.length; i++) {
-    const tp = waypoints.tps[i]
-    const tpIdx = nearestTrackIndex(track, tp.coord)
-    const tpNmResult = pointAtDistanceAlongTrack(track, tpIdx, tpAfterNm * NM)
-    if (tpNmResult) {
-      const tpNmIdx = nearestTrackIndex(track, tpNmResult.point)
-      gatePositions.push({ trackIdx: tpNmIdx, name: `${tpAfterNm}NM-after-${tp.name}`, distanceNM: tpAfterNm })
-      log(`📍 Gate ${i + 2}: ${tpAfterNm}NM after ${tp.name} at track index ${tpNmIdx}`)
+  // Step 2: walk the route as consecutive waypoint pairs. A leg is defined
+  // purely by adjacency in this list, which is why a single dropped or
+  // mis-ordered entry used to draw a corridor straight past a real turn.
+  const route: Array<{ name: string, coord: LonLatAlt }> = [
+    { name: 'SP', coord: waypoints.sp },
+    ...waypoints.tps,
+  ]
+  if (waypoints.fp) route.push({ name: 'FP', coord: waypoints.fp })
+
+  // Non-consecutive turning-point numbers mean a waypoint was lost upstream —
+  // an unreadable name, a missing gate, geometry filtered away. The corridor
+  // that spans the hole looks entirely normal on the map, so say it out loud.
+  for (let i = 1; i < waypoints.tps.length; i++) {
+    const prev = turningPointNumber(waypoints.tps[i - 1].name)
+    const cur = turningPointNumber(waypoints.tps[i].name)
+    if (cur !== prev + 1) {
+      warnings.push(`Corridor jumps ${waypoints.tps[i - 1].name} → ${waypoints.tps[i].name} — turning point numbers are not consecutive.`)
     }
   }
-  
-  // Step 3: Define corridor segments using exact snapped gate points (Gate → next TP)
-  // Dashed TP pairs detection removed in cleanup; rely on continuity and main-track-only build
-  const dashedPairs = new Set<number>()
 
-  // Note: detectDashedConnectorPairs needs original input; workaround below patches later
-  const corridorSegments: Array<{ start: { point: LonLatAlt, idx: number }, end: { point: LonLatAlt, idx: number }, name: string }> = []
-  
-  // Segment 1: XNM-after-SP → TP1
-  if (gatePositions.length > 0 && waypoints.tps.length > 0) {
-    const startGateAlong = pointAtDistanceAlongTrack(track, spIdx, spAfterNm * NM)
-    // FIXED: Use exact gate position and bearing, don't re-snap
-    const start = startGateAlong ? 
-      { point: startGateAlong.point, segmentIndex: startGateAlong.segmentIndex, bearing: startGateAlong.bearing } :
-      snapPointToTrack(track, track[gatePositions[0].trackIdx])
-    const end = snapPointToTrack(track, waypoints.tps[0].coord)
-    // Build precise slice
-    const preciseSlice = buildPreciseSlice(track, { point: start.point, segmentIndex: start.segmentIndex }, { point: end.point, segmentIndex: end.segmentIndex })
-    // Enforce continuity on main track for this span
-    if (!isSpanOnMain(Math.min(start.segmentIndex, end.segmentIndex), Math.max(start.segmentIndex, end.segmentIndex), sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)) {
-      log(`❌ Skipping ${spAfterNm}NM-after-SP→TP1 due to non-continuous/main span`)
-    } else if (preciseSlice.length >= 2) {
-      const lr = generateLeftRightCorridor(preciseSlice, leftDistanceM, rightDistanceM)
-      if (lr) {
-        leftSegments.push(lineString(lr.left.geometry.coordinates as Position[], { segment: `${spAfterNm}NM-after-SP→TP1` }))
-        rightSegments.push(lineString(lr.right.geometry.coordinates as Position[], { segment: `${spAfterNm}NM-after-SP→TP1` }))
-      }
-      const sliceLength = preciseSlice.reduce((acc, c, i) => i === 0 ? 0 : acc + calculateDistance(preciseSlice[i - 1], c), 0)
-      log(`🟢 Corridor 1: ${gatePositions[0].name} → TP1 (${start.segmentIndex}→${end.segmentIndex}), ${(sliceLength/1000).toFixed(2)} km`)
-    } else {
-      log(`❌ Skipping ${spAfterNm}NM-after-SP→TP1: slice too short`)
+  // Step 3: one corridor per leg, running from this leg's gate to the next
+  // waypoint. Every abandoned leg appends a warning; none may exit quietly.
+  for (let i = 0; i < route.length - 1; i++) {
+    const from = route[i]
+    const to = route[i + 1]
+    const offsetNm = i === 0 ? spAfterNm : tpAfterNm
+    // Use the waypoint's own name. The SP leg used to hardcode `TP1` while
+    // every other leg used the KML's name, so on a course naming its points
+    // `TP 1` the SP leg's key never matched the route and that leg was treated
+    // as uncovered for the whole rest of the pipeline.
+    const segmentName = `${offsetNm}NM-after-${from.name}→${to.name}`
+
+    const fromIdx = nearestTrackIndex(track, from.coord)
+    const toIdx = nearestTrackIndex(track, to.coord)
+
+    const gateOffset = clampedGateOffset(track, fromIdx, toIdx, offsetNm * NM)
+    if (gateOffset === null) {
+      warnings.push(`No corridor ${from.name} → ${to.name}: the leg is too short to place the ${offsetNm} NM gate.`)
+      continue
     }
-  }
-  
-  // Segments 2+: 1NM-after-TPn → TP(n+1)
-  for (let i = 1; i < gatePositions.length; i++) {
-    const gateAlong = i - 1 < waypoints.tps.length
-      ? pointAtDistanceAlongTrack(track, nearestTrackIndex(track, waypoints.tps[i - 1].coord), tpAfterNm * NM)
-      : null
-    // FIXED: Use exact gate position and bearing, don't re-snap
-    const start = gateAlong ? 
-      { point: gateAlong.point, segmentIndex: gateAlong.segmentIndex, bearing: gateAlong.bearing } :
-      snapPointToTrack(track, track[gatePositions[i].trackIdx])
+    if (gateOffset.clamped) warnings.push(clampWarning(from.name, to.name, offsetNm, gateOffset))
+    const gateAlong = pointAtDistanceAlongTrack(track, fromIdx, gateOffset.offsetM)
+    if (!gateAlong) {
+      warnings.push(`No corridor ${from.name} → ${to.name}: no usable track after ${from.name}.`)
+      continue
+    }
+    // Use the exact gate position and bearing; re-snapping loses both.
+    const start = { point: gateAlong.point, segmentIndex: gateAlong.segmentIndex }
+    const end = snapPointToTrack(track, to.coord)
 
-    let endPoint: { point: LonLatAlt, segmentIndex: number, bearing: number } | null = null
-    let endName: string
-    if (i < waypoints.tps.length) {
-      endPoint = snapPointToTrack(track, waypoints.tps[i].coord)
-      endName = waypoints.tps[i].name
-    } else if (waypoints.fp) {
-      endPoint = snapPointToTrack(track, waypoints.fp)
-      endName = 'FP'
-    } else {
+    const fromSeg = Math.min(start.segmentIndex, end.segmentIndex)
+    const toSeg = Math.max(start.segmentIndex, end.segmentIndex)
+    if (!isSpanOnMain(fromSeg, toSeg, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)) {
+      warnings.push(`No corridor ${from.name} → ${to.name}: the track is interrupted between them.`)
       continue
     }
 
-    if (!endPoint) continue
-
-    // Build precise slice between snapped start and end
-    const preciseSlice = buildPreciseSlice(track, { point: start.point, segmentIndex: start.segmentIndex }, { point: endPoint.point, segmentIndex: endPoint.segmentIndex })
+    const preciseSlice = buildPreciseSlice(track, start, { point: end.point, segmentIndex: end.segmentIndex })
     if (preciseSlice.length < 2) {
-      log(`⚠️  Precise slice too short for ${gatePositions[i].name}→${endName}`)
+      warnings.push(`No corridor ${from.name} → ${to.name}: the gate falls at or beyond ${to.name}.`)
       continue
     }
 
-    // Skip if this is a known dashed TP pair (no uninterrupted main track between TPi and TP(i+1))
-    const startTpIndex = i - 1
-    if (startTpIndex >= 0 && dashedPairs.has(startTpIndex)) {
-      log(`❌ Skipping dashed TP pair segment: ${gatePositions[i].name}→${endName}`)
-      continue
-    }
-
-    // Additionally enforce continuity on the actual track index range
-    const fromIdx = Math.min(start.segmentIndex, endPoint.segmentIndex)
-    const toIdx = Math.max(start.segmentIndex, endPoint.segmentIndex)
-    if (!isSpanOnMain(fromIdx, toIdx, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)) {
-      log(`❌ Skipping non-continuous/main span: ${gatePositions[i].name}→${endName} (${fromIdx}→${toIdx})`)
-      continue
-    }
-
-    const segmentName = `${gatePositions[i].name}→${endName}`
     const lr = generateLeftRightCorridor(preciseSlice, leftDistanceM, rightDistanceM)
-    if (lr) {
-      leftSegments.push(lineString(lr.left.geometry.coordinates as Position[], { segment: segmentName }))
-      rightSegments.push(lineString(lr.right.geometry.coordinates as Position[], { segment: segmentName }))
-      log(`🟢 Corridor ${i + 1}: ${segmentName} (${start.segmentIndex}→${endPoint.segmentIndex})`)
+    if (!lr) {
+      warnings.push(`No corridor ${from.name} → ${to.name}: corridor geometry could not be built.`)
+      continue
     }
+    leftSegments.push(lineString(lr.left.geometry.coordinates as Position[], { segment: segmentName }))
+    rightSegments.push(lineString(lr.right.geometry.coordinates as Position[], { segment: segmentName }))
+    log(`🟢 Corridor ${i + 1}: ${segmentName} (${start.segmentIndex}→${end.segmentIndex})`)
   }
-  
-  
-  // Step 4: Generate 300m corridors for each segment
-  log(`\n📏 Generating ${corridorSegments.length} corridor segments...`)
-  
-  // already generated within the loop using precise slices
-  
+
   log(`\n🎯 RESULT: Generated ${leftSegments.length} corridor segments with gaps in forbidden zones`)
   
-  return { leftSegments, rightSegments, endGates }
+  return { leftSegments, rightSegments, endGates, warnings }
 }
 
 function extractGateCenterCandidates(input: GeoJSON): Array<{ center: LonLatAlt, line: Feature<LineString> } > {
   const out: Array<{ center: LonLatAlt, line: Feature<LineString> }> = []
+  const consider = (coords: LonLatAlt[]) => {
+    if (!coords || !isTpGatePerpendicular(coords)) return
+    out.push({ center: coords[1], line: lineString(coords as Position[]) })
+  }
   function scan(g: any) {
     if (!g) return
     if (g.type === 'FeatureCollection') {
@@ -414,28 +452,22 @@ function extractGateCenterCandidates(input: GeoJSON): Array<{ center: LonLatAlt,
     } else if (g.type === 'Feature') {
       const f = g as Feature
       const geom = f.geometry
-      if (geom?.type === 'LineString') {
-        const ls = geom as LineString
-        const coords = ls.coordinates as LonLatAlt[]
-        if (isTpGatePerpendicular(coords)) {
-          const center = coords[1]
-          out.push({ center, line: lineString(coords as Position[]) })
-        }
-      }
+      scan(geom)
+    } else if (g.type === 'GeometryCollection') {
+      // extractAllSegments learned to read a KML <MultiGeometry>; without the
+      // same here, such a file yields a track but no gates at all.
+      for (const geom of (g.geometries ?? [])) scan(geom)
+    } else if (g.type === 'MultiLineString') {
+      for (const line of (g.coordinates ?? [])) consider(line as LonLatAlt[])
     } else if (g.type === 'LineString') {
-      const ls = g as LineString
-      const coords = ls.coordinates as LonLatAlt[]
-      if (isTpGatePerpendicular(coords)) {
-        const center = coords[1]
-        out.push({ center, line: lineString(coords as Position[]) })
-      }
+      consider((g as LineString).coordinates as LonLatAlt[])
     }
   }
   scan(input)
   return out
 }
 
-function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[]): { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt, exactPointFeatures: Feature<Point>[] } {
+function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[], warnings: string[]): { sp?: LonLatAlt, tps: Array<{ name: string, coord: LonLatAlt }>, fp?: LonLatAlt, exactPointFeatures: Feature<Point>[] } {
   const named = findNamedPoints(input)
   const candidates = extractGateCenterCandidates(input)
   const exactPointFeatures: Feature<Point>[] = []
@@ -444,34 +476,57 @@ function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[]): { sp?: LonLa
   const trackLine = lineString(track.map(c => [c[0], c[1]]) as Position[])
 
   function attachExact(name: string, approx: LonLatAlt): LonLatAlt | undefined {
-    // Find the candidate whose center is nearest to approx AND intersects the track
-    // Filter by proximity first to avoid SC gates far from this waypoint
+    // Find the candidate gate nearest this label that also crosses the track.
+    // Proximity is filtered first so a scenic point's gate cannot be stolen.
     let bestIdx = -1
-    let bestD2 = Infinity
+    let bestD = Infinity
     for (let i = 0; i < candidates.length; i++) {
-      const c = candidates[i].center
-      const dx = c[0] - approx[0]
-      const dy = c[1] - approx[1]
-      const d2 = dx*dx + dy*dy
-      // Skip candidates too far away (> ~2km in degrees, roughly 0.02°)
-      if (d2 > 0.0004) continue
+      // Measured on the ground, not in raw squared degrees. `d2 <= 0.0004`
+      // described itself as "~2 km" but is really an ellipse 2.23 km
+      // north-south by 1.43 km east-west at 50°N, so it could disqualify a
+      // turning point's own gate purely for lying east of it.
+      const d = calculateDistance(candidates[i].center, approx)
+      if (d > MAX_GATE_SEARCH_M) continue
       const gate = candidates[i].line
       const ints = lineIntersect(trackLine, gate)
       if (!ints || !ints.features.length) continue
-      if (d2 < bestD2) { bestD2 = d2; bestIdx = i }
+      if (d < bestD) { bestD = d; bestIdx = i }
     }
     if (bestIdx !== -1) {
       const gate = candidates[bestIdx].line
       const intersections = lineIntersect(trackLine, gate)
       if (intersections && intersections.features.length) {
-        const p = intersections.features[0]
-        const [lon, lat] = getCoord(p)
-        const exact: LonLatAlt = [lon, lat, approx[2] || 0]
-        exactPointFeatures.push(point([lon, lat], { name, role: 'exact' }) as Feature<Point>)
-        return exact
+        // A gate perpendicular reaches ~926 m each side, so wherever the course
+        // passes within that of itself the gate crosses the track TWICE. The
+        // old code took features[0] — turf's sweepline order, which has nothing
+        // to do with which crossing belongs to this turning point, and picked
+        // the wrong one by 109 m vs 71 m in the reproduced case. Take the
+        // crossing nearest the label instead.
+        let best: Feature<Point> | null = null
+        let bestDist = Infinity
+        for (const f of intersections.features) {
+          const c = getCoord(f) as LonLatAlt
+          const dist = calculateDistance(c, approx)
+          if (dist < bestDist) { bestDist = dist; best = f as Feature<Point> }
+        }
+        if (best && bestDist <= MAX_EXACT_SNAP_M) {
+          const [lon, lat] = getCoord(best)
+          const exact: LonLatAlt = [lon, lat, approx[2] || 0]
+          exactPointFeatures.push(point([lon, lat], { name, role: 'exact' }) as Feature<Point>)
+          return exact
+        }
+        // Every crossing of this gate is implausibly far from the label. Fall
+        // through to the plain snap rather than trust it — but say so: this is
+        // precisely the case where the label is least trustworthy, and the
+        // result moves the gate, the corridor start and the answer-sheet
+        // distances that hang off this waypoint.
+        warnings.push(`${name}: its gate crosses the track ${Math.round(bestDist)} m from the label (limit ${MAX_EXACT_SNAP_M} m) — the label was snapped straight to the track instead.`)
       }
     }
-    // Fallback: snap the label to the track as the exact point
+    // Fallback: snap the label to the track as the exact point.
+    if (bestIdx === -1) {
+      warnings.push(`${name}: no gate line found within ${MAX_GATE_SEARCH_M} m that crosses the track — the label was snapped straight to the track, so this point is only as accurate as the label.`)
+    }
     const snapped = nearestPointOnLine(trackLine, point([approx[0], approx[1]]))
     const [lon, lat] = getCoord(snapped)
     const exact: LonLatAlt = [lon, lat, approx[2] || 0]
@@ -493,18 +548,15 @@ function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[]): { sp?: LonLa
   }
 
   // keep TP order
-  result.tps.sort((a, b) => {
-    const na = parseInt(a.name.replace(/\D/g, '') || '0', 10)
-    const nb = parseInt(b.name.replace(/\D/g, '') || '0', 10)
-    return na - nb
-  })
+  result.tps.sort((a, b) => turningPointNumber(a.name) - turningPointNumber(b.name))
 
   return { ...result, exactPointFeatures }
 }
 
-export function buildPreciseCorridorsAndGates(input: GeoJSON, config: DisciplineConfig = DISCIPLINE_CONFIGS.rally): { gates: Feature<LineString>[], points: Feature<Point>[], exactPoints: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[] } {
+export function buildPreciseCorridorsAndGates(input: GeoJSON, config: DisciplineConfig = DISCIPLINE_CONFIGS.rally): { gates: Feature<LineString>[], points: Feature<Point>[], exactPoints: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[], warnings: string[] } {
   const { spAfterNm, tpAfterNm, leftDistanceM, rightDistanceM } = config
-  const { track, sourceSegIdx, gapAfterIndex, segments, mainSegmentIndexSet } = buildContinuousTrackWithSources(input)
+  const { track, sourceSegIdx, gapAfterIndex, segments, mainSegmentIndexSet, diagnostics } = buildContinuousTrackWithSources(input)
+  const warnings: string[] = []
   const gates: Feature<LineString>[] = []
   const points: Feature<Point>[] = []
   const exactPoints: Feature<Point>[] = []
@@ -512,7 +564,7 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, config: Discipline
   const rightSegments: Feature<LineString>[] = []
   
   const named = findNamedPoints(input)
-  const { sp, tps, fp, exactPointFeatures } = computeExactWaypoints(input, track)
+  const { sp, tps, fp, exactPointFeatures } = computeExactWaypoints(input, track, warnings)
   exactPoints.push(...exactPointFeatures)
   const NM = 1852
   
@@ -520,8 +572,17 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, config: Discipline
   if (named.sp) points.push(point([named.sp[0], named.sp[1]], { name: 'SP', role: 'waypoint' }) as Feature<Point>)
   if (sp) {
     const idx = nearestTrackIndex(track, sp)
-    const gate = maybeBuildGateFromStartIdxDistance(track, idx, spAfterNm * NM, leftDistanceM, rightDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
-    if (gate) gates.push(gate)
+    // Clamp to the SP→TP1 leg. A first leg shorter than spAfterNm used to put
+    // this gate beyond TP 1, collapsing the corridor into a backwards stub.
+    const nextAfterSp = tps[0]?.coord ?? fp
+    const spOffset = nextAfterSp ? clampedGateOffset(track, idx, nearestTrackIndex(track, nextAfterSp), spAfterNm * NM) : { offsetM: spAfterNm * NM, clamped: false, legM: 0 }
+    if (spOffset === null) {
+      warnings.push(`No gate after SP: the first leg is too short to place the ${spAfterNm} NM gate.`)
+    } else {
+      if (spOffset.clamped) warnings.push(clampWarning('SP', tps[0]?.name ?? 'FP', spAfterNm, spOffset))
+      const gate = maybeBuildGateFromStartIdxDistance(track, idx, spOffset.offsetM, leftDistanceM, rightDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
+      if (gate) gates.push(gate)
+    }
   }
   
   // Add TP point labels and gates 1NM AFTER each TP
@@ -533,8 +594,16 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, config: Discipline
       points.push(point([labelTp.coord[0], labelTp.coord[1]], { name: labelTp.name, role: 'waypoint' }) as Feature<Point>)
     }
     const idx = nearestTrackIndex(track, tp.coord)
-    const gate = maybeBuildGateFromStartIdxDistance(track, idx, tpAfterNm * NM, leftDistanceM, rightDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
-    if (gate) gates.push(gate)
+    // Same clamp, against whichever waypoint follows this one.
+    const nextAfterTp = tps[i + 1]?.coord ?? fp
+    const tpOffset = nextAfterTp ? clampedGateOffset(track, idx, nearestTrackIndex(track, nextAfterTp), tpAfterNm * NM) : { offsetM: tpAfterNm * NM, clamped: false, legM: 0 }
+    if (tpOffset === null) {
+      warnings.push(`No gate after ${tp.name}: the leg is too short to place the ${tpAfterNm} NM gate.`)
+    } else {
+      if (tpOffset.clamped) warnings.push(clampWarning(tp.name, tps[i + 1]?.name ?? 'FP', tpAfterNm, tpOffset))
+      const gate = maybeBuildGateFromStartIdxDistance(track, idx, tpOffset.offsetM, leftDistanceM, rightDistanceM, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)
+      if (gate) gates.push(gate)
+    }
   }
   
   // Add FP point label (no gate after FP)
@@ -545,10 +614,29 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, config: Discipline
     const corridorSegments = generateSegmentedCorridors(track, { sp, tps, fp }, leftDistanceM, rightDistanceM, input, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet, segments, spAfterNm, tpAfterNm)
     leftSegments.push(...corridorSegments.leftSegments)
     rightSegments.push(...corridorSegments.rightSegments)
+    warnings.push(...corridorSegments.warnings)
     // Note: endGates are available in corridorSegments.endGates if needed
+  } else {
+    warnings.push('No corridors: the file contains no usable track geometry.')
   }
-  
-  return { gates, points, exactPoints, leftSegments, rightSegments }
+
+  // Everything a reader needs in order to distrust this map, in one place.
+  // A placemark the author meant as a turning point but named unusually used to
+  // disappear without trace, and its corridor leg with it.
+  if (named.unrecognised.length) {
+    warnings.push(`${named.unrecognised.length} placemark(s) not recognised as turning points: ${named.unrecognised.map(n => `"${n}"`).join(', ')}.`)
+  }
+  for (const run of diagnostics.mergedDashRuns) {
+    const dashLen = Math.round(run.dashLengthMinM) === Math.round(run.dashLengthMaxM)
+      ? `${Math.round(run.dashLengthMinM)} m`
+      : `${Math.round(run.dashLengthMinM)}-${Math.round(run.dashLengthMaxM)} m`
+    warnings.push(`Reconstructed a leg drawn as ${run.dashes} dashes of ${dashLen} (${(run.spanM / 1000).toFixed(1)} km total) into continuous track.`)
+  }
+  if (diagnostics.gapCount > 0) {
+    warnings.push(`The track has ${diagnostics.gapCount} gap(s); no corridor is drawn across a gap.`)
+  }
+
+  return { gates, points, exactPoints, leftSegments, rightSegments, warnings }
 }
 
 

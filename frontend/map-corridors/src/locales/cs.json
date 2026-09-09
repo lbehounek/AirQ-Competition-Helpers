@@ -71,7 +71,8 @@
     "openEditor": "Editor fotek",
     "loadSample": "Načíst ukázku",
     "loadSampleFailed": "Ukázkovou soutěž se nepodařilo načíst.",
-    "sampleName": "VZOR – {{label}}"
+    "sampleName": "VZOR – {{label}}",
+    "courseWarnings": "Při sestavování koridorů z tohoto souboru bylo nutné řešit tyto věci — zkontrolujte mapu, než ji vytisknete:"
   },
   "photo": {
     "import": {

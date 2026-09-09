@@ -56,18 +56,37 @@ export const NEAREST_CORRIDOR_MAX_METERS = 50_000
  */
 /**
  * Set of "{from}→{to}" leg keys that are already covered by a corridor.
- * The leg-projection fallback skips these so a marker outside any
- * polygon only attaches to a SCENIC leg (one whose corridor was dropped
- * because the leg is a chain of dashed connectors). Without this
- * filter, a marker that just barely overshoots a corridor's polygon
- * would still snap back onto that corridor's leg via projection — but
- * the user's rule (feedback 2026-05-03 follow-up) is "outside corridor
- * → assigned to nearest leg WITHOUT a corridor". The set lets the
- * matcher honour that rule without having to re-derive corridor
- * geometry here.
  *
- * Build keys as `${from}→${to}` (no spaces, exactly as written in the
- * corridor segment name template at preciseCorridor.ts:281,292,376).
+ * WHAT THIS MEANS NOW: a *tie-break preference only*. When two legs are
+ * exactly equidistant from a marker, the one WITHOUT a corridor wins —
+ * because a marker inside a covered leg's corridor would already have
+ * been attributed by the polygon-containment pass, so a marker reaching
+ * the projection fallback at equal distance is more plausibly on the
+ * uncovered (scenic) leg. It can never make a leg unreachable.
+ *
+ * WHY IT IS NOT A HARD EXCLUSION ANY MORE — do not reinstate that (this
+ * cost 6 of 18 en-route photos on the real MZB 2026 course, misattributed
+ * by up to 25.9 km): the set used to be a `continue` in the projection
+ * loop, encoding the user's shorthand rule "outside corridor → assigned
+ * to nearest leg WITHOUT a corridor" (feedback 2026-05-03 follow-up).
+ * But a rally corridor is only 300 m left + 300 m right. A photo that
+ * misses its own leg's corridor by 42 m is still unambiguously ON that
+ * leg — yet the exclusion permanently forbade that leg as an answer and
+ * handed the marker to the nearest leg that happened to have NO corridor,
+ * which on a real course is 10-26 km away. The failure got WORSE the more
+ * corridors were built successfully: with all 8 MZB legs covered, 11 of 18
+ * photos landed on whichever single leg was left uncovered.
+ *
+ * The real intent behind the rule is preserved by ORDER, not exclusion:
+ * polygon containment runs first, so a photo inside a corridor is always
+ * attributed by that corridor and never re-derived by projection. The
+ * projection fallback is only ever reached by photos outside every
+ * corridor, and for those the governing invariant is: a photo must never
+ * be attributed to a leg further away than the geometrically nearest leg.
+ *
+ * Build keys as `${from}→${to}`, exactly as written by the `segmentName`
+ * template in `generateSegmentedCorridors` (which now uses each waypoint's own
+ * name, so a course authored `TP 1` keys as `SP→TP 1`, spaces included).
  */
 export type CoveredLegKey = `${string}→${string}`
 
@@ -83,6 +102,17 @@ export function matchPointsToCorridors(
 ): Record<string, CorridorMatch | null> {
   const out: Record<string, CorridorMatch | null> = {}
   for (const m of pts) {
+    // No-GPS / malformed coordinates: a photo whose EXIF carried no
+    // position (or an unparseable one) reaches the marker list with a
+    // non-finite lng/lat. Bail out explicitly instead of letting NaN
+    // flow into turf — `booleanPointInPolygon` on a NaN point throws
+    // (logged once per corridor, noise), and NaN comparisons silently
+    // evaluate false in every "is this closer" test below, so the point
+    // would fall through to `null` anyway but by accident rather than
+    // by contract. Answer sheet shows a blank cell, which is correct:
+    // an unpositioned photo belongs to no leg.
+    if (!Number.isFinite(m.lng) || !Number.isFinite(m.lat)) { out[m.id] = null; continue }
+
     let match: CorridorPolygon | null = null
     for (const c of corridorPolygons) {
       const [minLng, minLat, maxLng, maxLat] = c.bbox
@@ -101,9 +131,13 @@ export function matchPointsToCorridors(
     }
 
     // Leg-projection fallback (preferred when ordered waypoints are
-    // available). Project the marker onto each adjacent-waypoint leg,
+    // available). Project the marker onto EVERY adjacent-waypoint leg,
     // pick the leg with smallest perpendicular distance, attribute to
-    // its PRECEDING waypoint. Handles the dashed/scenic-leg gap case
+    // its PRECEDING waypoint. Every leg, covered or not — a photo that
+    // overshoots its own corridor by a few dozen metres is still on that
+    // leg (see the `CoveredLegKey` doc-comment).
+    //
+    // Handles the dashed/scenic-leg gap case
     // (feedback 2026-05-03): markers between TPn and TPn+1 on a leg
     // whose corridor was dropped (chain of dashed connectors) used to
     // fall through the legacy nearest-startCoord branch and lock onto
@@ -147,21 +181,40 @@ export function matchPointsToCorridors(
 }
 
 /**
- * Project the marker onto each adjacent leg `waypoints[i] → waypoints[i+1]`
- * that is NOT covered by an existing corridor, pick the leg with smallest
- * perpendicular distance, return its preceding waypoint as the match.
- * Honors `NEAREST_CORRIDOR_MAX_METERS` so a marker 60+ km from every
- * scenic leg returns null instead of a spurious attribution.
+ * Width (kilometres) within which two legs count as "the same distance"
+ * from the marker, so the `coveredLegs` preference may pick between them.
  *
- * Filtering by `coveredLegs` enforces the user's "outside corridor →
- * assigned to nearest leg WITHOUT a corridor" rule (feedback 2026-05-03
- * follow-up). When `coveredLegs` is undefined or empty, every leg is
- * considered — keeps the function usable without corridor context (e.g.
- * unit tests that only exercise the projection geometry).
+ * 1 cm. Wide enough to absorb turf's own numerical noise — measured:
+ * `pointToLineDistance` for a marker that clamps onto a vertex SHARED by
+ * two adjacent legs returns values ~0.2 mm apart depending on which way
+ * the segment runs from that vertex, though geometrically the marker is
+ * the same distance from both. Narrow enough to be meaningless geographically: a good
+ * civilian GPS fix is ±5 m, so a 1 cm band can never mask a real
+ * difference between two legs and the coverage preference can never
+ * override actual geometry. Anything materially wider would re-open the
+ * defect the `CoveredLegKey` comment documents.
+ */
+const LEG_TIE_EPSILON_KM = 1e-5
+
+/**
+ * Project the marker onto every adjacent leg `waypoints[i] → waypoints[i+1]`,
+ * pick the leg with smallest perpendicular distance, and return that leg's
+ * PRECEDING waypoint as the match. Returns null when there is no usable leg
+ * or the winner is beyond `NEAREST_CORRIDOR_MAX_METERS` — "no attribution"
+ * beats a spurious one on the answer sheet.
+ *
+ * The guaranteed floor is the invariant that makes this function correct:
+ * the returned leg is never further from the marker than the geometrically
+ * nearest leg. `coveredLegs` is consulted ONLY to settle exact ties (see
+ * `CoveredLegKey` above for why it must never exclude a leg again). When
+ * `coveredLegs` is undefined or empty every leg is simply equally eligible,
+ * which is also what unit tests that exercise pure projection geometry get.
  *
  * `pointToLineDistance` measures perpendicular distance to the segment
- * (clamped at endpoints), which is exactly the "which leg is the marker
- * on" question we want to answer.
+ * (clamped at the endpoints), which is exactly the "which leg is the marker
+ * on" question we want to answer — and the clamping is what gives sensible
+ * answers for photos taken before SP (they clamp onto SP, so the SP→TP1 leg
+ * wins) or after FP (they clamp onto FP, so the TPn→FP leg wins).
  */
 function matchByLegProjection(
   m: PointForMatching,
@@ -170,22 +223,47 @@ function matchByLegProjection(
 ): CorridorMatch | null {
   let bestIdx = -1
   let bestKm = Infinity
+  // Coverage of the current best leg. Seeded `true` so the very first
+  // candidate always wins outright regardless of its own coverage.
+  let bestCovered = true
   const pt = turfPoint([m.lng, m.lat])
   for (let i = 0; i < waypoints.length - 1; i++) {
     const fromName = waypoints[i].name
     const toName = waypoints[i + 1].name
-    if (coveredLegs && coveredLegs.has(legKey(fromName, toName))) continue
     const a = waypoints[i].coord
     const b = waypoints[i + 1].coord
     let km: number
     try {
-      const seg = turfLineString([[a[0], a[1]], [b[0], b[1]]])
-      km = pointToLineDistance(pt, seg, { units: 'kilometers' })
+      if (a[0] === b[0] && a[1] === b[1]) {
+        // Zero-length leg: two consecutive waypoints share a coordinate
+        // (duplicate point in the KML, or an FP authored on top of the SP).
+        // `turfLineString` accepts it but the projection of a point onto a
+        // degenerate segment is undefined — measure to the single point
+        // instead. Such a leg can only ever tie, never beat, a real leg
+        // through the same coordinate, so keeping it costs nothing and
+        // preserves the nearest-overall floor.
+        km = calculateDistance([a[0], a[1], 0], [m.lng, m.lat, 0]) / 1000
+      } else {
+        const seg = turfLineString([[a[0], a[1]], [b[0], b[1]]])
+        km = pointToLineDistance(pt, seg, { units: 'kilometers' })
+      }
     } catch (err) {
       console.error('[matchPointsToCorridors] leg projection failed for', fromName, '→', toName, err)
       continue
     }
-    if (km < bestKm) { bestKm = km; bestIdx = i }
+    if (!Number.isFinite(km)) continue
+    const covered = !!coveredLegs?.has(legKey(fromName, toName))
+    // Strictly nearer wins. Otherwise, on an exact tie, an uncovered
+    // (scenic) leg takes precedence over a covered one — a marker at equal
+    // distance from both has already failed the covered leg's polygon test,
+    // so the scenic leg is the better explanation.
+    const strictlyNearer = km < bestKm - LEG_TIE_EPSILON_KM
+    const tiedButUncovered = Math.abs(km - bestKm) <= LEG_TIE_EPSILON_KM && bestCovered && !covered
+    if (strictlyNearer || tiedButUncovered) {
+      bestKm = Math.min(km, bestKm)
+      bestIdx = i
+      bestCovered = covered
+    }
   }
   if (bestIdx < 0) return null
   if (bestKm * 1000 > NEAREST_CORRIDOR_MAX_METERS) return null
