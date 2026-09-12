@@ -65,18 +65,35 @@ const pointFeature = (name: string, coordinates: number[]) =>
 describe('MZB 2026 — the reported failure', () => {
   const gj = loadFixture('MZB_2026_RED.kml')
 
-  it('builds all eight legs instead of five', () => {
+  it('draws a corridor on the three SOLID legs only — never along a dashed one', () => {
     const out = buildPreciseCorridorsAndGates(gj, DISCIPLINE_CONFIGS.rally)
+    // A leg the author drew dashed is a scenic leg: reconstructed so the
+    // waypoints snap and the course measures correctly, but deliberately
+    // uncovered. Five of MZB's eight legs are dashed, so three corridors.
     expect(legNames(out)).toEqual([
       '5NM-after-SP→TP 1',
-      '1NM-after-TP 1→TP 2',
-      '1NM-after-TP 2→TP 3',
       '1NM-after-TP 3→TP 4',
-      '1NM-after-TP 4→TP 5',
-      '1NM-after-TP 5→TP 6',
       '1NM-after-TP 6→TP 7',
-      '1NM-after-TP 7→FP',
     ])
+  })
+
+  it('says why each dashed leg has no corridor', () => {
+    const out = buildPreciseCorridorsAndGates(gj, DISCIPLINE_CONFIGS.rally)
+    const dashed = out.warnings.filter(w => w.includes('drawn as a dashed line'))
+    expect(dashed).toHaveLength(5)
+    for (const pair of ['TP 1 → TP 2', 'TP 2 → TP 3', 'TP 4 → TP 5', 'TP 5 → TP 6', 'TP 7 → FP']) {
+      expect(dashed.some(w => w.includes(pair)), `expected a no-corridor warning for ${pair}`).toBe(true)
+    }
+  })
+
+  it('still measures and positions the dashed legs it does not cover', () => {
+    // The reconstruction is what keeps TP 5 on its label and the course at its
+    // true length — suppressing the CORRIDOR must not undo the GEOMETRY fix.
+    const { track, dashedSegmentIndices } = buildContinuousTrackWithSources(gj)
+    expect(dashedSegmentIndices.size).toBe(5)
+    let length = 0
+    for (let i = 1; i < track.length; i++) length += calculateDistance(track[i - 1], track[i])
+    expect(length / 1000).toBeCloseTo(120.31, 1)
   })
 
   it('no longer skips TP 5 — every turning point snaps to its own label', () => {
@@ -228,7 +245,7 @@ describe('mergeDashRuns — what counts as a dashed leg', () => {
   })
 
   it('handles an empty input', () => {
-    expect(mergeDashRuns([])).toEqual({ segments: [], merged: [] })
+    expect(mergeDashRuns([])).toEqual({ segments: [], merged: [], dashedSegmentIndices: new Set() })
   })
 
   it('leaves a normally-authored course alone instead of calling it a dashed leg', () => {

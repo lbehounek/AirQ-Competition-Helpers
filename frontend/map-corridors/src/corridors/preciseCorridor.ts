@@ -250,6 +250,25 @@ function clampWarning(fromName: string, toName: string, offsetNm: number, g: { o
   return `${fromName} → ${toName}: the leg is only ${(g.legM / 1852).toFixed(2)} NM, so the ${offsetNm} NM gate was moved to ${(g.offsetM / 1852).toFixed(2)} NM after ${fromName}.`
 }
 
+/**
+ * Does any track vertex in this span come from a segment that was spliced back
+ * together from a dash run? One dashed piece anywhere in the leg is enough —
+ * the leg was authored dashed and gets no corridor.
+ */
+function spanTouchesDashed(fromIdx: number, toIdx: number, sourceSegIdx: number[], dashed: ReadonlySet<number>): boolean {
+  if (dashed.size === 0) return false
+  const lo = Math.max(0, Math.min(fromIdx, toIdx))
+  const hi = Math.min(Math.max(fromIdx, toIdx), sourceSegIdx.length - 1)
+  // Attribute EDGES, not vertices. Where two segments meet, the track builder
+  // pushes only the later segment's coords[1..], so the shared boundary vertex
+  // keeps the EARLIER segment's index — the edge (i, i+1) therefore belongs to
+  // `sourceSegIdx[i + 1]`. Starting the scan at `lo` instead of `lo + 1` made
+  // the first edge of every solid leg that follows a dashed one look dashed,
+  // which suppressed the corridors on MZB's solid TP 3→TP 4 and TP 6→TP 7.
+  for (let i = lo + 1; i <= hi; i++) if (dashed.has(sourceSegIdx[i])) return true
+  return false
+}
+
 function isSpanOnMain(fromIdx: number, toIdx: number, sourceSegIdx: number[], gapAfterIndex: boolean[], mainSegmentIndexSet: Set<number>): boolean {
   if (fromIdx > toIdx) return false
   if (fromIdx === toIdx) {
@@ -340,6 +359,7 @@ export function generateSegmentedCorridors(
   gapAfterIndex: boolean[],
   mainSegmentIndexSet: Set<number>,
   _segments: Segment[],
+  dashedSegmentIndices: ReadonlySet<number>,
   spAfterNm: number = 5,
   tpAfterNm: number = 1
 ): { leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[], endGates: Feature<LineString>[], warnings: string[] } {
@@ -415,6 +435,17 @@ export function generateSegmentedCorridors(
     const toSeg = Math.max(start.segmentIndex, end.segmentIndex)
     if (!isSpanOnMain(fromSeg, toSeg, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet)) {
       warnings.push(`No corridor ${from.name} → ${to.name}: the track is interrupted between them.`)
+      continue
+    }
+
+    // A leg the author drew as a DASHED line is a scenic leg: the geometry is
+    // reconstructed so this waypoint snaps correctly and the course measures its
+    // true length, but no corridor is drawn along it. That is the rule the whole
+    // uncovered-leg mechanism in matchPoints/extractStartName is built around —
+    // a photo in a scenic leg attributes to the leg precisely BECAUSE the leg
+    // has no corridor polygon.
+    if (spanTouchesDashed(fromSeg, toSeg, sourceSegIdx, dashedSegmentIndices)) {
+      warnings.push(`No corridor ${from.name} → ${to.name}: the leg is drawn as a dashed line, so it carries no corridor.`)
       continue
     }
 
@@ -555,7 +586,7 @@ function computeExactWaypoints(input: GeoJSON, track: LonLatAlt[], warnings: str
 
 export function buildPreciseCorridorsAndGates(input: GeoJSON, config: DisciplineConfig = DISCIPLINE_CONFIGS.rally): { gates: Feature<LineString>[], points: Feature<Point>[], exactPoints: Feature<Point>[], leftSegments: Feature<LineString>[], rightSegments: Feature<LineString>[], warnings: string[] } {
   const { spAfterNm, tpAfterNm, leftDistanceM, rightDistanceM } = config
-  const { track, sourceSegIdx, gapAfterIndex, segments, mainSegmentIndexSet, diagnostics } = buildContinuousTrackWithSources(input)
+  const { track, sourceSegIdx, gapAfterIndex, segments, mainSegmentIndexSet, dashedSegmentIndices, diagnostics } = buildContinuousTrackWithSources(input)
   const warnings: string[] = []
   const gates: Feature<LineString>[] = []
   const points: Feature<Point>[] = []
@@ -611,7 +642,7 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, config: Discipline
   
   // Generate segmented corridors with forbidden zones using exact waypoints
   if (track.length >= 2) {
-    const corridorSegments = generateSegmentedCorridors(track, { sp, tps, fp }, leftDistanceM, rightDistanceM, input, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet, segments, spAfterNm, tpAfterNm)
+    const corridorSegments = generateSegmentedCorridors(track, { sp, tps, fp }, leftDistanceM, rightDistanceM, input, sourceSegIdx, gapAfterIndex, mainSegmentIndexSet, segments, dashedSegmentIndices, spAfterNm, tpAfterNm)
     leftSegments.push(...corridorSegments.leftSegments)
     rightSegments.push(...corridorSegments.rightSegments)
     warnings.push(...corridorSegments.warnings)
@@ -630,7 +661,7 @@ export function buildPreciseCorridorsAndGates(input: GeoJSON, config: Discipline
     const dashLen = Math.round(run.dashLengthMinM) === Math.round(run.dashLengthMaxM)
       ? `${Math.round(run.dashLengthMinM)} m`
       : `${Math.round(run.dashLengthMinM)}-${Math.round(run.dashLengthMaxM)} m`
-    warnings.push(`Reconstructed a leg drawn as ${run.dashes} dashes of ${dashLen} (${(run.spanM / 1000).toFixed(1)} km total) into continuous track.`)
+    warnings.push(`Reconstructed a leg drawn as ${run.dashes} dashes of ${dashLen} (${(run.spanM / 1000).toFixed(1)} km total) — measured, but no corridor is drawn along a dashed leg.`)
   }
   if (diagnostics.gapCount > 0) {
     warnings.push(`The track has ${diagnostics.gapCount} gap(s); no corridor is drawn across a gap.`)

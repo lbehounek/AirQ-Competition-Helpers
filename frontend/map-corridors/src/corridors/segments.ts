@@ -125,9 +125,14 @@ const WELD_THRESHOLD_M = 50
  * All dash endpoints are kept, in order, so a dashed leg drawn along a curve
  * keeps its shape instead of collapsing to a chord.
  */
-export function mergeDashRuns(segments: Segment[]): { segments: Segment[], merged: TrackDiagnostics['mergedDashRuns'] } {
+export function mergeDashRuns(segments: Segment[]): { segments: Segment[], merged: TrackDiagnostics['mergedDashRuns'], dashedSegmentIndices: Set<number> } {
   const merged: TrackDiagnostics['mergedDashRuns'] = []
   const out: Segment[] = []
+  // Which of the returned segments were spliced back together from a dash run.
+  // The geometry is restored so waypoints snap and distances measure correctly,
+  // but a leg drawn dashed is a SCENIC leg and must never get a corridor — see
+  // generateSegmentedCorridors.
+  const dashedSegmentIndices = new Set<number>()
 
   // Only 2-point lines participate; anything richer is already real geometry.
   const isDash = (s: Segment) => s.coordinates.length === 2
@@ -199,13 +204,14 @@ export function mergeDashRuns(segments: Segment[]): { segments: Segment[], merge
       // Keep the first dash's index so the merged leg holds the run's position
       // in source order, which sourceSegIdx and mainSegmentIndexSet rely on.
       out.push({ index: segments[i].index, coordinates })
+      dashedSegmentIndices.add(segments[i].index)
     } else {
       for (let k = i; k <= end; k++) out.push(segments[k])
     }
     i = end + 1
   }
 
-  return { segments: out, merged }
+  return { segments: out, merged, dashedSegmentIndices }
 }
 
 export function extractAllSegments(input: GeoJSON): Segment[] {
@@ -240,11 +246,11 @@ export function extractAllSegments(input: GeoJSON): Segment[] {
   return segments
 }
 
-export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLatAlt[], sourceSegIdx: number[], gapAfterIndex: boolean[], segments: Segment[], mainSegmentIndexSet: Set<number>, diagnostics: TrackDiagnostics } {
+export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLatAlt[], sourceSegIdx: number[], gapAfterIndex: boolean[], segments: Segment[], mainSegmentIndexSet: Set<number>, dashedSegmentIndices: Set<number>, diagnostics: TrackDiagnostics } {
   const rawSegments = extractAllSegments(input)
   // Reconstruct dashed legs BEFORE the short-line filter, or their dashes are
   // deleted one by one and the leg is gone before anything can notice.
-  const { segments: allSegments, merged } = mergeDashRuns(rawSegments)
+  const { segments: allSegments, merged, dashedSegmentIndices } = mergeDashRuns(rawSegments)
   const mainTrackSegments = allSegments.filter(seg => !isDashedConnectorLine(seg.coordinates))
   const droppedShortSegments = allSegments.length - mainTrackSegments.length
   const sortedSegments = mainTrackSegments.sort((a, b) => a.index - b.index)
@@ -292,6 +298,7 @@ export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLat
     gapAfterIndex,
     segments: allSegments,
     mainSegmentIndexSet: mainSet,
+    dashedSegmentIndices,
     diagnostics: { droppedShortSegments, mergedDashRuns: merged, gapCount: gapAfterIndex.filter(Boolean).length },
   }
 }
