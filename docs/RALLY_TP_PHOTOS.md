@@ -60,23 +60,33 @@ document exists to prevent.
   reasoning is why `buildPdfSets.ts` leaves the turning-point branch positional
   while preserving handed-over letters for en-route photos.
 
-## What the code does NOT currently guarantee
+## What the code guarantees
 
-Stated plainly because a previous version of this note got it wrong, and an
-unverified belief is worse than no belief:
+`frontend/map-corridors/src/corridors/measurableMarkers.ts` holds the rule.
+`App.tsx` filters through it before all three photo-marker seams — the corridor
+match, the distance, and the "from TP" derivation — so a `pick-turning` marker
+gets no entry in any of them, and the answer sheet renders blank cells rather
+than a number.
 
-`frontend/map-corridors/src/App.tsx` runs `matchPointsToCorridors` over the
-**unfiltered** marker list. `pick-turning` is a flag set in place, not a
-removal, so a TP photo marker **does** get a corridor match and an NM distance
-computed, and can surface one on the answer sheet if it carries a letter
-(`labelToMarker` is built over all markers; the label picker in
-`MapProviderView` is not flag-gated).
+Guarded by two test files, deliberately at two levels:
 
-That number is meaningless for a TP photograph, but nothing today prevents its
-computation or display. If it should be excluded, that is a behaviour change —
-filter by flag before matching, or gate the answer-sheet row — and it needs its
-own regression test asserting a `pick-turning` marker never reaches the matcher.
-Not done here; this document only records that the guarantee is absent.
+- `__tests__/measurableMarkers.test.ts` — the predicate and its interaction
+  with the real matcher.
+- `__tests__/appExcludesTurningPhotos.test.tsx` — the **seam**: it renders App
+  and asserts the map never receives a distance entry for a turning-point
+  photo. Verified to fail when the filter is removed from App, which the unit
+  tests alone did not.
+
+Still NOT guaranteed, stated plainly so the next reader inherits the
+uncertainty rather than a false belief:
+
+- A **rejected** photo (`flag: 'reject'`) is still measured, and still appears
+  on the answer sheet if it carries a letter — even though the map hides it
+  (`map/photoLayers/markerVisibility.ts`). Deliberate for now: reject means the
+  operator discarded the photo, not that it is a different kind of photo.
+- Nothing stops a turning-point photo from being **given a letter** in the
+  first place; the label picker is not flag-gated. It simply produces empty
+  cells now instead of a misleading number.
 
 ## Related
 

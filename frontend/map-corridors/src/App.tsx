@@ -31,6 +31,7 @@ import {
 } from './config/mapProviders'
 import { calculateDistance } from './corridors/segments'
 import { matchPointsToCorridors as matchPointsToCorridorsPure, legKey } from './corridors/matchPoints'
+import { measurableMarkers } from './corridors/measurableMarkers'
 import { matchPointsIncremental } from './corridors/markerMatchCache'
 import { extractStartName, extractEndName } from './corridors/extractStartName'
 import { buildRouteWaypoints } from './corridors/buildRouteWaypoints'
@@ -439,9 +440,13 @@ function App() {
   // the matcher directly — it is per-point. See corridors/markerMatchCache.ts.
   // The site key keeps this pass's cache separate from the ground-marker pass
   // below, which shares the very same `matchPointsToCorridors`.
+  // Turning-point photographs are a correct/incorrect task, never measured —
+  // see corridors/measurableMarkers.ts for the rule and why a printed distance
+  // would leak the answer.
+  const markersToMeasure = useMemo(() => measurableMarkers(markers), [markers])
   const markerCorridorMatchById = useMemo(
-    () => matchPointsIncremental(matchPointsToCorridors, markers, 'photo-markers'),
-    [markers, matchPointsToCorridors],
+    () => matchPointsIncremental(matchPointsToCorridors, markersToMeasure, 'photo-markers'),
+    [markersToMeasure, matchPointsToCorridors],
   )
   // Ground markers (FAI signs) use the same corridor-matching as photo
   // markers so the answer sheet can list them with distance + from-TP
@@ -469,8 +474,8 @@ function App() {
     [],
   )
   const markerDistanceNmById = useMemo(
-    () => computeDistancesNm(markers, markerCorridorMatchById),
-    [markers, markerCorridorMatchById, computeDistancesNm],
+    () => computeDistancesNm(markersToMeasure, markerCorridorMatchById),
+    [markersToMeasure, markerCorridorMatchById, computeDistancesNm],
   )
   const groundMarkerDistanceNmById = useMemo(
     () => computeDistancesNm(groundMarkers, groundMarkerCorridorMatchById),
@@ -479,12 +484,13 @@ function App() {
 
   const markerFromTpById = useMemo(() => {
     const out: Record<string, string | null> = {}
-    for (const m of markers) {
+    // Same exclusion as the distances above — a TP photo has no "from TP".
+    for (const m of markersToMeasure) {
       const match = markerCorridorMatchById[m.id]
       out[m.id] = match ? (match.startName || null) : null
     }
     return out
-  }, [markers, markerCorridorMatchById])
+  }, [markersToMeasure, markerCorridorMatchById])
   const groundMarkerFromTpById = useMemo(() => {
     const out: Record<string, string | null> = {}
     for (const m of groundMarkers) {
