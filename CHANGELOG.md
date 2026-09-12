@@ -10,7 +10,7 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
-## [2.31.2] - 2026-09-12
+## [2.31.3] - 2026-09-12
 
 ### Fixed
 - **Map Corridors:** turning-point photographs are no longer measured. A photo
