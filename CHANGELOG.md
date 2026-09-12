@@ -10,6 +10,20 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.31.2] - 2026-09-12
+
+### Fixed
+- **Map Corridors:** turning-point photographs are no longer measured. A photo
+  flagged as a turning-point pick used to get a corridor match and a distance
+  like any en-route photo, and printed that distance on the answer sheet
+  whenever the photo carried a letter. Turning-point photographs are a
+  correct/incorrect task — the organiser supplies 11-17 of them and some
+  deliberately show a feature more than 1.0 NM from the turn point, for the crew
+  to identify — so the number was meaningless, and worse, it pointed at the
+  answer: the false photographs are exactly the ones that land far from the
+  route. Their distance and "from TP" cells are now blank. En-route photographs
+  are unaffected; photos marked as rejected are still measured.
+
 ## [2.31.1] - 2026-09-09
 
 Fixes a serious map error found in the real course files from the **MZB 2026
