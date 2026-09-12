@@ -32,20 +32,18 @@ onlyBuiltDependencies:
 # Migrated from `frontend/package.json` (pnpm.overrides) at PR #61 — same
 # pnpm v10 deprecation reason as above.
 overrides:
-  '@xmldom/xmldom': '0.8.13'
-  postcss: '8.5.10'
+  # NOTE on the exact-vs-conditional choice below: two entries here were once
+  # written as EXACT pins (`'@xmldom/xmldom': '0.8.13'`, `postcss: '8.5.10'`).
+  # Both later became the thing holding a vulnerable version in place — an
+  # exact override silently blocks the upstream patch, so a direct-dependency
+  # bump has no effect and the advisory never clears. Every entry is therefore
+  # conditional (`pkg@<patched`) with a caret target: it fires only while the
+  # resolution would be vulnerable, and becomes a no-op once upstream moves on.
+  # Do not convert these back to exact pins.
   flatted: '^3.4.2'
   lodash: '^4.18.1'
   picomatch: '^4.0.4'
-  tar: '^7.5.11'
   'yaml@<1.10.3': '^1.10.3'
-  'brace-expansion@<1.1.13': '^1.1.13'
-  'brace-expansion@>=2.0.0 <2.0.3': '^2.0.3'
-  # CVE-2026-45149 / GHSA-jxxr-4gwj-5jf2 — a large numeric range defeats
-  # brace-expansion's documented `max` ReDoS protection. Vulnerable range
-  # >=5.0.0 <5.0.6, so the previous <5.0.5 pin no longer covered 5.0.5.
-  # Widened to <5.0.6 / ^5.0.6.
-  'brace-expansion@>=4.0.0 <5.0.6': '^5.0.6'
   'protocol-buffers-schema@<3.6.1': '3.6.1'
   # CVE-2026-42338 / GHSA-v2v4-37r5-5v8g — XSS in ip-address Address6
   # HTML-emitting methods. Patched in 10.1.1. We only pull this in
@@ -54,11 +52,55 @@ overrides:
   # spanAll/parseMessage), so real-world exposure here is zero — the
   # override is defense-in-depth + cleans the Dependabot alert.
   'ip-address@<10.1.1': '^10.1.1'
-  # CVE-2026-44705 / GHSA-ph9p-34f9-6g65 — path traversal in `tmp` via
-  # unsanitized prefix/postfix/dir options (directory escape). Patched in
-  # 0.2.6. Pulled in transitively (dev only) via electron-builder →
-  # app-builder-lib → @malept/flatpak-bundler → tmp-promise; it runs at
-  # package-build time with internal static values, never user input, so
-  # real-world exposure is nil — the override is defense-in-depth + clears
-  # the Dependabot alert.
-  'tmp@<0.2.6': '^0.2.6'
+
+  # --- refreshed 2026-09-12: each entry below had been superseded by a newer
+  # --- advisory, and the previous pin was itself the vulnerable version.
+
+  # GHSA-jrc7-96c5-q579 and friends. xmldom was pinned at an exact 0.8.13,
+  # which is below the 0.8.15 patch line; the exact pin prevented the fix.
+  '@xmldom/xmldom@<0.8.15': '^0.8.15'
+  # PostCSS arbitrary file read. Was pinned exact at 8.5.10 (vulnerable);
+  # patched in 8.5.12, current advisory line is 8.5.18.
+  'postcss@<8.5.18': '^8.5.18'
+  # node-tar: decompression/parse DoS via unlimited input, and a negative
+  # tar-entry size infinite loop. Previous `^7.5.11` still resolved a
+  # vulnerable 7.5.13 on one path.
+  'tar@<7.5.19': '^7.5.19'
+  # brace-expansion ReDoS / unbounded expansion, three separate major lines.
+  # Each previous pin was overtaken by a later advisory.
+  'brace-expansion@<1.1.17': '^1.1.17'
+  'brace-expansion@>=2.0.0 <2.1.3': '^2.1.3'
+  'brace-expansion@>=4.0.0 <5.0.8': '^5.0.8'
+  # tmp: type-confusion bypass of _assertPath allows path traversal. The
+  # earlier 0.2.6 pin is exactly the version the new advisory names.
+  'tmp@<0.2.7': '^0.2.7'
+  # js-yaml: YAML merge-key chains force quadratic CPU, plus an empty
+  # merge-source variant. Build-time only (electron-builder reads its own
+  # config), but patch-level and free.
+  'js-yaml@>=4.0.0 <4.3.2': '^4.3.2'
+  # form-data: CRLF injection via unescaped field names. Build-time only.
+  'form-data@>=4.0.0 <4.0.6': '^4.0.6'
+  # undici: TLS certificate validation bypass, WebSocket DoS, and cross-origin
+  # request routing. Reaches us only through jsdom, i.e. the test environment.
+  # Scoped to the 7.x line so the unrelated 6.x resolution is left alone.
+  'undici@>=7.0.0 <7.29.0': '^7.29.0'
+  # browserslist: ReDoS. Dev-time only (bundler target resolution).
+  'browserslist@<4.28.7': '^4.28.7'
+  # electron-builder was bumped to 26.15.3, but its optional peer
+  # electron-builder-squirrel-windows stayed at 26.8.1 and dragged a second,
+  # older copy of app-builder-lib (<26.15.0, uncontrolled search path) and
+  # builder-util-runtime (<9.7.0, cross-origin redirect leak) into the tree.
+  # Pinning the sibling fixes both at the root rather than overriding each.
+  'electron-builder-squirrel-windows@<26.15.3': '^26.15.3'
+  # electron-updater (reached transitively through electron-builder; desktop
+  # declares no runtime dependencies of its own) still pinned an old
+  # builder-util-runtime and app-builder-lib on its own path. Both are
+  # patch-level within their major.
+  'builder-util-runtime@<9.7.0': '^9.7.0'
+  'app-builder-lib@<26.15.0': '^26.15.0'
+  #
+  # KNOWN, NOT FIXABLE: extract-zip (2 high advisories) has no patched release
+  # — the advisory's patched range is `<0.0.0`. It is a build-time dependency
+  # of electron (not electron-builder) — it unpacks the downloaded binary at
+  # install time and is never shipped in the app bundle. Revisit if upstream
+  # publishes a fix or electron drops it.

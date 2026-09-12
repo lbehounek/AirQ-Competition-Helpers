@@ -10,6 +10,24 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.31.4] - 2026-09-12
+
+### Security
+- **Map Corridors:** updated the map engine (MapLibre GL) past a critical
+  cross-site-scripting flaw in its HTML sanitiser. No fix exists in the old 5.x
+  line, so this is a major engine update, 5.19 to 6.9.
+- **Desktop launcher:** updated Electron to 39.8.10, closing three flaws in the
+  framework itself — a context-isolation bypass, a custom-protocol issue and a
+  sandboxed-iframe popup bypass.
+- Refreshed the build- and test-time dependency tree. The project's own security
+  pins had aged into the vulnerable range and, being exact rather than
+  conditional, were blocking the very patches they existed to deliver. Known
+  advisories across the project drop from 90 to 7 — none critical, and the two
+  remaining are in a build-time package with no published fix.
+
+Nothing here changes how the apps behave. The map engine update is the only
+change that touches what you see, and it is a like-for-like replacement.
+
 ## [2.31.1] - 2026-09-09
 
 Fixes a serious map error found in the real course files from the **MZB 2026
