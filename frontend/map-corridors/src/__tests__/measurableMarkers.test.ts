@@ -51,9 +51,10 @@ describe('measurableMarkers', () => {
     expect(measurableMarkers(input).map(m => m.id)).toEqual(['a', 'c', 'e'])
   })
 
-  it('returns the SAME array when nothing is excluded, so memos downstream do not re-run', () => {
-    // Referential identity matters: App feeds this straight into a useMemo
-    // dependency, and a fresh array each render would re-match every marker.
+  it('returns the SAME array when nothing is excluded', () => {
+    // Saves an allocation on the common path and makes `result === markers`
+    // hold for a debugger. It is NOT what keeps downstream memos stable —
+    // App's own useMemo does that — so do not cite it as such.
     const input = [marker('a', 'pick-track'), marker('b', null)]
     expect(measurableMarkers(input)).toBe(input)
   })

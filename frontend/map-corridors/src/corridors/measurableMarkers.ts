@@ -37,8 +37,13 @@ export function isMeasurablePhoto(flag: PhotoFlag | null | undefined): boolean {
 
 /**
  * Filter a marker list down to the ones a distance may be computed for.
- * Returns the input array unchanged when nothing is excluded, so React memos
- * downstream keep their referential identity and do not re-run.
+ *
+ * Returns the input array itself when nothing is excluded. That buys one less
+ * allocation on the common all-measurable path, and makes `result === markers`
+ * true for anyone debugging — it does NOT control whether downstream memos
+ * re-run. App wraps this call in `useMemo(..., [markers])`, so the identity
+ * handed downstream is pinned by that memo, and returning a fresh array here
+ * every time would behave identically.
  */
 export function measurableMarkers<T extends { flag?: PhotoFlag | null }>(markers: readonly T[]): readonly T[] {
   const kept = markers.filter(m => isMeasurablePhoto(m.flag))
