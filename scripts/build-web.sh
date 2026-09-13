@@ -12,15 +12,28 @@
 # Prerequisites:
 #   - pnpm installed
 #   - `pnpm install --frozen-lockfile` has run (or `pnpm install` for local dev)
-#   - `frontend/.env` at the repo root provides VITE_MAPBOX_TOKEN / VITE_MAPYCZ_TOKEN
-#     (loaded by each sub-app's Vite config via envDir)
+#   - Map tokens: intentionally NOT supplied for a public web build. Vite inlines
+#     `import.meta.env.VITE_*` at build time, so anything set here ends up
+#     readable in the shipped JS. Built without them, Map Corridors renders no
+#     base map until the user supplies their own token at runtime (UI pending).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-echo "=== Building @airq/competitions CJS output (needed by dependents) ==="
-pnpm --dir frontend --filter @airq/competitions run build
+# @airq/competitions has no build step: it is an ESM workspace package that
+# exports ./src/index.ts directly, like @airq/shared-discipline. The CJS `dist`
+# output only ever existed to feed Electron's main.js, which this web bundle
+# does not involve.
+
+# Map tokens are stripped from the build environment, not merely "not set".
+# Vite substitutes `import.meta.env.VITE_*` with the literal value at build
+# time, so a token present in the shell or in any .env the configured `envDir`
+# picks up ends up as plain text in the shipped JS. Desktop builds legitimately
+# carry a token; this web build must never inherit it just because the machine
+# happens to be set up for desktop work.
+export VITE_MAPBOX_TOKEN=
+export VITE_MAPYCZ_TOKEN=
 
 echo "=== Building sub-apps (photo-helper, map-corridors, landing) ==="
 pnpm --dir frontend --filter @airq/photo-helper build
@@ -33,6 +46,27 @@ mkdir -p public
 cp -a frontend/landing/dist/.        public/
 cp -a frontend/photo-helper/dist     public/photo-helper
 cp -a frontend/map-corridors/dist    public/map-corridors
+
+# Belt and braces: verify the ARTIFACT, not the intent. The export above can be
+# defeated — someone edits this script, adds a .env.production, or Vite changes
+# precedence — and the failure is silent and public. This check does not care how
+# a token got in; it refuses to let one leave the machine. Only file NAMES are
+# printed; the matched value is never echoed.
+echo "=== Checking the bundle for leaked map tokens ==="
+# Mapbox public (pk.) and secret (sk.) tokens are JWTs with a fixed prefix.
+LEAKED=$(grep -rlE '(pk|sk)\.ey[A-Za-z0-9_.-]{20,}' public 2>/dev/null || true)
+if [ -n "$LEAKED" ]; then
+  echo "REFUSING TO CONTINUE — a Mapbox token is present in the built bundle." >&2
+  echo "Anything in public/ is world-readable once deployed. Affected files:" >&2
+  echo "$LEAKED" | sed 's/^/  /' >&2
+  echo "Rebuild in a shell without VITE_MAPBOX_TOKEN / VITE_MAPYCZ_TOKEN set," >&2
+  echo "and check for a .env the sub-apps' envDir may be loading." >&2
+  exit 1
+fi
+echo "No map tokens found in public/."
+# NOTE: this only detects MAPBOX-shaped tokens. It is not a general secret
+# scanner — a Firebase API key or anything else would pass. Widen the pattern
+# here if the web build ever starts carrying other credentials.
 
 echo "=== Web bundle ready at $REPO_ROOT/public ==="
 du -sh public/* 2>/dev/null | sort
