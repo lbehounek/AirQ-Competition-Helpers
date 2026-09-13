@@ -57,6 +57,13 @@ change that touches what you see, and it is a like-for-like replacement.
   route. Their distance and "from TP" cells are now blank. En-route photographs
   are unaffected; photos marked as rejected are still measured.
 
+## [2.31.2] - 2026-09-09
+
+Documentation only, no user-visible change. Records why turning-point
+photographs must never be validated against their waypoint's position: some are
+deliberately wrong, and spotting them is the crew's task. See
+`docs/RALLY_TP_PHOTOS.md`.
+
 ## [2.31.1] - 2026-09-09
 
 Fixes a serious map error found in the real course files from the **MZB 2026
