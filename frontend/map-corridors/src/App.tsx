@@ -1552,16 +1552,35 @@ function App() {
         {/* Title row */}
         <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {competitionId && window.electronAPI && (
-              <IconButton size="small" onClick={() => window.electronAPI?.goHome?.()} sx={{ color: 'white' }} title={t('app.backToMenu')}>
+            {/* Not gated on window.electronAPI: in the web build there IS no
+                Electron shell, and hiding this left a browser user with no way
+                back to the launcher at all. `/` is the landing app's route. */}
+            {competitionId && (
+              <IconButton
+                size="small"
+                onClick={() => {
+                  if (window.electronAPI?.goHome) window.electronAPI.goHome()
+                  else window.location.href = '/'
+                }}
+                sx={{ color: 'white' }}
+                title={t('app.backToMenu')}
+              >
                 <Home />
               </IconButton>
             )}
-            {competitionId && window.electronAPI && (
+            {/* Routed through handleSendToEditor rather than calling
+                navigateToApp directly. Two reasons: it carries the browser
+                fallback (buildEditorHref stamps ?discipline=, which the web
+                build has no launcher to supply), and it awaits
+                flushPendingMapPicks first — the map-picks writer debounces
+                300 ms, so navigating straight away could drop the last flag or
+                label change. The panel's own button has always gone through
+                this path; the header one did not. */}
+            {competitionId && (
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => window.electronAPI?.navigateToApp?.('photo-helper', competitionId)}
+                onClick={() => { void handleSendToEditor() }}
                 startIcon={<PhotoCamera sx={{ fontSize: 18 }} />}
                 sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 0.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
               >
