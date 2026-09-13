@@ -1,0 +1,83 @@
+name: Build and Deploy Web
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Preview channel name (use "live" for production)'
+        required: true
+        default: 'manual'
+
+concurrency:
+  group: web-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+env:
+  FIREBASE_PROJECT_ID: airq-competition-helpers
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: 'frontend/pnpm-lock.yaml'
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web bundle
+        env:
+          VITE_MAPBOX_TOKEN: ${{ secrets.VITE_MAPBOX_TOKEN_WEB }}
+          VITE_MAPYCZ_TOKEN: ${{ secrets.VITE_MAPYCZ_TOKEN_WEB }}
+        run: bash scripts/build-web.sh
+
+      - name: Deploy to preview channel
+        if: github.event_name == 'pull_request'
+        uses: FirebaseExtended/action-hosting-deploy@0cbcac4740c2bfb00d632f0b863b57713124eb5a # v0.9.0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AIRQ_COMPETITION_HELPERS }}
+          projectId: ${{ env.FIREBASE_PROJECT_ID }}
+          channelId: pr-${{ github.event.pull_request.number }}
+          expires: 7d
+
+      - name: Deploy to live channel
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: FirebaseExtended/action-hosting-deploy@0cbcac4740c2bfb00d632f0b863b57713124eb5a # v0.9.0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AIRQ_COMPETITION_HELPERS }}
+          projectId: ${{ env.FIREBASE_PROJECT_ID }}
+          channelId: live
+
+      - name: Deploy to manual channel
+        if: github.event_name == 'workflow_dispatch'
+        uses: FirebaseExtended/action-hosting-deploy@0cbcac4740c2bfb00d632f0b863b57713124eb5a # v0.9.0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AIRQ_COMPETITION_HELPERS }}
+          projectId: ${{ env.FIREBASE_PROJECT_ID }}
+          channelId: ${{ github.event.inputs.channel }}
+          expires: 7d

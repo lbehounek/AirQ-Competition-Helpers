@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Monitor pinned GitHub Actions SHAs across all workflows.
+  # Mitigates the Trivy 2026-03 tag-hijack class of attack — when an action's
+  # newer SHA is published, Dependabot opens a PR to bump our pin.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+
+  # Monitor the frontend pnpm workspace for upstream vulnerabilities.
+  # Runs against `frontend/pnpm-lock.yaml` (pnpm v10 lockfile; Dependabot
+  # supports it natively).
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "frontend"
+    # Auto-rebase draft PRs when the target branch advances so pending
+    # security bumps don't go stale.
+    rebase-strategy: "auto"

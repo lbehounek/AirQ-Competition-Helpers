@@ -1,0 +1,41 @@
+{
+  "app": {
+    "title": "Navigation Flying Tools",
+    "subtitle": "Select a competition and application",
+    "browserUnsupported": {
+      "title": "Unsupported browser",
+      "body": "This application requires a modern browser with OPFS (Origin Private File System) support. Please use Chrome 108+, Edge 108+, Safari 15.2+, or Firefox 111+, or download the desktop version.",
+      "downloadDesktop": "Download desktop version"
+    }
+  },
+  "corridors": {
+    "title": "Photo Placement",
+    "desc": "Locate competition photos on the track"
+  },
+  "helper": {
+    "title": "Photo Editor",
+    "desc": "Organize and label competition photos"
+  },
+  "competition": {
+    "label": "Competition",
+    "new": "+ New Competition",
+    "loading": "Loading...",
+    "empty": "No competitions — create one",
+    "promptName": "New competition name:",
+    "defaultName": "Competition",
+    "selectFirst": "Select a competition first",
+    "deleteBtn": "Delete",
+    "confirmDelete": "Delete",
+    "cancelDelete": "Cancel",
+    "create": "Create",
+    "deleteConfirmText": "Delete \"{{name}}\"? This cannot be undone.",
+    "cleanupAction": "Clean up",
+    "cleanupDismiss": "Dismiss",
+    "cleanupMsg": "{{count}} competitions are older than 30 days. Delete them?",
+    "cleanupExcess": "You have {{count}} competitions (max 10). Consider deleting older ones."
+  },
+  "discipline": {
+    "precision": "Precision",
+    "rally": "Rally"
+  }
+}

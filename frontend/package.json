@@ -6,6 +6,13 @@
     "dev:photo-helper": "pnpm --filter @airq/photo-helper dev",
     "dev:map-corridors": "pnpm --filter @airq/map-corridors dev",
     "build:all": "pnpm -r build",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "dev:landing": "pnpm --filter @airq/landing dev",
+    "build:web": "bash ../scripts/build-web.sh",
+    "hosting:emulate": "firebase emulators:start --only hosting",
+    "hosting:preview": "firebase hosting:channel:deploy"
+  },
+  "devDependencies": {
+    "firebase-tools": "15.15.0"
   }
 }
