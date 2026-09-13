@@ -65,18 +65,35 @@ const pointFeature = (name: string, coordinates: number[]) =>
 describe('MZB 2026 — the reported failure', () => {
   const gj = loadFixture('MZB_2026_RED.kml')
 
-  it('builds all eight legs instead of five', () => {
+  it('draws a corridor on the three SOLID legs only — never along a dashed one', () => {
     const out = buildPreciseCorridorsAndGates(gj, DISCIPLINE_CONFIGS.rally)
+    // A leg the author drew dashed is a scenic leg: reconstructed so the
+    // waypoints snap and the course measures correctly, but deliberately
+    // uncovered. Five of MZB's eight legs are dashed, so three corridors.
     expect(legNames(out)).toEqual([
       '5NM-after-SP→TP 1',
-      '1NM-after-TP 1→TP 2',
-      '1NM-after-TP 2→TP 3',
       '1NM-after-TP 3→TP 4',
-      '1NM-after-TP 4→TP 5',
-      '1NM-after-TP 5→TP 6',
       '1NM-after-TP 6→TP 7',
-      '1NM-after-TP 7→FP',
     ])
+  })
+
+  it('says why each dashed leg has no corridor', () => {
+    const out = buildPreciseCorridorsAndGates(gj, DISCIPLINE_CONFIGS.rally)
+    const dashed = out.warnings.filter(w => w.includes('drawn as a dashed line'))
+    expect(dashed).toHaveLength(5)
+    for (const pair of ['TP 1 → TP 2', 'TP 2 → TP 3', 'TP 4 → TP 5', 'TP 5 → TP 6', 'TP 7 → FP']) {
+      expect(dashed.some(w => w.includes(pair)), `expected a no-corridor warning for ${pair}`).toBe(true)
+    }
+  })
+
+  it('still measures and positions the dashed legs it does not cover', () => {
+    // The reconstruction is what keeps TP 5 on its label and the course at its
+    // true length — suppressing the CORRIDOR must not undo the GEOMETRY fix.
+    const { track, dashedSegmentIndices } = buildContinuousTrackWithSources(gj)
+    expect(dashedSegmentIndices.size).toBe(5)
+    let length = 0
+    for (let i = 1; i < track.length; i++) length += calculateDistance(track[i - 1], track[i])
+    expect(length / 1000).toBeCloseTo(120.31, 1)
   })
 
   it('no longer skips TP 5 — every turning point snaps to its own label', () => {
@@ -227,8 +244,32 @@ describe('mergeDashRuns — what counts as a dashed leg', () => {
     expect(mergeDashRuns(segs).segments).toEqual(segs)
   })
 
+  it('does NOT mark touching pieces as dashed — they are drawn, just chopped up', () => {
+    // "Dashed" in these KMLs means an UNDRAWN scenic leg. A solid leg an
+    // exporter split into touching sub-500 m pieces is drawn, so it is still
+    // repaired (merged) but must KEEP its corridor. Marking it dashed stripped
+    // the corridor off a real leg — a regression against the previous release.
+    const { merged, dashedSegmentIndices } = mergeDashRuns(dashRun(14, 50, 6, 489, 0))
+    expect(merged, 'still repaired').toHaveLength(1)
+    expect(dashedSegmentIndices.size, 'but not dashed').toBe(0)
+  })
+
+  it('does NOT mark digitising slop as dashed', () => {
+    // A 50 m seam between 11 km pieces is a rounding artefact, not a gap the
+    // author drew. Relative spacing separates it from a real dashed leg, where
+    // the gaps are comparable to the dashes.
+    const segs = dashRun(14, 50, 3, 11_000, 50).map((seg, index) => ({ ...seg, index }))
+    expect(mergeDashRuns(segs).dashedSegmentIndices.size).toBe(0)
+  })
+
+  it('marks a genuinely broken line as dashed', () => {
+    // MZB's real spacing: gap equal to the dash.
+    const { dashedSegmentIndices } = mergeDashRuns(dashRun(14, 50, 6, 400, 400))
+    expect(dashedSegmentIndices.size).toBe(1)
+  })
+
   it('handles an empty input', () => {
-    expect(mergeDashRuns([])).toEqual({ segments: [], merged: [] })
+    expect(mergeDashRuns([])).toEqual({ segments: [], merged: [], dashedSegmentIndices: new Set() })
   })
 
   it('leaves a normally-authored course alone instead of calling it a dashed leg', () => {
@@ -297,6 +338,30 @@ describe('extractAllSegments — geometry shapes that used to render nothing', (
   it('skips a degenerate one-point line rather than emitting it', () => {
     const gj = featureCollection([lineFeature([[14, 50]])] as FeatureCollection['features'])
     expect(extractAllSegments(gj)).toHaveLength(0)
+  })
+})
+
+describe('a dashed leg spanning a single track edge', () => {
+  it('still loses its corridor — the rule must not depend on span length', () => {
+    // Reachable when the dash run is the LAST segment of the track: nothing
+    // follows to push the span past the run, so start and end land on one edge.
+    // With the loop alone (lo === hi) the body never ran, so the leg kept its
+    // corridor while the banner announced it had none.
+    const dashes = dashRun(14, 50.2, 3, 500, 250).map((seg, i) => ({ ...seg, index: i + 1 }))
+    const gj = featureCollection([
+      lineFeature([[14, 50], [14, 50.2]]),
+      ...dashes.map(d => lineFeature(d.coordinates as number[][])),
+      pointFeature('SP', [14, 50]),
+      pointFeature('TP 1', [14, 50.2]),
+      pointFeature('FP', [14, dashes[dashes.length - 1].coordinates[1][1]]),
+    ] as FeatureCollection['features'])
+
+    const { dashedSegmentIndices } = buildContinuousTrackWithSources(gj)
+    expect(dashedSegmentIndices.size, 'the run must be classified dashed').toBe(1)
+
+    const out = buildPreciseCorridorsAndGates(gj, DISCIPLINE_CONFIGS.rally)
+    expect(legNames(out)).not.toContain('1NM-after-TP 1→FP')
+    expect(out.warnings.some(w => w.includes('TP 1 → FP') && w.includes('dashed'))).toBe(true)
   })
 })
 

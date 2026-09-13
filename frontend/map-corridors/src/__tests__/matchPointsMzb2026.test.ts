@@ -271,44 +271,20 @@ function loadCourse(): GeoJSON {
 }
 
 /**
- * The three legs whose corridors the SHREDDED course could not build: their
- * track is drawn as a chain of dashed connectors, so `preciseCorridor` finds
- * no continuous span and emits no corridor. Measured on the fixture as
- * authored, before the track-repair work landed in `segments.ts`.
+ * The five legs MZB 2026 draws as DASHED lines. A dashed leg is a scenic leg:
+ * `preciseCorridor` reconstructs its geometry so the waypoints snap and the
+ * course measures correctly, but deliberately draws no corridor along it — so
+ * these stay uncovered and the matcher must attribute photos there by
+ * projection rather than by containment.
  */
-const SHREDDED_MISSING_LEGS: ReadonlyArray<[string, string]> = [
+const UNCOVERED_DASHED_LEGS: ReadonlyArray<[string, string]> = [
   ['TP 1', 'TP 2'],
   ['TP 2', 'TP 3'],
+  ['TP 4', 'TP 5'],
+  ['TP 5', 'TP 6'],
   ['TP 7', 'FP'],
 ]
 
-/**
- * Reproduce the corridor set the matcher actually saw during the MZB 2026
- * rally: five corridors (SP→TP1, TP3→TP4, TP4→TP5, TP5→TP6, TP6→TP7) and
- * three uncovered legs.
- *
- * Simulated by dropping corridors rather than by parsing an unrepaired
- * track, because the track repair now lives in the parse layer — there is
- * no longer a way to ask the parser for the broken world, and this suite
- * must keep testing it: the matcher has to be right whether or not the
- * repair is present, and a future change to the repair heuristic can put
- * any single leg back into the "no corridor" state at any time. The
- * matcher's contract is over (polygons, waypoints, coveredLegs), so
- * reconstructing that triple IS reconstructing its input faithfully.
- */
-function shred(pipeline: Pipeline): Pipeline {
-  const missing = new Set(SHREDDED_MISSING_LEGS.map(([a, b]) => legKey(a, b)))
-  const corridorPolygons = pipeline.corridorPolygons.filter(
-    (c) => !missing.has(legKey(extractStartName(c.name), extractEndName(c.name))),
-  )
-  const coveredLegs = new Set<string>()
-  for (const c of corridorPolygons) {
-    const from = extractStartName(c.name)
-    const to = extractEndName(c.name)
-    if (from && to) coveredLegs.add(legKey(from, to))
-  }
-  return { corridorPolygons, waypoints: pipeline.waypoints, coveredLegs }
-}
 
 function attribute(pipeline: Pipeline): Record<string, string | null> {
   const matches = matchPointsToCorridors(
@@ -332,20 +308,19 @@ describe('MZB 2026 en-route photo attribution (real course, real EXIF)', () => {
     ])
   })
 
-  it('attributes all 18 photos to the correct TP on the SHREDDED course (3 legs without a corridor)', () => {
-    const pipeline = shred(buildPipeline(loadCourse()))
-    // Pin the world this assertion runs in: exactly the five corridors the
-    // rally actually had. Under the old hard exclusion this input produced
-    // the documented misattributions, up to 25.9 km out. Membership is
-    // asserted leg by leg rather than as a whole-set equality because the
-    // SP leg's corridor name is authored by `preciseCorridor` and its exact
-    // spelling ("SP→TP1" vs "SP→TP 1") is not this test's business.
-    expect(pipeline.corridorPolygons).toHaveLength(5)
-    for (const [from, to] of SHREDDED_MISSING_LEGS) {
-      expect(pipeline.coveredLegs.has(legKey(from, to)), `${from}→${to} must be uncovered`).toBe(false)
+  it('attributes all 18 photos correctly with five legs left uncovered (the course as authored)', () => {
+    const pipeline = buildPipeline(loadCourse())
+    // MZB draws five of its eight legs dashed, so only the three solid legs
+    // carry a corridor. This is the hard case for the matcher: most photos sit
+    // on a leg that has no polygon to be contained by, and must reach the right
+    // turning point through projection. Under the old hard exclusion this input
+    // produced the documented misattributions, up to 25.9 km out.
+    expect(pipeline.corridorPolygons).toHaveLength(3)
+    for (const [from, to] of UNCOVERED_DASHED_LEGS) {
+      expect(pipeline.coveredLegs.has(legKey(from, to)), `${from}→${to} is dashed and must be uncovered`).toBe(false)
     }
-    for (const [from, to] of [['TP 3', 'TP 4'], ['TP 4', 'TP 5'], ['TP 5', 'TP 6'], ['TP 6', 'TP 7']]) {
-      expect(pipeline.coveredLegs.has(legKey(from, to)), `${from}→${to} must be covered`).toBe(true)
+    for (const [from, to] of [['TP 3', 'TP 4'], ['TP 6', 'TP 7']]) {
+      expect(pipeline.coveredLegs.has(legKey(from, to)), `${from}→${to} is solid and must be covered`).toBe(true)
     }
     expect(attribute(pipeline)).toEqual(EXPECTED)
   })
@@ -400,9 +375,11 @@ describe('MZB 2026 en-route photo attribution (real course, real EXIF)', () => {
 
     // Both worlds: the invariant is a property of the matcher, not of how
     // many corridors the track happened to yield.
+    // `as parsed` is already the sparse world (three corridors, five dashed
+    // legs uncovered); `repaired` is the dense one (every leg covered). The
+    // invariant must hold at both ends of that range.
     const worlds: Array<[string, Pipeline]> = [
       ['as parsed', asParsed],
-      ['shredded', shred(asParsed)],
       ['repaired', buildPipeline(repairDashRuns(loadCourse()))],
     ]
     for (const [world, pipeline] of worlds) {
@@ -434,7 +411,7 @@ describe('MZB 2026 en-route photo attribution (real course, real EXIF)', () => {
     // 600 m width. Pin both the geometry and the answer so a future change
     // that widens/narrows corridors shows up here as an explained failure
     // rather than a mystery.
-    const pipeline = shred(buildPipeline(loadCourse()))
+    const pipeline = buildPipeline(loadCourse())
     expect(pipeline.coveredLegs.has(legKey('TP 6', 'TP 7'))).toBe(true)
     const named = attribute(pipeline)
     expect(named['s2,7']).toBe('TP 6')

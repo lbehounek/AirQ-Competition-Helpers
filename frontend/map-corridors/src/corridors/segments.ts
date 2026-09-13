@@ -96,6 +96,16 @@ const COINCIDENT_VERTEX_M = 1
 // Mirrors the 50 m weld threshold in buildContinuousTrackWithSources: a gap at
 // least this wide is what would have become a gap chord.
 const WELD_THRESHOLD_M = 50
+// How wide the spaces must be, relative to the dashes, before a run counts as a
+// DASHED leg rather than a solid line the exporter happened to chop up.
+//
+// In these KMLs "dashed" means an UNDRAWN scenic leg — the author broke the line
+// on purpose, so the gaps are comparable to the dashes (every gap in MZB 2026
+// measures gap/dash = 1.00 exactly). Pieces that TOUCH are drawn, just split,
+// and must keep their corridor. Digitising slop — a 50 m seam between 11 km
+// pieces — is also drawn. A quarter of the dash length separates all three
+// cases with room to spare.
+const MIN_GAP_TO_DASH_RATIO = 0.25
 
 /**
  * Rebuild legs that the course author drew as a *dashed line*.
@@ -125,9 +135,14 @@ const WELD_THRESHOLD_M = 50
  * All dash endpoints are kept, in order, so a dashed leg drawn along a curve
  * keeps its shape instead of collapsing to a chord.
  */
-export function mergeDashRuns(segments: Segment[]): { segments: Segment[], merged: TrackDiagnostics['mergedDashRuns'] } {
+export function mergeDashRuns(segments: Segment[]): { segments: Segment[], merged: TrackDiagnostics['mergedDashRuns'], dashedSegmentIndices: Set<number> } {
   const merged: TrackDiagnostics['mergedDashRuns'] = []
   const out: Segment[] = []
+  // Which of the returned segments were spliced back together from a dash run.
+  // The geometry is restored so waypoints snap and distances measure correctly,
+  // but a leg drawn dashed is a SCENIC leg and must never get a corridor — see
+  // generateSegmentedCorridors.
+  const dashedSegmentIndices = new Set<number>()
 
   // Only 2-point lines participate; anything richer is already real geometry.
   const isDash = (s: Segment) => s.coordinates.length === 2
@@ -199,13 +214,21 @@ export function mergeDashRuns(segments: Segment[]): { segments: Segment[], merge
       // Keep the first dash's index so the merged leg holds the run's position
       // in source order, which sourceSegIdx and mainSegmentIndexSet rely on.
       out.push({ index: segments[i].index, coordinates })
+      // Repair and suppression are NOT the same test. Every short run gets
+      // spliced back together above, because the naive pipeline would have
+      // destroyed it either way. Only a run whose pieces are genuinely SEPARATED
+      // is an undrawn scenic leg that must lose its corridor — attaching that
+      // destructive consequence to the repair trigger stripped the corridor off
+      // solid legs an exporter had merely chopped into sub-500 m pieces.
+      const meanDash = dashLengths.reduce((a, b) => a + b, 0) / dashLengths.length
+      if (maxGapInRun >= MIN_GAP_TO_DASH_RATIO * meanDash) dashedSegmentIndices.add(segments[i].index)
     } else {
       for (let k = i; k <= end; k++) out.push(segments[k])
     }
     i = end + 1
   }
 
-  return { segments: out, merged }
+  return { segments: out, merged, dashedSegmentIndices }
 }
 
 export function extractAllSegments(input: GeoJSON): Segment[] {
@@ -240,11 +263,11 @@ export function extractAllSegments(input: GeoJSON): Segment[] {
   return segments
 }
 
-export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLatAlt[], sourceSegIdx: number[], gapAfterIndex: boolean[], segments: Segment[], mainSegmentIndexSet: Set<number>, diagnostics: TrackDiagnostics } {
+export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLatAlt[], sourceSegIdx: number[], gapAfterIndex: boolean[], segments: Segment[], mainSegmentIndexSet: Set<number>, dashedSegmentIndices: Set<number>, diagnostics: TrackDiagnostics } {
   const rawSegments = extractAllSegments(input)
   // Reconstruct dashed legs BEFORE the short-line filter, or their dashes are
   // deleted one by one and the leg is gone before anything can notice.
-  const { segments: allSegments, merged } = mergeDashRuns(rawSegments)
+  const { segments: allSegments, merged, dashedSegmentIndices } = mergeDashRuns(rawSegments)
   const mainTrackSegments = allSegments.filter(seg => !isDashedConnectorLine(seg.coordinates))
   const droppedShortSegments = allSegments.length - mainTrackSegments.length
   const sortedSegments = mainTrackSegments.sort((a, b) => a.index - b.index)
@@ -292,6 +315,7 @@ export function buildContinuousTrackWithSources(input: GeoJSON): { track: LonLat
     gapAfterIndex,
     segments: allSegments,
     mainSegmentIndexSet: mainSet,
+    dashedSegmentIndices,
     diagnostics: { droppedShortSegments, mergedDashRuns: merged, gapCount: gapAfterIndex.filter(Boolean).length },
   }
 }

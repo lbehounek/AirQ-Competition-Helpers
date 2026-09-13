@@ -10,6 +10,21 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.31.5] - 2026-09-12
+
+### Fixed
+- **Map Corridors:** no corridor is drawn along a leg the course draws as a
+  **dashed** line. A dashed leg is a scenic leg and has never carried a
+  corridor; version 2.31.1 started drawing them, which was wrong. On the MZB
+  2026 course that meant eight corridors where there should be three — one for
+  each of the three legs actually drawn solid.
+
+  What 2.31.1 got right is kept: the dashed legs' geometry is still
+  reconstructed, so every turning point still snaps to its own position (TP 5
+  was 6.4 km out before that fix) and the course still measures its true length
+  rather than 13 km short. The warning banner now says which legs carry no
+  corridor and why.
+
 ## [2.31.4] - 2026-09-12
 
 ### Security
@@ -41,6 +56,13 @@ change that touches what you see, and it is a like-for-like replacement.
   answer: the false photographs are exactly the ones that land far from the
   route. Their distance and "from TP" cells are now blank. En-route photographs
   are unaffected; photos marked as rejected are still measured.
+
+## [2.31.2] - 2026-09-09
+
+Documentation only, no user-visible change. Records why turning-point
+photographs must never be validated against their waypoint's position: some are
+deliberately wrong, and spotting them is the crew's task. See
+`docs/RALLY_TP_PHOTOS.md`.
 
 ## [2.31.1] - 2026-09-09
 
