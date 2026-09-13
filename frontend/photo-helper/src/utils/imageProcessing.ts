@@ -38,11 +38,9 @@
  * destroys the task. Only en-route photographs are SCORED by distance — the
  * corridor/leg matching in map-corridors exists for them.
  *
- * Note this is a rule about scoring, NOT a guarantee the code enforces: today
- * map-corridors runs `matchPointsToCorridors` over the unfiltered marker list
- * (App.tsx), so a `pick-turning` marker still gets a distance computed, and can
- * surface one on the answer sheet if it carries a letter. Harmless as long as
- * nobody treats that number as meaningful — do not build on it.
+ * map-corridors enforces this: `corridors/measurableMarkers.ts` filters
+ * `pick-turning` markers out before corridor matching, distance and "from TP",
+ * so the answer sheet shows blank cells for them.
  *
  * See docs/RALLY_TP_PHOTOS.md.
  */
