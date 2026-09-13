@@ -259,12 +259,24 @@ function spanTouchesDashed(fromIdx: number, toIdx: number, sourceSegIdx: number[
   if (dashed.size === 0) return false
   const lo = Math.max(0, Math.min(fromIdx, toIdx))
   const hi = Math.min(Math.max(fromIdx, toIdx), sourceSegIdx.length - 1)
-  // Attribute EDGES, not vertices. Where two segments meet, the track builder
-  // pushes only the later segment's coords[1..], so the shared boundary vertex
-  // keeps the EARLIER segment's index — the edge (i, i+1) therefore belongs to
-  // `sourceSegIdx[i + 1]`. Starting the scan at `lo` instead of `lo + 1` made
-  // the first edge of every solid leg that follows a dashed one look dashed,
-  // which suppressed the corridors on MZB's solid TP 3→TP 4 and TP 6→TP 7.
+  // Check exactly the vertices `buildPreciseSlice` will put into this corridor:
+  // the span's INTERIOR vertices, lo+1 … hi. Its loop runs
+  // `start.segmentIndex + 1 … end.segmentIndex`, so this mirrors it exactly.
+  //
+  // The terminal edge is deliberately NOT checked. The end waypoint snaps part
+  // way along the edge it shares with the next leg, so on MZB that edge already
+  // belongs to the following dashed segment while the leg itself is solid —
+  // testing it would wrongly suppress SP→TP 1. Scanning from `lo` rather than
+  // `lo + 1` is the mirror-image error: it suppressed the solid TP 3→TP 4 and
+  // TP 6→TP 7. Both were caught by running the real fixtures, not by reasoning.
+  if (lo === hi) {
+    // A single-edge span has no interior vertex, so the loop below would see
+    // nothing and the leg would silently keep its corridor while the banner
+    // claimed otherwise. Judge that one edge directly — it carries the later
+    // vertex's index. Reachable when a dash run is the LAST segment of the
+    // track, leaving no following edge to push `toSeg` past the run.
+    return dashed.has(sourceSegIdx[Math.min(lo + 1, sourceSegIdx.length - 1)])
+  }
   for (let i = lo + 1; i <= hi; i++) if (dashed.has(sourceSegIdx[i])) return true
   return false
 }

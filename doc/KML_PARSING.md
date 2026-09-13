@@ -82,7 +82,7 @@
 5) Gates at distances (5 NM after SP, 1 NM after each TP)
    - Compute along‑track point/bearing from a start index using `pointAtDistanceAlongTrack` (great‑circle per segment).
    - Add a perpendicular short gate line via `buildGateAtPoint`.
-   - Critical: we only place gates if the span from start index to the along‑track segment index is a continuous main track span (no `gapAfterIndex`, both sides in `mainSegmentIndexSet`). This matches corridor generation and skips dashed connectors.
+   - Critical: we only place gates if the span from start index to the along‑track segment index is a continuous main track span (no `gapAfterIndex`, both sides in `mainSegmentIndexSet`). This matches corridor generation and skips dashed connectors. NOTE: since 2.31.5 a dashed *leg* is reconstructed for measurement but carries no corridor — see docs/DASHED_LEGS.md.
    - File: `preciseCorridor.ts` → `maybeBuildGateFromStartIdxDistance` and `isSpanOnMain`
 
 6) Corridors
@@ -91,7 +91,7 @@
 
 ### Notes and invariants
 - Label `Point` positions are intentionally offset for readability; exact turnpoints are intersections of the main track and the nearest 3‑coordinate gate line. If missing, we snap labels to the track.
-- Dashed connectors: any 2‑point segment shorter than 500 m. Corridors and distance‑based gates are skipped whenever the span crosses these.
+- Dashed connectors: any 2‑point segment shorter than 500 m. Corridors are skipped whenever the span crosses these. Gates are NOT — a gate marks 1 NM after a turning point regardless of whether the following leg carries a corridor, so a course can show more gates than corridors. Since 2.31.5 a dashed *leg* (a run of such segments with real gaps between them) is reconstructed for measurement but deliberately uncovered — see docs/DASHED_LEGS.md.
 - Colors in export: original KML is preserved; we only append corridors (green), gates (green), and exact labels.
 
 ### Reuse
