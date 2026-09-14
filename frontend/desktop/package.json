@@ -87,7 +87,7 @@
     }
   },
   "devDependencies": {
-    "@playwright/test": "1.61.1",
+    "@playwright/test": "1.63.0",
     "cross-env": "7.0.3",
     "electron": "39.8.10",
     "electron-builder": "26.15.3",
