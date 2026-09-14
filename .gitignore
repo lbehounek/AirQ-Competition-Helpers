@@ -146,3 +146,16 @@ frontend/desktop/sample-data/*
 
 # Competition data dumps shared for debugging (large, not source)
 mzb2026.zip
+
+# Firebase CLI deploy cache (hashes of the last uploaded bundle)
+/.firebase/
+
+# Web deploy output. `public/` is the default; the `public-*` variants are the
+# WEB_OUT escape hatch used when the caller cannot clean `public/` in place
+# (see .claude/skills/web-deploy). They accumulate and are safe to delete.
+/public-deploy-*/
+/public-preview*/
+
+# Temporary Hosting config written by scripts/deploy-web.sh for a non-default
+# WEB_OUT. The script removes it, but a killed run can leave one behind.
+/.firebase-deploy.generated.json

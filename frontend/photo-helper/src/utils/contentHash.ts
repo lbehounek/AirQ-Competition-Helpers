@@ -10,7 +10,15 @@ import type { ApiPhoto } from '../types/api';
 /** SHA-1 hex of a file's bytes. Same algorithm as map-corridors' computeContentHash. */
 export async function computeFileContentHash(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
-  const hash = await crypto.subtle.digest('SHA-1', buf);
+  // Hash a VIEW over the buffer, not the raw ArrayBuffer — matching
+  // map-corridors' computeContentHash, which this is supposed to mirror.
+  // `crypto.subtle.digest` validates its argument by internal type, so an
+  // ArrayBuffer produced in a different realm (jsdom's File polyfill under
+  // Node 20) is rejected with "2nd argument is not instance of ArrayBuffer,
+  // Buffer, TypedArray, or DataView" — 19 tests fail in CI while passing on a
+  // developer machine. A Uint8Array view costs nothing and is accepted
+  // everywhere; browsers were never affected.
+  const hash = await crypto.subtle.digest('SHA-1', new Uint8Array(buf));
   const bytes = new Uint8Array(hash);
   let hex = '';
   for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');

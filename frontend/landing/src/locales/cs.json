@@ -1,0 +1,43 @@
+{
+  "app": {
+    "title": "Nástroje pro navigační soutěže",
+    "subtitle": "Vyberte soutěž a aplikaci",
+    "browserUnsupported": {
+      "title": "Nepodporovaný prohlížeč",
+      "body": "Tato aplikace potřebuje moderní prohlížeč s podporou OPFS (Origin Private File System). Použijte prosím Chrome 108+, Edge 108+, Safari 15.2+ nebo Firefox 111+, nebo si stáhněte desktopovou verzi.",
+      "downloadDesktop": "Stáhnout desktopovou verzi"
+    }
+  },
+  "corridors": {
+    "title": "Umístění fotek",
+    "desc": "Určení polohy soutěžních fotek na trati"
+  },
+  "helper": {
+    "title": "Foto editor",
+    "desc": "Organizace a označování soutěžních fotek"
+  },
+  "competition": {
+    "label": "Soutěž",
+    "new": "+ Nová soutěž",
+    "loading": "Načítání...",
+    "empty": "Žádné soutěže – vytvořte novou",
+    "promptName": "Název nové soutěže:",
+    "defaultName": "Soutěž",
+    "selectFirst": "Nejdříve vyberte soutěž",
+    "deleteBtn": "Smazat",
+    "confirmDelete": "Smazat",
+    "cancelDelete": "Zrušit",
+    "create": "Vytvořit",
+    "deleteConfirmText": "Opravdu smazat \"{{name}}\"? Toto nelze vrátit.",
+    "cleanupAction": "Vyčistit",
+    "cleanupDismiss": "Skrýt",
+    "cleanupMsg": "{{count}} soutěží je starších než 30 dní. Chcete je smazat?",
+    "cleanupExcess": "Máte {{count}} soutěží (max 10). Zvažte smazání starších.",
+    "cleanupConfirm": "Smazat {{count}} starých soutěží včetně všech fotek? Tuto akci nelze vrátit zpět.",
+    "cleanupPartial": "Nepodařilo se smazat: {{names}}"
+  },
+  "discipline": {
+    "precision": "Precision",
+    "rally": "Rally"
+  }
+}

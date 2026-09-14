@@ -1,3 +1,6 @@
+// Side effect, and it must come first: points MapLibre at the worker asset this
+// build emitted, before <Map> or mapCapture construct one. See initMapWorker.ts.
+import './config/initMapWorker'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

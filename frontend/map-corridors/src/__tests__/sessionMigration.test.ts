@@ -19,7 +19,7 @@ describe('resolveMapStyleIdFromPersisted', () => {
 
   it('uses stored mapStyleId when present (new schema takes precedence)', () => {
     expect(resolveMapStyleIdFromPersisted({ mapStyleId: 'mapy-basic' }, DEFAULT_ID)).toBe('mapy-basic')
-    expect(resolveMapStyleIdFromPersisted({ mapStyleId: 'osm-classic' }, DEFAULT_ID)).toBe('osm-classic')
+    expect(resolveMapStyleIdFromPersisted({ mapStyleId: 'esri-streets' }, DEFAULT_ID)).toBe('esri-streets')
   })
 
   it('new-schema mapStyleId wins over legacy baseStyle', () => {

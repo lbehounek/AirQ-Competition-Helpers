@@ -10,6 +10,26 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [2.31.6] - 2026-09-14
+
+### Fixed
+- **Map Corridors:** the keyless street basemap is now **ESRI Streets** instead
+  of OpenStreetMap/CARTO. CARTO withdrew keyless access to their tile CDN and
+  enforce it by stamping **"API KEY REQUIRED"** across every tile image — the
+  requests still return a perfectly valid image, so the map simply went
+  illegible rather than failing. Sessions saved with the old style are migrated
+  automatically.
+- **Map Corridors (web build only):** the map vanished as soon as it was
+  zoomed, panned or rotated. The browser build's renderer wrapper was reading a
+  property that the map library removed in its latest major version, so the
+  very first camera movement threw and aborted the redraw. Pinned to the
+  wrapper release that supports it.
+- **Map Corridors (web build only):** the map rendered a grey canvas and
+  requested no tiles at all. The MapLibre renderer used by the browser build
+  locates its worker at runtime, so the bundler never shipped it; the map is now
+  pointed at the worker that is actually built, and the web build refuses to
+  publish without it.
+
 ## [2.31.5] - 2026-09-12
 
 ### Fixed

@@ -33,6 +33,13 @@ import {
   LIVE_MARKER_DOT_BORDER_RADIUS_PX,
   LIVE_MARKER_DOT_PX,
 } from '../utils/markerSizes'
+import { PRESERVE_DRAWING_BUFFER_OPTIONS } from '../config/drawingBuffer'
+
+// Cast because the props are typed against mapbox-gl, which has no
+// `canvasContextAttributes`; the key is real for the aliased web renderer.
+// See config/drawingBuffer.ts for why both keys are passed.
+const preserveDrawingBufferProps =
+  PRESERVE_DRAWING_BUFFER_OPTIONS as unknown as React.ComponentProps<typeof MapGL>
 
 export type Overlay = {
   id: string
@@ -604,7 +611,7 @@ export const MapProviderView = memo(forwardRef<MapProviderViewHandle, MapProvide
     <MapGL
       mapStyle={mapStyle}
       mapboxAccessToken={mapboxAccessToken}
-      preserveDrawingBuffer
+      {...preserveDrawingBufferProps}
       // Built-in keyboard handler off: it only works while the canvas has
       // focus and would double-handle keys next to our window-level
       // Google-Earth-style handler above (see keyboardNav.ts).

@@ -1,0 +1,62 @@
+name: Build Web
+
+# This workflow BUILDS and runs the artifact guards. It does NOT deploy.
+#
+# Publishing is manual, from a developer machine, via `scripts/deploy-web.sh`
+# (see .claude/skills/web-deploy/SKILL.md). Deploying from CI would have meant
+# either a long-lived service-account JSON in a repo secret — the only thing
+# FirebaseExtended/action-hosting-deploy accepts, since `firebaseServiceAccount`
+# is a required input with no OIDC alternative — or standing up Workload
+# Identity Federation. For a project that ships on a human's say-so, neither
+# earned its keep, and a deploy step that permanently fails for want of a secret
+# is worse than no deploy step.
+#
+# What this DOES protect is the thing local work keeps getting wrong: it runs
+# scripts/build-web.sh, whose guards refuse a bundle containing a map token or
+# missing the MapLibre worker asset.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: web-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Build-only: nothing here publishes, so read access is all it needs.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: 'frontend/pnpm-lock.yaml'
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      # No map tokens are passed in, deliberately. build-web.sh strips
+      # VITE_MAPBOX_TOKEN / VITE_MAPYCZ_TOKEN from the environment regardless,
+      # because Vite inlines them at build time and anything set here would ship
+      # as plain text in a world-readable bundle. The script's own guard then
+      # greps the built artifact and fails if a token got in by any other route.
+      - name: Build web bundle
+        run: bash scripts/build-web.sh

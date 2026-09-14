@@ -990,18 +990,27 @@ function AppApi() {
             justifyContent: 'space-between'
           }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              {isDesktopManaged && (
+              {/* Shown whenever a competition is open, not only under Electron.
+                  The web build DOES have somewhere to go — the landing app at
+                  `/` — and gating on the bridge left a browser user stranded
+                  inside the editor with no route back. */}
+              {currentCompetition && (
                 <IconButton
                   size="small"
                   onClick={async () => {
-                    // No bridge at all = web build, nothing to navigate to. But a
-                    // bridge WITHOUT the channel is version skew, and a plain
+                    // A bridge WITHOUT the channel is version skew, and a plain
                     // `?.()` there would leave a dead button with nothing logged —
                     // so that case is reported rather than silently ignored, and
                     // the promise is caught so a rejected IPC is not an unhandled
                     // rejection.
                     const api = window.electronAPI;
-                    if (!api) return;
+                    if (!api) {
+                      // Web build: drain first for the same reason as below, then
+                      // hand off to the launcher route.
+                      await flushPersistence();
+                      window.location.href = '/';
+                      return;
+                    }
                     if (!api.goHome) {
                       console.error('electronAPI.goHome is missing — desktop shell is out of date');
                       return;
@@ -1018,7 +1027,7 @@ function AppApi() {
                   <Home />
                 </IconButton>
               )}
-              {isDesktopManaged && (
+              {currentCompetition && (
                 <Button
                   size="small"
                   variant="outlined"
@@ -1026,7 +1035,20 @@ function AppApi() {
                     const params = new URLSearchParams(window.location.search);
                     const compId = params.get('competitionId');
                     const api = window.electronAPI;
-                    if (!api) return;
+                    if (!api) {
+                      // Web build. Carry competitionId AND discipline across:
+                      // map-corridors reads its labelling mode from
+                      // `?discipline=`, and in the desktop path main.js stamps
+                      // that from the competitions index. There is no launcher
+                      // in between here, so this is the only place that can.
+                      await flushPersistence();
+                      const qs = new URLSearchParams();
+                      if (compId) qs.set('competitionId', compId);
+                      const disc = params.get('discipline');
+                      if (disc) qs.set('discipline', disc);
+                      window.location.href = `/map-corridors/?${qs.toString()}`;
+                      return;
+                    }
                     if (!api.navigateToApp) {
                       console.error('electronAPI.navigateToApp is missing — desktop shell is out of date');
                       return;
@@ -1047,7 +1069,7 @@ function AppApi() {
               <Typography variant="h5" component="h1" sx={{ color: 'white', fontWeight: 600 }}>
                 {t('app.title')}
               </Typography>
-              {currentCompetition && isDesktopManaged && (
+              {currentCompetition && (
                 <Chip label={currentCompetition.name} size="small" sx={{ ml: 2, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
               )}
             </Box>

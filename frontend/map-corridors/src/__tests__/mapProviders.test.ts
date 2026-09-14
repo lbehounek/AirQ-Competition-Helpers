@@ -34,10 +34,19 @@ describe('mapProviders', () => {
     expect(constIds).toEqual(registryIds)
   })
 
+  it("heals the retired 'osm-classic' id to the Esri street style", () => {
+    // Sessions saved while the keyless street basemap was CARTO Voyager persist
+    // this id. CARTO now watermarks its keyless tiles with "API KEY REQUIRED",
+    // so the style was replaced — but those sessions must still land on a street
+    // map rather than falling through to whatever style happens to sort first.
+    expect(normalizeStyleId('osm-classic')).toBe('esri-streets')
+    expect(getStyleForId('osm-classic')).toBe(getStyleForId('esri-streets'))
+  })
+
   it('filters out styles whose required token is absent', () => {
     const avail = getAvailableStyles().map(s => s.id)
     // Token-free styles must always be present.
-    expect(avail).toContain('osm-classic')
+    expect(avail).toContain('esri-streets')
     expect(avail).toContain('esri-satellite')
     // Token-gated styles must be hidden when no token is configured.
     expect(avail).not.toContain('mapbox-streets')
@@ -99,7 +108,7 @@ describe('mapProviders', () => {
   })
 
   it('isStyleAvailable tracks token state', () => {
-    expect(isStyleAvailable('osm-classic')).toBe(true)
+    expect(isStyleAvailable('esri-streets')).toBe(true)
     expect(isStyleAvailable('mapy-basic')).toBe(false)
     setProviderToken('mapy', 'key')
     expect(isStyleAvailable('mapy-basic')).toBe(true)

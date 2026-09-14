@@ -4,6 +4,8 @@ packages:
   - shared-handoff
   - photo-helper
   - map-corridors
+  - landing
+  - competitions
   - desktop
 
 # `onlyBuiltDependencies` allowlist — packages with `postinstall`/`install`

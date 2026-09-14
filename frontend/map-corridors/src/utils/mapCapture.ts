@@ -1,6 +1,13 @@
-import mapboxgl from 'mapbox-gl'
+// Interop: mapbox-gl ships a DEFAULT export, maplibre-gl (v6, ESM) does not —
+// it exposes named exports only. The web build aliases this specifier to
+// maplibre-gl (see vite.config.ts), so a plain default import breaks there with
+// '"default" is not exported'. Reading `.default ?? namespace` works against
+// both without changing which renderer is bundled.
+import * as glNamespace from 'mapbox-gl'
+const gl = ((glNamespace as unknown as { default?: unknown }).default ?? glNamespace) as typeof glNamespace
 import type { LngLatBoundsLike, StyleSpecification } from 'mapbox-gl'
 import type { GeoJSON } from 'geojson'
+import { PRESERVE_DRAWING_BUFFER_OPTIONS } from '../config/drawingBuffer'
 import { groundMarkerSvgString } from '../components/GroundMarkerIcons'
 import type { GroundMarkerType } from '../types/markers'
 import { PRINT_GROUND_ICON_SIZE, PRINT_MARKER_DOT_RADIUS } from './markerSizes'
@@ -153,7 +160,12 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
     // app uses (`getMapboxAccessToken()`), so this is normally a no-op write.
     // If a caller ever passes a different value, the module-scoped
     // `_tokens.mapbox` will briefly lag until the next `setProviderToken`.
-    mapboxgl.accessToken = accessToken
+    // Same sealed-namespace hazard as mapProviders.setRendererAccessToken:
+    // under the web build `gl` is maplibre's module namespace and cannot take
+    // a property. MapLibre needs no token anyway.
+    if (Object.isExtensible(gl)) {
+      ;(gl as unknown as { accessToken?: string }).accessToken = accessToken
+    }
   }
 
   // NOTE: mapbox-gl has no `pixelRatio` MapOption (that's MapLibre-only), so
@@ -161,14 +173,19 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
   // On Windows display scaling >100% that's up to 2× per axis. We can't stop
   // the oversized render, but the capture below normalizes the exported PNG
   // back to exactly `dims`, so the output size is machine-independent.
-  const map = new mapboxgl.Map({
+  // See config/drawingBuffer.ts for why both context-attribute shapes are
+  // passed. Cast for the same reason as there: mapbox-gl's typings do not
+  // declare `canvasContextAttributes`, but the aliased web renderer needs it.
+  const mapOptions = {
     container,
     style,
-    preserveDrawingBuffer: true,
+    ...PRESERVE_DRAWING_BUFFER_OPTIONS,
     interactive: false,
     fadeDuration: 0,
     attributionControl: false,
-  })
+  } as unknown as ConstructorParameters<typeof gl.Map>[0]
+
+  const map = new gl.Map(mapOptions)
 
   try {
     // Wait for style to load
@@ -479,7 +496,7 @@ export function detectOrientation(bbox: [[number, number], [number, number]]) {
  * existing `text-size` is an expression we can't multiply — better to leave
  * it unchanged than throw and lose the whole print.
  */
-export function boostSettlementLabels(map: mapboxgl.Map): void {
+export function boostSettlementLabels(map: import('mapbox-gl').Map): void {
   const style = map.getStyle?.()
   if (!style || !Array.isArray(style.layers)) return
   const targetIdFragments = ['settlement', 'place-label', 'place_label', 'town-label', 'city-label']

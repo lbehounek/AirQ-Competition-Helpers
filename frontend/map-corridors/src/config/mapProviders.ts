@@ -7,7 +7,36 @@
  * only offers what will actually render.
  */
 
-import mapboxgl, { type StyleSpecification } from 'mapbox-gl'
+import type { StyleSpecification } from 'mapbox-gl'
+// Interop: mapbox-gl ships a DEFAULT export, maplibre-gl (v6, ESM) does not —
+// it exposes named exports only. The web build aliases this specifier to
+// maplibre-gl (see vite.config.ts), so a plain default import breaks there with
+// '"default" is not exported'. Reading `.default ?? namespace` works against
+// both without changing which renderer is bundled.
+import * as glNamespace from 'mapbox-gl'
+const gl = ((glNamespace as unknown as { default?: unknown }).default ?? glNamespace) as typeof glNamespace
+
+/**
+ * Set the renderer's module-level access-token singleton, if it has one.
+ *
+ * Mapbox GL JS reads `mapboxgl.accessToken` from inside `setStyle('mapbox://…')`,
+ * and react-map-gl's mirroring of the prop lags one microtask behind a
+ * `mapStyle` update — so this must be written synchronously in the same call
+ * that flips `_tokens.mapbox`, or `setStyle` fires before the token is visible
+ * and throws "An API access token is required".
+ *
+ * MapLibre has no such singleton, and in the web build `gl` resolves to
+ * maplibre's ES MODULE NAMESPACE, which is sealed. Assigning to it throws
+ * "Attempting to define property on object that is not extensible" — during a
+ * React effect, which took the whole app down to a blank page. `isExtensible`
+ * is the precise distinction: a namespace object is not, a plain module export
+ * object is.
+ */
+function setRendererAccessToken(value: string): void {
+  if (!Object.isExtensible(gl)) return
+  ;(gl as unknown as { accessToken?: string }).accessToken = value
+}
+
 
 // ---------------------------------------------------------------------------
 // Token state (module-scoped; shared across all consumers of this module)
@@ -40,16 +69,8 @@ export function getProviderSnapshot(): number {
 export function setProviderToken(providerId: ProviderId, token: string | null | undefined): void {
   const value = token && token.length > 0 ? token : null
   _tokens[providerId] = value
-  // Mapbox GL JS reads `mapboxgl.accessToken` as a module-level singleton from
-  // inside `setStyle('mapbox://…')`. react-map-gl mirrors the prop into that
-  // singleton, but the assignment lags one microtask behind a `mapStyle` prop
-  // update, which causes `setStyle` to fire before the new token is visible
-  // and throw "An API access token is required". Writing the singleton here
-  // — synchronously, in the same call that flips `_tokens.mapbox` — closes
-  // that race: any subsequent `getStyleForId` that returns a `mapbox://`
-  // URL is guaranteed to have the matching token in place.
   if (providerId === 'mapbox') {
-    mapboxgl.accessToken = value || ''
+    setRendererAccessToken(value || '')
   }
   _notify()
 }
@@ -82,28 +103,38 @@ const esriSatelliteStyle: StyleSpecification = {
   layers: [{ id: 'esri-satellite-layer', type: 'raster', source: 'esri-satellite' }],
 }
 
-// CARTO Voyager: OSM-derived tiles served via basemaps.cartocdn.com. Works
-// without a Referer header so it's safe for Electron's `app://` origin,
-// unlike tile.openstreetmap.org which enforces OSM's tile usage policy and
-// returns 403 "Access blocked" from browsers that don't send a sensible
-// Referer. Same underlying data, CC-BY attribution required.
-const osmClassicStyle: StyleSpecification = {
+// Esri World Street Map — the keyless street basemap.
+//
+// This was CARTO Voyager until 2026-09-14, when CARTO closed keyless access to
+// basemaps.cartocdn.com. Note HOW it closed, because it defeats the obvious
+// check: CARTO still answers 200 with a valid PNG and `Access-Control-Allow-
+// Origin: *`. The refusal is painted INTO THE IMAGE — every tile carries an
+// "API KEY REQUIRED" watermark. Status codes and headers look perfectly
+// healthy; only the pixels show it. Verify a tile provider by LOOKING at a
+// rendered tile, not by curl-ing its status.
+//
+// Why Esri and not tile.openstreetmap.org, which is keyless and serves clean
+// tiles from every origin tested — including an Electron-like `app://` origin
+// with no Referer, contrary to the 403 this comment used to claim: OSM's Tile
+// Usage Policy specifically forbids distributing an app that draws its basemap
+// from their servers, and this ships as a downloadable Electron app. Every
+// other OSM-derived raster CDN (Stadia, MapTiler, Thunderforest) needs a key.
+//
+// Esri's legacy ArcGIS Online MapServer endpoints need no key and ignore
+// Referer/Origin — already proven in production by the satellite style above,
+// which has always worked inside Electron. One less provider to depend on.
+const esriStreetsStyle: StyleSpecification = {
   version: 8,
   glyphs: FREE_GLYPHS_URL,
   sources: {
-    'osm-classic': {
+    'esri-streets': {
       type: 'raster',
-      tiles: [
-        'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        'https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-      ],
+      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'],
       tileSize: 256,
-      attribution: '\u00A9 OpenStreetMap contributors, \u00A9 CARTO',
+      attribution: 'Tiles © Esri',
     },
   },
-  layers: [{ id: 'osm-classic-layer', type: 'raster', source: 'osm-classic' }],
+  layers: [{ id: 'esri-streets-layer', type: 'raster', source: 'esri-streets' }],
 }
 
 // URL-encode the API key when embedding in a query string so a token that
@@ -154,7 +185,7 @@ export type MapStyleCategory = 'Streets' | 'Aerial'
 export const MAP_STYLE_IDS = [
   'mapy-basic',
   'mapbox-streets',
-  'osm-classic',
+  'esri-streets',
   'mapy-aerial',
   'mapbox-satellite',
   'esri-satellite',
@@ -181,7 +212,7 @@ export const MAP_STYLES: MapStyleDef[] = [
   // Streets
   { id: 'mapy-basic', label: 'Mapy.com', category: 'Streets', requiredToken: 'mapy', getStyle: () => mapyBasicStyle() },
   { id: 'mapbox-streets', label: 'Mapbox Streets', category: 'Streets', requiredToken: 'mapbox', getStyle: () => 'mapbox://styles/mapbox/streets-v12' },
-  { id: 'osm-classic', label: 'OpenStreetMap', category: 'Streets', requiredToken: null, getStyle: () => osmClassicStyle },
+  { id: 'esri-streets', label: 'ESRI Streets', category: 'Streets', requiredToken: null, getStyle: () => esriStreetsStyle },
   // Aerial
   { id: 'mapy-aerial', label: 'Mapy.com Aerial', category: 'Aerial', requiredToken: 'mapy', getStyle: () => mapyAerialStyle() },
   { id: 'mapbox-satellite', label: 'Mapbox Satellite', category: 'Aerial', requiredToken: 'mapbox', getStyle: () => 'mapbox://styles/mapbox/satellite-v9' },
@@ -197,6 +228,10 @@ export function getAvailableStyles(): MapStyleDef[] {
 const LEGACY_IDS: Record<string, MapStyleId | undefined> = {
   streets: 'mapbox-streets',
   satellite: 'mapbox-satellite',
+  // Sessions saved before the keyless street basemap moved from CARTO to Esri
+  // persist this id. Healing it here keeps those sessions on a street map
+  // instead of silently dropping them to whatever happens to sort first.
+  'osm-classic': 'esri-streets',
 }
 
 /** Runtime type guard: is this an id we recognise? */
@@ -237,7 +272,7 @@ export function getStyleForId(styleId: string): string | StyleSpecification {
     return def.getStyle()
   }
   const fallback = getAvailableStyles()[0]
-  return fallback ? fallback.getStyle() : osmClassicStyle
+  return fallback ? fallback.getStyle() : esriStreetsStyle
 }
 
 /** True iff the given id matches a known style that's currently usable. */
