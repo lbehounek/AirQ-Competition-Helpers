@@ -146,3 +146,6 @@ frontend/desktop/sample-data/*
 
 # Competition data dumps shared for debugging (large, not source)
 mzb2026.zip
+
+# Firebase CLI deploy cache (hashes of the last uploaded bundle)
+/.firebase/
