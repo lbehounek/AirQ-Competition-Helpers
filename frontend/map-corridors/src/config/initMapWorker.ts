@@ -36,7 +36,23 @@ const gl = ((glNamespace as unknown as { default?: unknown }).default ?? glNames
  */
 export function initMapWorker(): boolean {
   const setWorkerUrl = gl.setWorkerUrl
-  if (!workerUrl || typeof setWorkerUrl !== 'function') return false
+  // Desktop build: no URL to set, and Mapbox GL inlines its own worker.
+  // Genuinely nothing to do, so stay silent.
+  if (!workerUrl) return false
+  if (typeof setWorkerUrl !== 'function') {
+    // Very different case, and it must NOT be silent: we have an emitted worker
+    // asset but the renderer will not accept it. That is precisely the
+    // grey-canvas / zero-tiles failure this module exists to prevent, and it
+    // announces itself nowhere else — build-web.sh checks that the chunk was
+    // EMITTED, not that the override was APPLIED, so a maplibre bump that
+    // renames or drops setWorkerUrl would pass the build, the artifact guard
+    // and the whole test suite while shipping a blank map.
+    console.error(
+      'initMapWorker: worker asset emitted but this renderer has no setWorkerUrl(). ' +
+      'The map will render a grey canvas and request no tiles. Check the maplibre-gl version.',
+    )
+    return false
+  }
   ;(setWorkerUrl as (value: string) => void)(workerUrl)
   return true
 }

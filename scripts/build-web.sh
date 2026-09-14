@@ -74,6 +74,15 @@ cp -a frontend/map-corridors/dist    "$WEB_OUT"/map-corridors
 # a token got in; it refuses to let one leave the machine. Only file NAMES are
 # printed; the matched value is never echoed.
 echo "=== Checking the bundle for leaked map tokens ==="
+# Fail closed. `grep -r ... 2>/dev/null || true` over a missing or empty tree
+# prints nothing and would otherwise be reported as "no tokens found" — a clean
+# verdict reached without reading a single byte. Establish there is something to
+# scan before trusting the scan.
+FILE_COUNT=$(find "$WEB_OUT" -type f 2>/dev/null | wc -l)
+if [ "$FILE_COUNT" -eq 0 ]; then
+  echo "REFUSING TO CONTINUE — $WEB_OUT contains no files to scan." >&2
+  exit 1
+fi
 # Mapbox public (pk.) and secret (sk.) tokens are JWTs with a fixed prefix.
 LEAKED=$(grep -rlE '(pk|sk)\.ey[A-Za-z0-9_.-]{20,}' "$WEB_OUT" 2>/dev/null || true)
 if [ -n "$LEAKED" ]; then
@@ -84,7 +93,7 @@ if [ -n "$LEAKED" ]; then
   echo "and check for a .env the sub-apps' envDir may be loading." >&2
   exit 1
 fi
-echo "No map tokens found in $WEB_OUT/."
+echo "No map tokens found in $WEB_OUT/ ($FILE_COUNT files scanned)."
 # NOTE: this only detects MAPBOX-shaped tokens. It is not a general secret
 # scanner — a Firebase API key or anything else would pass. Widen the pattern
 # here if the web build ever starts carrying other credentials.

@@ -32,7 +32,9 @@
     "cleanupAction": "Clean up",
     "cleanupDismiss": "Dismiss",
     "cleanupMsg": "{{count}} competitions are older than 30 days. Delete them?",
-    "cleanupExcess": "You have {{count}} competitions (max 10). Consider deleting older ones."
+    "cleanupExcess": "You have {{count}} competitions (max 10). Consider deleting older ones.",
+    "cleanupConfirm": "Delete {{count}} old competitions and all their photos? This cannot be undone.",
+    "cleanupPartial": "Could not delete: {{names}}"
   },
   "discipline": {
     "precision": "Precision",

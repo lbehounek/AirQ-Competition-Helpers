@@ -117,16 +117,34 @@ function LandingMain() {
   )
 
   const handleCleanup = useCallback(async () => {
-    try {
-      for (const c of cleanupCandidates) {
-        if (c.competition.id === activeId) continue
+    const doomed = cleanupCandidates.filter((c) => c.competition.id !== activeId)
+    if (doomed.length === 0) return
+
+    // This deletes several competitions AND their photos, irreversibly, and it
+    // used to fire on a single click — while deleting ONE competition requires
+    // the two-step confirm in CompetitionBar. Match the stricter gate: the bulk
+    // action is the more destructive of the two.
+    if (!window.confirm(t('competition.cleanupConfirm', { count: doomed.length }))) return
+
+    const failed: string[] = []
+    for (const c of doomed) {
+      try {
         await landingStorage.deleteCompetition(c.competition.id)
+      } catch (e) {
+        // Keep going. A throw mid-loop used to abandon the remaining deletions
+        // AND skip the reload below, leaving the UI listing competitions that
+        // were already gone from disk.
+        console.error('Cleanup failed for', c.competition.id, e)
+        failed.push(c.competition.name)
       }
-      await reload()
-    } catch (e) {
-      console.error('Failed to perform cleanup:', e)
     }
-  }, [cleanupCandidates, activeId, reload])
+    await reload()
+    if (failed.length > 0) {
+      // console.error alone left the user with no signal at all, unlike every
+      // other handler here.
+      setError(t('competition.cleanupPartial', { names: failed.join(', ') }))
+    }
+  }, [cleanupCandidates, activeId, reload, t])
 
   const navigate = useCallback(
     (app: SubAppKey) => {

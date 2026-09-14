@@ -306,3 +306,38 @@ describe('re-exports', () => {
     expect(ops.VALID_DISCIPLINES).toEqual(['precision', 'rally']);
   });
 });
+
+describe('validateIndex drops malformed elements', () => {
+  // Regression: validateIndex used to cast the array through unchecked, so a
+  // corrupted or hand-edited index reached the UI as well-typed values. A
+  // `name` that is an object then throws "Objects are not valid as a React
+  // child" and white-screens the launcher, with no way back but editing storage.
+  it('keeps well-formed entries and discards broken ones', () => {
+    const good = {
+      id: 'a',
+      name: 'Good',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      lastModified: '2026-01-02T00:00:00.000Z',
+      photoCount: 0,
+      isActive: false,
+    };
+    const result = ops.validateIndex({
+      competitions: [
+        good,
+        { id: 'b', name: { nested: 'object' }, createdAt: '2026-01-01T00:00:00.000Z', lastModified: 'x' },
+        { name: 'no id', createdAt: '2026-01-01T00:00:00.000Z', lastModified: 'x' },
+        { id: 'c', name: 'bad date', createdAt: 'not-a-date', lastModified: 'x' },
+        null,
+        'a string',
+      ],
+      activeCompetitionId: 'a',
+      version: 1,
+    });
+    expect(result.competitions.map((c) => c.id)).toEqual(['a']);
+    expect(result.activeCompetitionId).toBe('a');
+  });
+
+  it('still returns an empty index for a non-array competitions field', () => {
+    expect(ops.validateIndex({ competitions: 'nope' }).competitions).toEqual([]);
+  });
+});

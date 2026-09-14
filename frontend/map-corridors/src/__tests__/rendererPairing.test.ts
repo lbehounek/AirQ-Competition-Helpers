@@ -94,34 +94,17 @@ describe('@vis.gl/react-maplibre is v6-aware', () => {
     expect(src).toContain('setTransformCameraUpdate')
   })
 
-  it('produces a usable viewState from a v6-shaped map', () => {
-    // Functional check, not just a string match: drive the real shim with a
-    // map that has v6's shape (getters, and NO `transform`). Before the fix the
-    // equivalent path read `undefined.center` and threw.
-    const v6ShapedMap = {
-      getCenter: () => ({ lng: 14.42076, lat: 50.08804 }),
-      getZoom: () => 6,
-      getBearing: () => 0,
-      getPitch: () => 0,
-      getPadding: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-      getCenterElevation: () => 0,
-    }
-    expect('transform' in v6ShapedMap).toBe(false)
-
-    // Re-implement the wrapper's contract against its own source so the test
-    // fails loudly if upstream changes the shim's shape.
+  it('rebuilds the snapshot from getters a v6 map actually has', () => {
+    // Deliberately NOT a hand-built transform asserted against itself — that
+    // was tautological and passed under either wrapper version. The real
+    // end-to-end proof lives in cameraEventNoCrash.test.tsx, which mounts the
+    // wrapper and fires camera events. What is worth pinning HERE is that the
+    // shim reads the getters rather than the removed `transform` property.
+    // NOTE: a `not.toContain('map.transform')` here would be wrong — upstream's
+    // own comment names the removed property while explaining the shim. Assert
+    // on the getters it actually calls instead.
     const src = readFileSync(wrapperDist('utils/transform.js'), 'utf8')
     expect(src).toContain('center: map.getCenter()')
-
-    const tr = {
-      center: v6ShapedMap.getCenter(),
-      zoom: v6ShapedMap.getZoom(),
-      bearing: v6ShapedMap.getBearing(),
-      pitch: v6ShapedMap.getPitch(),
-      padding: v6ShapedMap.getPadding(),
-    }
-    // MapProviderView's onMove reads e.viewState.bearing — it must be defined.
-    expect(tr.center.lng).toBeCloseTo(14.42076)
-    expect(tr.bearing).toBe(0)
+    expect(src).toContain('zoom: map.getZoom()')
   })
 })

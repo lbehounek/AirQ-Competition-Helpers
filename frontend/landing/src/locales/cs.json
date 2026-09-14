@@ -32,7 +32,9 @@
     "cleanupAction": "Vyčistit",
     "cleanupDismiss": "Skrýt",
     "cleanupMsg": "{{count}} soutěží je starších než 30 dní. Chcete je smazat?",
-    "cleanupExcess": "Máte {{count}} soutěží (max 10). Zvažte smazání starších."
+    "cleanupExcess": "Máte {{count}} soutěží (max 10). Zvažte smazání starších.",
+    "cleanupConfirm": "Smazat {{count}} starých soutěží včetně všech fotek? Tuto akci nelze vrátit zpět.",
+    "cleanupPartial": "Nepodařilo se smazat: {{names}}"
   },
   "discipline": {
     "precision": "Precision",

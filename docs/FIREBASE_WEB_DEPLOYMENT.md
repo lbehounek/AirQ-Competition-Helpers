@@ -1,5 +1,24 @@
 # Firebase Web Deployment — Plan
 
+> **STATUS (2026-09-14): this is the ORIGINAL PLAN, kept as a record of intent.**
+> Parts of it were deliberately NOT implemented. Where this document and the
+> code disagree, the code is right. Specifically:
+>
+> - **Deployment is manual, not automated.** §4 / Phase "Automate deployment via
+>   GitHub Actions" did not ship. CI builds and guards only; publishing runs from
+>   a developer machine via `scripts/deploy-web.sh`. See
+>   `.claude/skills/web-deploy/SKILL.md` for the reasoning (the Firebase deploy
+>   action requires a long-lived service-account key and supports no OIDC).
+>   No `FIREBASE_SERVICE_ACCOUNT` secret exists, and §7 lists secrets that were
+>   never created.
+> - **`@airq/competitions` unification is PARTIAL.** Only `@airq/landing` consumes
+>   it. Phase 1.7 (rewire photo-helper) and 1.8 (rewire desktop IPC) did not ship,
+>   so `MAX_COMPETITIONS`, `COMPETITIONS_INDEX_FILE` and the cleanup algorithm
+>   still exist in three places. Tracked in `docs/TECH_DEBT.md`.
+> - **Map tokens:** the public web build ships with none at all, rather than the
+>   per-provider web tokens §4.5 anticipated.
+
+
 **Status:** Approved — Phase 1 can begin
 **Branch:** `feat/firebase-web-deployment`
 **Owner:** Lukáš

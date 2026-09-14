@@ -126,9 +126,16 @@ export class LandingStorage {
         create: false,
       })
       await this.storage!.clearDirectory(compDir)
-    } catch {
-      // Directory already gone or unreadable — the index update below still
-      // removes the orphaned entry so the UI stays consistent.
+    } catch (e) {
+      // "Already gone" is the expected, benign case: the index update below
+      // still removes the entry so the UI stays consistent. Anything else
+      // (quota, a locked handle, a partial clear) means photo bytes remain on
+      // disk with nothing pointing at them once the index is rewritten — log
+      // that rather than report a clean delete, so an orphan is traceable.
+      const alreadyGone = e instanceof DOMException && e.name === 'NotFoundError'
+      if (!alreadyGone) {
+        console.error(`deleteCompetition(${id}): directory not cleared, data may be orphaned`, e)
+      }
     }
 
     const { index: next } = removeCompetition(current, id)

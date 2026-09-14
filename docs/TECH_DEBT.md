@@ -271,6 +271,59 @@ surface in code review / release notes.
 
 ---
 
+### 22. Finish the `@airq/competitions` unification (photo-helper + desktop)
+- **Why:** `@airq/competitions` was extracted so competition CRUD, the
+  `MAX_COMPETITIONS` / `MAX_AGE_DAYS` policy and `detectCleanupCandidates` would
+  live in one place. Only `@airq/landing` was rewired. `photo-helper` and
+  `desktop` still carry their own copies, so **three** definitions of the same
+  policy are live:
+  - `frontend/competitions/src/constants.ts` (`MAX_COMPETITIONS`, `COMPETITIONS_INDEX_FILE`)
+  - `frontend/photo-helper/src/services/competitionService.ts` (~lines 26-27)
+  - `frontend/desktop/renderer/app.js` (~line 624) and `desktop/main.js` (~line 810)
+  plus two independent `detectCleanupCandidates` implementations
+  (`competitions/src/ops.ts`, `competitionService.ts`).
+- **Risk if left:** landing and photo-helper can disagree about which
+  competitions are stale. Changing a limit in one place silently changes what
+  one app offers to delete — against the user's own photo data.
+- **Action:** Phase 1.7 and 1.8 of `docs/FIREBASE_WEB_DEPLOYMENT.md` — import
+  the constants and `detectCleanupCandidates` from `@airq/competitions` in
+  `competitionService.ts` and the desktop IPC handlers, and delete the copies.
+- **Effort:** ~2-3 hours including desktop regression testing.
+- **Tags:** `dry`, `correctness`
+
+### 23. `build-web.sh` cleans with `rm -rf`, which blocks scripted/agent deploys
+- **Why:** `scripts/build-web.sh` wipes `public/` with `rm -rf` so no stale
+  asset survives — correct for a human, but a Claude Code session is forbidden
+  from running it, so every agent-driven deploy has to use the `WEB_OUT` escape
+  hatch and leaves a directory only a human can remove.
+- **Action:** decide deliberately between (a) leaving it (humans deploy, agents
+  use `WEB_OUT`), or (b) making the default path refuse when `public/` exists
+  and print the one command — uniform, but one manual step per deploy.
+- **Effort:** ~15 minutes once decided. **Tags:** `tooling`, `dx`
+
+### 24. Web PDF/PNG export is unverified since the maplibre v6 move
+- **Why:** maplibre-gl v6 silently ignores the top-level `preserveDrawingBuffer`
+  that mapbox-gl honours; it moved to `canvasContextAttributes`. Both keys are
+  now passed (`frontend/map-corridors/src/config/drawingBuffer.ts`), but whether
+  the web export was ever visibly blank or garbled was **never measured** — a
+  canvas read can still succeed if it happens before the buffer is cleared.
+- **Action:** export a map to PDF on the deployed web build and look at the
+  image. If it was broken, this is a shipped user-facing fix worth a changelog
+  line; if not, note it and move on.
+- **Effort:** ~10 minutes. **Tags:** `verification`
+
+### 25. `redraw()` in @vis.gl/react-maplibre uses a field maplibre v6 renamed
+- **Why:** `@vis.gl/react-maplibre@8.1.3`'s `maplibre.js` still does
+  `map._frame.cancel()` / `map._render()`; maplibre 6.9.0 renamed `_frame` to
+  `_frameRequest` and `_render` now takes a timestamp. **Currently dormant** —
+  `setProps` only calls `redraw()` when settings, size or a controlled
+  `viewState` change, and this app passes none of those.
+- **Goes live the moment** we adopt a controlled `viewState`, controlled
+  width/height, or any of `minZoom`/`maxZoom`/`minPitch`/`maxPitch`/`maxBounds`/
+  `projection`/`renderWorldCopies` on `<Map>`.
+- **Action:** if adopting any of those, check upstream first; the correct v6 call
+  is the public `map.redraw()`. **Tags:** `upstream`, `latent`
+
 ## Resolved 2026-09
 
 ### 2. Code-split vite bundles

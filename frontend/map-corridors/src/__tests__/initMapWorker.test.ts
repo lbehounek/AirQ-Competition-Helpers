@@ -53,6 +53,34 @@ describe('initMapWorker', () => {
     expect(setWorkerUrl).not.toHaveBeenCalled()
   })
 
+  it('SHOUTS when it has a worker asset but the renderer will not take it', async () => {
+    // The dangerous case, and previously indistinguishable from the benign one:
+    // a real emitted worker URL plus a renderer with no setWorkerUrl reproduces
+    // the exact grey-canvas / zero-tiles failure this module exists to prevent.
+    // Nothing else catches it — build-web.sh checks the chunk was EMITTED, not
+    // that the override was APPLIED — so a maplibre bump that renamed the
+    // setter would pass the build, the artifact guard and the whole suite.
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.doMock('mapbox-gl', () => ({ default: { /* no setWorkerUrl */ } }))
+    vi.doMock('virtual:maplibre-worker-url', () => ({ default: '/assets/maplibre-gl-worker-abc.js' }))
+    const { initMapWorker } = await import('../config/initMapWorker')
+    expect(initMapWorker()).toBe(false)
+    expect(spy).toHaveBeenCalled()
+    expect(String(spy.mock.calls[0][0])).toContain('grey canvas')
+    spy.mockRestore()
+  })
+
+  it('stays QUIET on the desktop stub, where there is genuinely nothing to do', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.doMock('mapbox-gl', () => ({ default: { accessToken: '' } }))
+    vi.doMock('virtual:maplibre-worker-url', () => ({ default: '' }))
+    const { initMapWorker } = await import('../config/initMapWorker')
+    expect(initMapWorker()).toBe(false)
+    // Desktop must not log an error on every start.
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
   it('survives a sealed module namespace without setWorkerUrl', async () => {
     // maplibre-gl has no default export, so the interop shim falls back to the
     // frozen ES module namespace. Reading a missing property off it is fine;

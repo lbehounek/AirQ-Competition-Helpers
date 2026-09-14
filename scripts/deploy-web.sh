@@ -28,7 +28,12 @@ CHANNEL="${1:-web-preview}"
 PROJECT="airq-competition-helpers"
 WEB_OUT="${WEB_OUT:-public}"
 EXPIRES="${EXPIRES:-7d}"
-FIREBASE="pnpm dlx firebase-tools"
+# Use the firebase-tools pinned in frontend/package.json and locked in
+# pnpm-lock.yaml. `pnpm dlx` would resolve `latest` from the registry on every
+# run, executing unreviewed third-party code against live credentials with
+# publish rights — exactly the auto-updating-dependency shape the exact-pinning
+# rule exists to prevent.
+FIREBASE="pnpm --dir frontend exec firebase"
 
 # direnv/.envrc may carry gcloud or firebase context. Tolerate its absence.
 # shellcheck disable=SC1091
@@ -86,9 +91,17 @@ fi
 
 echo "=== Verifying $BASE ==="
 FAIL=0
+
+# NOTE on `|| true` throughout this section: the script runs under
+# `set -euo pipefail`, so a non-matching grep or a failed curl inside a command
+# substitution aborts the whole script — silently, and only AFTER the deploy has
+# already published. That turns "the check could not run" into an invisible
+# early exit rather than a reported failure. Every substitution below is
+# therefore made non-fatal and its emptiness treated as a FAILED check, never as
+# a passing one.
 check_code() {  # <path> <label>
-  CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$1")
-  printf '  %-34s HTTP %s\n' "$2" "$CODE"
+  CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$BASE$1" || true)
+  printf '  %-34s HTTP %s\n' "$2" "${CODE:-(no response)}"
   [ "$CODE" = "200" ] || FAIL=1
 }
 check_code "/" "landing"
@@ -98,20 +111,39 @@ check_code "/photo-helper/" "photo-helper"
 # The worker must come back as real JavaScript. When it is missing, Hosting's
 # SPA rewrite returns index.html with a 200 and text/html; the worker then dies
 # silently and the map renders a grey canvas having requested zero tiles.
-WORKER=$(ls "$WEB_OUT"/map-corridors/assets/maplibre-gl-worker-*.js | head -1 | xargs -n1 basename)
-CT=$(curl -s -o /dev/null -w '%{content_type}' "$BASE/map-corridors/assets/$WORKER")
-printf '  %-34s %s\n' "maplibre worker content-type" "$CT"
-case "$CT" in
-  *javascript*) ;;
-  *) echo "  FAIL: worker is not being served as JavaScript" >&2; FAIL=1 ;;
-esac
+WORKER=$(ls "$WEB_OUT"/map-corridors/assets/maplibre-gl-worker-*.js 2>/dev/null | head -1 || true)
+if [ -z "$WORKER" ]; then
+  echo "  FAIL: no local worker asset to verify against" >&2
+  FAIL=1
+else
+  WORKER=$(basename "$WORKER")
+  CT=$(curl -s -o /dev/null -w '%{content_type}' --max-time 30 "$BASE/map-corridors/assets/$WORKER" || true)
+  printf '  %-34s %s\n' "maplibre worker content-type" "${CT:-(no response)}"
+  case "$CT" in
+    *javascript*) ;;
+    *) echo "  FAIL: worker is not being served as JavaScript" >&2; FAIL=1 ;;
+  esac
+fi
 
 # Last line of defence on the public origin: no Mapbox token may be served.
-VENDOR=$(curl -s "$BASE/map-corridors/" | grep -oE 'assets/vendor-map-[A-Za-z0-9_-]+\.js' | head -1)
-if [ -n "$VENDOR" ]; then
-  LEAK=$(curl -s "$BASE/map-corridors/$VENDOR" | grep -cE '(pk|sk)\.ey[A-Za-z0-9_.-]{20,}' || true)
-  printf '  %-34s %s (must be 0)\n' "map tokens in served bundle" "$LEAK"
-  [ "$LEAK" = "0" ] || FAIL=1
+#
+# This MUST fail closed. Previously a 404, a 5xx, a DNS failure or a timeout all
+# produced an empty body, `grep -c` printed 0, and the check reported "clean"
+# while never having read the bundle at all — announcing a verified deploy on no
+# evidence. `curl -sf` now makes a non-2xx an explicit failure.
+VENDOR=$(curl -s --max-time 30 "$BASE/map-corridors/" | grep -oE 'assets/vendor-map-[A-Za-z0-9_-]+\.js' | head -1 || true)
+if [ -z "$VENDOR" ]; then
+  echo "  FAIL: could not locate the vendor-map chunk — token check inconclusive" >&2
+  FAIL=1
+else
+  if BODY=$(curl -sf --max-time 30 "$BASE/map-corridors/$VENDOR"); then
+    LEAK=$(printf '%s' "$BODY" | grep -cE '(pk|sk)\.ey[A-Za-z0-9_.-]{20,}' || true)
+    printf '  %-34s %s (must be 0)\n' "map tokens in served bundle" "$LEAK"
+    [ "$LEAK" = "0" ] || FAIL=1
+  else
+    echo "  FAIL: could not fetch $VENDOR — token check inconclusive" >&2
+    FAIL=1
+  fi
 fi
 
 # Single generated file, safe to remove; it is regenerated on every run.

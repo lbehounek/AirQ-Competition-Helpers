@@ -108,6 +108,31 @@ Rules that follow from that:
 points return 200, the worker is served as JavaScript, and no token appears in
 the served vendor chunk.
 
+**Every guard must fail CLOSED.** This bit us twice in review. Under
+`set -euo pipefail` a non-matching `grep` inside `$(...)` kills the script
+silently — after the deploy has already published — so the "VERIFICATION
+FAILED" line never prints. And `curl -s ... | grep -c` over a failed fetch
+yields `0`, which reads as "no tokens found" while having read nothing at all.
+Both are now explicit failures: `curl -sf --max-time`, `|| true` on every
+substitution, and an empty result treated as a FAILED check rather than a
+passing one. If you add a check here, make "could not run it" loud.
+
+`firebase-tools` is invoked as `pnpm --dir frontend exec firebase`, using the
+version pinned in `frontend/package.json` and locked in `pnpm-lock.yaml` — NOT
+`pnpm dlx`, which resolves `latest` from the registry on every run and would
+execute unreviewed third-party code against live credentials with publish
+rights.
+
+## CI
+
+`build-web.yml` builds and runs the artifact guards; it does not deploy.
+`test.yml` runs the vitest suites for all four workspace packages plus
+`tsc -b` for map-corridors. Until `test.yml` existed, **no workflow ran the unit
+tests at all** — the only CI test invocation was the Playwright e2e suite, so
+every regression guard in this repo ran solely on a developer's machine, and
+Dependabot PRs (the exact thing `rendererPairing.test.ts` exists to catch) sailed
+through untested.
+
 ## Renderer split (why the web build differs from desktop)
 
 `vite.config.ts` aliases `mapbox-gl` → `maplibre-gl` and
@@ -122,7 +147,12 @@ Consequences worth remembering:
   apply under test. A test meaning to exercise the web renderer must import
   `react-map-gl/maplibre` explicitly, or it silently tests the desktop wrapper.
 - These three packages are pinned **exactly** (`maplibre-gl`, `mapbox-gl`,
-  `react-map-gl`). A caret range is what let an untested major in.
+  `react-map-gl`). Note what actually happened, because it is the stronger
+  argument: `react-map-gl: "^8.0.4"` admitted **8.1.0** — a MINOR bump, not a
+  major — and that was enough to break every camera event. maplibre-gl was
+  already pinned exactly at 6.9.0. Semver minor is not a safety boundary when a
+  package's own peer range (`maplibre-gl >=4.0.0`) predates the major it is
+  being resolved against.
 - maplibre-gl must stay **>= 6.4.1**: GHSA-jrc7-96c5-q579 is a critical
   `DOM.sanitize()` XSS affecting <= 6.4.0.
 

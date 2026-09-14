@@ -211,13 +211,42 @@ export function emptyIndex(): CompetitionsIndex {
   return { competitions: [], activeCompetitionId: null, version: 1 };
 }
 
+/**
+ * True iff an entry carries every field consumers dereference without checking.
+ *
+ * `discipline` and the numeric/boolean fields are deliberately NOT required:
+ * they have safe defaults downstream, whereas a missing `id`/`name` or an
+ * unparseable `createdAt` breaks rendering or date maths. Keep this aligned
+ * with what `detectCleanupCandidates` and the UI actually read.
+ *
+ * @returns whether `v` is safe to expose as CompetitionMetadata.
+ */
+function isCompetitionMetadata(v: unknown): v is CompetitionMetadata {
+  if (!v || typeof v !== 'object') return false;
+  const c = v as Record<string, unknown>;
+  return (
+    typeof c.id === 'string' && c.id.length > 0 &&
+    typeof c.name === 'string' &&
+    typeof c.createdAt === 'string' && !Number.isNaN(new Date(c.createdAt).getTime()) &&
+    typeof c.lastModified === 'string'
+  );
+}
+
 export function validateIndex(raw: unknown): CompetitionsIndex {
   if (!raw || typeof raw !== 'object') {
     return emptyIndex();
   }
   const r = raw as { competitions?: unknown; activeCompetitionId?: unknown; version?: unknown };
+  // Validate the ELEMENTS, not just the container. This index is read back from
+  // disk (OPFS / the desktop userData dir), so it can be truncated, corrupted or
+  // hand-edited. Casting the array through unchecked hands every consumer a
+  // value typed CompetitionMetadata that was never verified — and a single
+  // malformed entry (say `name` as an object) then reaches the UI and throws
+  // "Objects are not valid as a React child", white-screening the launcher with
+  // no way back except editing storage by hand. Dropping bad entries degrades
+  // instead: the user loses a broken row, not the whole app.
   const competitions = Array.isArray(r.competitions)
-    ? (r.competitions as CompetitionMetadata[])
+    ? r.competitions.filter(isCompetitionMetadata)
     : [];
   const activeCompetitionId =
     typeof r.activeCompetitionId === 'string' ? r.activeCompetitionId : null;

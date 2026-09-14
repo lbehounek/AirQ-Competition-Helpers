@@ -1,0 +1,67 @@
+name: Unit Tests
+
+# Runs the vitest suites and the typechecker for every workspace package.
+#
+# WHY THIS EXISTS: until it was added, NO workflow ran the unit tests. The only
+# test invocation in CI was `pnpm run test:e2e` in e2e.yml, so ~1900 vitest
+# tests — including every regression guard written against the map defects —
+# executed only on a developer's machine. Dependabot (see dependabot.yml) opens
+# dependency PRs into this pipeline, and the guard that exists specifically to
+# catch a bad renderer pairing (map-corridors' rendererPairing.test.ts) would
+# not have run on them. That is the exact scenario it was written for.
+#
+# Typecheck is part of the gate, not a separate nicety: the repo's convention is
+# that a TypeScript error is a test failure, and vitest does not typecheck.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: 'frontend/pnpm-lock.yaml'
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      # No map tokens: these suites must pass without one, exactly as the
+      # tokenless public web build does.
+      - name: Typecheck (map-corridors)
+        working-directory: frontend/map-corridors
+        run: pnpm exec tsc -b
+
+      - name: Unit tests
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          for pkg in @airq/map-corridors @airq/photo-helper @airq/landing @airq/competitions; do
+            echo "::group::$pkg"
+            pnpm --filter "$pkg" test
+            echo "::endgroup::"
+          done
