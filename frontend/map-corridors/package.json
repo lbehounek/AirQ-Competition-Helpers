@@ -23,7 +23,7 @@
     "@turf/bearing": "7.3.4",
     "@turf/boolean-point-in-polygon": "7.3.4",
     "@turf/buffer": "7.3.4",
-    "@turf/destination": "7.3.4",
+    "@turf/destination": "7.4.0",
     "@turf/helpers": "7.3.4",
     "@turf/invariant": "7.3.4",
     "@turf/length": "7.3.4",
