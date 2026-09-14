@@ -42,7 +42,7 @@ export function useMapStyle({ preferredId, onChange }: UseMapStyleArgs): [MapSty
   const pickDefault = useCallback((): MapStyleId => {
     if (normalizedPreferred && availableIds.has(normalizedPreferred)) return normalizedPreferred
     if (availableStyles.length > 0) return availableStyles[0].id
-    return 'osm-classic'
+    return 'esri-streets'
   }, [availableIds, availableStyles, normalizedPreferred])
 
   const [mapStyleId, _setMapStyleId] = useState<MapStyleId>(() => pickDefault())

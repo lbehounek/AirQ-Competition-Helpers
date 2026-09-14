@@ -68,5 +68,27 @@ echo "No map tokens found in public/."
 # scanner — a Firebase API key or anything else would pass. Widen the pattern
 # here if the web build ever starts carrying other credentials.
 
+# Verify the MapLibre worker asset actually shipped.
+#
+# MapLibre v6 splits into entry + shared + worker and locates the worker at RUNTIME
+# with `new URL('./maplibre-gl-worker.mjs', import.meta.url)`. Rollup cannot follow a
+# constructed string, so before src/config/initMapWorker.ts re-declared it with
+# `?worker&url`, the chunk was simply never emitted. The failure was invisible:
+# Firebase's SPA rewrite answers a missing asset with index.html, so the worker
+# "loaded" as HTML, died silently, and the map rendered a grey canvas having
+# requested ZERO tiles. No console error, no build warning, full green test suite.
+#
+# Checking the ARTIFACT is the only thing that catches this — a unit test cannot see
+# the bundle, and the tile providers looked healthy the whole time.
+echo "=== Checking the MapLibre worker asset shipped ==="
+if ! ls public/map-corridors/assets/maplibre-gl-worker-*.js >/dev/null 2>&1; then
+  echo "REFUSING TO CONTINUE — no MapLibre worker asset in public/map-corridors/assets." >&2
+  echo "Without it the map renders a grey canvas and requests no tiles, silently." >&2
+  echo "Check that src/config/maplibreWorkerUrl.web.ts still imports the worker with" >&2
+  echo "'?worker&url', and that vite.config.ts aliases virtual:maplibre-worker-url to it." >&2
+  exit 1
+fi
+echo "MapLibre worker asset present."
+
 echo "=== Web bundle ready at $REPO_ROOT/public ==="
 du -sh public/* 2>/dev/null | sort

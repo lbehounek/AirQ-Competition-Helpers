@@ -11,3 +11,10 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+// Resolved by a build-time alias (see vite.config.ts) to either the web module,
+// which emits MapLibre's worker as an asset, or the desktop stub.
+declare module 'virtual:maplibre-worker-url' {
+  const workerUrl: string
+  export default workerUrl
+}
