@@ -73,10 +73,24 @@ class V6ShapedMap {
   }
 
   // --- surface the wrapper touches during setup / teardown
+  //
+  // Keep this list aligned with what @vis.gl/react-maplibre actually calls
+  // (grep `map\.` in dist/maplibre/maplibre.js). A missing method does NOT
+  // fail the assertions — it throws from inside a React effect AFTER the test
+  // body returns, which vitest reports as an unhandled error and which only
+  // showed up on the slower CI runner. `isMoving` is the one that bit:
+  // `setProps` -> `_updateViewState` calls it on every prop update.
+  isMoving() { return false }
+  isStyleLoaded() { return true }
+  jumpTo() { return this }
+  setStyle() { return this }
+  setLight() { return this }
+  setSky() { return this }
+  setTerrain() { return this }
+  getSource() { return undefined }
   getCanvas() { return document.createElement('canvas') }
   getContainer() { return document.createElement('div') }
   getStyle() { return { layers: [], sources: {} } }
-  isStyleLoaded() { return true }
   getLight() { return undefined }
   getSky() { return undefined }
   getTerrain() { return null }
