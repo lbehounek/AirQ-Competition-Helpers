@@ -172,14 +172,39 @@ export async function captureMapForPrint(options: PrintOptions): Promise<PrintCa
   // On Windows display scaling >100% that's up to 2× per axis. We can't stop
   // the oversized render, but the capture below normalizes the exported PNG
   // back to exactly `dims`, so the output size is machine-independent.
-  const map = new gl.Map({
+/**
+ * Keep the WebGL backing store readable after a frame is composited, for BOTH
+ * renderers this one source has to serve.
+ *
+ * mapbox-gl (desktop) takes `preserveDrawingBuffer` as a top-level MapOption.
+ * maplibre-gl v6 (web) does NOT — it moved every context attribute into
+ * `canvasContextAttributes`, and silently DROPS the top-level flag, so the web
+ * build was constructing its canvas without it while the code plainly asked
+ * for it. That flag is exactly what makes `getCanvas()` readable for the
+ * PNG/PDF export in mapCapture.
+ *
+ * Passing both keys is deliberate: each renderer ignores the other's, so no
+ * build-time branching is needed. maplibre spreads its own defaults before the
+ * supplied object (verified in maplibre-gl.mjs), so `antialias` and
+ * `powerPreference` are preserved rather than clobbered.
+ *
+ * NOT MEASURED: whether the web export was visibly blank/garbled in practice.
+ * A canvas read can still succeed if it happens before the buffer is cleared.
+ * Setting the flag correctly is strictly safer either way.
+ */
+  const mapOptions = {
     container,
     style,
     preserveDrawingBuffer: true,
+    canvasContextAttributes: { preserveDrawingBuffer: true },
     interactive: false,
     fadeDuration: 0,
     attributionControl: false,
-  })
+    // Cast for the same reason as above: mapbox-gl's typings do not declare
+    // `canvasContextAttributes`, but the aliased web renderer requires it.
+  } as unknown as ConstructorParameters<typeof gl.Map>[0]
+
+  const map = new gl.Map(mapOptions)
 
   try {
     // Wait for style to load

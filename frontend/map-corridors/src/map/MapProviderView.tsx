@@ -34,6 +34,33 @@ import {
   LIVE_MARKER_DOT_PX,
 } from '../utils/markerSizes'
 
+/**
+ * Keep the WebGL backing store readable after a frame is composited, for BOTH
+ * renderers this one source has to serve.
+ *
+ * mapbox-gl (desktop) takes `preserveDrawingBuffer` as a top-level MapOption.
+ * maplibre-gl v6 (web) does NOT — it moved every context attribute into
+ * `canvasContextAttributes`, and silently DROPS the top-level flag, so the web
+ * build was constructing its canvas without it while the code plainly asked
+ * for it. That flag is exactly what makes `getCanvas()` readable for the
+ * PNG/PDF export in mapCapture.
+ *
+ * Passing both keys is deliberate: each renderer ignores the other's, so no
+ * build-time branching is needed. maplibre spreads its own defaults before the
+ * supplied object (verified in maplibre-gl.mjs), so `antialias` and
+ * `powerPreference` are preserved rather than clobbered.
+ *
+ * NOT MEASURED: whether the web export was visibly blank/garbled in practice.
+ * A canvas read can still succeed if it happens before the buffer is cleared.
+ * Setting the flag correctly is strictly safer either way.
+ */
+const preserveDrawingBufferProps = {
+  preserveDrawingBuffer: true,
+  canvasContextAttributes: { preserveDrawingBuffer: true },
+  // Cast because the props are typed against mapbox-gl, which has no
+  // `canvasContextAttributes`; the key is real for the aliased web renderer.
+} as unknown as React.ComponentProps<typeof MapGL>
+
 export type Overlay = {
   id: string
   data: GeoJSON
@@ -604,7 +631,7 @@ export const MapProviderView = memo(forwardRef<MapProviderViewHandle, MapProvide
     <MapGL
       mapStyle={mapStyle}
       mapboxAccessToken={mapboxAccessToken}
-      preserveDrawingBuffer
+      {...preserveDrawingBufferProps}
       // Built-in keyboard handler off: it only works while the canvas has
       // focus and would double-handle keys next to our window-level
       // Google-Earth-style handler above (see keyboardNav.ts).
