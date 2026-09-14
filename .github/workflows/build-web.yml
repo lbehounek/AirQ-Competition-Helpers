@@ -1,4 +1,19 @@
-name: Build and Deploy Web
+name: Build Web
+
+# This workflow BUILDS and runs the artifact guards. It does NOT deploy.
+#
+# Publishing is manual, from a developer machine, via `scripts/deploy-web.sh`
+# (see .claude/skills/web-deploy/SKILL.md). Deploying from CI would have meant
+# either a long-lived service-account JSON in a repo secret — the only thing
+# FirebaseExtended/action-hosting-deploy accepts, since `firebaseServiceAccount`
+# is a required input with no OIDC alternative — or standing up Workload
+# Identity Federation. For a project that ships on a human's say-so, neither
+# earned its keep, and a deploy step that permanently fails for want of a secret
+# is worse than no deploy step.
+#
+# What this DOES protect is the thing local work keeps getting wrong: it runs
+# scripts/build-web.sh, whose guards refuse a bundle containing a map token or
+# missing the MapLibre worker asset.
 
 on:
   pull_request:
@@ -6,26 +21,17 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      channel:
-        description: 'Preview channel name (use "live" for production)'
-        required: true
-        default: 'manual'
 
 concurrency:
   group: web-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Build-only: nothing here publishes, so read access is all it needs.
 permissions:
   contents: read
-  pull-requests: write
-  checks: write
-
-env:
-  FIREBASE_PROJECT_ID: airq-competition-helpers
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -47,37 +53,10 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      # No map tokens are passed in, deliberately. build-web.sh strips
+      # VITE_MAPBOX_TOKEN / VITE_MAPYCZ_TOKEN from the environment regardless,
+      # because Vite inlines them at build time and anything set here would ship
+      # as plain text in a world-readable bundle. The script's own guard then
+      # greps the built artifact and fails if a token got in by any other route.
       - name: Build web bundle
-        env:
-          VITE_MAPBOX_TOKEN: ${{ secrets.VITE_MAPBOX_TOKEN_WEB }}
-          VITE_MAPYCZ_TOKEN: ${{ secrets.VITE_MAPYCZ_TOKEN_WEB }}
         run: bash scripts/build-web.sh
-
-      - name: Deploy to preview channel
-        if: github.event_name == 'pull_request'
-        uses: FirebaseExtended/action-hosting-deploy@0cbcac4740c2bfb00d632f0b863b57713124eb5a # v0.9.0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AIRQ_COMPETITION_HELPERS }}
-          projectId: ${{ env.FIREBASE_PROJECT_ID }}
-          channelId: pr-${{ github.event.pull_request.number }}
-          expires: 7d
-
-      - name: Deploy to live channel
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: FirebaseExtended/action-hosting-deploy@0cbcac4740c2bfb00d632f0b863b57713124eb5a # v0.9.0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AIRQ_COMPETITION_HELPERS }}
-          projectId: ${{ env.FIREBASE_PROJECT_ID }}
-          channelId: live
-
-      - name: Deploy to manual channel
-        if: github.event_name == 'workflow_dispatch'
-        uses: FirebaseExtended/action-hosting-deploy@0cbcac4740c2bfb00d632f0b863b57713124eb5a # v0.9.0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AIRQ_COMPETITION_HELPERS }}
-          projectId: ${{ env.FIREBASE_PROJECT_ID }}
-          channelId: ${{ github.event.inputs.channel }}
-          expires: 7d
