@@ -65,3 +65,9 @@ jobs:
             pnpm --filter "$pkg" test
             echo "::endgroup::"
           done
+
+      # Standard-library node:test suite for the web bundle's clickjacking headers:
+      # fails if firebase.json loses frame-ancestors/X-Frame-Options or another
+      # header rule could override them. Needs no install.
+      - name: Framing headers (firebase.json)
+        run: node --test scripts/check-framing-headers.test.mjs
