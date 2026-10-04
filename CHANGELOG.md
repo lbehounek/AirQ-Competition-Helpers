@@ -10,6 +10,15 @@ This file tracks the **Windows desktop bundle** (tagged `desktop-v*`). Sub-app
 changes (Photo Helper, Map Corridors) reach end users only when bundled into a
 new desktop release.
 
+## [Unreleased]
+
+### Security
+- **Web build (Firebase Hosting):** every page — landing, Photo Helper, Map
+  Corridors and the 404 page — now refuses to be framed by another site
+  (`Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`),
+  closing a clickjacking gap. Takes effect on the next manual
+  `scripts/deploy-web.sh live`. The desktop app is unaffected.
+
 ## [2.31.6] - 2026-09-14
 
 ### Fixed

@@ -123,6 +123,51 @@ version pinned in `frontend/package.json` and locked in `pnpm-lock.yaml` — NOT
 execute unreviewed third-party code against live credentials with publish
 rights.
 
+## Framing (clickjacking) headers
+
+`firebase.json` sends `Content-Security-Policy: frame-ancestors 'none'` and
+`X-Frame-Options: DENY` from one `source: "**"` rule, so the landing, both
+sub-app rewrites and Hosting's 404 all refuse foreign framing. `**` because
+header globs match the *requested* path — `/map-corridors/some/route` is served
+from `map-corridors/index.html` but would miss a rule scoped to that file. No
+other rule may set either header (Hosting keeps the last matching value per
+key). Nothing embeds these pages over HTTP; the Map Corridors print frame is a
+`srcdoc` document and is unaffected (browser-checked 2026-10-03). A `<meta>`
+CSP cannot carry `frame-ancestors`.
+
+```bash
+node --test scripts/check-framing-headers.test.mjs                 # in test.yml: committed firebase.json + checker cases
+node scripts/check-framing-headers.mjs emulator --baseline origin/main   # Hosting emulator with the locked CLI
+```
+
+`emulator` serves the config from a throwaway fixture outside the repo and
+asserts the policy, status and content type on `/`, both sub-apps, deep links,
+a 404 and an asset; `--baseline <ref>` proves the change is framing-only by
+diffing and serving the config at that git ref (any rewrite or cache-header
+change fails). Preview channels get the same headers — they are deployed from
+the same `firebase.json`. After `deploy-web.sh live`:
+
+```bash
+node scripts/check-framing-headers.mjs live \
+  https://airq-competition-helpers.web.app/ https://airq-competition-helpers.web.app/photo-helper/ \
+  https://airq-competition-helpers.web.app/map-corridors/ https://airq-competition-helpers.firebaseapp.com/ \
+  --error-page https://airq-competition-helpers.web.app/no-such-page
+```
+
+PASS requires the bundle's own HTML (`<div id="root">`) at the requested origin
+and path with exactly one `frame-ancestors 'none'` policy and one
+`X-Frame-Options: DENY`; any redirect elsewhere, non-HTML response or fetch
+error is UNKNOWN (exit 3).
+
+**Legacy rsync host is NOT covered.** `deployment/deploy.{dev,prod}.sh` rsync
+the sub-apps to the host in the git-ignored `deployment/deploy.conf`
+(historically `zavody.behounek.it`). This repo holds no server config for it, so
+the Firebase rule does not protect it. A GET on 2026-10-03 found it still
+serving `/` and `/map-corridors/` (200, `server: LiteSpeed`) with neither
+header. The same two headers must be set in that host's virtual-host
+configuration — an `.htaccess` `Header` line is not enough on OpenLiteSpeed,
+which ignores it — and verified with a GET there.
+
 ## CI
 
 `build-web.yml` builds and runs the artifact guards; it does not deploy.
