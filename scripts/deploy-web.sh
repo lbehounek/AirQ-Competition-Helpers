@@ -50,7 +50,12 @@ WEB_OUT="$WEB_OUT" bash scripts/build-web.sh
 CONFIG_ARG=()
 GENERATED_CONFIG=""
 if [ "$WEB_OUT" != "public" ]; then
-  GENERATED_CONFIG=".firebase-deploy.generated.json"
+  # Absolute path: $FIREBASE runs as `pnpm --dir frontend exec firebase`, so
+  # the CLI's cwd is frontend/ and a relative --config would be looked up as
+  # frontend/.firebase-deploy.generated.json ("Could not load config file").
+  # The file itself stays beside firebase.json so `public` still resolves
+  # relative to the repo root.
+  GENERATED_CONFIG="$REPO_ROOT/.firebase-deploy.generated.json"
   node -e '
     const fs = require("fs");
     const cfg = JSON.parse(fs.readFileSync("firebase.json", "utf8"));
