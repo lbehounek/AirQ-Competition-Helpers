@@ -26,7 +26,7 @@
     "@turf/destination": "7.3.4",
     "@turf/helpers": "7.3.4",
     "@turf/invariant": "7.3.4",
-    "@turf/length": "7.3.4",
+    "@turf/length": "7.4.0",
     "@turf/line-intersect": "7.3.4",
     "@turf/nearest-point-on-line": "7.3.4",
     "@turf/point-to-line-distance": "7.3.4",
