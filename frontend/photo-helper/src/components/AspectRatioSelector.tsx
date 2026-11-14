@@ -122,11 +122,13 @@ export const AspectRatioSelector: React.FC<AspectRatioSelectorProps> = ({ compac
                 {t(`photoFormat.aspectRatios.${option.id}.name`)}
               </Typography>
               
-              <Typography 
-                variant="caption" 
-                color="text.secondary"
-                sx={{ fontSize: '0.7rem', lineHeight: 1.2 }}
-              >
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  fontSize: '0.7rem',
+                  lineHeight: 1.2
+                }}>
                 {t(`photoFormat.aspectRatios.${option.id}.description`)}
               </Typography>
               

@@ -59,7 +59,9 @@ export const CompetitionSelector: React.FC<CompetitionSelectorProps> = ({
             variant="outlined"
             sx={{ fontSize: '0.75rem', height: '20px' }}
           />
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {createdDate}
           </Typography>
           {competition.isActive && (
@@ -116,7 +118,9 @@ export const CompetitionSelector: React.FC<CompetitionSelectorProps> = ({
       >
         {sortedCompetitions.length === 0 ? (
           <MenuItem disabled>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               {loading ? t('common.loading') : t('competition.emptyState')}
             </Typography>
           </MenuItem>

@@ -32,7 +32,7 @@ import {
   Warning,
   Home,
   Map,
-  HelpOutline,
+  HelpOutlined,
 } from '@mui/icons-material';
 import { useCompetitionSystem } from './hooks/useCompetitionSystem';
 import { useClipboardPaste } from './hooks/useClipboardPaste';
@@ -1075,7 +1075,7 @@ function AppApi() {
             </Box>
             <Tooltip title={t('tour.help.button')}>
               <IconButton size="small" onClick={handleStartTour} sx={{ color: 'white' }} aria-label={t('tour.help.button')} data-tour="help">
-                <HelpOutline />
+                <HelpOutlined />
               </IconButton>
             </Tooltip>
           </Box>
@@ -1108,7 +1108,17 @@ function AppApi() {
               }}>
                 {/* Photo Mode */}
                 <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "text.primary",
+                      fontWeight: 500,
+                      fontSize: '0.8rem',
+                      display: 'block',
+                      textAlign: { xs: 'center', xl: 'inherit' },
+                      width: { xs: '100%', xl: 'auto' },
+                      whiteSpace: { xl: 'nowrap' }
+                    }}>
                     {t('mode.title')}
                   </Typography>
                   <ModeSelector 
@@ -1120,7 +1130,17 @@ function AppApi() {
 
                 {/* Layout Mode (Portrait/Landscape) */}
                 <Box data-tour="layout" sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "text.primary",
+                      fontWeight: 500,
+                      fontSize: '0.8rem',
+                      display: 'block',
+                      textAlign: { xs: 'center', xl: 'inherit' },
+                      width: { xs: '100%', xl: 'auto' },
+                      whiteSpace: { xl: 'nowrap' }
+                    }}>
                     {t('layout.title')}
                   </Typography>
                   <LayoutModeSelector
@@ -1136,7 +1156,17 @@ function AppApi() {
 
                 {/* Photo Format */}
                 <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "text.primary",
+                      fontWeight: 500,
+                      fontSize: '0.8rem',
+                      display: 'block',
+                      textAlign: { xs: 'center', xl: 'inherit' },
+                      width: { xs: '100%', xl: 'auto' },
+                      whiteSpace: { xl: 'nowrap' }
+                    }}>
                     {t('photoFormat.title')}
                   </Typography>
                   <AspectRatioSelector compact />
@@ -1146,7 +1176,17 @@ function AppApi() {
                     numbers, so there is no valid alternative to expose. */}
                 {!isPrecision && (
                   <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 0.5, flexDirection: { xs: 'column', xl: 'row' } }}>
-                    <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' }, whiteSpace: { xl: 'nowrap' } }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: "text.primary",
+                        fontWeight: 500,
+                        fontSize: '0.8rem',
+                        display: 'block',
+                        textAlign: { xs: 'center', xl: 'inherit' },
+                        width: { xs: '100%', xl: 'auto' },
+                        whiteSpace: { xl: 'nowrap' }
+                      }}>
                       {t('photoLabels.title')}
                     </Typography>
                     <LabelingSelector compact />
@@ -1159,7 +1199,16 @@ function AppApi() {
                     of grid state (feedback M., 2026-05-15). Shuffle stays
                     track-only since it's mode-specific. */}
                 <Box sx={{ display: 'flex', alignItems: { xs: 'center', xl: 'center' }, gap: 1, flexDirection: { xs: 'column', xl: 'row' } }}>
-                  <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.8rem', display: 'block', textAlign: { xs: 'center', xl: 'inherit' }, width: { xs: '100%', xl: 'auto' } }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: "text.primary",
+                      fontWeight: 500,
+                      fontSize: '0.8rem',
+                      display: 'block',
+                      textAlign: { xs: 'center', xl: 'inherit' },
+                      width: { xs: '100%', xl: 'auto' }
+                    }}>
                     {t('actions.title')}
                   </Typography>
                   <ImportPhotosControl
@@ -1197,7 +1246,14 @@ function AppApi() {
             {/* Competition Management — hidden in desktop mode (managed by launcher) */}
             {!isDesktopManaged && (
               <Box sx={{ p: 2 }}>
-                <Typography variant="body2" color="text.primary" sx={{ fontWeight: 500, fontSize: '0.875rem', mb: 2 }}>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: "text.primary",
+                    fontWeight: 500,
+                    fontSize: '0.875rem',
+                    mb: 2
+                  }}>
                   {t('competition.title')}
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>

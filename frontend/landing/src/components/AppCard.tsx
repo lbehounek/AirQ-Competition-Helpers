@@ -27,7 +27,9 @@ export function AppCard({ title, description, icon, disabled, onClick }: Props) 
     >
       <CardActionArea onClick={onClick} disabled={disabled} sx={{ height: '100%' }}>
         <CardContent sx={{ p: 3 }}>
-          <Stack direction="row" spacing={2} alignItems="center">
+          <Stack direction="row" spacing={2} sx={{
+            alignItems: "center"
+          }}>
             <Box
               sx={{
                 width: 56,
@@ -55,5 +57,5 @@ export function AppCard({ title, description, icon, disabled, onClick }: Props) 
         </CardContent>
       </CardActionArea>
     </Card>
-  )
+  );
 }

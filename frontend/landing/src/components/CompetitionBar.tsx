@@ -11,7 +11,7 @@ import {
 } from '@mui/material'
 import type { SelectChangeEvent } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
-import DeleteIcon from '@mui/icons-material/DeleteOutline'
+import DeleteIcon from '@mui/icons-material/DeleteOutlined'
 import CloseIcon from '@mui/icons-material/Close'
 import CheckIcon from '@mui/icons-material/Check'
 import type { CompetitionMetadata, Discipline } from '@airq/competitions'

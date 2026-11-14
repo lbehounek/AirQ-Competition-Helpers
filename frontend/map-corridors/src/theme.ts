@@ -80,9 +80,11 @@ export const theme = createTheme({
           boxShadow: 'none',
           '&:hover': { boxShadow: '0 2px 8px rgba(25, 118, 210, 0.15)' },
         },
-        containedPrimary: {
-          background: 'linear-gradient(45deg, #1976D2 30%, #42A5F5 90%)',
-          '&:hover': { background: 'linear-gradient(45deg, #0D47A1 30%, #1976D2 90%)' },
+        contained: {
+          '&.MuiButton-colorPrimary': {
+            background: 'linear-gradient(45deg, #1976D2 30%, #42A5F5 90%)',
+            '&:hover': { background: 'linear-gradient(45deg, #0D47A1 30%, #1976D2 90%)' },
+          },
         },
       },
     },

@@ -364,10 +364,14 @@ export const PhotoListPanel = memo(function PhotoListPanel(props: PhotoListPanel
     >
       <Stack
         direction="row"
-        alignItems="center"
         spacing={0.5}
-        sx={{ px: collapsedPanel ? 0.5 : 1, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}
-      >
+        sx={{
+          alignItems: "center",
+          px: collapsedPanel ? 0.5 : 1,
+          py: 0.5,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
+        }}>
         <Tooltip title={collapsedPanel ? t('photo.list.expand') : t('photo.list.collapse')}>
           <IconButton size="small" onClick={() => setCollapsedPanel(p => !p)} aria-label={collapsedPanel ? t('photo.list.expand') : t('photo.list.collapse')}>
             {collapsedPanel ? <ChevronLeft fontSize="small" /> : <ChevronRight fontSize="small" />}
@@ -405,9 +409,10 @@ export const PhotoListPanel = memo(function PhotoListPanel(props: PhotoListPanel
                   fullWidth
                   value={breakValue}
                   onChange={(e) => onSetBreakChange(e.target.value === '' ? null : e.target.value)}
-                  SelectProps={{ displayEmpty: true }}
-                  inputProps={{ 'aria-label': t('photo.list.setBreakLabel') }}
-                >
+                  slotProps={{
+                    htmlInput: { 'aria-label': t('photo.list.setBreakLabel') },
+                    select: { displayEmpty: true }
+                  }}>
                   <MenuItem value="">{t('photo.list.setBreakNone')}</MenuItem>
                   {breakOptions.map(o => (
                     <MenuItem key={o.name} value={o.name}>{o.name}</MenuItem>
@@ -504,16 +509,19 @@ export const PhotoListPanel = memo(function PhotoListPanel(props: PhotoListPanel
           {groups.noGps.length > 0 && (
             <Typography
               variant="caption"
-              color="text.secondary"
-              sx={{ display: 'block', mt: 0.75, lineHeight: 1.3 }}
-            >
+              sx={{
+                color: "text.secondary",
+                display: 'block',
+                mt: 0.75,
+                lineHeight: 1.3
+              }}>
               {t('photo.list.noGpsNotPlaced', { count: groups.noGps.length })}
             </Typography>
           )}
         </Box>
       )}
     </Paper>
-  )
+  );
 })
 
 /**
@@ -630,8 +638,10 @@ function GroupSection(props: {
         aria-expanded={!collapsed}
       >
         <ListItemText
-          primaryTypographyProps={{ variant: 'body2', sx: { fontWeight: 600 } }}
           primary={`${title} (${count})`}
+          slotProps={{
+            primary: { variant: 'body2', sx: { fontWeight: 600 } }
+          }}
         />
         {collapsed ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
       </ListItemButton>
@@ -639,7 +649,7 @@ function GroupSection(props: {
         {count === 0 ? null : <List dense disablePadding>{items}</List>}
       </Collapse>
     </Box>
-  )
+  );
 }
 
 function renderGroupItems(
@@ -1108,7 +1118,9 @@ const PhotoListItem = memo(function PhotoListItem(props: PhotoListItemProps) {
             size="small"
             variant="standard"
             fullWidth
-            inputProps={{ 'aria-label': renameTooltip, maxLength: 200, style: { fontSize: 12 } }}
+            slotProps={{
+              htmlInput: { 'aria-label': renameTooltip, maxLength: 200, style: { fontSize: 12 } }
+            }}
           />
         ) : (
           <ListItemText
@@ -1116,9 +1128,10 @@ const PhotoListItem = memo(function PhotoListItem(props: PhotoListItemProps) {
             // Original camera filename underneath, but only when renamed —
             // gives the user the workflow name (TP1) AND the camera reference.
             secondary={showOriginal ? originalFilename : undefined}
-            primaryTypographyProps={{ variant: 'body2', noWrap: true, sx: { fontSize: 12 } }}
-            secondaryTypographyProps={{ variant: 'caption', noWrap: true, sx: { fontSize: 10 } }}
-          />
+            slotProps={{
+              primary: { variant: 'body2', noWrap: true, sx: { fontSize: 12 } },
+              secondary: { variant: 'caption', noWrap: true, sx: { fontSize: 10 } }
+            }} />
         )}
       </ListItemButton>
       {editing ? (
@@ -1180,5 +1193,5 @@ const PhotoListItem = memo(function PhotoListItem(props: PhotoListItemProps) {
         </>
       )}
     </Box>
-  )
+  );
 })

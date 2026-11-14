@@ -264,12 +264,15 @@ describe('PhotoControls — pointer drag', () => {
       const { container, onPreview, onCommit } = renderControls();
       const brightness = sliderByRange(container, '-100', '100');
       const root = brightness.closest('.MuiSlider-root')!;
+      // jsdom has no pointer-capture implementation; mouse drags do not capture.
+      Object.defineProperty(root, 'hasPointerCapture', { value: () => false });
 
-      fireEvent.mouseDown(root, { clientX: 75, clientY: 5, buttons: 1 });
+      // MUI 9 sliders use Pointer Events for mouse, touch, and pen input.
+      fireEvent.pointerDown(root, { clientX: 75, clientY: 5, buttons: 1, pointerId: 1, pointerType: 'mouse' });
       expect(onPreview).toHaveBeenCalled();
       expect(onCommit).not.toHaveBeenCalled();
 
-      fireEvent.mouseUp(document, { clientX: 75, clientY: 5 });
+      fireEvent.pointerUp(document, { clientX: 75, clientY: 5, pointerId: 1, pointerType: 'mouse' });
       expect(onCommit).toHaveBeenCalledTimes(1);
       expect(onCommit).toHaveBeenCalledWith({ brightness: 50 });
     } finally {

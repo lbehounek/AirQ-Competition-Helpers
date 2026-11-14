@@ -169,7 +169,9 @@ export const CreateCompetitionButton: React.FC<CreateCompetitionButtonProps> = (
 
           {/* Competition count info */}
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2 }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               {t('competition.currentCount')}:
             </Typography>
             <Chip 

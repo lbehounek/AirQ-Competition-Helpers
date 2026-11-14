@@ -53,7 +53,9 @@ const Impl: React.FC<CandidateThumbImageProps> = ({ photo, photosDir }) => {
       {state === 'missing' && (
         <Box sx={{ textAlign: 'center', color: 'text.disabled' }}>
           <BrokenImage fontSize="small" />
-          <Typography variant="caption" display="block">
+          <Typography variant="caption" sx={{
+            display: "block"
+          }}>
             {t('candidates.thumbMissing')}
           </Typography>
         </Box>

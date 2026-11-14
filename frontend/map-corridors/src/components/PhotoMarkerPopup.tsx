@@ -119,7 +119,9 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
           />
         )}
         {loadState === 'missing' && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {t('photo.popup.thumbMissing')}
           </Typography>
         )}
@@ -128,12 +130,24 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
         {filename}
       </Typography>
       {originalFilename && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', wordBreak: 'break-all' }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            display: 'block',
+            wordBreak: 'break-all'
+          }}>
           {originalFilename}
         </Typography>
       )}
       {timestamp && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: "text.secondary",
+            display: 'block',
+            mb: 1
+          }}>
           {timestamp}
         </Typography>
       )}
@@ -207,5 +221,5 @@ export function PhotoMarkerPopup(props: PhotoMarkerPopupProps) {
         </Box>
       )}
     </Box>
-  )
+  );
 }

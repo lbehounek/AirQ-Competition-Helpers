@@ -101,7 +101,9 @@ export function PhotoCompareModal(props: PhotoCompareModalProps) {
     >
       <DialogTitle id="photo-compare-title" sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
         <Box sx={{ flex: 1 }}>{t('photo.compare.title')}</Box>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" sx={{
+          color: "text.secondary"
+        }}>
           {t('photo.compare.shortcut')}
         </Typography>
         <IconButton size="small" onClick={onClose} aria-label={t('photo.compare.cancel')}>
@@ -135,7 +137,7 @@ export function PhotoCompareModal(props: PhotoCompareModalProps) {
         <Button onClick={onClose}>{t('photo.compare.cancel')}</Button>
       </DialogActions>
     </Dialog>
-  )
+  );
 }
 
 function CompareTile(props: {
@@ -181,12 +183,16 @@ function CompareTile(props: {
           />
         )}
         {state === 'loading' && (
-          <Typography variant="caption" color="grey.300">
+          <Typography variant="caption" sx={{
+            color: "grey.300"
+          }}>
             {t('photo.compare.loading')}
           </Typography>
         )}
         {state === 'missing' && (
-          <Typography variant="caption" color="error.light">
+          <Typography variant="caption" sx={{
+            color: "error.light"
+          }}>
             {t('photo.compare.missing')}
           </Typography>
         )}
@@ -210,12 +216,23 @@ function CompareTile(props: {
           {index + 1}
         </Box>
       </Box>
-      <Stack direction="row" spacing={1} alignItems="baseline" sx={{ minWidth: 0 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{
+          alignItems: "baseline",
+          minWidth: 0
+        }}>
         <Typography variant="body2" sx={{ fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {photoMarkerDisplayName(marker)}
         </Typography>
         {ts && (
-          <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              color: "text.secondary",
+              flexShrink: 0
+            }}>
             {ts}
           </Typography>
         )}
@@ -229,5 +246,5 @@ function CompareTile(props: {
         {t('photo.compare.pick')}
       </Button>
     </Stack>
-  )
+  );
 }

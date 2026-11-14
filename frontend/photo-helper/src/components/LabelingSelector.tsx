@@ -120,11 +120,13 @@ export const LabelingSelector: React.FC<LabelingSelectorProps> = ({ compact = fa
                 {t(`photoLabels.types.${option.id}.name`)}
               </Typography>
               
-              <Typography 
-                variant="caption" 
-                color="text.secondary"
-                sx={{ fontSize: '0.7rem', lineHeight: 1.2 }}
-              >
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  fontSize: '0.7rem',
+                  lineHeight: 1.2
+                }}>
                 {t(`photoLabels.types.${option.id}.description`)}
               </Typography>
               

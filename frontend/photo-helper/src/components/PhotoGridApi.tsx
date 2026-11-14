@@ -614,7 +614,9 @@ const PhotoGridApiImpl: React.FC<PhotoGridApiProps> = ({
           p: 4
         }}>
           <CircularProgress size={48} color="primary" sx={{ mb: 2 }} />
-          <Typography variant="body1" color="text.secondary">
+          <Typography variant="body1" sx={{
+            color: "text.secondary"
+          }}>
             Updating aspect ratio...
           </Typography>
         </Box>
