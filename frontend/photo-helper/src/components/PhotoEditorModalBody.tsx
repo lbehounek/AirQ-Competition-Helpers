@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Box, IconButton, Tooltip, Typography } from '@mui/material';
-import { ChevronLeft, ChevronRight, HelpOutline } from '@mui/icons-material';
+import { ChevronLeft, ChevronRight, HelpOutlined } from '@mui/icons-material';
 import { PhotoEditorApi } from './PhotoEditorApi';
 import { PhotoControls } from './PhotoControls';
 import { useDebouncedCommit } from '../hooks/useDebouncedCommit';
@@ -211,7 +211,7 @@ export function PhotoEditorModalBody({
           data-tour="editor-help"
           sx={{ position: 'absolute', top: 8, right: 48, zIndex: 2, color: 'text.secondary' }}
         >
-          <HelpOutline />
+          <HelpOutlined />
         </IconButton>
       </Tooltip>
       {/* Modal Content - L-Shape Layout: Photo top-left, Controls wrapping around */}
@@ -280,7 +280,13 @@ export function PhotoEditorModalBody({
                 >
                   <ChevronLeft />
                 </IconButton>
-                <Typography variant="caption" color="text.secondary" sx={{ minWidth: 48, textAlign: 'center' }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "text.secondary",
+                    minWidth: 48,
+                    textAlign: 'center'
+                  }}>
                   {modalIndex + 1} / {modalCount}
                 </Typography>
                 <IconButton

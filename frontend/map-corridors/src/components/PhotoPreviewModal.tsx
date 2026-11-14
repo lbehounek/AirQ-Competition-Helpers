@@ -76,7 +76,14 @@ export function PhotoPreviewModal(props: PhotoPreviewModalProps) {
             {filename || t('photo.preview.title')}
           </Typography>
           {(showOriginal || timestamp) && (
-            <Typography variant="caption" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}>
               {[showOriginal ? originalFilename : null, timestamp].filter(Boolean).join(' · ')}
             </Typography>
           )}
@@ -89,7 +96,7 @@ export function PhotoPreviewModal(props: PhotoPreviewModalProps) {
         <PreviewImage storage={storage} photosDir={photosDir} photoId={photoId} alt={filename || ''} />
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function PreviewImage(props: {
@@ -127,15 +134,19 @@ function PreviewImage(props: {
         />
       )}
       {state === 'loading' && (
-        <Typography variant="caption" color="grey.300">
+        <Typography variant="caption" sx={{
+          color: "grey.300"
+        }}>
           {t('photo.preview.loading')}
         </Typography>
       )}
       {state === 'missing' && (
-        <Typography variant="caption" color="error.light">
+        <Typography variant="caption" sx={{
+          color: "error.light"
+        }}>
           {t('photo.preview.missing')}
         </Typography>
       )}
     </Box>
-  )
+  );
 }

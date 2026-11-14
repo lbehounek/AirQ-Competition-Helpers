@@ -13,6 +13,6 @@
     "hosting:preview": "firebase hosting:channel:deploy"
   },
   "devDependencies": {
-    "firebase-tools": "15.15.0"
+    "firebase-tools": "15.35.0"
   }
 }

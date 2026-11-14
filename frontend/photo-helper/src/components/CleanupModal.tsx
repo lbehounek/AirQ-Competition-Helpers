@@ -111,8 +111,10 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
       onClose={onCancel}
       maxWidth="md"
       fullWidth
-      PaperProps={{
-        sx: { minHeight: '60vh' }
+      slotProps={{
+        paper: {
+          sx: { minHeight: '60vh' }
+        }
       }}
     >
       <DialogTitle sx={{ pb: 1 }}>
@@ -198,17 +200,21 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
                     }
                     secondary={
                       <Box>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography variant="body2" sx={{
+                          color: "text.secondary"
+                        }}>
                           {formatReason(candidate)}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="caption" sx={{
+                          color: "text.secondary"
+                        }}>
                           {t('common.createdOn', { date: formatDate(candidate.competition.createdAt) })}
                         </Typography>
                       </Box>
                     }
                   />
                 </ListItem>
-                
+
                 {index < candidates.length - 1 && <Divider variant="inset" />}
               </React.Fragment>
             );

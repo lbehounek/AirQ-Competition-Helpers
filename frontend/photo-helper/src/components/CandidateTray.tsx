@@ -33,7 +33,7 @@ import {
   PhotoLibrary,
   Add as AddIcon,
   KeyboardDoubleArrowRight,
-  DeleteOutline,
+  DeleteOutlined,
 } from '@mui/icons-material';
 import { useDropzone } from 'react-dropzone';
 import { useTheme, alpha } from '@mui/material/styles';
@@ -316,7 +316,9 @@ export const CandidateTray: React.FC<CandidateTrayProps> = ({
           }}
         >
           <KeyboardDoubleArrowRight sx={{ fontSize: 16, color: 'primary.main' }} />
-          <Typography variant="caption" color="text.secondary">
+          <Typography variant="caption" sx={{
+            color: "text.secondary"
+          }}>
             {t('candidates.dragHint')}
           </Typography>
         </Box>
@@ -606,7 +608,7 @@ const CandidateThumb = React.memo(function CandidateThumb({
             t('common.delete'),
             false,
             'error',
-            <DeleteOutline sx={{ fontSize: 16 }} />,
+            <DeleteOutlined sx={{ fontSize: 16 }} />,
             onDelete,
           )}
         </Box>

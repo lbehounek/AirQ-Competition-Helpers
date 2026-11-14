@@ -186,10 +186,10 @@ const EditableValueDisplay: React.FC<EditableValueDisplayProps> = ({
     <Typography
       variant="body2"
       color="primary"
-      fontWeight={600}
       onClick={handleClick}
       onWheel={handleWheel}
       sx={{
+        fontWeight: 600,
         cursor: 'pointer',
         userSelect: 'none',
         minWidth: '60px',
@@ -199,17 +199,18 @@ const EditableValueDisplay: React.FC<EditableValueDisplayProps> = ({
         justifyContent: 'center',
         fontVariantNumeric: 'tabular-nums',
         letterSpacing: '0.02em',
+
         '&:hover': {
           bgcolor: 'primary.light',
           color: 'white',
           borderRadius: '4px',
         },
+
         padding: '4px 8px',
         borderRadius: '4px',
         transition: 'all 0.2s ease-in-out',
         ...sx
-      }}
-    >
+      }}>
       {formatDisplay(value)}
     </Typography>
   );
@@ -687,7 +688,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             transform: 'translate(-50%, -50%)',
             textAlign: 'center'
           }}>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               {t('controls.preview')}
             </Typography>
           </Box>
@@ -726,7 +729,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             </Button>
             
             {circleMode && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  display: 'block',
+                  textAlign: 'center'
+                }}>
                 Click on the photo to place a circle
               </Typography>
             )}
@@ -1244,7 +1253,9 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             <ZoomIn fontSize="small" color="primary" />
             {t('controls.zoom')}
           </Typography>
-          <Typography variant="caption" color="primary" fontWeight={600}>
+          <Typography variant="caption" color="primary" sx={{
+            fontWeight: 600
+          }}>
             {Math.round(photo.canvasState.scale * 100)}%
           </Typography>
         </Box>
@@ -1382,7 +1393,15 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
             </Button>
             
             {circleMode && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mb: 1, fontSize: '0.65rem' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "text.secondary",
+                  display: 'block',
+                  textAlign: 'center',
+                  mb: 1,
+                  fontSize: '0.65rem'
+                }}>
                 {t('controls.circleMode.clickToPlace')}
               </Typography>
             )}
@@ -1398,7 +1417,13 @@ export const PhotoControls: React.FC<PhotoControlsProps> = ({
                 <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.65rem' }}>
                   {t('controls.circleMode.radius')}
                 </Typography>
-                <Typography variant="caption" color="primary" fontWeight={600} sx={{ fontSize: '0.65rem' }}>
+                <Typography
+                  variant="caption"
+                  color="primary"
+                  sx={{
+                    fontWeight: 600,
+                    fontSize: '0.65rem'
+                  }}>
                   {circle.radius}px
                 </Typography>
               </Box>

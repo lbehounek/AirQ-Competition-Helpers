@@ -150,7 +150,9 @@ export const LayoutModeSelector: React.FC<LayoutModeSelectorProps> = ({
   return (
     <>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <Typography variant="subtitle2" color="text.secondary">
+        <Typography variant="subtitle2" sx={{
+          color: "text.secondary"
+        }}>
           {t('layout.title')}
         </Typography>
         <ToggleButtonGroup
@@ -172,14 +174,18 @@ export const LayoutModeSelector: React.FC<LayoutModeSelectorProps> = ({
           <ToggleButton value="landscape">
             <CropLandscape />
             <Typography variant="caption">{t('layout.landscape.name')}</Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               {t('layout.landscape.description')}
             </Typography>
           </ToggleButton>
           <ToggleButton value="portrait">
             <CropPortrait />
             <Typography variant="caption">{t('layout.portrait.name')}</Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" sx={{
+              color: "text.secondary"
+            }}>
               {t('layout.portrait.description')}
             </Typography>
           </ToggleButton>

@@ -10,7 +10,7 @@ import { buildPreciseCorridorsAndGates, DISCIPLINE_CONFIGS } from './corridors/p
 import type { Discipline } from './corridors/preciseCorridor'
 
 import { Box, Button, Checkbox, Chip, Container, FormControlLabel, Typography, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Table, TableHead, TableRow, TableCell, TableBody, IconButton, Tooltip, Alert, Snackbar, LinearProgress } from '@mui/material'
-import { Download, Place, Print, Home, PhotoCamera, Flag, HelpOutline } from '@mui/icons-material'
+import { Download, Place, Print, Home, PhotoCamera, Flag, HelpOutlined } from '@mui/icons-material'
 import { startMapCorridorsTour, scheduleAutoStartTour, markTourSeen } from './onboarding/mapCorridorsTour'
 import { downloadKML } from './utils/exportKML'
 import { appendFeaturesToKML } from './utils/kmlMerge'
@@ -1540,399 +1540,401 @@ function App() {
 
   return (
     <>
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
-      {/* Unified blue header */}
-      <Box
-        sx={{
-          bgcolor: '#1565C0',
-          color: 'white',
-        }}
-        data-print-hide="true"
-      >
-        {/* Title row */}
-        <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {/* Not gated on window.electronAPI: in the web build there IS no
-                Electron shell, and hiding this left a browser user with no way
-                back to the launcher at all. `/` is the landing app's route. */}
-            {competitionId && (
-              <IconButton
-                size="small"
-                onClick={() => {
-                  if (window.electronAPI?.goHome) window.electronAPI.goHome()
-                  else window.location.href = '/'
-                }}
-                sx={{ color: 'white' }}
-                title={t('app.backToMenu')}
-              >
-                <Home />
-              </IconButton>
-            )}
-            {/* Routed through handleSendToEditor rather than calling
-                navigateToApp directly. Two reasons: it carries the browser
-                fallback (buildEditorHref stamps ?discipline=, which the web
-                build has no launcher to supply), and it awaits
-                flushPendingMapPicks first — the map-picks writer debounces
-                300 ms, so navigating straight away could drop the last flag or
-                label change. The panel's own button has always gone through
-                this path; the header one did not. */}
-            {competitionId && (
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => { void handleSendToEditor() }}
-                startIcon={<PhotoCamera sx={{ fontSize: 18 }} />}
-                sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 0.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
-              >
-                {t('app.openEditor')}
-              </Button>
-            )}
-            <Typography variant="h6" sx={{ fontWeight: 600, color: 'white' }}>{t('app.title')}</Typography>
-            {competitionName && (
-              <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
-            )}
-          </Box>
-          <Tooltip title={t('app.tour.help.button')}>
-            <IconButton size="small" onClick={handleStartTour} sx={{ color: 'white' }} aria-label={t('app.tour.help.button')} data-tour="help">
-              <HelpOutline />
-            </IconButton>
-          </Tooltip>
-        </Box>
-        {/* Controls row */}
-        <Box sx={{
-          px: 2, py: 0.75,
-          display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap',
-          bgcolor: 'rgba(0,0,0,0.1)',
-          '& .MuiButton-root': { color: 'white', borderColor: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', textTransform: 'none' },
-          '& .MuiButton-contained': { bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } },
-          '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.7)', borderColor: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', py: 0.25, px: 1.5,
-            '&.Mui-selected': { color: 'white', bgcolor: 'rgba(255,255,255,0.2)' } },
-          '& .MuiFormControlLabel-label': { color: 'white', fontSize: '0.8rem' },
-          '& .MuiCheckbox-root': { color: 'rgba(255,255,255,0.7)', '&.Mui-checked': { color: 'white' } },
-        }}>
-          <input type="file" multiple ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,.jpg,.jpeg,.png,application/vnd.google-earth.kml+xml,application/gpx+xml,image/jpeg,image/png" style={{ display: 'none' }} />
-          <Button variant="contained" size="small" onClick={onClickSelectFile} data-tour="import">{t('app.selectKml')}</Button>
-          {sampleAvailable && (
-            <Button variant="outlined" size="small" onClick={loadSample}>{t('app.loadSample')}</Button>
-          )}
-          {(session?.leftSegments || session?.rightSegments || session?.gates) && (
-            <Button variant="outlined" size="small" onClick={handleExportKML} startIcon={<Download sx={{ fontSize: 16 }} />}>{t('app.exportKml')}</Button>
-          )}
-          {session?.geojson && (
-            <Button variant="outlined" size="small" onClick={handlePrintMap} startIcon={<Print sx={{ fontSize: 16 }} />}>{t('app.printMap')}</Button>
-          )}
-          <Button variant="outlined" size="small" draggable onDragStart={onDragStartMarker} startIcon={<Place sx={{ fontSize: 16 }} />} title={t('app.dragToPlace')}>{t('app.dragToPlace')}</Button>
-          <Button variant="outlined" size="small" draggable onDragStart={onDragStartGroundMarker} startIcon={<Flag sx={{ fontSize: 16 }} />} title={t('app.dragToPlaceGround')}>{t('app.dragToPlaceGround')}</Button>
-          <MapStyleSelector
-            mapStyle={mapStyleId}
-            setMapStyle={selectMapStyleId}
-            availableStyles={availableStyles}
-            streetsLabel={t('app.toggleBase.streets')}
-            aerialLabel={t('app.toggleBase.satellite')}
-          />
-          <Chip
-            label={effectiveDiscipline === 'precision' ? t('app.discipline.precision') : t('app.discipline.rally')}
-            size="small"
-            sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 600 }}
-          />
-          {effectiveDiscipline === 'rally' && (
-            <FormControlLabel
-              control={
-                <Checkbox
-                  size="small"
-                  checked={use1NmAfterSp}
-                  onChange={(e) => setUse1NmAfterSp(e.target.checked)}
-                />
-              }
-              label={t('app.use1NmAfterSp')}
-            />
-          )}
-          <Box sx={{ flex: 1 }} />
-          {/* Answer sheet is meaningful only for Rally — Precision has no
-              corridor "from-TP" notion (corridors are 100 m one-sided and
-              the polygon is degenerate, so distances would be misleading,
-              feedback 2026-04-23). */}
-          {effectiveDiscipline !== 'precision' && (
-            <Button variant="outlined" size="small" onClick={() => setAnswerSheetOpen(true)}>{t('app.answerSheet')}</Button>
-          )}
-        </Box>
-      </Box>
-      {courseWarnings.length > 0 && !warningsDismissed && (
-        <Alert
-          severity="warning"
-          onClose={() => setWarningsDismissed(true)}
-          sx={{ borderRadius: 0, alignItems: 'flex-start' }}
-          data-testid="course-warnings"
-        >
-          <Typography variant="subtitle2" component="div">{t('app.courseWarnings')}</Typography>
-          <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-            {courseWarnings.map((w, i) => <li key={i}>{w}</li>)}
-          </Box>
-        </Alert>
-      )}
-      <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
+        {/* Unified blue header */}
         <Box
-          sx={{ height: '100%', width: '100vw', position: 'relative' }}
-          onDragOver={handleDragOver}
-          onDragEnter={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {backendAvailable === false && (
-            <Box sx={{ position: 'absolute', top: 8, left: 8, right: 8, zIndex: 20 }}>
-              <Alert severity="warning">{t('opfs.warning')}</Alert>
-            </Box>
-          )}
-          {isDragOver && (
-            <Box sx={{
-              position: 'absolute', inset: 0, zIndex: 10,
-              bgcolor: 'rgba(25,118,210,0.06)',
-              border: '2px dashed', borderColor: 'primary.main',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              pointerEvents: 'none'
-            }}>
-              <Typography variant="h6" color="primary.main">{t('app.dropHint')}</Typography>
-            </Box>
-          )}
-          <MapProviderView
-            ref={mapRef as any}
-            mapStyle={resolvedStyle}
-            // Pull the Mapbox token from the same module-scoped store the
-            // style resolver reads, not from React state — otherwise the
-            // token prop can lag one render behind `resolvedStyle` when a
-            // `mapbox://` URL resolves in the same batch the token arrived.
-            mapboxAccessToken={getMapboxAccessToken()}
-            geojsonOverlays={geojsonOverlays}
-            markers={markers}
-            activeMarkerId={activeMarkerId}
-            usedLabels={usedLabels}
-            availableLabels={availableLabels}
-            markerDistanceNmById={markerDistanceNmById}
-            onMarkerAdd={handleMarkerAdd}
-            onMarkerDragEnd={handleMarkerDragEnd}
-            onMarkerClick={handleMarkerClick}
-            onMarkerNameChange={handleMarkerNameChange}
-            onMarkerDelete={handleMarkerDelete}
-            onMarkerLabelChange={handleMarkerLabelChange}
-            onMarkerLabelClear={handleMarkerLabelClear}
-            groundMarkerProps={groundMarkerProps}
-            photoStorage={storage}
-            photoDir={photosDir}
-            onPhotoIncludeTrack={handlePhotoIncludeTrack}
-            onPhotoIncludeTurning={handlePhotoIncludeTurning}
-            onPhotoSkip={handlePhotoSkip}
-            onPhotoReject={handlePhotoReject}
-            // The break is a route TP chosen in the panel selector; the map
-            // shows a scissors badge at that TP's coordinate as read-only
-            // confirmation of where set 2 starts.
-            setBreakWaypointCoord={setBreakWaypointCoord}
-            onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}
-            activePhotoMarkerId={activePhotoMarkerId}
-            onActivePhotoMarkerChange={setActivePhotoMarkerId}
-            onPhotoPreview={handleOpenPhotoPreview}
-            onCompareVariants={handleCompareVariants}
-            provisionalPlacement={provisionalPlacement}
-            onProvisionalDrag={handleProvisionalDrag}
-            onProvisionalCommit={handleProvisionalCommit}
-            onProvisionalCancel={handleProvisionalCancel}
-          />
-          {/* Phase 6 — no-GPS tray, pinned to bottom-left of the map. */}
-          <NoGpsTray
-            photos={noGpsPhotos}
-            open={session?.noGpsTrayOpen ?? true}
-            onToggleOpen={() => { void persistNoGpsTrayOpen(!(session?.noGpsTrayOpen ?? true)) }}
-            storage={storage}
-            photosDir={photosDir}
-            onPhotoDelete={handleRequestDeletePhoto}
-            onPreview={handleOpenPhotoPreview}
-          />
-          {/* Phase 7 — right-side photo list panel. Auto-hides when there
-              are no imported photos (KML-only sessions look unchanged). */}
-          <PhotoListPanel
-            markers={markers}
-            noGpsPhotos={noGpsPhotos}
-            storage={storage}
-            photosDir={photosDir}
-            onMarkerClick={handlePhotoListMarkerClick}
-            activePhotoId={activePhotoId}
-            onPhotoSetFlag={handlePhotoSetFlag}
-            onNoGpsPhotoClick={handleNoGpsPhotoClick}
-            onSendToEditor={competitionId ? handleSendToEditor : undefined}
-            onPhotoDelete={handleRequestDeletePhoto}
-            onPhotoRename={handlePhotoRename}
-            onCompareVariants={handleCompareVariants}
-            onPreviewPhoto={handleOpenPhotoPreview}
-            // Visualize the set1↔set2 break in the pick groups (rally only;
-            // precision is single-set, so no break → no divider).
-            setBreakWaypointName={effectiveSetBreakName}
-            routeWaypoints={routeWaypoints}
-            // "Set 2 starts at" selector — the sole way to set the break.
-            // Omitted for precision so the selector is hidden.
-            onSetBreakChange={effectiveDiscipline === 'precision' ? undefined : handleSetBreakChange}
-          />
-        </Box>
-      </Container>
-    </Box>
-    <PhotoCompareModal
-      open={compareVariants !== null}
-      markers={compareVariants ?? []}
-      storage={storage}
-      photosDir={photosDir}
-      onClose={() => setCompareVariants(null)}
-      onResolve={handleCompareResolve}
-    />
-    <PhotoPreviewModal
-      open={previewPhoto !== null}
-      photoId={previewPhoto?.photoId ?? null}
-      filename={previewPhoto?.filename}
-      originalFilename={previewPhoto?.originalFilename}
-      timestamp={previewPhoto?.timestamp}
-      storage={storage}
-      photosDir={photosDir}
-      onClose={() => setPreviewPhotoId(null)}
-    />
-    <Dialog open={isAnswerSheetOpen} onClose={() => setAnswerSheetOpen(false)} maxWidth="sm" fullWidth>
-      <DialogContent dividers sx={{ p: 1 }}>
-        <Box sx={{ position: 'relative' }}>
-          <Tooltip title={t('sheet.print')}>
-            <IconButton onClick={handlePrintAnswerSheet} size="small" sx={{ position: 'absolute', top: 4, right: 4 }} aria-label={t('sheet.print')}>
-              <Print fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <div ref={answerSheetRef}>
-            <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.75, px: 1.25, fontSize: 15 } }}>
-          <TableHead>
-            <TableRow>
-              <TableCell>{t('sheet.photoLabel')}</TableCell>
-              <TableCell>{t('sheet.distance')}</TableCell>
-              <TableCell>{t('sheet.fromTp')}</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {availableLabels.map((L) => {
-              const m = labelToMarker.get(L)
-              const dist = m ? markerDistanceNmById[m.id] : null
-              const from = m ? (markerFromTpById[m.id] || '') : ''
-              return (
-                <TableRow key={L} hover>
-                  <TableCell>{L}</TableCell>
-                  <TableCell>{dist != null ? dist.toFixed(2) : ''}</TableCell>
-                  <TableCell>{from}</TableCell>
-                </TableRow>
-              )
-            })}
-            {/* Ground markers (FAI signs) in order of placement. User asked
-                for signs in the answer sheet, not only photo letters
-                (feedback 2026-04-23). */}
-            {groundMarkers.length > 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={3}
-                  sx={{ bgcolor: 'grey.100', fontWeight: 600, fontSize: 13, py: 0.5 }}
-                >
-                  {t('sheet.signs')}
-                </TableCell>
-              </TableRow>
-            )}
-            {groundMarkers.map((gm, idx) => {
-              const Icon = GROUND_MARKER_ICON[gm.type]
-              const dist = groundMarkerDistanceNmById[gm.id]
-              const from = groundMarkerFromTpById[gm.id] || ''
-              return (
-                <TableRow key={gm.id} hover>
-                  <TableCell sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography component="span" sx={{ fontSize: 13, color: 'text.secondary', minWidth: 18 }}>
-                      {idx + 1}.
-                    </Typography>
-                    {Icon ? <Icon size={20} /> : <Typography component="span">{gm.type}</Typography>}
-                  </TableCell>
-                  <TableCell>{dist != null ? dist.toFixed(2) : ''}</TableCell>
-                  <TableCell>{from}</TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-            </Table>
-          </div>
-        </Box>
-      </DialogContent>
-    </Dialog>
-    {/* Phase 3 photo-import UX (docs/photo-map-culling).
-        LinearProgress sits below the controls row during a batch import.
-        Snackbar at top-right shows summary on completion + unsupported
-        hints. Both are non-blocking — user can keep working on the map. */}
-    {importProgress && importProgress.total > 0 && (
-      <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30 }}>
-        <LinearProgress
-          variant="determinate"
-          value={Math.round((importProgress.done / importProgress.total) * 100)}
-        />
-        <Box sx={{ bgcolor: 'primary.main', color: 'white', px: 2, py: 0.5, fontSize: 13 }}>
-          {t('photo.import.progress', { done: importProgress.done, total: importProgress.total })}
-        </Box>
-      </Box>
-    )}
-    <Snackbar
-      open={snack !== null}
-      autoHideDuration={snack?.severity === 'error' ? null : 6000}
-      onClose={() => setSnack(null)}
-      anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-    >
-      {snack ? (
-        <Alert severity={snack.severity} onClose={() => setSnack(null)} sx={{ width: '100%' }}>
-          {snack.text}
-        </Alert>
-      ) : undefined}
-    </Snackbar>
-    {/* Delete-photo confirmation. Built lazily off `pendingDeletePhoto`:
-        clicking X on a row (either the photo list panel or the no-GPS tray)
-        stores the photoId; `Smazat` calls removePhoto, `Zrušit` clears the
-        state. The display name is resolved at render time from the current
-        marker / tray entry so a rename made between X-click and confirm
-        still surfaces the right label. */}
-    <Dialog
-      open={pendingDeletePhoto !== null}
-      onClose={() => setPendingDeletePhoto(null)}
-      maxWidth="xs"
-      fullWidth
-    >
-      <DialogTitle>{t('photo.deleteConfirm.title')}</DialogTitle>
-      <DialogContent>
-        <DialogContentText>
-          {t('photo.deleteConfirm.body', {
-            name: pendingDeletePhoto
-              ? (() => {
-                  // Resolve the display name at render time so a rename made
-                  // between X-click and confirm surfaces the right label.
-                  const m = markers.find(m => m.photoId === pendingDeletePhoto)
-                  if (m) return photoMarkerDisplayName(m)
-                  const p = noGpsPhotos.find(p => p.photoId === pendingDeletePhoto)
-                  if (p) return noGpsPhotoDisplayName(p)
-                  return pendingDeletePhoto
-                })()
-              : '',
-          })}
-        </DialogContentText>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={() => setPendingDeletePhoto(null)}>
-          {t('photo.deleteConfirm.cancel')}
-        </Button>
-        <Button
-          onClick={() => {
-            if (pendingDeletePhoto) void removePhoto(pendingDeletePhoto)
-            setPendingDeletePhoto(null)
+          sx={{
+            bgcolor: '#1565C0',
+            color: 'white',
           }}
-          color="error"
-          variant="contained"
-          autoFocus
+          data-print-hide="true"
         >
-          {t('photo.deleteConfirm.confirm')}
-        </Button>
-      </DialogActions>
-    </Dialog>
+          {/* Title row */}
+          <Box sx={{ px: 2, py: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {/* Not gated on window.electronAPI: in the web build there IS no
+                  Electron shell, and hiding this left a browser user with no way
+                  back to the launcher at all. `/` is the landing app's route. */}
+              {competitionId && (
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    if (window.electronAPI?.goHome) window.electronAPI.goHome()
+                    else window.location.href = '/'
+                  }}
+                  sx={{ color: 'white' }}
+                  title={t('app.backToMenu')}
+                >
+                  <Home />
+                </IconButton>
+              )}
+              {/* Routed through handleSendToEditor rather than calling
+                  navigateToApp directly. Two reasons: it carries the browser
+                  fallback (buildEditorHref stamps ?discipline=, which the web
+                  build has no launcher to supply), and it awaits
+                  flushPendingMapPicks first — the map-picks writer debounces
+                  300 ms, so navigating straight away could drop the last flag or
+                  label change. The panel's own button has always gone through
+                  this path; the header one did not. */}
+              {competitionId && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => { void handleSendToEditor() }}
+                  startIcon={<PhotoCamera sx={{ fontSize: 18 }} />}
+                  sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)', textTransform: 'none', mr: 0.5, '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } }}
+                >
+                  {t('app.openEditor')}
+                </Button>
+              )}
+              <Typography variant="h6" sx={{ fontWeight: 600, color: 'white' }}>{t('app.title')}</Typography>
+              {competitionName && (
+                <Chip label={competitionName} size="small" sx={{ ml: 1, bgcolor: 'rgba(255,255,255,0.2)', color: 'white' }} />
+              )}
+            </Box>
+            <Tooltip title={t('app.tour.help.button')}>
+              <IconButton size="small" onClick={handleStartTour} sx={{ color: 'white' }} aria-label={t('app.tour.help.button')} data-tour="help">
+                <HelpOutlined />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          {/* Controls row */}
+          <Box sx={{
+            px: 2, py: 0.75,
+            display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap',
+            bgcolor: 'rgba(0,0,0,0.1)',
+            '& .MuiButton-root': { color: 'white', borderColor: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', textTransform: 'none' },
+            '& .MuiButton-contained': { bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } },
+            '& .MuiToggleButton-root': { color: 'rgba(255,255,255,0.7)', borderColor: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', py: 0.25, px: 1.5,
+              '&.Mui-selected': { color: 'white', bgcolor: 'rgba(255,255,255,0.2)' } },
+            '& .MuiFormControlLabel-label': { color: 'white', fontSize: '0.8rem' },
+            '& .MuiCheckbox-root': { color: 'rgba(255,255,255,0.7)', '&.Mui-checked': { color: 'white' } },
+          }}>
+            <input type="file" multiple ref={fileInputRef} onChange={onFileInputChange} accept=".kml,.gpx,.jpg,.jpeg,.png,application/vnd.google-earth.kml+xml,application/gpx+xml,image/jpeg,image/png" style={{ display: 'none' }} />
+            <Button variant="contained" size="small" onClick={onClickSelectFile} data-tour="import">{t('app.selectKml')}</Button>
+            {sampleAvailable && (
+              <Button variant="outlined" size="small" onClick={loadSample}>{t('app.loadSample')}</Button>
+            )}
+            {(session?.leftSegments || session?.rightSegments || session?.gates) && (
+              <Button variant="outlined" size="small" onClick={handleExportKML} startIcon={<Download sx={{ fontSize: 16 }} />}>{t('app.exportKml')}</Button>
+            )}
+            {session?.geojson && (
+              <Button variant="outlined" size="small" onClick={handlePrintMap} startIcon={<Print sx={{ fontSize: 16 }} />}>{t('app.printMap')}</Button>
+            )}
+            <Button variant="outlined" size="small" draggable onDragStart={onDragStartMarker} startIcon={<Place sx={{ fontSize: 16 }} />} title={t('app.dragToPlace')}>{t('app.dragToPlace')}</Button>
+            <Button variant="outlined" size="small" draggable onDragStart={onDragStartGroundMarker} startIcon={<Flag sx={{ fontSize: 16 }} />} title={t('app.dragToPlaceGround')}>{t('app.dragToPlaceGround')}</Button>
+            <MapStyleSelector
+              mapStyle={mapStyleId}
+              setMapStyle={selectMapStyleId}
+              availableStyles={availableStyles}
+              streetsLabel={t('app.toggleBase.streets')}
+              aerialLabel={t('app.toggleBase.satellite')}
+            />
+            <Chip
+              label={effectiveDiscipline === 'precision' ? t('app.discipline.precision') : t('app.discipline.rally')}
+              size="small"
+              sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 600 }}
+            />
+            {effectiveDiscipline === 'rally' && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={use1NmAfterSp}
+                    onChange={(e) => setUse1NmAfterSp(e.target.checked)}
+                  />
+                }
+                label={t('app.use1NmAfterSp')}
+              />
+            )}
+            <Box sx={{ flex: 1 }} />
+            {/* Answer sheet is meaningful only for Rally — Precision has no
+                corridor "from-TP" notion (corridors are 100 m one-sided and
+                the polygon is degenerate, so distances would be misleading,
+                feedback 2026-04-23). */}
+            {effectiveDiscipline !== 'precision' && (
+              <Button variant="outlined" size="small" onClick={() => setAnswerSheetOpen(true)}>{t('app.answerSheet')}</Button>
+            )}
+          </Box>
+        </Box>
+        {courseWarnings.length > 0 && !warningsDismissed && (
+          <Alert
+            severity="warning"
+            onClose={() => setWarningsDismissed(true)}
+            sx={{ borderRadius: 0, alignItems: 'flex-start' }}
+            data-testid="course-warnings"
+          >
+            <Typography variant="subtitle2" component="div">{t('app.courseWarnings')}</Typography>
+            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+              {courseWarnings.map((w, i) => <li key={i}>{w}</li>)}
+            </Box>
+          </Alert>
+        )}
+        <Container disableGutters maxWidth={false} sx={{ flex: 1, minHeight: 0, width: '100vw' }}>
+          <Box
+            sx={{ height: '100%', width: '100vw', position: 'relative' }}
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {backendAvailable === false && (
+              <Box sx={{ position: 'absolute', top: 8, left: 8, right: 8, zIndex: 20 }}>
+                <Alert severity="warning">{t('opfs.warning')}</Alert>
+              </Box>
+            )}
+            {isDragOver && (
+              <Box sx={{
+                position: 'absolute', inset: 0, zIndex: 10,
+                bgcolor: 'rgba(25,118,210,0.06)',
+                border: '2px dashed', borderColor: 'primary.main',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                pointerEvents: 'none'
+              }}>
+                <Typography variant="h6" sx={{
+                  color: "primary.main"
+                }}>{t('app.dropHint')}</Typography>
+              </Box>
+            )}
+            <MapProviderView
+              ref={mapRef as any}
+              mapStyle={resolvedStyle}
+              // Pull the Mapbox token from the same module-scoped store the
+              // style resolver reads, not from React state — otherwise the
+              // token prop can lag one render behind `resolvedStyle` when a
+              // `mapbox://` URL resolves in the same batch the token arrived.
+              mapboxAccessToken={getMapboxAccessToken()}
+              geojsonOverlays={geojsonOverlays}
+              markers={markers}
+              activeMarkerId={activeMarkerId}
+              usedLabels={usedLabels}
+              availableLabels={availableLabels}
+              markerDistanceNmById={markerDistanceNmById}
+              onMarkerAdd={handleMarkerAdd}
+              onMarkerDragEnd={handleMarkerDragEnd}
+              onMarkerClick={handleMarkerClick}
+              onMarkerNameChange={handleMarkerNameChange}
+              onMarkerDelete={handleMarkerDelete}
+              onMarkerLabelChange={handleMarkerLabelChange}
+              onMarkerLabelClear={handleMarkerLabelClear}
+              groundMarkerProps={groundMarkerProps}
+              photoStorage={storage}
+              photoDir={photosDir}
+              onPhotoIncludeTrack={handlePhotoIncludeTrack}
+              onPhotoIncludeTurning={handlePhotoIncludeTurning}
+              onPhotoSkip={handlePhotoSkip}
+              onPhotoReject={handlePhotoReject}
+              // The break is a route TP chosen in the panel selector; the map
+              // shows a scissors badge at that TP's coordinate as read-only
+              // confirmation of where set 2 starts.
+              setBreakWaypointCoord={setBreakWaypointCoord}
+              onNoGpsPhotoPlaced={handleNoGpsPhotoPlaced}
+              activePhotoMarkerId={activePhotoMarkerId}
+              onActivePhotoMarkerChange={setActivePhotoMarkerId}
+              onPhotoPreview={handleOpenPhotoPreview}
+              onCompareVariants={handleCompareVariants}
+              provisionalPlacement={provisionalPlacement}
+              onProvisionalDrag={handleProvisionalDrag}
+              onProvisionalCommit={handleProvisionalCommit}
+              onProvisionalCancel={handleProvisionalCancel}
+            />
+            {/* Phase 6 — no-GPS tray, pinned to bottom-left of the map. */}
+            <NoGpsTray
+              photos={noGpsPhotos}
+              open={session?.noGpsTrayOpen ?? true}
+              onToggleOpen={() => { void persistNoGpsTrayOpen(!(session?.noGpsTrayOpen ?? true)) }}
+              storage={storage}
+              photosDir={photosDir}
+              onPhotoDelete={handleRequestDeletePhoto}
+              onPreview={handleOpenPhotoPreview}
+            />
+            {/* Phase 7 — right-side photo list panel. Auto-hides when there
+                are no imported photos (KML-only sessions look unchanged). */}
+            <PhotoListPanel
+              markers={markers}
+              noGpsPhotos={noGpsPhotos}
+              storage={storage}
+              photosDir={photosDir}
+              onMarkerClick={handlePhotoListMarkerClick}
+              activePhotoId={activePhotoId}
+              onPhotoSetFlag={handlePhotoSetFlag}
+              onNoGpsPhotoClick={handleNoGpsPhotoClick}
+              onSendToEditor={competitionId ? handleSendToEditor : undefined}
+              onPhotoDelete={handleRequestDeletePhoto}
+              onPhotoRename={handlePhotoRename}
+              onCompareVariants={handleCompareVariants}
+              onPreviewPhoto={handleOpenPhotoPreview}
+              // Visualize the set1↔set2 break in the pick groups (rally only;
+              // precision is single-set, so no break → no divider).
+              setBreakWaypointName={effectiveSetBreakName}
+              routeWaypoints={routeWaypoints}
+              // "Set 2 starts at" selector — the sole way to set the break.
+              // Omitted for precision so the selector is hidden.
+              onSetBreakChange={effectiveDiscipline === 'precision' ? undefined : handleSetBreakChange}
+            />
+          </Box>
+        </Container>
+      </Box>
+      <PhotoCompareModal
+        open={compareVariants !== null}
+        markers={compareVariants ?? []}
+        storage={storage}
+        photosDir={photosDir}
+        onClose={() => setCompareVariants(null)}
+        onResolve={handleCompareResolve}
+      />
+      <PhotoPreviewModal
+        open={previewPhoto !== null}
+        photoId={previewPhoto?.photoId ?? null}
+        filename={previewPhoto?.filename}
+        originalFilename={previewPhoto?.originalFilename}
+        timestamp={previewPhoto?.timestamp}
+        storage={storage}
+        photosDir={photosDir}
+        onClose={() => setPreviewPhotoId(null)}
+      />
+      <Dialog open={isAnswerSheetOpen} onClose={() => setAnswerSheetOpen(false)} maxWidth="sm" fullWidth>
+        <DialogContent dividers sx={{ p: 1 }}>
+          <Box sx={{ position: 'relative' }}>
+            <Tooltip title={t('sheet.print')}>
+              <IconButton onClick={handlePrintAnswerSheet} size="small" sx={{ position: 'absolute', top: 4, right: 4 }} aria-label={t('sheet.print')}>
+                <Print fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <div ref={answerSheetRef}>
+              <Table size="small" sx={{ '& .MuiTableCell-root': { py: 0.75, px: 1.25, fontSize: 15 } }}>
+            <TableHead>
+              <TableRow>
+                <TableCell>{t('sheet.photoLabel')}</TableCell>
+                <TableCell>{t('sheet.distance')}</TableCell>
+                <TableCell>{t('sheet.fromTp')}</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {availableLabels.map((L) => {
+                const m = labelToMarker.get(L)
+                const dist = m ? markerDistanceNmById[m.id] : null
+                const from = m ? (markerFromTpById[m.id] || '') : ''
+                return (
+                  <TableRow key={L} hover>
+                    <TableCell>{L}</TableCell>
+                    <TableCell>{dist != null ? dist.toFixed(2) : ''}</TableCell>
+                    <TableCell>{from}</TableCell>
+                  </TableRow>
+                )
+              })}
+              {/* Ground markers (FAI signs) in order of placement. User asked
+                  for signs in the answer sheet, not only photo letters
+                  (feedback 2026-04-23). */}
+              {groundMarkers.length > 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={3}
+                    sx={{ bgcolor: 'grey.100', fontWeight: 600, fontSize: 13, py: 0.5 }}
+                  >
+                    {t('sheet.signs')}
+                  </TableCell>
+                </TableRow>
+              )}
+              {groundMarkers.map((gm, idx) => {
+                const Icon = GROUND_MARKER_ICON[gm.type]
+                const dist = groundMarkerDistanceNmById[gm.id]
+                const from = groundMarkerFromTpById[gm.id] || ''
+                return (
+                  <TableRow key={gm.id} hover>
+                    <TableCell sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography component="span" sx={{ fontSize: 13, color: 'text.secondary', minWidth: 18 }}>
+                        {idx + 1}.
+                      </Typography>
+                      {Icon ? <Icon size={20} /> : <Typography component="span">{gm.type}</Typography>}
+                    </TableCell>
+                    <TableCell>{dist != null ? dist.toFixed(2) : ''}</TableCell>
+                    <TableCell>{from}</TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+              </Table>
+            </div>
+          </Box>
+        </DialogContent>
+      </Dialog>
+      {/* Phase 3 photo-import UX (docs/photo-map-culling).
+          LinearProgress sits below the controls row during a batch import.
+          Snackbar at top-right shows summary on completion + unsupported
+          hints. Both are non-blocking — user can keep working on the map. */}
+      {importProgress && importProgress.total > 0 && (
+        <Box sx={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 30 }}>
+          <LinearProgress
+            variant="determinate"
+            value={Math.round((importProgress.done / importProgress.total) * 100)}
+          />
+          <Box sx={{ bgcolor: 'primary.main', color: 'white', px: 2, py: 0.5, fontSize: 13 }}>
+            {t('photo.import.progress', { done: importProgress.done, total: importProgress.total })}
+          </Box>
+        </Box>
+      )}
+      <Snackbar
+        open={snack !== null}
+        autoHideDuration={snack?.severity === 'error' ? null : 6000}
+        onClose={() => setSnack(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        {snack ? (
+          <Alert severity={snack.severity} onClose={() => setSnack(null)} sx={{ width: '100%' }}>
+            {snack.text}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
+      {/* Delete-photo confirmation. Built lazily off `pendingDeletePhoto`:
+          clicking X on a row (either the photo list panel or the no-GPS tray)
+          stores the photoId; `Smazat` calls removePhoto, `Zrušit` clears the
+          state. The display name is resolved at render time from the current
+          marker / tray entry so a rename made between X-click and confirm
+          still surfaces the right label. */}
+      <Dialog
+        open={pendingDeletePhoto !== null}
+        onClose={() => setPendingDeletePhoto(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{t('photo.deleteConfirm.title')}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {t('photo.deleteConfirm.body', {
+              name: pendingDeletePhoto
+                ? (() => {
+                    // Resolve the display name at render time so a rename made
+                    // between X-click and confirm surfaces the right label.
+                    const m = markers.find(m => m.photoId === pendingDeletePhoto)
+                    if (m) return photoMarkerDisplayName(m)
+                    const p = noGpsPhotos.find(p => p.photoId === pendingDeletePhoto)
+                    if (p) return noGpsPhotoDisplayName(p)
+                    return pendingDeletePhoto
+                  })()
+                : '',
+            })}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingDeletePhoto(null)}>
+            {t('photo.deleteConfirm.cancel')}
+          </Button>
+          <Button
+            onClick={() => {
+              if (pendingDeletePhoto) void removePhoto(pendingDeletePhoto)
+              setPendingDeletePhoto(null)
+            }}
+            color="error"
+            variant="contained"
+            autoFocus
+          >
+            {t('photo.deleteConfirm.confirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
-  )
+  );
 }
 
 export default App

@@ -68,7 +68,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onModeC
       <Typography variant="h6" sx={{ mb: 2, color: 'text.primary', fontWeight: 600 }}>
         {t('mode.title')}
       </Typography>
-      
+
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         {MODE_OPTIONS.map((option) => (
           <Card
@@ -113,11 +113,12 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({ currentMode, onModeC
                 )}
               </Box>
               
-              <Typography 
-                variant="body2" 
-                color="text.secondary"
-                sx={{ lineHeight: 1.4 }}
-              >
+              <Typography
+                variant="body2"
+                sx={{
+                  color: "text.secondary",
+                  lineHeight: 1.4
+                }}>
                 {t(option.descriptionKey)}
               </Typography>
             </CardContent>

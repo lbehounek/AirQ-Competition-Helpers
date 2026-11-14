@@ -233,7 +233,14 @@ function NoGpsTrayThumb(props: {
             />
           )}
           {state !== 'ready' && (
-            <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10, px: 0.5, textAlign: 'center' }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "text.disabled",
+                fontSize: 10,
+                px: 0.5,
+                textAlign: 'center'
+              }}>
               {label}
             </Typography>
           )}
@@ -275,5 +282,5 @@ function NoGpsTrayThumb(props: {
         </IconButton>
       </Tooltip>
     </Box>
-  )
+  );
 }

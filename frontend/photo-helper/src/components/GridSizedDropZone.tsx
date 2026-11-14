@@ -316,7 +316,9 @@ export const GridSizedDropZone: React.FC<GridSizedDropZoneProps> = ({
 
           {/* Subtext */}
           {getSubText() && (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" sx={{
+              color: "text.secondary"
+            }}>
               {getSubText()}
             </Typography>
           )}
