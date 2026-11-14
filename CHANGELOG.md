@@ -13,6 +13,12 @@ new desktop release.
 ## [Unreleased]
 
 ### Security
+- Updated the desktop runtime to Electron 42.11.16 and refreshed web, build,
+  and test dependencies. The dependency audit now reports no known
+  vulnerabilities, including the previously unpatched archive-extraction
+  dependency removed by Electron.
+- Updated the UI components to Material UI 9, preserving photo controls,
+  competition forms, dialogs, menus, and the light appearance.
 - **Web build (Firebase Hosting):** every page — landing, Photo Helper, Map
   Corridors and the 404 page — now refuses to be framed by another site
   (`Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`),
